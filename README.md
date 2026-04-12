@@ -1,6 +1,6 @@
 # react-native-screen-choreography
 
-Transition choreography engine
+Test
 
 ## Installation
 
