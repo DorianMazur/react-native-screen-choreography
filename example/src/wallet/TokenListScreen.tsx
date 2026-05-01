@@ -1,5 +1,12 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, StatusBar } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  StatusBar,
+  Pressable,
+} from 'react-native';
 import {
   ChoreographyScreen,
   useChoreographyNavigation,
@@ -7,6 +14,7 @@ import {
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { TokenRow } from './TokenRow';
 import { TOKENS } from './data';
+import { theme } from '../theme';
 
 export function TokenListScreen({ navigation }: { navigation: any }) {
   const { navigate } = useChoreographyNavigation(navigation);
@@ -14,9 +22,12 @@ export function TokenListScreen({ navigation }: { navigation: any }) {
   return (
     <ChoreographyScreen screenId="TokenList">
       <SafeAreaView style={styles.container}>
-        <StatusBar barStyle="dark-content" />
+        <StatusBar barStyle="light-content" />
 
         <View style={styles.header}>
+          <Pressable onPress={() => navigation.goBack()} hitSlop={12}>
+            <Text style={styles.back}>← Back</Text>
+          </Pressable>
           <Text style={styles.title}>Wallet</Text>
           <Text style={styles.totalValue}>$22,384.49</Text>
           <Text style={styles.totalChange}>+$847.23 (3.93%) today</Text>
@@ -52,29 +63,35 @@ export function TokenListScreen({ navigation }: { navigation: any }) {
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: theme.bg,
   },
   header: {
     paddingHorizontal: 20,
-    paddingTop: 12,
+    paddingTop: 8,
     paddingBottom: 20,
+  },
+  back: {
+    color: theme.textSecondary,
+    fontSize: 15,
+    fontWeight: '500',
+    marginBottom: 12,
   },
   title: {
     fontSize: 34,
     fontWeight: '700',
-    color: '#1C1C1E',
-    letterSpacing: 0.37,
+    color: theme.text,
+    letterSpacing: -0.4,
   },
   totalValue: {
     fontSize: 28,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: theme.text,
     marginTop: 4,
   },
   totalChange: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#34C759',
+    color: theme.success,
     marginTop: 2,
   },
   listContent: {

@@ -1,13 +1,14 @@
-import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { SharedElement } from 'react-native-screen-choreography';
 import type { Token } from './data';
+import { theme } from '../theme';
+import { TokenLogo } from './TokenLogo';
 import {
   tokenCardTransition,
   tokenIconTransition,
   tokenTextTransition,
   tokenValueTransition,
-} from './sharedTransitions';
+} from './walletTransitions';
 
 interface TokenRowProps {
   token: Token;
@@ -31,11 +32,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             groupId={`token.${token.id}`}
             transition={tokenIconTransition}
           >
-            <View
-              style={[styles.iconContainer, { backgroundColor: token.color }]}
-            >
-              <Text style={styles.iconText}>{token.icon}</Text>
-            </View>
+            <TokenLogo token={token} size={44} />
           </SharedElement>
 
           <View style={styles.info}>
@@ -100,9 +97,8 @@ const styles = StyleSheet.create({
     marginVertical: 6,
   },
   rowContainer: {
-    borderRadius: 16,
-    backgroundColor: '#FFFFFF',
-    boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.06)',
+    borderRadius: theme.radius.md,
+    backgroundColor: theme.surface,
   },
   row: {
     flexDirection: 'row',
@@ -127,11 +123,11 @@ const styles = StyleSheet.create({
   name: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: theme.text,
   },
   symbol: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: theme.textMuted,
     marginTop: 2,
   },
   valueContainer: {
@@ -140,7 +136,7 @@ const styles = StyleSheet.create({
   value: {
     fontSize: 16,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: theme.text,
   },
   change: {
     fontSize: 13,
@@ -148,9 +144,9 @@ const styles = StyleSheet.create({
     marginTop: 2,
   },
   changePositive: {
-    color: '#34C759',
+    color: theme.success,
   },
   changeNegative: {
-    color: '#FF3B30',
+    color: theme.danger,
   },
 });

@@ -18,12 +18,14 @@ import {
   useStaggeredReveal,
 } from 'react-native-screen-choreography';
 import { TOKENS } from './data';
+import { theme } from '../theme';
+import { TokenLogo } from './TokenLogo';
 import {
   tokenCardTransition,
   tokenIconTransition,
   tokenTextTransition,
   tokenValueTransition,
-} from './sharedTransitions';
+} from './walletTransitions';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -73,14 +75,7 @@ export function TokenDetailScreen({
                   groupId={`token.${token.id}`}
                   transition={tokenIconTransition}
                 >
-                  <View
-                    style={[
-                      styles.iconContainer,
-                      { backgroundColor: token.color },
-                    ]}
-                  >
-                    <Text style={styles.iconText}>{token.icon}</Text>
-                  </View>
+                  <TokenLogo token={token} size={56} />
                 </SharedElement>
 
                 <View style={styles.headerInfo}>
@@ -248,7 +243,7 @@ function ActivityItem({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-    backgroundColor: '#F2F2F7',
+    backgroundColor: theme.bg,
   },
   scrollView: {
     flex: 1,
@@ -262,14 +257,13 @@ const styles = StyleSheet.create({
   },
   backText: {
     fontSize: 17,
-    color: '#000000',
-    fontWeight: '600',
+    color: theme.textSecondary,
+    fontWeight: '500',
   },
   detailCard: {
     marginHorizontal: 16,
-    borderRadius: 24,
-    backgroundColor: '#FFFFFF',
-    boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.04)',
+    borderRadius: theme.radius.xl,
+    backgroundColor: theme.surface,
   },
   cardContent: {
     padding: 24,
@@ -296,11 +290,11 @@ const styles = StyleSheet.create({
   detailName: {
     fontSize: 24,
     fontWeight: '700',
-    color: '#1C1C1E',
+    color: theme.text,
   },
   detailSymbol: {
     fontSize: 15,
-    color: '#8E8E93',
+    color: theme.textMuted,
     marginTop: 2,
   },
   valueSection: {
@@ -309,8 +303,8 @@ const styles = StyleSheet.create({
   detailPrice: {
     fontSize: 34,
     fontWeight: '700',
-    color: '#1C1C1E',
-    letterSpacing: 0.37,
+    color: theme.text,
+    letterSpacing: -0.4,
   },
   detailChange: {
     fontSize: 17,
@@ -318,23 +312,22 @@ const styles = StyleSheet.create({
     marginTop: 4,
   },
   detailChangePositive: {
-    color: '#34C759',
+    color: theme.success,
   },
   detailChangeNegative: {
-    color: '#FF3B30',
+    color: theme.danger,
   },
   section: {
     marginHorizontal: 16,
-    marginTop: 20,
-    backgroundColor: '#FFFFFF',
-    borderRadius: 16,
+    marginTop: 16,
+    backgroundColor: theme.surface,
+    borderRadius: theme.radius.lg,
     padding: 20,
-    boxShadow: '0px 1px 4px rgba(0, 0, 0, 0.04)',
   },
   sectionTitle: {
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: theme.text,
     marginBottom: 12,
   },
   balanceRow: {
@@ -345,37 +338,39 @@ const styles = StyleSheet.create({
   balanceAmount: {
     fontSize: 20,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: theme.text,
   },
   balanceValue: {
-    fontSize: 17,
-    color: '#8E8E93',
+    fontSize: 16,
+    color: theme.textMuted,
   },
   description: {
     fontSize: 15,
     lineHeight: 22,
-    color: '#3C3C43',
+    color: theme.textSecondary,
   },
   statsGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 12,
+    gap: 10,
   },
   statItem: {
-    width: (SCREEN_WIDTH - 76) / 2,
-    backgroundColor: '#F2F2F7',
-    borderRadius: 12,
+    width: (SCREEN_WIDTH - 74) / 2,
+    backgroundColor: theme.surfaceMuted,
+    borderRadius: theme.radius.md,
     padding: 14,
   },
   statLabel: {
-    fontSize: 12,
-    color: '#8E8E93',
-    fontWeight: '500',
+    fontSize: 11,
+    color: theme.textMuted,
+    fontWeight: '600',
+    letterSpacing: 0.5,
+    textTransform: 'uppercase',
   },
   statValue: {
     fontSize: 17,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: theme.text,
     marginTop: 4,
   },
   activityItem: {
@@ -383,13 +378,13 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     paddingVertical: 10,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#E5E5EA',
+    borderBottomColor: theme.border,
   },
   activityDot: {
     width: 8,
     height: 8,
     borderRadius: 4,
-    backgroundColor: '#007AFF',
+    backgroundColor: theme.accent,
     marginRight: 12,
   },
   activityInfo: {
@@ -398,40 +393,40 @@ const styles = StyleSheet.create({
   activityType: {
     fontSize: 15,
     fontWeight: '500',
-    color: '#1C1C1E',
+    color: theme.text,
   },
   activityDate: {
     fontSize: 13,
-    color: '#8E8E93',
+    color: theme.textMuted,
     marginTop: 2,
   },
   activityAmount: {
     fontSize: 15,
     fontWeight: '600',
-    color: '#1C1C1E',
+    color: theme.text,
   },
   actionRow: {
     flexDirection: 'row',
     paddingHorizontal: 16,
-    marginTop: 20,
-    gap: 12,
+    marginTop: 16,
+    gap: 10,
   },
   actionButton: {
     flex: 1,
     height: 52,
-    borderRadius: 14,
+    borderRadius: theme.radius.pill,
     justifyContent: 'center',
     alignItems: 'center',
   },
   actionButtonText: {
-    fontSize: 17,
-    fontWeight: '600',
+    fontSize: 16,
+    fontWeight: '700',
     color: '#FFFFFF',
   },
   sendButton: {
-    backgroundColor: '#E5E5EA',
+    backgroundColor: theme.surfaceMuted,
   },
   sendButtonText: {
-    color: '#1C1C1E',
+    color: theme.text,
   },
 });
