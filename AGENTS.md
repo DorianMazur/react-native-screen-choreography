@@ -40,6 +40,9 @@ Current important exports include:
 - `useChoreographyProgress`
 - `useLatchedReveal`
 - `useStaggeredReveal`
+- stand-in primitives: `StandInContainer`, `StandInElement`, `StandInCrossfade`, `resolveSurfaceStyle`
+- debug helpers: `setDebugEnabled`, `setDebugLevel`, `setDebugCoalesce`, `isDebugEnabled`, `isTraceEnabled`, `getDebugLogs`, `clearDebugLogs`
+- types: `ElementSnapshot`, `ChoreographyDebugConfig`, `ChoreographyDebugLevel`, `ChoreographyDebugCategory`
 
 ## Runtime Assumptions
 
@@ -48,12 +51,18 @@ Current important exports include:
 - recommended stack configuration is `animation: 'none'` with transparent detail presentation
 - the overlay should own the visible transition instead of competing with navigator animation
 - progress-driven companion motion is part of the intended public API
+- `SharedElement` registration is **stable** per `(id, groupId, screenId)` — do not introduce changes that cause unregister/re-register on prop or render changes
+- the coordinator captures a frozen `ElementSnapshot` per pair at session start; the overlay must read those snapshots, never live `SharedElement` props
+- real elements are hidden in the same frame the overlay first paints (driven by `handleOverlayReady` / `handleHostPresentationReady`), not when the session activates
+- the provider exposes two contexts: stable `ChoreographyActionsContext` for lifecycle callbacks and volatile `ChoreographyContext` for active-session state — keep registration effects depending on the actions context only
+- screen-level visibility lives in `src/screenVisibility.ts` and must stay direction-agnostic: derive `(role, phase)` from the session, then compute opacity and pointer-events from `(direction, role, phase, progress)`. Do not add forward-only special cases back to `ChoreographyScreen`.
 
 ## Current Feature Boundaries
 
 - interactive gesture progress is not wired yet
 - startup still depends on live target measurement for structural elements
-- the runtime does not yet use native snapshots or replicas for shared content
+- the runtime does not yet use native snapshots or replicas for shared content (the in-tree `ElementSnapshot` freezes the React layer only)
+- the registry is keyed by `id`; cross-screen `groupId` conflicts only emit dev warnings
 - rapid interruption paths are actively hardened and should be regression-tested after changes
 
 ## Working Conventions
@@ -64,6 +73,8 @@ Current important exports include:
 - document current behavior, not abandoned plans or speculative architecture
 - use `boxShadow` (RN 0.76+) instead of legacy `shadowColor`/`shadowOffset`/`shadowOpacity`/`shadowRadius`/`elevation` for shadows
 - never animate `boxShadow` params per-frame on Android — it re-creates drawables every call; animate `opacity` on a view with a static `boxShadow` instead
+- the `debug` prop on `ChoreographyProvider` is `boolean | { level, categories?, logEveryFrame? }` with levels `'error' | 'warn' | 'info' | 'trace'`; apply it inside a `useEffect` so toggling never re-creates the registry or coordinator
+- never call `syncHiddenElements()` eagerly when a session activates — hiding must remain driven by the overlay's `useLayoutEffect` and the native host's presentation ack, with the 150ms `waitForOverlayReady` timeout as the only safety net
 
 ## Commands
 

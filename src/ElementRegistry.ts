@@ -1,5 +1,5 @@
 import type { RegisteredElement, ElementMetrics } from './types';
-import { debugLog } from './debug/logger';
+import { debugLog, debugWarn } from './debug/logger';
 
 export class ElementRegistry {
   private elements = new Map<string, RegisteredElement[]>();
@@ -16,6 +16,28 @@ export class ElementRegistry {
   register(element: RegisteredElement): void {
     const key = this.key(element.id);
     const existing = this.elements.get(key) ?? [];
+
+    // Warn on duplicate (groupId, id, screenId) registration. Two different
+    // elements with the same id and groupId on the same screen will fight
+    // for the same pair slot.
+    const sameScreen = existing.find((e) => e.screenId === element.screenId);
+    if (sameScreen && sameScreen.groupId !== element.groupId) {
+      debugWarn(
+        `[Registry] Duplicate id "${element.id}" on screen "${element.screenId}" with conflicting groupIds (existing="${sameScreen.groupId ?? 'none'}", new="${element.groupId ?? 'none'}"). Make ids unique per screen or use different groupIds.`
+      );
+    }
+
+    // Warn on cross-screen collisions of (id) with different groupIds —
+    // pairing matches by id within a group, so two unrelated elements
+    // sharing an id but living in different groups will not pair.
+    const otherGroupOnDifferentScreen = existing.find(
+      (e) => e.screenId !== element.screenId && e.groupId !== element.groupId
+    );
+    if (otherGroupOnDifferentScreen) {
+      debugWarn(
+        `[Registry] Element id "${element.id}" is registered with conflicting groupIds across screens (screen "${otherGroupOnDifferentScreen.screenId}" group="${otherGroupOnDifferentScreen.groupId ?? 'none'}", screen "${element.screenId}" group="${element.groupId ?? 'none'}"). Pairing requires identical (id, groupId).`
+      );
+    }
 
     // Remove stale registration for same screen
     const filtered = existing.filter((e) => e.screenId !== element.screenId);

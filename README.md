@@ -99,6 +99,78 @@ export function App() {
 }
 ```
 
+## Debugging
+
+`ChoreographyProvider` accepts a structured `debug` prop:
+
+```tsx
+// off (default)
+<ChoreographyProvider debug={false}>
+
+// info / warn / error logs (shortcut)
+<ChoreographyProvider debug={true}>
+
+// full structured form
+<ChoreographyProvider
+  debug={{
+    level: 'trace',     // 'error' | 'warn' | 'info' | 'trace'
+    logEveryFrame: false, // disable coalescing of repeated lines
+  }}
+>
+```
+
+At `info` you get one line per major lifecycle event (transition start, active, complete, cancel). At `trace` you also get measurement and readiness traces. Identical consecutive log lines are coalesced as `... (×N)` unless you set `logEveryFrame: true`.
+
+You can also drive the logger imperatively from anywhere via the exported helpers `setDebugEnabled`, `setDebugLevel`, `setDebugCoalesce`, `isDebugEnabled`, `isTraceEnabled`, `getDebugLogs`, and `clearDebugLogs`.
+
+## Transition Lifecycle
+
+A forward transition runs through a fixed sequence. Understanding this order is enough to debug almost any visible issue.
+
+```
+tap → preMeasure source → set pendingTarget → navigation.navigate
+     → target screen mounts → SharedElements register on target
+     → coordinator waits for stable target measurements
+     → freeze source/target snapshots onto each pair
+     → updateSession({ state: 'active' })
+          ↓
+     overlay <Layout> commits + native host presents
+          ↓
+     handleOverlayReady(sessionId) → syncHiddenElements()
+          ↓
+     reals are hidden the same frame the overlay first paints
+          ↓
+     waitForOverlayReady resolves → clear pendingTarget
+          ↓
+     progress: 0 → 1 (spring/timing)
+          ↓
+     onFinish → completeTransition → state 'completing'
+          ↓
+     hiddenElements.clear() → updateSession(null)
+          ↓
+     reals reveal, overlay unmounts on same commit
+```
+
+Key invariants the runtime guarantees:
+
+- **Registration is stable.** `SharedElement` registers exactly once per `(id, groupId, screenId)` and does not re-register when `children`, `transition`, or `style` change. The coordinator calls `getSnapshot()` once at session start to capture a frozen view.
+- **Snapshots are frozen.** Once a session is `active`, the overlay never reads live `SharedElement` props. Re-renders, focus changes, or list-row recycling on the source side cannot affect the in-flight overlay.
+- **Hide handoff is overlay-paint-driven.** Real elements are not hidden when the session activates; they are hidden in the same frame the overlay's `useLayoutEffect` (and the native host's presentation ack) fire. This eliminates the start-of-animation blank flash.
+- **Reveal is progress-driven.** The destination screen reveals at `progress.value > 0.001` on the UI thread; reals stay individually hidden via per-element `SharedValue<number>` flags until the session is cleared.
+
+## Troubleshooting
+
+| Symptom | Likely cause | Fix |
+| --- | --- | --- |
+| Blank flash at the start of the animation | Overlay host not committed before reals were hidden | Make sure `ChoreographyProvider` is mounted above `NavigationContainer` and the provider is not unmounting between routes |
+| Source card double-renders during animation | Stack `animation` is not `'none'`, so the navigator is animating the route under the overlay | Set `screenOptions={{ animation: 'none' }}` |
+| Detail screen shows opaque background behind the morphing card | Detail route is not transparent | Use `presentation: 'containedTransparentModal'` and `contentStyle: { backgroundColor: 'transparent' }` |
+| `Coordinator: No valid pairs found` warning | Target `SharedElement` never registered or measured to zero size | Make sure the target screen is wrapped in `ChoreographyScreen` and the element is not inside a virtualized off-screen cell |
+| Animation runs but elements snap at the end | Per-frame style mutation on container shadows | Use `boxShadow` (RN 0.76+) and animate `opacity` instead of `shadowColor`/`elevation`/`shadowRadius` per frame |
+| `[Registry] duplicate id` warning | Same `id` registered on the same screen with conflicting `groupId`s | Make `id` unique per `(id, screenId)` and use a single `groupId` per element across screens |
+| Reverse transition jumps on Android | Live re-measurement of the source row was needed but the row was off-screen | Keep the source row mounted and visible (avoid scrolling away while a detail is open) |
+| Logs are very noisy | `debug={true}` enables `info` level | Use `debug={false}`, or `debug={{ level: 'warn' }}` for production-style output |
+
 ## Quick Start
 
 ### 1. Wrap each screen root
@@ -341,6 +413,7 @@ For app code, the cleanest pattern is:
 - Interactive gesture progress is not wired yet.
 - Transition startup still depends on live target measurement for structural elements.
 - Complex shared content is rendered as overlay stand-ins, not native bitmap snapshots.
+- The element registry is keyed by `id` (per-screen lookups by `(id, screenId)` work, but two screens cannot register the same `id` with different `groupId`s without a warning).
 
 See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for current constraints, workarounds, and roadmap priorities.
 

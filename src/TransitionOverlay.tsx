@@ -10,7 +10,8 @@ import type {
 interface TransitionOverlayProps {
   session: TransitionSessionData | null;
   progress: SharedValue<number>;
-  onReady?: () => void;
+  /** Called once the overlay has committed pairs for the given session. */
+  onReady?: (sessionId: string) => void;
 }
 
 export function TransitionOverlay({
@@ -18,11 +19,14 @@ export function TransitionOverlay({
   progress,
   onReady,
 }: TransitionOverlayProps) {
+  const sessionId = session?.id ?? null;
+  const hasPairs = !!session && session.pairs.length > 0;
+
   React.useLayoutEffect(() => {
-    if (session && session.pairs.length > 0) {
-      onReady?.();
+    if (sessionId && hasPairs) {
+      onReady?.(sessionId);
     }
-  }, [onReady, session]);
+  }, [hasPairs, onReady, sessionId]);
 
   if (!session || session.pairs.length === 0) {
     return null;
@@ -36,18 +40,16 @@ export function TransitionOverlay({
   });
 
   return (
-    <>
-      <Animated.View style={styles.overlay} pointerEvents="none">
-        {sortedPairs.map((pair) => (
-          <StandInRenderer
-            key={pair.id}
-            pair={pair}
-            progress={progress}
-            direction={session.direction}
-          />
-        ))}
-      </Animated.View>
-    </>
+    <Animated.View style={styles.overlay} pointerEvents="none">
+      {sortedPairs.map((pair) => (
+        <StandInRenderer
+          key={pair.id}
+          pair={pair}
+          progress={progress}
+          direction={session.direction}
+        />
+      ))}
+    </Animated.View>
   );
 }
 
@@ -71,14 +73,14 @@ function StandInRenderer({ pair, progress, direction }: StandInRendererProps) {
     source: {
       screenId: pair.source.screenId,
       metrics: pair.sourceMetrics,
-      style: pair.source.style,
-      content: pair.source.renderContent?.(),
+      style: pair.sourceSnapshot.style,
+      content: pair.sourceSnapshot.content,
     },
     target: {
       screenId: pair.target.screenId,
       metrics: pair.targetMetrics,
-      style: pair.target.style,
-      content: pair.target.renderContent?.(),
+      style: pair.targetSnapshot.style,
+      content: pair.targetSnapshot.content,
     },
   };
 

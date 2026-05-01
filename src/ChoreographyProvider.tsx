@@ -1,4 +1,10 @@
-import React, { useCallback, useMemo, useRef, useState } from 'react';
+import React, {
+  useCallback,
+  useEffect,
+  useMemo,
+  useRef,
+  useState,
+} from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import {
   useSharedValue,
@@ -6,7 +12,11 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 import { FullWindowOverlay } from 'react-native-screens';
-import type { RegisteredElement, TransitionSessionData } from './types';
+import type {
+  ChoreographyDebugConfig,
+  RegisteredElement,
+  TransitionSessionData,
+} from './types';
 import { ElementRegistry } from './ElementRegistry';
 import { NativeTransitionHost } from './NativeTransitionHost';
 import { TransitionCoordinator } from './TransitionCoordinator';
@@ -15,8 +25,14 @@ import {
   ChoreographyContext,
   ChoreographyActionsContext,
   type ChoreographyContextType,
+  type ChoreographyActionsType,
 } from './hooks/ChoreographyContext';
-import { debugLog, setDebugEnabled } from './debug/logger';
+import {
+  debugTrace,
+  setDebugCoalesce,
+  setDebugEnabled,
+  setDebugLevel,
+} from './debug/logger';
 
 function TransitionHostPortal({
   active,
@@ -42,12 +58,29 @@ function TransitionHostPortal({
 
 interface ChoreographyProviderProps {
   children: React.ReactNode;
-  /** Enable debug mode with logging */
-  debug?: boolean;
+  /**
+   * Enable debug logging. `true` enables info/warn/error. Pass a structured
+   * object for level/category control (e.g. `{ level: 'trace' }` for
+   * per-frame measurement traces).
+   */
+  debug?: ChoreographyDebugConfig;
   /** Called when a transition session becomes active with pairs resolved */
   onTransitionStart?: (session: TransitionSessionData) => void;
   /** Called when a transition session completes or is cancelled */
   onTransitionEnd?: (session: TransitionSessionData) => void;
+}
+function resolveDebugConfig(debug: ChoreographyDebugConfig | undefined) {
+  if (!debug) {
+    return { enabled: false, level: 'info' as const, coalesce: true };
+  }
+  if (debug === true) {
+    return { enabled: true, level: 'info' as const, coalesce: true };
+  }
+  return {
+    enabled: true,
+    level: debug.level ?? 'info',
+    coalesce: !debug.logEveryFrame,
+  };
 }
 
 export function ChoreographyProvider({
@@ -68,8 +101,8 @@ export function ChoreographyProvider({
   const hostPresentedSessionIdRef = useRef<string | null>(null);
   const overlayContentReadySessionIdRef = useRef<string | null>(null);
 
-  // Refs keep callbacks current for the coordinator closure without
-  // re-creating the coordinator on each render.
+  // Refs let the coordinator closure see the latest callbacks without
+  // re-creating it on each render.
   const onTransitionStartRef = useRef(onTransitionStart);
   onTransitionStartRef.current = onTransitionStart;
   const onTransitionEndRef = useRef(onTransitionEnd);
@@ -144,13 +177,20 @@ export function ChoreographyProvider({
         onTransitionStartRef.current?.(session);
       }
 
-      syncHiddenElements();
+      // Hiding is driven by handleOverlayReady / handleHostPresentationReady
+      // so reals are hidden the same frame the overlay first paints. Hiding
+      // here would cause a one-frame blank flash at transition start.
     });
   }
 
-  setDebugEnabled(debug);
-  registryRef.current.setDebug(debug);
-  coordinatorRef.current.setDebug(debug);
+  useEffect(() => {
+    const resolved = resolveDebugConfig(debug);
+    setDebugEnabled(resolved.enabled);
+    setDebugLevel(resolved.level);
+    setDebugCoalesce(resolved.coalesce);
+    registryRef.current?.setDebug(resolved.enabled);
+    coordinatorRef.current?.setDebug(resolved.enabled);
+  }, [debug]);
 
   const registerElement = useCallback((element: RegisteredElement) => {
     registryRef.current!.register(element);
@@ -162,10 +202,8 @@ export function ChoreographyProvider({
     const sv = hiddenMapRef.current.get(key);
     if (sv) {
       if (coordinatorRef.current?.getHiddenElements().has(key)) {
-        // This element is hidden by an active transition and is likely just
-        // re-mounting due to a React re-render. Keep the SV in the map so
-        // the re-registering element gets back the same SV still at value 1,
-        // avoiding any visible flash of the real element on-screen.
+        // Element is hidden by an active transition; preserve the SV so a
+        // re-mounting element gets back the same value=1 and never flashes.
         return;
       }
       sv.value = 0;
@@ -182,7 +220,7 @@ export function ChoreographyProvider({
 
     state.ready = ready;
 
-    debugLog(
+    debugTrace(
       () =>
         `[Provider] Screen ready=${ready} screen="${screenId}" waiters=${state.waiters.size}`
     );
@@ -203,7 +241,7 @@ export function ChoreographyProvider({
 
     state.ready = false;
 
-    debugLog(
+    debugTrace(
       () =>
         `[Provider] Screen unregistered screen="${screenId}" preservingWaiters=${state.waiters.size}`
     );
@@ -217,7 +255,7 @@ export function ChoreographyProvider({
     }
 
     if (state.ready) {
-      debugLog(
+      debugTrace(
         () => `[Provider] waitForScreenReady immediate screen="${screenId}"`
       );
       return;
@@ -225,13 +263,15 @@ export function ChoreographyProvider({
 
     const waitStartedAt = Date.now();
 
-    debugLog(() => `[Provider] waitForScreenReady start screen="${screenId}"`);
+    debugTrace(
+      () => `[Provider] waitForScreenReady start screen="${screenId}"`
+    );
 
     await new Promise<void>((resolve) => {
       const currentState = screenStateRef.current.get(screenId)!;
       const onReady = () => {
         clearTimeout(timeoutId);
-        debugLog(
+        debugTrace(
           () =>
             `[Provider] waitForScreenReady resolved screen="${screenId}" duration=${Date.now() - waitStartedAt}ms`
         );
@@ -239,7 +279,7 @@ export function ChoreographyProvider({
       };
       const timeoutId = setTimeout(() => {
         currentState.waiters.delete(onReady);
-        debugLog(
+        debugTrace(
           () =>
             `[Provider] waitForScreenReady timeout screen="${screenId}" duration=${Date.now() - waitStartedAt}ms`
         );
@@ -312,16 +352,19 @@ export function ChoreographyProvider({
           clearTimeout(timeoutId);
           resolve();
         };
+        // 150ms safety net for slow Android frames; also hides reals so the
+        // spring never animates with originals visible behind the overlay.
         const timeoutId = setTimeout(() => {
           waiters!.delete(onReady);
+          syncHiddenElements();
           resolve();
-        }, 48);
+        }, 150);
 
         waiters.add(onReady);
         resolveOverlayWaitersIfReady(sessionId);
       });
     },
-    [resolveOverlayWaitersIfReady]
+    [resolveOverlayWaitersIfReady, syncHiddenElements]
   );
 
   const completeTransition = useCallback(() => {
@@ -336,16 +379,24 @@ export function ChoreographyProvider({
     setPendingTargetScreenId(screenId);
   }, []);
 
-  const handleOverlayReady = useCallback(() => {
-    const session = activeSessionRef.current;
-    if (session?.state === 'active' && session.pairs.length > 0) {
-      overlayContentReadySessionIdRef.current = session.id;
+  const handleOverlayReady = useCallback(
+    (sessionId: string) => {
+      const session = activeSessionRef.current;
+      // Ignore stale acks from a previous session's layout effect.
+      if (!session || session.id !== sessionId) {
+        syncHiddenElements();
+        return;
+      }
+      if (session.state === 'active' && session.pairs.length > 0) {
+        overlayContentReadySessionIdRef.current = sessionId;
+        syncHiddenElements();
+        resolveOverlayWaitersIfReady(sessionId);
+        return;
+      }
       syncHiddenElements();
-      resolveOverlayWaitersIfReady(session.id);
-      return;
-    }
-    syncHiddenElements();
-  }, [resolveOverlayWaitersIfReady, syncHiddenElements]);
+    },
+    [resolveOverlayWaitersIfReady, syncHiddenElements]
+  );
 
   const handleHostPresentationReady = useCallback(() => {
     const session = activeSessionRef.current;
@@ -358,13 +409,23 @@ export function ChoreographyProvider({
     resolveOverlayWaitersIfReady(session.id);
   }, [resolveOverlayWaitersIfReady, syncHiddenElements]);
 
-  const actionsValue = useMemo(
+  const actionsValue = useMemo<ChoreographyActionsType>(
     () => ({
       registerElement,
       unregisterElement,
       isElementHidden,
+      setScreenReady,
+      unregisterScreen,
+      waitForScreenReady,
     }),
-    [registerElement, unregisterElement, isElementHidden]
+    [
+      registerElement,
+      unregisterElement,
+      isElementHidden,
+      setScreenReady,
+      unregisterScreen,
+      waitForScreenReady,
+    ]
   );
 
   const contextValue: ChoreographyContextType = useMemo(

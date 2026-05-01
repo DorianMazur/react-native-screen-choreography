@@ -1,16 +1,24 @@
 import { createContext } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
-import type { RegisteredElement, TransitionSessionData } from '../types';
+import type {
+  ChoreographyDebugConfig,
+  RegisteredElement,
+  TransitionSessionData,
+} from '../types';
 
 /**
  * Stable callbacks that never change after provider initialisation.
- * SharedElement subscribes to this narrow context to avoid re-rendering
- * whenever transition state changes.
+ * Consumers (SharedElement, ChoreographyScreen) subscribe to this narrow
+ * context to avoid re-running lifecycle effects whenever transition state
+ * changes.
  */
 export interface ChoreographyActionsType {
   registerElement: (element: RegisteredElement) => void;
   unregisterElement: (id: string, screenId: string) => void;
   isElementHidden: (id: string, screenId: string) => SharedValue<number>;
+  setScreenReady: (screenId: string, ready: boolean) => void;
+  unregisterScreen: (screenId: string) => void;
+  waitForScreenReady: (screenId: string) => Promise<void>;
 }
 
 export const ChoreographyActionsContext =
@@ -38,7 +46,7 @@ export interface ChoreographyContextType {
   }) => Promise<TransitionSessionData | null>;
   completeTransition: () => void;
   cancelTransition: () => void;
-  debug: boolean;
+  debug: ChoreographyDebugConfig;
 }
 
 export const ChoreographyContext =

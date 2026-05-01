@@ -55,7 +55,10 @@ export {
 // Debug
 export {
   setDebugEnabled,
+  setDebugLevel,
+  setDebugCoalesce,
   isDebugEnabled,
+  isTraceEnabled,
   getDebugLogs,
   clearDebugLogs,
 } from './debug/logger';
@@ -71,10 +74,14 @@ export type {
   RegisteredElement,
   TransitionState,
   ElementTransitionPair,
+  ElementSnapshot,
   TransitionSessionData,
   TransitionConfig,
   ChoreographyNavigationOptions,
   ChoreographyContextValue,
+  ChoreographyDebugConfig,
+  ChoreographyDebugLevel,
+  ChoreographyDebugCategory,
   DebugInfo,
 } from './types';
 

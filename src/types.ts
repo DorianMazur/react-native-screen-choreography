@@ -44,17 +44,23 @@ export interface SharedElementTransition {
 
 export type NodeHandleRef = React.RefObject<any> | (() => any);
 
+/** Frozen visual snapshot captured at session start; the overlay reads
+ * exclusively from this so re-renders cannot affect an in-flight stand-in. */
+export interface ElementSnapshot {
+  content: ReactNode;
+  style?: ViewStyle;
+  transition: SharedElementTransition;
+}
+
 export interface RegisteredElement {
   id: string;
   groupId?: string;
   screenId: string;
   ref: NodeHandleRef;
   animatedRef?: AnimatedRef<any>;
-  transition: SharedElementTransition;
   metrics: ElementMetrics | null;
-  style?: ViewStyle;
-  /** Render function to create stand-in content */
-  renderContent?: () => React.ReactNode;
+  /** Captures content/style/transition once at session start. */
+  getSnapshot: () => ElementSnapshot;
 }
 
 export type TransitionState =
@@ -72,6 +78,10 @@ export interface ElementTransitionPair {
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
   transition: SharedElementTransition;
+  /** Frozen source snapshot captured when the session became active. */
+  sourceSnapshot: ElementSnapshot;
+  /** Frozen target snapshot captured when the session became active. */
+  targetSnapshot: ElementSnapshot;
 }
 
 export interface TransitionSessionData {
@@ -124,3 +134,28 @@ export interface DebugInfo {
   }>;
   logs: string[];
 }
+
+export type ChoreographyDebugLevel = 'error' | 'warn' | 'info' | 'trace';
+
+export type ChoreographyDebugCategory =
+  | 'registry'
+  | 'measure'
+  | 'screen'
+  | 'nav'
+  | 'overlay'
+  | 'animation'
+  | 'perf'
+  | 'warnings';
+
+/**
+ * `true` is shorthand for `{ level: 'info' }`. Use `{ level: 'trace' }`
+ * for per-frame measurement traces.
+ */
+export type ChoreographyDebugConfig =
+  | boolean
+  | {
+      level?: ChoreographyDebugLevel;
+      categories?: ChoreographyDebugCategory[];
+      /** Disable coalescing of repeated identical messages. */
+      logEveryFrame?: boolean;
+    };

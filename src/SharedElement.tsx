@@ -10,7 +10,7 @@ import Animated, {
   useAnimatedRef,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import type { SharedElementTransition } from './types';
+import type { ElementSnapshot, SharedElementTransition } from './types';
 import { ChoreographyActionsContext } from './hooks/ChoreographyContext';
 import { useScreenId } from './hooks/useScreenId';
 
@@ -28,18 +28,10 @@ export interface SharedElementProps {
 }
 
 /**
- * SharedElement wraps content that should participate in shared element transitions.
- *
- * Usage:
- * ```tsx
- * <SharedElement
- *   id="card.1.thumbnail"
- *   groupId="card.1"
- *   transition={thumbnailTransition}
- * >
- *   <Thumbnail />
- * </SharedElement>
- * ```
+ * Wraps content participating in a shared transition. Registration is
+ * stable per `(id, groupId, screenId)`; the coordinator captures a frozen
+ * `ElementSnapshot` via `getSnapshot()` at session start, so re-renders or
+ * prop changes never affect an in-flight overlay.
  */
 export function SharedElement({
   id,
@@ -58,12 +50,30 @@ export function SharedElement({
   }
   const { registerElement, unregisterElement, isElementHidden } = actions;
   const screenId = useScreenId();
+
   const flattenedStyle = useMemo(
     () => (style ? (StyleSheet.flatten(style) as ViewStyle) : undefined),
     [style]
   );
 
-  const renderContent = useCallback(() => children, [children]);
+  // Latest-value refs mutated during render so getSnapshot() always
+  // reflects current props without forcing re-registration.
+  const childrenRef = useRef<React.ReactNode>(children);
+  childrenRef.current = children;
+  const transitionRef = useRef<SharedElementTransition>(transition);
+  transitionRef.current = transition;
+  const styleRef = useRef<ViewStyle | undefined>(flattenedStyle);
+  styleRef.current = flattenedStyle;
+
+  const getSnapshot = useCallback<() => ElementSnapshot>(
+    () => ({
+      content: childrenRef.current,
+      style: styleRef.current,
+      transition: transitionRef.current,
+    }),
+    []
+  );
+
   const getNode = useCallback(() => viewNodeRef.current, []);
   const setRefs = useCallback(
     (node: any) => {
@@ -73,6 +83,7 @@ export function SharedElement({
     [animatedRef]
   );
 
+  // Stable registration. Effect deps are all stable identities.
   useEffect(() => {
     registerElement({
       id,
@@ -80,26 +91,22 @@ export function SharedElement({
       screenId,
       ref: getNode,
       animatedRef,
-      transition,
       metrics: null,
-      style: flattenedStyle,
-      renderContent,
+      getSnapshot,
     });
 
     return () => {
       unregisterElement(id, screenId);
     };
   }, [
-    flattenedStyle,
-    getNode,
     id,
     groupId,
     screenId,
-    transition,
-    unregisterElement,
-    registerElement,
+    getNode,
     animatedRef,
-    renderContent,
+    getSnapshot,
+    registerElement,
+    unregisterElement,
   ]);
 
   const hidden = isElementHidden(id, screenId);

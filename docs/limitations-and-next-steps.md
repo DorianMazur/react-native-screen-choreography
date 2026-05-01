@@ -34,39 +34,28 @@ Other setups may work, but they are not the primary support target yet.
 - Use `settleTransition()` when scroll or gesture interaction should immediately settle the active session.
 - Prefer structural elements such as the card container and icon as the startup-critical shared elements.
 
-## What Has Already Improved
-
-- the overlay now has a native presentation host above the stack containers
-- pending target screens stay hidden until the overlay is ready
-- interruption handling is substantially more robust than the earlier all-JS flow
-- startup waits are biased toward structural elements instead of every shared label
-- `ChoreographyProvider` now exposes `onTransitionStart` and `onTransitionEnd` for session lifecycle instrumentation
-- reused reverse sessions can refresh source metrics after the source screen is visible again
-- source screens now fade their non-shared content out over the first 40% of the forward progress value, so list rows and headers are not visible behind the overlay during animation
-- destination screens are revealed from the first spring frame with only shared elements hidden individually, producing a "content is already there, pieces are morphing" effect rather than a cross-dissolve between screens
-- element remounts during an active transition no longer cause visible flashes: `unregisterElement` skips SV cleanup when the element is in the coordinator's active hidden set, and `SharedElement` reads the hidden SV synchronously during render to set an initial opacity before the animated style is applied
-- `SharedElement` registration churn from ancestor re-renders is eliminated: `renderContent` uses a ref for children so the callback identity is stable regardless of navigation state changes or parent re-renders
 
 ## Roadmap Priorities
 
 ### Highest leverage
 
-1. Add a snapshot or replica path for startup-critical elements such as the card container and icon.
+1. Add a snapshot or replica path for startup-critical elements such as the card container and icon (the in-tree `getSnapshot` freezes the React layer; native bitmap fidelity is still future work).
 2. Wire reverse progress to native-stack gesture progress.
-3. Add more instrumentation around startup latency and reverse fallthrough paths.
-4. Add end-to-end regression coverage for interruption-heavy flows.
+3. Promote registry collisions from dev warnings to a compound `(id, screenId)` primary key so cross-screen `groupId` conflicts cannot misroute a transition.
+4. Add an ergonomic helper API (`createChoreography`, `morphSurface`, `move`, `crossfade`, `fadeIn`, `fadeOut`, `stagger`, `<Choreography.Group>`) on top of the current primitives.
 
 ### Medium-term
 
 5. Reuse target metrics more aggressively for repeated routes.
 6. Intentionally support more navigator configurations.
-7. Improve debug tooling so session ownership and visibility state are easier to inspect.
+7. Add end-to-end regression coverage for interruption-heavy flows.
+8. Improve debug tooling so session ownership and visibility state are easier to inspect from the device.
 
 ### Longer-term
 
-8. Offer a higher-fidelity opt-in mode for startup-critical elements.
-9. Add higher-level presets for common patterns such as card-to-detail and gallery transitions.
-10. Expand the docs with a dedicated troubleshooting guide.
+9. Offer a higher-fidelity opt-in mode for startup-critical elements.
+10. Add higher-level presets for common patterns such as card-to-detail and gallery transitions.
+11. Expand the docs with a dedicated troubleshooting guide.
 
 ## What The Library Already Does Well
 

@@ -8,7 +8,7 @@ import type {
 } from './types';
 import type { ElementRegistry } from './ElementRegistry';
 import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
-import { debugLog } from './debug/logger';
+import { debugLog, debugTrace, debugWarn } from './debug/logger';
 
 let sessionCounter = 0;
 
@@ -24,7 +24,6 @@ export class TransitionCoordinator {
   private registry: ElementRegistry;
   private activeSession: TransitionSessionData | null = null;
   private progress: SharedValue<number>;
-  private debug = false;
   private onSessionChange: (session: TransitionSessionData | null) => void =
     () => {};
   private hiddenElements = new Set<string>();
@@ -35,7 +34,6 @@ export class TransitionCoordinator {
   }
 
   setDebug(enabled: boolean) {
-    this.debug = enabled;
     this.registry.setDebug(enabled);
   }
 
@@ -55,11 +53,9 @@ export class TransitionCoordinator {
     const preMeasureStartedAt = nowMs();
     const elementIds = this.registry.getGroupElementIds(groupId);
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Pre-measuring ${elementIds.length} elements in group "${groupId}" on screen "${screenId}"`
-      );
-    }
+    debugTrace(
+      `[Coordinator] Pre-measuring ${elementIds.length} elements in group "${groupId}" on screen "${screenId}"`
+    );
 
     const elements = elementIds
       .map((id) => this.registry.getByIdAndScreen(id, screenId))
@@ -80,11 +76,9 @@ export class TransitionCoordinator {
       }
     }
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Pre-measure complete group="${groupId}" screen="${screenId}" duration=${elapsedMs(preMeasureStartedAt)}`
-      );
-    }
+    debugTrace(
+      `[Coordinator] Pre-measure complete group="${groupId}" screen="${screenId}" duration=${elapsedMs(preMeasureStartedAt)}`
+    );
   }
 
   async refreshActiveSessionMetrics(side: 'source' | 'target'): Promise<void> {
@@ -135,19 +129,15 @@ export class TransitionCoordinator {
     });
 
     if (updatedCount === 0) {
-      if (this.debug) {
-        debugLog(
-          `[Coordinator] Active ${side} metrics unchanged session="${session.id}" duration=${elapsedMs(refreshStartedAt)}`
-        );
-      }
+      debugTrace(
+        `[Coordinator] Active ${side} metrics unchanged session="${session.id}" duration=${elapsedMs(refreshStartedAt)}`
+      );
       return;
     }
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Refreshed active ${side} metrics session="${session.id}" count=${updatedCount}/${session.pairs.length} duration=${elapsedMs(refreshStartedAt)}`
-      );
-    }
+    debugLog(
+      `[Coordinator] Refreshed active ${side} metrics session="${session.id}" count=${updatedCount}/${session.pairs.length} duration=${elapsedMs(refreshStartedAt)}`
+    );
 
     this.updateSession({
       ...this.activeSession,
@@ -170,31 +160,25 @@ export class TransitionCoordinator {
       );
 
       if (readyIds.length > 0 && readyIds.length === requiredIds.length) {
-        if (this.debug) {
-          debugLog(
-            `[Coordinator] Target elements ready screen="${targetScreenId}" count=${readyIds.length}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
-          );
-        }
+        debugTrace(
+          `[Coordinator] Target elements ready screen="${targetScreenId}" count=${readyIds.length}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
+        );
         return;
       }
 
       if (!expectedIds?.length && readyIds.length > 0) {
-        if (this.debug) {
-          debugLog(
-            `[Coordinator] Partial target availability screen="${targetScreenId}" count=${readyIds.length}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
-          );
-        }
+        debugTrace(
+          `[Coordinator] Partial target availability screen="${targetScreenId}" count=${readyIds.length}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
+        );
         return;
       }
 
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
     }
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Timed out waiting for target elements on screen "${targetScreenId}" duration=${elapsedMs(waitStartedAt)}`
-      );
-    }
+    debugWarn(
+      `[Coordinator] Timed out waiting for target elements on screen "${targetScreenId}" duration=${elapsedMs(waitStartedAt)}`
+    );
   }
 
   private metricsAreClose(
@@ -303,11 +287,9 @@ export class TransitionCoordinator {
       if (unchanged) {
         stableReads += 1;
         if (stableReads >= requiredStableReads) {
-          if (this.debug) {
-            debugLog(
-              `[Coordinator] Stable target measurements ready screen="${targetScreenId}" ids=${currentMeasurements.size} reads=${stableReads}/${requiredStableReads} duration=${elapsedMs(waitStartedAt)}`
-            );
-          }
+          debugTrace(
+            `[Coordinator] Stable target measurements ready screen="${targetScreenId}" ids=${currentMeasurements.size} reads=${stableReads}/${requiredStableReads} duration=${elapsedMs(waitStartedAt)}`
+          );
           return;
         }
       } else {
@@ -318,11 +300,9 @@ export class TransitionCoordinator {
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
     }
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Timed out waiting for stable target measurements on screen "${targetScreenId}" duration=${elapsedMs(waitStartedAt)}`
-      );
-    }
+    debugWarn(
+      `[Coordinator] Timed out waiting for stable target measurements on screen "${targetScreenId}" duration=${elapsedMs(waitStartedAt)}`
+    );
   }
 
   async startTransition(config: {
@@ -340,11 +320,9 @@ export class TransitionCoordinator {
 
     const sessionId = `session_${++sessionCounter}`;
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Starting transition "${sessionId}" group="${groupId}" ${sourceScreenId} → ${targetScreenId}`
-      );
-    }
+    debugLog(
+      `[Coordinator] Starting transition "${sessionId}" group="${groupId}" ${sourceScreenId} → ${targetScreenId}`
+    );
 
     this.updateSession({
       id: sessionId,
@@ -359,11 +337,9 @@ export class TransitionCoordinator {
 
     const elementIds = this.registry.getGroupElementIds(groupId);
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Found ${elementIds.length} element IDs in group "${groupId}"`
-      );
-    }
+    debugTrace(
+      `[Coordinator] Found ${elementIds.length} element IDs in group "${groupId}"`
+    );
 
     await this.waitForTargets(elementIds, targetScreenId, elementIds);
     await this.waitForStableTargetMeasurements(targetScreenId, elementIds, {
@@ -387,11 +363,9 @@ export class TransitionCoordinator {
       const target = this.registry.getByIdAndScreen(id, targetScreenId);
 
       if (!source || !target) {
-        if (this.debug) {
-          debugLog(
-            `[Coordinator] Skipping "${id}" — source: ${!!source}, target: ${!!target}`
-          );
-        }
+        debugWarn(
+          `[Coordinator] Skipping "${id}" — source: ${!!source}, target: ${!!target}`
+        );
         continue;
       }
 
@@ -421,16 +395,16 @@ export class TransitionCoordinator {
     const pairs: ElementTransitionPair[] = [];
 
     for (const { id, source, target } of pairingCandidates) {
-      const transition = source.transition ?? target.transition;
+      const sourceSnapshot = source.getSnapshot();
+      const targetSnapshot = target.getSnapshot();
+      const transition = sourceSnapshot.transition ?? targetSnapshot.transition;
       const sourceMetrics = batchResults.get(`source:${id}`) ?? source.metrics;
       const targetMetrics = batchResults.get(`target:${id}`) ?? target.metrics;
 
       if (!sourceMetrics || !targetMetrics || !transition) {
-        if (this.debug) {
-          debugLog(
-            `[Coordinator] Skipping "${id}" — sourceMetrics=${!!sourceMetrics} targetMetrics=${!!targetMetrics} transition=${!!transition}`
-          );
-        }
+        debugWarn(
+          `[Coordinator] Skipping "${id}" — sourceMetrics=${!!sourceMetrics} targetMetrics=${!!targetMetrics} transition=${!!transition}`
+        );
         continue;
       }
 
@@ -444,27 +418,22 @@ export class TransitionCoordinator {
         sourceMetrics,
         targetMetrics,
         transition,
+        sourceSnapshot,
+        targetSnapshot,
       });
     }
 
     if (pairs.length === 0) {
-      if (this.debug) {
-        debugLog(
-          `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
-        );
-      }
+      debugWarn(
+        `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
+      );
       this.updateSession(null);
       return null;
     }
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Pairing complete session="${sessionId}" count=${pairs.length}/${elementIds.length} duration=${elapsedMs(pairingStartedAt)}`
-      );
-      debugLog(
-        `[Coordinator] Transition "${sessionId}" active with ${pairs.length} pairs totalPrep=${elapsedMs(transitionStartedAt)}`
-      );
-    }
+    debugLog(
+      `[Coordinator] Transition "${sessionId}" active pairs=${pairs.length}/${elementIds.length} pairing=${elapsedMs(pairingStartedAt)} totalPrep=${elapsedMs(transitionStartedAt)}`
+    );
 
     for (const pair of pairs) {
       this.hiddenElements.add(`${pair.id}:${pair.source.screenId}`);
@@ -490,11 +459,7 @@ export class TransitionCoordinator {
   completeTransition(): void {
     if (!this.activeSession) return;
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Completing transition "${this.activeSession.id}"`
-      );
-    }
+    debugLog(`[Coordinator] Completing transition "${this.activeSession.id}"`);
 
     this.updateSessionState('completing');
 
@@ -506,11 +471,7 @@ export class TransitionCoordinator {
   cancelTransition(): void {
     if (!this.activeSession) return;
 
-    if (this.debug) {
-      debugLog(
-        `[Coordinator] Cancelling transition "${this.activeSession.id}"`
-      );
-    }
+    debugLog(`[Coordinator] Cancelling transition "${this.activeSession.id}"`);
 
     this.updateSessionState('cancelling');
 

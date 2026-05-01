@@ -1,11 +1,17 @@
 import React, { useCallback, useContext, useEffect, useRef } from 'react';
-import { StyleSheet } from 'react-native';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
+import { StyleSheet, View } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { ScreenIdContext } from './hooks/useScreenId';
-import { ChoreographyContext } from './hooks/ChoreographyContext';
+import {
+  ChoreographyActionsContext,
+  ChoreographyContext,
+} from './hooks/ChoreographyContext';
+import {
+  deriveScreenOpacity,
+  getScreenRole,
+  getSessionPhase,
+  shouldBlockInteraction,
+} from './screenVisibility';
 
 interface ChoreographyScreenProps {
   screenId: string;
@@ -16,88 +22,75 @@ export function ChoreographyScreen({
   screenId,
   children,
 }: ChoreographyScreenProps) {
+  // Volatile session state from ChoreographyContext; stable lifecycle
+  // callbacks from ChoreographyActionsContext so registration never
+  // re-runs on session changes.
   const choreography = useContext(ChoreographyContext);
+  const actions = useContext(ChoreographyActionsContext);
   const readinessTokenRef = useRef(0);
-  const isPendingTarget = choreography?.pendingTargetScreenId === screenId;
-  const isActiveForwardTarget =
-    choreography?.activeSession?.state === 'active' &&
-    choreography.activeSession.direction === 'forward' &&
-    choreography.activeSession.targetScreenId === screenId;
-  const isActiveForwardSource =
-    choreography?.activeSession?.state === 'active' &&
-    choreography.activeSession.direction === 'forward' &&
-    choreography.activeSession.sourceScreenId === screenId;
+
+  const session = choreography?.activeSession ?? null;
+  const pendingTargetScreenId = choreography?.pendingTargetScreenId ?? null;
   const progress = choreography?.progress ?? null;
 
-  const revealStyle = useAnimatedStyle(() => {
-    if (isPendingTarget) {
-      return { opacity: 0 };
-    }
-    if (isActiveForwardTarget) {
-      // Gate on progress > 0 (evaluated on the UI thread) rather than
-      // revealing immediately. By the time the spring moves at all,
-      // syncHiddenElements has already run and the per-element hidden SVs
-      // have propagated to the UI thread — so the destination content is
-      // visible while the shared elements remain hidden via isElementHidden.
-      return { opacity: progress && progress.value > 0.001 ? 1 : 0 };
-    }
-    if (isActiveForwardSource) {
-      // Fade out the source screen's non-shared content (other rows, header,
-      // etc.) so only the overlay stand-ins are visible during the transition.
-      // Shared elements are already individually hidden via isElementHidden.
-      return {
-        opacity: progress
-          ? interpolate(progress.value, [0, 0.4], [1, 0], 'clamp')
-          : 1,
-      };
-    }
-    return { opacity: 1 };
-  }, [
-    choreography,
-    isActiveForwardTarget,
-    isActiveForwardSource,
-    isPendingTarget,
-    progress,
-  ]);
+  // Direction-agnostic visibility derived from (direction, role, phase, t).
+  const role = getScreenRole(session, screenId);
+  const phase = getSessionPhase(session, pendingTargetScreenId, screenId);
+  const direction = session?.direction ?? 'forward';
 
+  const isPendingTarget = pendingTargetScreenId === screenId;
+  const staticOpacity =
+    isPendingTarget || (role === 'target' && phase === 'preparing') ? 0 : 1;
+
+  const revealStyle = useAnimatedStyle(() => {
+    const value = progress?.value ?? 0;
+    return { opacity: deriveScreenOpacity(direction, role, phase, value) };
+  }, [direction, role, phase, progress]);
+
+  const blockInteraction =
+    isPendingTarget || shouldBlockInteraction(role, phase);
+
+  // Effect deps are all stable; session changes must NOT re-run this.
+  const setScreenReady = actions?.setScreenReady;
+  const unregisterScreen = actions?.unregisterScreen;
   useEffect(() => {
-    choreography?.setScreenReady(screenId, false);
+    setScreenReady?.(screenId, false);
 
     return () => {
       readinessTokenRef.current += 1;
-      choreography?.unregisterScreen(screenId);
+      unregisterScreen?.(screenId);
     };
-  }, [choreography, screenId]);
+  }, [screenId, setScreenReady, unregisterScreen]);
 
   const handleLayout = useCallback(() => {
-    if (!choreography) {
+    if (!setScreenReady) {
       return;
     }
 
     readinessTokenRef.current += 1;
     const token = readinessTokenRef.current;
-    choreography.setScreenReady(screenId, false);
+    setScreenReady(screenId, false);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (readinessTokenRef.current === token) {
-          choreography.setScreenReady(screenId, true);
+          setScreenReady(screenId, true);
         }
       });
     });
-  }, [choreography, screenId]);
+  }, [screenId, setScreenReady]);
 
   return (
     <ScreenIdContext.Provider value={screenId}>
-      <Animated.View
+      <View
         onLayout={handleLayout}
-        style={[styles.container, revealStyle]}
-        pointerEvents={
-          isPendingTarget || isActiveForwardTarget ? 'none' : 'auto'
-        }
+        style={[styles.container, { opacity: staticOpacity }]}
+        pointerEvents={blockInteraction ? 'none' : 'auto'}
       >
-        {children}
-      </Animated.View>
+        <Animated.View style={[styles.container, revealStyle]}>
+          {children}
+        </Animated.View>
+      </View>
     </ScreenIdContext.Provider>
   );
 }
