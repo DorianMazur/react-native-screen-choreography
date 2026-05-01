@@ -1,23 +1,36 @@
-import { View, StyleSheet } from 'react-native';
-import { ScreenChoreographyView } from 'react-native-screen-choreography';
+import React from 'react';
+import { NavigationContainer } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { ChoreographyProvider } from 'react-native-screen-choreography';
+import { TokenListScreen } from './TokenListScreen';
+import { TokenDetailScreen } from './TokenDetailScreen';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+const Stack = createNativeStackNavigator();
 
 export default function App() {
   return (
-    <View style={styles.container}>
-      <ScreenChoreographyView color="#32a852" style={styles.box} />
-    </View>
+    <SafeAreaProvider>
+      <ChoreographyProvider debug={false}>
+        <NavigationContainer>
+          <Stack.Navigator
+            screenOptions={{
+              headerShown: false,
+              animation: 'none',
+            }}
+          >
+            <Stack.Screen name="TokenList" component={TokenListScreen} />
+            <Stack.Screen
+              name="TokenDetail"
+              component={TokenDetailScreen}
+              options={{
+                presentation: 'containedTransparentModal',
+                contentStyle: { backgroundColor: 'transparent' },
+              }}
+            />
+          </Stack.Navigator>
+        </NavigationContainer>
+      </ChoreographyProvider>
+    </SafeAreaProvider>
   );
 }
-
-const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  box: {
-    width: 60,
-    height: 60,
-    marginVertical: 20,
-  },
-});
