@@ -19,7 +19,7 @@ export class ElementRegistry {
 
     // Remove stale registration for same screen
     const filtered = existing.filter((e) => e.screenId !== element.screenId);
-    filtered.push(element);
+    filtered.push({ ...element });
     this.elements.set(key, filtered);
 
     if (this.debug) {
@@ -83,9 +83,24 @@ export class ElementRegistry {
   }
 
   updateMetrics(id: string, screenId: string, metrics: ElementMetrics): void {
-    const el = this.getByIdAndScreen(id, screenId);
-    if (el) {
-      el.metrics = metrics;
+    const key = this.key(id);
+    const existing = this.elements.get(key);
+    if (!existing) {
+      return;
+    }
+
+    let updated = false;
+    const next = existing.map((element) => {
+      if (element.screenId !== screenId) {
+        return element;
+      }
+
+      updated = true;
+      return { ...element, metrics };
+    });
+
+    if (updated) {
+      this.elements.set(key, next);
     }
   }
 

@@ -13,20 +13,14 @@ import {
   type ChoreographyContextType,
 } from './ChoreographyContext';
 import { useScreenId } from './useScreenId';
-import type { TransitionConfig, SpringConfig } from '../types';
+import type { ChoreographyNavigationOptions } from '../types';
 import { DEFAULT_SPRING, FAST_SPRING } from '../constants';
 import { debugLog, isDebugEnabled } from '../debug/logger';
-
-interface ChoreographyNavigateOptions {
-  transitionConfig?: TransitionConfig;
-  spring?: SpringConfig;
-  duration?: number;
-}
 
 interface PendingNavigationRequest {
   screenName: string;
   params?: any;
-  options?: ChoreographyNavigateOptions;
+  options?: ChoreographyNavigationOptions;
 }
 
 function nowMs(): number {
@@ -336,7 +330,7 @@ export function useChoreographyNavigation(navigation: any) {
     async (
       screenName: string,
       params?: any,
-      options?: ChoreographyNavigateOptions,
+      options?: ChoreographyNavigationOptions,
       allowQueue: boolean = true
     ) => {
       const tapStartedAt = nowMs();
@@ -435,7 +429,6 @@ export function useChoreographyNavigation(navigation: any) {
           sourceScreenId,
           targetScreenId,
           direction: 'forward',
-          transitionConfig: options?.transitionConfig,
         });
 
         if (!session) {
@@ -628,7 +621,7 @@ export function useChoreographyNavigation(navigation: any) {
   ]);
 
   const choreographyGoBack = useCallback(
-    async (options?: ChoreographyNavigateOptions) => {
+    async (options?: ChoreographyNavigationOptions) => {
       const goBackStartedAt = nowMs();
       const session = ctx.activeSession;
 
@@ -753,7 +746,7 @@ export function useChoreographyNavigation(navigation: any) {
     navigate: (
       screenName: string,
       params?: any,
-      options?: ChoreographyNavigateOptions
+      options?: ChoreographyNavigationOptions
     ) => choreographyNavigate(screenName, params, options, true),
     goBack: choreographyGoBack,
   };

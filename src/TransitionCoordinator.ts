@@ -3,7 +3,6 @@ import { Platform } from 'react-native';
 import type {
   TransitionSessionData,
   ElementTransitionPair,
-  TransitionConfig,
   TransitionState,
   RegisteredElement,
 } from './types';
@@ -326,32 +325,11 @@ export class TransitionCoordinator {
     }
   }
 
-  private getStartupElementIds(
-    allElementIds: string[],
-    transitionConfig?: TransitionConfig
-  ): string[] | undefined {
-    const configuredElements = transitionConfig?.elements;
-    if (!configuredElements?.length) {
-      return undefined;
-    }
-
-    const structuralIds = configuredElements
-      .filter((element) => {
-        const animation = element.animation ?? element.config?.animation;
-        return animation === 'morph' || animation === 'move-resize';
-      })
-      .map((element) => element.id)
-      .filter((id) => allElementIds.includes(id));
-
-    return structuralIds.length > 0 ? structuralIds : undefined;
-  }
-
   async startTransition(config: {
     groupId: string;
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward' | 'backward';
-    transitionConfig?: TransitionConfig;
   }): Promise<TransitionSessionData | null> {
     const transitionStartedAt = nowMs();
     const { groupId, sourceScreenId, targetScreenId, direction } = config;
@@ -387,18 +365,10 @@ export class TransitionCoordinator {
       );
     }
 
-    const startupIds = this.getStartupElementIds(
-      elementIds,
-      config.transitionConfig
-    );
-    await this.waitForTargets(elementIds, targetScreenId, startupIds);
-    await this.waitForStableTargetMeasurements(
-      targetScreenId,
-      startupIds?.length ? startupIds : elementIds,
-      {
-        extendedStability: direction === 'forward',
-      }
-    );
+    await this.waitForTargets(elementIds, targetScreenId, elementIds);
+    await this.waitForStableTargetMeasurements(targetScreenId, elementIds, {
+      extendedStability: direction === 'forward',
+    });
 
     const pairingStartedAt = nowMs();
 
@@ -451,25 +421,18 @@ export class TransitionCoordinator {
     const pairs: ElementTransitionPair[] = [];
 
     for (const { id, source, target } of pairingCandidates) {
+      const transition = source.transition ?? target.transition;
       const sourceMetrics = batchResults.get(`source:${id}`) ?? source.metrics;
       const targetMetrics = batchResults.get(`target:${id}`) ?? target.metrics;
 
-      if (!sourceMetrics || !targetMetrics) {
+      if (!sourceMetrics || !targetMetrics || !transition) {
         if (this.debug) {
           debugLog(
-            `[Coordinator] Measurement failed for "${id}" — source: ${!!sourceMetrics}, target: ${!!targetMetrics}`
+            `[Coordinator] Skipping "${id}" — sourceMetrics=${!!sourceMetrics} targetMetrics=${!!targetMetrics} transition=${!!transition}`
           );
         }
         continue;
       }
-
-      const elementConfig =
-        config.transitionConfig?.elements?.find((element) => element.id === id)
-          ?.config ?? {};
-      const mergedConfig = {
-        ...source.config,
-        ...elementConfig,
-      };
 
       this.registry.updateMetrics(id, sourceScreenId, sourceMetrics);
       this.registry.updateMetrics(id, targetScreenId, targetMetrics);
@@ -480,7 +443,7 @@ export class TransitionCoordinator {
         target,
         sourceMetrics,
         targetMetrics,
-        config: mergedConfig,
+        transition,
       });
     }
 

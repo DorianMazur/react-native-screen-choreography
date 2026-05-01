@@ -1,7 +1,7 @@
 import type { AnimatedRef } from 'react-native-reanimated';
 import { measure } from 'react-native-reanimated';
-import { scheduleOnUI, scheduleOnRN } from 'react-native-worklets';
-import type { ElementMetrics } from './types';
+import { runOnUIAsync } from 'react-native-worklets';
+import type { ElementMetrics, NodeHandleRef } from './types';
 import { MEASUREMENT_TIMEOUT } from './constants';
 
 type RawMetrics = {
@@ -24,12 +24,34 @@ function normalizeMetrics(metrics: RawMetrics | null): ElementMetrics | null {
   };
 }
 
+function resolveNode(ref: NodeHandleRef): any {
+  return typeof ref === 'function' ? ref() : ref.current;
+}
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, fallback: T) {
+  return new Promise<T>((resolve) => {
+    const timeoutId = setTimeout(() => {
+      resolve(fallback);
+    }, timeoutMs);
+
+    promise
+      .then((value) => {
+        clearTimeout(timeoutId);
+        resolve(value);
+      })
+      .catch(() => {
+        clearTimeout(timeoutId);
+        resolve(fallback);
+      });
+  });
+}
+
 function measureElementWithJsRef(
-  ref: React.RefObject<any>,
+  ref: NodeHandleRef,
   settle: (metrics: ElementMetrics | null) => void
 ) {
   try {
-    const node = ref.current;
+    const node = resolveNode(ref);
     if (!node) {
       settle(null);
       return;
@@ -80,8 +102,28 @@ function measureElementWithJsRef(
   }
 }
 
+async function measureElementOnUI(
+  animatedRef: AnimatedRef<any>
+): Promise<ElementMetrics | null> {
+  const measured = await runOnUIAsync(() => {
+    'worklet';
+
+    const metrics = measure(animatedRef);
+    return metrics
+      ? {
+          pageX: metrics.pageX,
+          pageY: metrics.pageY,
+          width: metrics.width,
+          height: metrics.height,
+        }
+      : null;
+  });
+
+  return normalizeMetrics(measured);
+}
+
 export function measureElement(
-  ref: React.RefObject<any>,
+  ref: NodeHandleRef,
   animatedRef?: AnimatedRef<any>
 ): Promise<ElementMetrics | null> {
   return new Promise((resolve) => {
@@ -101,51 +143,28 @@ export function measureElement(
       resolve(metrics);
     };
 
-    const fallbackToJsRef = () => {
-      measureElementWithJsRef(ref, settle);
-    };
-
-    const handleUiMeasurement = (measured: RawMetrics | null) => {
-      const normalized = normalizeMetrics(measured);
-      if (normalized) {
-        settle(normalized);
-        return;
-      }
-
-      fallbackToJsRef();
-    };
-
     if (animatedRef) {
-      try {
-        scheduleOnUI((uiRef: AnimatedRef<any>) => {
-          'worklet';
+      withTimeout(measureElementOnUI(animatedRef), MEASUREMENT_TIMEOUT, null)
+        .then((metrics) => {
+          if (metrics) {
+            settle(metrics);
+            return;
+          }
 
-          const metrics = measure(uiRef);
-          scheduleOnRN(
-            handleUiMeasurement,
-            metrics
-              ? {
-                  pageX: metrics.pageX,
-                  pageY: metrics.pageY,
-                  width: metrics.width,
-                  height: metrics.height,
-                }
-              : null
-          );
-        }, animatedRef);
-        return;
-      } catch {
-        fallbackToJsRef();
-        return;
-      }
+          measureElementWithJsRef(ref, settle);
+        })
+        .catch(() => {
+          measureElementWithJsRef(ref, settle);
+        });
+      return;
     }
 
-    fallbackToJsRef();
+    measureElementWithJsRef(ref, settle);
   });
 }
 
 export async function measureElements(
-  refs: Map<string, React.RefObject<any>>,
+  refs: Map<string, NodeHandleRef>,
   animatedRefs?: Map<string, AnimatedRef<any>>
 ): Promise<Map<string, ElementMetrics>> {
   const results = new Map<string, ElementMetrics>();
@@ -167,7 +186,7 @@ export async function measureElements(
 
 export interface BatchMeasureEntry {
   id: string;
-  ref: React.RefObject<any>;
+  ref: NodeHandleRef;
   animatedRef?: AnimatedRef<any>;
 }
 
@@ -201,9 +220,9 @@ export function measureElementsBatched(
     const uiEntries: {
       id: string;
       animatedRef: AnimatedRef<any>;
-      ref: React.RefObject<any>;
+      ref: NodeHandleRef;
     }[] = [];
-    const jsOnlyEntries: { id: string; ref: React.RefObject<any> }[] = [];
+    const jsOnlyEntries: { id: string; ref: NodeHandleRef }[] = [];
 
     for (const entry of entries) {
       if (entry.animatedRef) {
@@ -224,27 +243,13 @@ export function measureElementsBatched(
     if (uiEntries.length > 0) {
       const uiRefs = uiEntries.map((e) => e.animatedRef);
 
-      const handleBatchResult = (rawResults: (RawMetrics | null)[]) => {
-        for (let i = 0; i < uiEntries.length; i++) {
-          const entry = uiEntries[i]!;
-          const normalized = normalizeMetrics(rawResults[i] ?? null);
-          if (normalized) {
-            settle(entry.id, normalized);
-          } else {
-            // UI measurement failed — fall back to JS ref
-            measureElementWithJsRef(entry.ref, (metrics) =>
-              settle(entry.id, metrics)
-            );
-          }
-        }
-      };
-
-      try {
-        scheduleOnUI((refs: AnimatedRef<any>[]) => {
+      withTimeout(
+        runOnUIAsync(() => {
           'worklet';
+
           const measured: (RawMetrics | null)[] = [];
-          for (let i = 0; i < refs.length; i++) {
-            const m = measure(refs[i]!);
+          for (let i = 0; i < uiRefs.length; i++) {
+            const m = measure(uiRefs[i]!);
             measured.push(
               m
                 ? {
@@ -256,15 +261,31 @@ export function measureElementsBatched(
                 : null
             );
           }
-          scheduleOnRN(handleBatchResult, measured);
-        }, uiRefs);
-      } catch {
-        for (const entry of uiEntries) {
-          measureElementWithJsRef(entry.ref, (metrics) =>
-            settle(entry.id, metrics)
-          );
-        }
-      }
+          return measured;
+        }),
+        MEASUREMENT_TIMEOUT,
+        uiEntries.map(() => null)
+      )
+        .then((rawResults) => {
+          for (let i = 0; i < uiEntries.length; i++) {
+            const entry = uiEntries[i]!;
+            const normalized = normalizeMetrics(rawResults[i] ?? null);
+            if (normalized) {
+              settle(entry.id, normalized);
+            } else {
+              measureElementWithJsRef(entry.ref, (metrics) =>
+                settle(entry.id, metrics)
+              );
+            }
+          }
+        })
+        .catch(() => {
+          for (const entry of uiEntries) {
+            measureElementWithJsRef(entry.ref, (metrics) =>
+              settle(entry.id, metrics)
+            );
+          }
+        });
     }
   });
 }

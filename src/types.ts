@@ -1,18 +1,6 @@
-// Types for react-native-screen-choreography
-
+import type { ComponentType, ReactNode } from 'react';
 import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
-
-export type AnimationType =
-  | 'morph'
-  | 'move-resize'
-  | 'crossfade'
-  | 'fade-in'
-  | 'fade-out'
-  | 'none';
-
-export type ResizeMode = 'stretch' | 'clip' | 'none';
-export type AlignMode = 'center' | 'top-left' | 'top-center' | 'auto';
 
 export interface SpringConfig {
   damping?: number;
@@ -23,26 +11,6 @@ export interface SpringConfig {
   restSpeedThreshold?: number;
 }
 
-export interface TimingConfig {
-  duration?: number;
-  easing?: (t: number) => number;
-}
-
-export interface SharedElementConfig {
-  animation?: AnimationType;
-  resize?: ResizeMode;
-  align?: AlignMode;
-  zIndex?: number;
-  spring?: SpringConfig;
-  timing?: TimingConfig;
-  /** Delay relative to group progress start (0-1) */
-  progressOffset?: number;
-  /** Render custom stand-in content during transition */
-  renderStandIn?: (progress: SharedValue<number>) => React.ReactNode;
-}
-
-// ─── Element Metrics ─────────────────────────────────────────────
-
 export interface ElementMetrics {
   pageX: number;
   pageY: number;
@@ -50,22 +18,44 @@ export interface ElementMetrics {
   height: number;
 }
 
-// ─── Registry ────────────────────────────────────────────────────
+export interface SharedElementTransitionSide {
+  screenId: string;
+  metrics: ElementMetrics;
+  style?: ViewStyle;
+  content?: ReactNode;
+}
+
+export interface SharedElementTransitionRendererProps {
+  id: string;
+  progress: SharedValue<number>;
+  direction: 'forward' | 'backward';
+  zIndex: number;
+  source: SharedElementTransitionSide;
+  target: SharedElementTransitionSide;
+}
+
+export type SharedElementTransitionRenderer =
+  ComponentType<SharedElementTransitionRendererProps>;
+
+export interface SharedElementTransition {
+  renderer: SharedElementTransitionRenderer;
+  zIndex?: number;
+}
+
+export type NodeHandleRef = React.RefObject<any> | (() => any);
 
 export interface RegisteredElement {
   id: string;
   groupId?: string;
   screenId: string;
-  ref: React.RefObject<any>;
+  ref: NodeHandleRef;
   animatedRef?: AnimatedRef<any>;
-  config: SharedElementConfig;
+  transition: SharedElementTransition;
   metrics: ElementMetrics | null;
   style?: ViewStyle;
   /** Render function to create stand-in content */
   renderContent?: () => React.ReactNode;
 }
-
-// ─── Transition ──────────────────────────────────────────────────
 
 export type TransitionState =
   | 'idle'
@@ -81,7 +71,7 @@ export interface ElementTransitionPair {
   target: RegisteredElement;
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
-  config: SharedElementConfig;
+  transition: SharedElementTransition;
 }
 
 export interface TransitionSessionData {
@@ -95,41 +85,18 @@ export interface TransitionSessionData {
   direction: 'forward' | 'backward';
 }
 
-// ─── Choreography ────────────────────────────────────────────────
-
-export interface ChoreographyTiming {
-  /** Progress value at which this companion starts (0-1) */
-  enterAt?: number;
-  /** Progress value at which this companion ends (0-1) */
-  exitAt?: number;
-  /** Stagger delay between items in seconds */
-  stagger?: number;
-}
-
 export interface TransitionConfig {
   /** Group ID for matching elements */
   group: string;
-  /** Element-specific configs */
-  elements?: Array<{
-    id: string;
-    role?: string;
-    animation?: AnimationType;
-    config?: SharedElementConfig;
-  }>;
-  /** Choreography timing for companion animations */
-  choreography?: {
-    backdrop?: ChoreographyTiming;
-    supporting?: ChoreographyTiming;
-    content?: ChoreographyTiming;
-    [key: string]: ChoreographyTiming | undefined;
-  };
+}
+
+export interface ChoreographyNavigationOptions {
+  transitionConfig?: TransitionConfig;
   /** Spring config for the main transition */
   spring?: SpringConfig;
   /** Duration override (uses timing instead of spring) */
   duration?: number;
 }
-
-// ─── Context ─────────────────────────────────────────────────────
 
 export interface ChoreographyContextValue {
   registerElement: (element: RegisteredElement) => void;
@@ -139,7 +106,6 @@ export interface ChoreographyContextValue {
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward' | 'backward';
-    transitionConfig?: TransitionConfig;
   }) => Promise<void>;
   completeTransition: (sessionId: string) => void;
   cancelTransition: (sessionId: string) => void;
@@ -147,8 +113,6 @@ export interface ChoreographyContextValue {
   progress: SharedValue<number>;
   debug: boolean;
 }
-
-// ─── Debug ───────────────────────────────────────────────────────
 
 export interface DebugInfo {
   elementCount: number;

@@ -61,12 +61,23 @@ This gives the library a flexible public API while avoiding the most common z-or
 - fires `onTransitionStart` and `onTransitionEnd` lifecycle callbacks for active sessions
 - renders `TransitionOverlay` inside `FullWindowOverlay`
 - wraps the overlay in `NativeTransitionHost`
+- maintains a per-element `hiddenMap` of `SharedValue<number>` (1 = hidden, 0 = visible) that stand-ins and originals read on the UI thread
+- `unregisterElement` skips SV cleanup when the key is in the coordinator's active hidden set, preventing mid-transition remounts from flashing elements visible
 
 ### `ChoreographyScreen`
 
 - provides a stable `screenId`
 - reports layout readiness after mount
-- hides pending target content until the overlay is ready
+- drives progress-based visibility via a UI-thread worklet with three distinct branches:
+  - **`isPendingTarget`**: keeps the screen at `opacity: 0` until the overlay is ready to take over
+  - **`isActiveForwardTarget`**: reveals the screen at `opacity: 1` once `progress.value > 0.001` — by the first spring frame, `syncHiddenElements()` has already written to the per-element hidden SVs on the UI thread, so shared elements are individually hidden before the screen becomes visible
+  - **`isActiveForwardSource`**: fades the source screen from `opacity: 1` to `0` over `progress [0, 0.4]`, clearing non-shared content during the animated portion of the transition
+
+### `SharedElement`
+
+- registers each element with the provider on mount and unregisters on unmount
+- `renderContent` is captured via a ref (`childrenRef.current = children` each render, `useCallback(() => childrenRef.current, [])` for stability) so the function identity never changes across parent re-renders, preventing registration churn when navigation state or focus changes cause ancestor re-renders
+- reads `hidden.value` synchronously during render to set an `initialOpacity` static style before `animatedStyle`; this ensures React's first committed frame never paints an element visible when its SV is already at 1 (hidden) from a prior transition
 
 ### `ElementRegistry`
 
@@ -129,12 +140,13 @@ There are two main reverse paths today.
 
 ## Visibility And Readiness Rules
 
-Two separate concepts control whether the user sees the real target screen:
+Three separate concepts control whether the user sees real screen content during a transition:
 
-- `pendingTargetScreenId`: whether the pushed screen should stay visually hidden
-- overlay readiness: whether both the native host and overlay content own the frame
+- **`pendingTargetScreenId`**: whether the pushed screen should stay at `opacity: 0` before the overlay is ready (handled by the `isPendingTarget` worklet branch in `ChoreographyScreen`)
+- **Overlay readiness**: both the native host and overlay content must report ready before the pending state is cleared
+- **Progress-driven reveal**: once pending is cleared, real screen content is revealed by `progress.value > 0.001` on the UI thread rather than by a JS state change; this avoids a one-frame gap between overlay teardown and React's async state propagation
 
-The target screen should not become visible just because navigation succeeded. It should only be revealed once the overlay is ready to carry the transition.
+The destination screen is intentionally revealed early (at the first spring frame) with only shared elements hidden individually via their `hiddenMap` SVs. This gives the "everything is already there, just the animated pieces are morphing" visual effect. The source screen fades out quickly over the first 40% of progress to remove non-shared content from view.
 
 ## Measurement Model
 
@@ -167,7 +179,7 @@ When adding new behavior, keep these boundaries intact:
 
 Typical extension points:
 
-- add a new animation type by extending `SharedElementConfig` handling and `TransitionOverlay`
+- add a new reusable `SharedElementTransition` renderer by composing the exported stand-in primitives or custom overlay content in app code
 - add a new companion motion helper in `src/hooks/useChoreographyProgress.ts`
 - add more debug instrumentation in `src/debug/logger.ts` and the provider / navigation hooks
 

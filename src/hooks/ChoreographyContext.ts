@@ -1,10 +1,6 @@
 import { createContext } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
-import type {
-  RegisteredElement,
-  TransitionSessionData,
-  TransitionConfig,
-} from '../types';
+import type { RegisteredElement, TransitionSessionData } from '../types';
 
 /**
  * Stable callbacks that never change after provider initialisation.
@@ -39,7 +35,6 @@ export interface ChoreographyContextType {
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward' | 'backward';
-    transitionConfig?: TransitionConfig;
   }) => Promise<TransitionSessionData | null>;
   completeTransition: () => void;
   cancelTransition: () => void;

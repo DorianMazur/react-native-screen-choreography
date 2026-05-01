@@ -8,7 +8,7 @@ function createMockElement(
     id: 'test-element',
     groupId: 'test-group',
     screenId: 'screen-1',
-    ref: { current: null },
+    ref: () => null,
     config: {},
     metrics: null,
     ...overrides,

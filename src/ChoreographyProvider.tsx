@@ -6,11 +6,7 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 import { FullWindowOverlay } from 'react-native-screens';
-import type {
-  RegisteredElement,
-  TransitionSessionData,
-  TransitionConfig,
-} from './types';
+import type { RegisteredElement, TransitionSessionData } from './types';
 import { ElementRegistry } from './ElementRegistry';
 import { NativeTransitionHost } from './NativeTransitionHost';
 import { TransitionCoordinator } from './TransitionCoordinator';
@@ -131,7 +127,6 @@ export function ChoreographyProvider({
       overlayContentReadySessionIdRef.current = null;
 
       if (!session) {
-        // Session ended — fire onTransitionEnd with the session that just finished
         if (previousSession) {
           onTransitionEndRef.current?.(previousSession);
         }
@@ -141,7 +136,6 @@ export function ChoreographyProvider({
         return;
       }
 
-      // Session became active with resolved pairs — fire onTransitionStart
       if (
         session.state === 'active' &&
         session.pairs.length > 0 &&
@@ -150,9 +144,7 @@ export function ChoreographyProvider({
         onTransitionStartRef.current?.(session);
       }
 
-      if (session.state !== 'active') {
-        syncHiddenElements();
-      }
+      syncHiddenElements();
     });
   }
 
@@ -166,10 +158,16 @@ export function ChoreographyProvider({
 
   const unregisterElement = useCallback((id: string, screenId: string) => {
     registryRef.current!.unregister(id, screenId);
-    // Clean up hidden shared value
     const key = `${id}:${screenId}`;
     const sv = hiddenMapRef.current.get(key);
     if (sv) {
+      if (coordinatorRef.current?.getHiddenElements().has(key)) {
+        // This element is hidden by an active transition and is likely just
+        // re-mounting due to a React re-render. Keep the SV in the map so
+        // the re-registering element gets back the same SV still at value 1,
+        // avoiding any visible flash of the real element on-screen.
+        return;
+      }
       sv.value = 0;
       hiddenMapRef.current.delete(key);
     }
@@ -274,7 +272,6 @@ export function ChoreographyProvider({
       sourceScreenId: string;
       targetScreenId: string;
       direction: 'forward' | 'backward';
-      transitionConfig?: TransitionConfig;
     }) => {
       return coordinatorRef.current!.startTransition(config);
     },
@@ -343,7 +340,9 @@ export function ChoreographyProvider({
     const session = activeSessionRef.current;
     if (session?.state === 'active' && session.pairs.length > 0) {
       overlayContentReadySessionIdRef.current = session.id;
+      syncHiddenElements();
       resolveOverlayWaitersIfReady(session.id);
+      return;
     }
     syncHiddenElements();
   }, [resolveOverlayWaitersIfReady, syncHiddenElements]);
@@ -359,11 +358,6 @@ export function ChoreographyProvider({
     resolveOverlayWaitersIfReady(session.id);
   }, [resolveOverlayWaitersIfReady, syncHiddenElements]);
 
-  // Forward completion fires from the spring callback in useChoreographyNavigation
-  // at progress=1.0 exactly — premature handoff at ~0.985 causes shadow/geometry snap.
-
-  // Narrow context for SharedElement: stable callbacks only, so elements
-  // don't re-render on session state changes.
   const actionsValue = useMemo(
     () => ({
       registerElement,

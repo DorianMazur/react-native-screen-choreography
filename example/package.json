@@ -16,6 +16,7 @@
     "react-native": "0.83.0",
     "react-native-reanimated": "^4.3.0",
     "react-native-safe-area-context": "^5.7.0",
+    "react-native-screen-choreography": "workspace:*",
     "react-native-screens": "^4.24.0",
     "react-native-worklets": "0.8.1"
   },

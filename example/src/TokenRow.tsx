@@ -2,6 +2,12 @@ import React from 'react';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { SharedElement } from 'react-native-screen-choreography';
 import type { Token } from './data';
+import {
+  tokenCardTransition,
+  tokenIconTransition,
+  tokenTextTransition,
+  tokenValueTransition,
+} from './sharedTransitions';
 
 interface TokenRowProps {
   token: Token;
@@ -16,14 +22,14 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
       <SharedElement
         id={`token.${token.id}.card`}
         groupId={`token.${token.id}`}
-        config={{ animation: 'morph' }}
+        transition={tokenCardTransition}
         style={styles.rowContainer}
       >
         <View style={styles.row}>
           <SharedElement
             id={`token.${token.id}.icon`}
             groupId={`token.${token.id}`}
-            config={{ animation: 'move-resize' }}
+            transition={tokenIconTransition}
           >
             <View
               style={[styles.iconContainer, { backgroundColor: token.color }]}
@@ -36,7 +42,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             <SharedElement
               id={`token.${token.id}.name`}
               groupId={`token.${token.id}`}
-              config={{ animation: 'move-resize' }}
+              transition={tokenTextTransition}
             >
               <Text style={styles.name}>{token.name}</Text>
             </SharedElement>
@@ -44,7 +50,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             <SharedElement
               id={`token.${token.id}.symbol`}
               groupId={`token.${token.id}`}
-              config={{ animation: 'move-resize' }}
+              transition={tokenTextTransition}
             >
               <Text style={styles.symbol}>{token.symbol}</Text>
             </SharedElement>
@@ -54,7 +60,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             <SharedElement
               id={`token.${token.id}.value`}
               groupId={`token.${token.id}`}
-              config={{ animation: 'crossfade' }}
+              transition={tokenValueTransition}
             >
               <Text style={styles.value}>
                 $
@@ -67,7 +73,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             <SharedElement
               id={`token.${token.id}.change`}
               groupId={`token.${token.id}`}
-              config={{ animation: 'crossfade' }}
+              transition={tokenValueTransition}
             >
               <Text
                 style={[

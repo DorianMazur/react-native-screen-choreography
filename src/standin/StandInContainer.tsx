@@ -7,33 +7,15 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
-
-/**
- * A single boxShadow entry in the format React Native 0.76+ expects.
- */
-export interface BoxShadowEntry {
-  offsetX: number;
-  offsetY: number;
-  blurRadius: number;
-  spreadDistance: number;
-  /** rgba() string */
-  color: string;
-}
+import type { SurfaceTransitionStyle } from './resolveSurfaceStyle';
 
 interface StandInContainerProps {
   progress: SharedValue<number>;
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
   direction?: 'forward' | 'backward';
-  sourceStyle?: {
-    backgroundColor?: string;
-    borderRadius?: number;
-  };
-  targetStyle?: {
-    backgroundColor?: string;
-    borderRadius?: number;
-    boxShadow?: BoxShadowEntry[];
-  };
+  sourceStyle?: SurfaceTransitionStyle;
+  targetStyle?: SurfaceTransitionStyle;
   children?: React.ReactNode;
 }
 

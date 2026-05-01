@@ -5,12 +5,14 @@ export { ChoreographyScreen } from './ChoreographyScreen';
 export { TransitionOverlay } from './TransitionOverlay';
 
 // Stand-in components
-export {
-  StandInContainer,
-  type BoxShadowEntry,
-} from './standin/StandInContainer';
+export { StandInContainer } from './standin/StandInContainer';
 export { StandInElement } from './standin/StandInElement';
 export { StandInCrossfade } from './standin/StandInCrossfade';
+export {
+  resolveSurfaceStyle,
+  type BoxShadowEntry,
+  type SurfaceTransitionStyle,
+} from './standin/resolveSurfaceStyle';
 
 // Hooks
 export { useChoreography } from './hooks/useChoreography';
@@ -38,11 +40,8 @@ export {
   type BatchMeasureEntry,
 } from './measurement';
 
-// Animation presets
+// Utilities
 export { Springs, Easings } from './animations/springs';
-export { morphInterpolation, createMorphStyle } from './animations/morph';
-export { moveResizeInterpolation } from './animations/moveResize';
-export { crossfadeInterpolation } from './animations/crossfade';
 
 // Constants
 export {
@@ -63,19 +62,18 @@ export {
 
 // Types
 export type {
-  AnimationType,
-  ResizeMode,
-  AlignMode,
   SpringConfig,
-  TimingConfig,
-  SharedElementConfig,
   ElementMetrics,
+  SharedElementTransitionSide,
+  SharedElementTransitionRendererProps,
+  SharedElementTransitionRenderer,
+  SharedElementTransition,
   RegisteredElement,
   TransitionState,
   ElementTransitionPair,
   TransitionSessionData,
-  ChoreographyTiming,
   TransitionConfig,
+  ChoreographyNavigationOptions,
   ChoreographyContextValue,
   DebugInfo,
 } from './types';

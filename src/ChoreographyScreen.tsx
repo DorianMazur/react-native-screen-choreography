@@ -1,5 +1,9 @@
 import React, { useCallback, useContext, useEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
+import Animated, {
+  interpolate,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 import { ScreenIdContext } from './hooks/useScreenId';
 import { ChoreographyContext } from './hooks/ChoreographyContext';
 
@@ -15,6 +19,46 @@ export function ChoreographyScreen({
   const choreography = useContext(ChoreographyContext);
   const readinessTokenRef = useRef(0);
   const isPendingTarget = choreography?.pendingTargetScreenId === screenId;
+  const isActiveForwardTarget =
+    choreography?.activeSession?.state === 'active' &&
+    choreography.activeSession.direction === 'forward' &&
+    choreography.activeSession.targetScreenId === screenId;
+  const isActiveForwardSource =
+    choreography?.activeSession?.state === 'active' &&
+    choreography.activeSession.direction === 'forward' &&
+    choreography.activeSession.sourceScreenId === screenId;
+  const progress = choreography?.progress ?? null;
+
+  const revealStyle = useAnimatedStyle(() => {
+    if (isPendingTarget) {
+      return { opacity: 0 };
+    }
+    if (isActiveForwardTarget) {
+      // Gate on progress > 0 (evaluated on the UI thread) rather than
+      // revealing immediately. By the time the spring moves at all,
+      // syncHiddenElements has already run and the per-element hidden SVs
+      // have propagated to the UI thread — so the destination content is
+      // visible while the shared elements remain hidden via isElementHidden.
+      return { opacity: progress && progress.value > 0.001 ? 1 : 0 };
+    }
+    if (isActiveForwardSource) {
+      // Fade out the source screen's non-shared content (other rows, header,
+      // etc.) so only the overlay stand-ins are visible during the transition.
+      // Shared elements are already individually hidden via isElementHidden.
+      return {
+        opacity: progress
+          ? interpolate(progress.value, [0, 0.4], [1, 0], 'clamp')
+          : 1,
+      };
+    }
+    return { opacity: 1 };
+  }, [
+    choreography,
+    isActiveForwardTarget,
+    isActiveForwardSource,
+    isPendingTarget,
+    progress,
+  ]);
 
   useEffect(() => {
     choreography?.setScreenReady(screenId, false);
@@ -45,13 +89,15 @@ export function ChoreographyScreen({
 
   return (
     <ScreenIdContext.Provider value={screenId}>
-      <View
+      <Animated.View
         onLayout={handleLayout}
-        style={[styles.container, isPendingTarget ? styles.hidden : null]}
-        pointerEvents={isPendingTarget ? 'none' : 'auto'}
+        style={[styles.container, revealStyle]}
+        pointerEvents={
+          isPendingTarget || isActiveForwardTarget ? 'none' : 'auto'
+        }
       >
         {children}
-      </View>
+      </Animated.View>
     </ScreenIdContext.Provider>
   );
 }
@@ -59,8 +105,5 @@ export function ChoreographyScreen({
 const styles = StyleSheet.create({
   container: {
     flex: 1,
-  },
-  hidden: {
-    opacity: 0,
   },
 });

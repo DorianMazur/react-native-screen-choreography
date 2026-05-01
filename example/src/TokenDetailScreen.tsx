@@ -18,6 +18,12 @@ import {
   useStaggeredReveal,
 } from 'react-native-screen-choreography';
 import { TOKENS } from './data';
+import {
+  tokenCardTransition,
+  tokenIconTransition,
+  tokenTextTransition,
+  tokenValueTransition,
+} from './sharedTransitions';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -57,7 +63,7 @@ export function TokenDetailScreen({
           <SharedElement
             id={`token.${token.id}.card`}
             groupId={`token.${token.id}`}
-            config={{ animation: 'morph' }}
+            transition={tokenCardTransition}
             style={styles.detailCard}
           >
             <View style={styles.cardContent}>
@@ -65,7 +71,7 @@ export function TokenDetailScreen({
                 <SharedElement
                   id={`token.${token.id}.icon`}
                   groupId={`token.${token.id}`}
-                  config={{ animation: 'move-resize' }}
+                  transition={tokenIconTransition}
                 >
                   <View
                     style={[
@@ -81,14 +87,14 @@ export function TokenDetailScreen({
                   <SharedElement
                     id={`token.${token.id}.name`}
                     groupId={`token.${token.id}`}
-                    config={{ animation: 'move-resize' }}
+                    transition={tokenTextTransition}
                   >
                     <Text style={styles.detailName}>{token.name}</Text>
                   </SharedElement>
                   <SharedElement
                     id={`token.${token.id}.symbol`}
                     groupId={`token.${token.id}`}
-                    config={{ animation: 'move-resize' }}
+                    transition={tokenTextTransition}
                   >
                     <Text style={styles.detailSymbol}>{token.symbol}</Text>
                   </SharedElement>
@@ -99,7 +105,7 @@ export function TokenDetailScreen({
                 <SharedElement
                   id={`token.${token.id}.value`}
                   groupId={`token.${token.id}`}
-                  config={{ animation: 'crossfade' }}
+                  transition={tokenValueTransition}
                 >
                   <Text style={styles.detailPrice}>
                     $
@@ -112,7 +118,7 @@ export function TokenDetailScreen({
                 <SharedElement
                   id={`token.${token.id}.change`}
                   groupId={`token.${token.id}`}
-                  config={{ animation: 'crossfade' }}
+                  transition={tokenValueTransition}
                 >
                   <Text
                     style={[

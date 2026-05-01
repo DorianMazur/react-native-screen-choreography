@@ -42,6 +42,10 @@ Other setups may work, but they are not the primary support target yet.
 - startup waits are biased toward structural elements instead of every shared label
 - `ChoreographyProvider` now exposes `onTransitionStart` and `onTransitionEnd` for session lifecycle instrumentation
 - reused reverse sessions can refresh source metrics after the source screen is visible again
+- source screens now fade their non-shared content out over the first 40% of the forward progress value, so list rows and headers are not visible behind the overlay during animation
+- destination screens are revealed from the first spring frame with only shared elements hidden individually, producing a "content is already there, pieces are morphing" effect rather than a cross-dissolve between screens
+- element remounts during an active transition no longer cause visible flashes: `unregisterElement` skips SV cleanup when the element is in the coordinator's active hidden set, and `SharedElement` reads the hidden SV synchronously during render to set an initial opacity before the animated style is applied
+- `SharedElement` registration churn from ancestor re-renders is eliminated: `renderContent` uses a ref for children so the callback identity is stable regardless of navigation state changes or parent re-renders
 
 ## Roadmap Priorities
 

@@ -117,31 +117,68 @@ function TokenListScreen() {
 }
 ```
 
-### 2. Mark matching shared elements
+### 2. Define transitions and mark matching shared elements
 
-Use the same `id` and `groupId` on source and target elements. The `groupId` represents one transition session. The `id` represents one element within that session.
+Use the same `id` and `groupId` on source and target elements. The `groupId` represents one transition session. The `id` represents one element within that session. Each `SharedElement` also receives an explicit `transition` object that defines how that pair renders in the overlay.
 
 ```tsx
-import { SharedElement } from 'react-native-screen-choreography';
+import {
+  SharedElement,
+  StandInContainer,
+  StandInCrossfade,
+  resolveSurfaceStyle,
+  type SharedElementTransition,
+} from 'react-native-screen-choreography';
+
+const cardTransition: SharedElementTransition = {
+  renderer: function CardTransition({ progress, direction, source, target }) {
+    return (
+      <StandInContainer
+        progress={progress}
+        direction={direction}
+        sourceMetrics={source.metrics}
+        targetMetrics={target.metrics}
+        sourceStyle={resolveSurfaceStyle(source.style)}
+        targetStyle={resolveSurfaceStyle(target.style)}
+      />
+    );
+  },
+  zIndex: 0,
+};
+
+const textTransition: SharedElementTransition = {
+  renderer: function TextTransition({
+    progress,
+    direction,
+    source,
+    target,
+    zIndex,
+  }) {
+    return (
+      <StandInCrossfade
+        progress={progress}
+        direction={direction}
+        sourceMetrics={source.metrics}
+        targetMetrics={target.metrics}
+        sourceContent={source.content}
+        targetContent={target.content}
+        zIndex={zIndex}
+      />
+    );
+  },
+  zIndex: 2,
+};
 
 <SharedElement
   id={`token.${token.id}.card`}
   groupId={`token.${token.id}`}
-  config={{ animation: 'morph' }}
+  transition={cardTransition}
 >
   <View style={styles.card}>
     <SharedElement
-      id={`token.${token.id}.icon`}
-      groupId={`token.${token.id}`}
-      config={{ animation: 'move-resize' }}
-    >
-      <TokenIcon />
-    </SharedElement>
-
-    <SharedElement
       id={`token.${token.id}.name`}
       groupId={`token.${token.id}`}
-      config={{ animation: 'move-resize' }}
+      transition={textTransition}
     >
       <Text>{token.name}</Text>
     </SharedElement>
@@ -168,14 +205,6 @@ function TokenListScreen({ navigation }) {
           {
             transitionConfig: {
               group: `token.${token.id}`,
-              elements: [
-                { id: `token.${token.id}.card`, animation: 'morph' },
-                { id: `token.${token.id}.icon`, animation: 'move-resize' },
-                { id: `token.${token.id}.name`, animation: 'move-resize' },
-                { id: `token.${token.id}.symbol`, animation: 'move-resize' },
-                { id: `token.${token.id}.value`, animation: 'crossfade' },
-                { id: `token.${token.id}.change`, animation: 'crossfade' },
-              ],
             },
           }
         )
@@ -225,6 +254,7 @@ function TokenDetailScreen() {
 ## Mental Model
 
 - `ChoreographyProvider` owns the registry, transition coordinator, overlay, and active session state.
+- `ChoreographyScreen` manages visibility for both roles: the source screen's non-shared content fades out as the forward animation begins, while the destination screen is revealed from the first spring frame with only the shared elements hidden individually (the overlay stand-ins own those positions).
 - `SharedElement` tags matching source and target elements.
 - `useChoreographyNavigation` starts and reverses sessions.
 - `useChoreographyProgress` lets the screen react to the active session.
@@ -237,8 +267,8 @@ function TokenDetailScreen() {
 | Component | Purpose |
 | --- | --- |
 | `ChoreographyProvider` | Hosts the registry, coordinator, overlay, and native transition host; accepts `debug`, `onTransitionStart`, and `onTransitionEnd` |
-| `ChoreographyScreen` | Provides a stable `screenId` for registration and readiness tracking |
-| `SharedElement` | Registers one shared element by `id` and `groupId` |
+| `ChoreographyScreen` | Provides a stable `screenId` for registration, readiness tracking, and progress-driven visibility orchestration — source screens fade out during forward transitions and destination screens are revealed from the first spring frame with only the shared elements individually hidden |
+| `SharedElement` | Registers one shared element by `id`, `groupId`, and `transition`; the transition renderer defines exactly how the overlay animates that pair |
 
 `onTransitionStart(session)` fires when a session becomes active with resolved pairs. `onTransitionEnd(session)` fires after the active session completes or is cancelled, which makes them useful for instrumentation, analytics, or app-level UI coordination.
 
@@ -263,46 +293,47 @@ These are advanced exports rather than the primary app-facing API, but they are 
 | `measureElements(refs, animatedRefs?)` | Measure many elements through the legacy per-element path |
 | `measureElementsBatched(entries)` | Batch many measurements through one UI-runtime call; used internally by the coordinator |
 
-### Animation Types
+### Transition Renderers
 
-| Type | Typical Use |
-| --- | --- |
-| `morph` | Card or container bounds, radius, and surface morphing |
-| `move-resize` | Icons, avatars, and tightly sized labels that should stay spatially continuous |
-| `crossfade` | Text or content that changes layout, size, or meaning between screens |
-| `fade-in` | Content that only exists on the target screen |
-| `fade-out` | Content that only exists on the source screen |
-| `none` | Opt out for a tagged element |
+`SharedElementTransition` and `SharedElementTransitionRendererProps` are exported from [src/types.ts](src/types.ts). The public contract is intentionally small:
 
-Use `move-resize` when the live source and target elements describe the same visual thing and have reasonably compatible bounds. Use `crossfade` when content reflows heavily between screens or when a continuous transform looks less natural than a handoff.
+```ts
+interface SharedElementTransition {
+  renderer: SharedElementTransitionRenderer;
+  zIndex?: number;
+}
+```
+
+The renderer receives:
+
+- `progress` and `direction` for the active session
+- `source` and `target` objects with `screenId`, measured bounds, flattened style, and rendered content
+- `zIndex` so related transitions can layer predictably
+
+The library ships low-level building blocks such as `StandInContainer`, `StandInElement`, `StandInCrossfade`, and `resolveSurfaceStyle`, but it does not choose stock presets for you anymore. App code owns the visual recipe.
 
 ### Core Transition Config
 
-`SharedElementConfig` and `TransitionConfig` are exported from [src/types.ts](src/types.ts). The main transition input looks like this:
+`SharedElementTransition`, `TransitionConfig`, and `ChoreographyNavigationOptions` are exported from [src/types.ts](src/types.ts). The session-matching config still looks like this:
 
 ```ts
 interface TransitionConfig {
   group: string;
-  elements?: Array<{
-    id: string;
-    role?: string;
-    animation?: AnimationType;
-    config?: SharedElementConfig;
-  }>;
-  choreography?: {
-    backdrop?: ChoreographyTiming;
-    supporting?: ChoreographyTiming;
-    content?: ChoreographyTiming;
-    [key: string]: ChoreographyTiming | undefined;
-  };
+}
+
+interface ChoreographyNavigationOptions {
+  transitionConfig?: TransitionConfig;
   spring?: SpringConfig;
   duration?: number;
 }
 ```
 
-Today the stock runtime actively relies on `animation`, `zIndex`, and `renderStandIn` from `SharedElementConfig`. The exported type also includes `resize`, `align`, `progressOffset`, and per-element timing fields, but those should be treated as reserved or experimental until the default overlay path consumes them.
+For app code, the cleanest pattern is:
 
-Likewise, `TransitionConfig.choreography` is part of the exported type surface but the built-in hooks currently use the library's default progress ranges. If you are integrating the library as an app developer, treat that field as forward-looking rather than a stable feature switch today.
+- define reusable `SharedElementTransition` objects close to the feature or screen that owns the transition
+- declare each element's overlay behavior once at the `SharedElement` site with `transition={...}`
+- pass only `transitionConfig.group` during navigation in the common case
+- pass `spring` or `duration` as navigation options when you want to override the default transition animation
 
 ## Known Limitations
 

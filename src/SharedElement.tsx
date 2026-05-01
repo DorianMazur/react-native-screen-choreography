@@ -9,9 +9,8 @@ import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
 import Animated, {
   useAnimatedRef,
   useAnimatedStyle,
-  type SharedValue,
 } from 'react-native-reanimated';
-import type { SharedElementConfig } from './types';
+import type { SharedElementTransition } from './types';
 import { ChoreographyActionsContext } from './hooks/ChoreographyContext';
 import { useScreenId } from './hooks/useScreenId';
 
@@ -20,16 +19,12 @@ export interface SharedElementProps {
   id: string;
   /** Group identifier. Elements in the same group transition together. */
   groupId?: string;
-  /** Animation and behavior configuration. */
-  config?: SharedElementConfig;
+  /** Explicit transition renderer for this shared element pair. */
+  transition: SharedElementTransition;
   /** Children to wrap. */
   children: React.ReactNode;
   /** Additional style for the wrapper. */
   style?: StyleProp<ViewStyle>;
-  /** Render function for the stand-in during transition (source screen). */
-  renderSourceStandIn?: (progress: SharedValue<number>) => React.ReactNode;
-  /** Render function for the stand-in during transition (target screen). */
-  renderTargetStandIn?: (progress: SharedValue<number>) => React.ReactNode;
 }
 
 /**
@@ -37,7 +32,11 @@ export interface SharedElementProps {
  *
  * Usage:
  * ```tsx
- * <SharedElement id="card.1.thumbnail" groupId="card.1">
+ * <SharedElement
+ *   id="card.1.thumbnail"
+ *   groupId="card.1"
+ *   transition={thumbnailTransition}
+ * >
  *   <Thumbnail />
  * </SharedElement>
  * ```
@@ -45,13 +44,11 @@ export interface SharedElementProps {
 export function SharedElement({
   id,
   groupId,
-  config = {},
+  transition,
   children,
   style,
-  renderSourceStandIn,
-  renderTargetStandIn,
 }: SharedElementProps) {
-  const viewRef = useRef<any>(null);
+  const viewNodeRef = useRef<any>(null);
   const animatedRef = useAnimatedRef<any>();
   const actions = useContext(ChoreographyActionsContext);
   if (!actions) {
@@ -67,9 +64,10 @@ export function SharedElement({
   );
 
   const renderContent = useCallback(() => children, [children]);
+  const getNode = useCallback(() => viewNodeRef.current, []);
   const setRefs = useCallback(
     (node: any) => {
-      viewRef.current = node;
+      viewNodeRef.current = node;
       animatedRef(node);
     },
     [animatedRef]
@@ -80,12 +78,9 @@ export function SharedElement({
       id,
       groupId,
       screenId,
-      ref: viewRef,
+      ref: getNode,
       animatedRef,
-      config: {
-        ...config,
-        renderStandIn: renderSourceStandIn ?? renderTargetStandIn,
-      },
+      transition,
       metrics: null,
       style: flattenedStyle,
       renderContent,
@@ -94,10 +89,18 @@ export function SharedElement({
     return () => {
       unregisterElement(id, screenId);
     };
-    // We intentionally only depend on id and screenId for registration lifecycle.
-    // Config changes don't require re-registration.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [flattenedStyle, id, screenId]);
+  }, [
+    flattenedStyle,
+    getNode,
+    id,
+    groupId,
+    screenId,
+    transition,
+    unregisterElement,
+    registerElement,
+    animatedRef,
+    renderContent,
+  ]);
 
   const hidden = isElementHidden(id, screenId);
 

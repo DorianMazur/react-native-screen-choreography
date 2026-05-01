@@ -37,38 +37,6 @@ export function TokenListScreen({ navigation }: { navigation: any }) {
                   {
                     transitionConfig: {
                       group: `token.${item.id}`,
-                      elements: [
-                        {
-                          id: `token.${item.id}.card`,
-                          role: 'container',
-                          animation: 'morph',
-                        },
-                        {
-                          id: `token.${item.id}.icon`,
-                          role: 'icon',
-                          animation: 'move-resize',
-                        },
-                        {
-                          id: `token.${item.id}.name`,
-                          role: 'title',
-                          animation: 'move-resize',
-                        },
-                        {
-                          id: `token.${item.id}.symbol`,
-                          role: 'subtitle',
-                          animation: 'move-resize',
-                        },
-                        {
-                          id: `token.${item.id}.value`,
-                          role: 'value',
-                          animation: 'crossfade',
-                        },
-                        {
-                          id: `token.${item.id}.change`,
-                          role: 'change',
-                          animation: 'crossfade',
-                        },
-                      ],
                     },
                   }
                 );
