@@ -75,6 +75,8 @@ Current important exports include:
 - never animate `boxShadow` params per-frame on Android — it re-creates drawables every call; animate `opacity` on a view with a static `boxShadow` instead
 - the `debug` prop on `ChoreographyProvider` is `boolean | { level, categories?, logEveryFrame? }` with levels `'error' | 'warn' | 'info' | 'trace'`; apply it inside a `useEffect` so toggling never re-creates the registry or coordinator
 - never call `syncHiddenElements()` eagerly when a session activates — hiding must remain driven by the overlay's `useLayoutEffect` and the native host's presentation ack, with the 150ms `waitForOverlayReady` timeout as the only safety net
+- `ChoreographyScreen` visibility must gate on BOTH `pendingTargetScreenId === screenId` and `(role === 'target' && phase === 'preparing')` — the new screen mounts ~150ms before the session activates, so role-only gating leaves a visible window
+- the static visibility gate must live on a plain outer `View` with inline `opacity`, not merged into an `Animated.View` style array; on Android Fabric, Reanimated's first style commit can lag one frame and a single `Animated.View` flashes
 
 ## Commands
 

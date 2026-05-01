@@ -6,10 +6,13 @@ This document describes the current support boundaries for the library and the w
 
 Today, the library is tuned for this setup:
 
-- `@react-navigation/native-stack`
-- `animation: 'none'`
-- transparent detail presentation
-- New Architecture / Fabric enabled
+- React Native >= 0.76 with the New Architecture / Fabric enabled
+- React >= 18
+- `@react-navigation/native-stack` (validated on 7.x)
+- `react-native-screens` >= 4
+- `react-native-reanimated` >= 4
+- `react-native-worklets` >= 0.8
+- stack `animation: 'none'` with transparent detail presentation
 
 Other setups may work, but they are not the primary support target yet.
 
@@ -55,7 +58,6 @@ Other setups may work, but they are not the primary support target yet.
 
 9. Offer a higher-fidelity opt-in mode for startup-critical elements.
 10. Add higher-level presets for common patterns such as card-to-detail and gallery transitions.
-11. Expand the docs with a dedicated troubleshooting guide.
 
 ## What The Library Already Does Well
 

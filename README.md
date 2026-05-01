@@ -2,6 +2,8 @@
 
 Choreographed shared element transitions for React Native with multi-element coordination, progress-driven companion motion, and a native overlay host above the navigation stack.
 
+> **Status:** pre-1.0. The public API is converging but minor versions can still introduce breaking changes. See [CHANGELOG.md](CHANGELOG.md).
+
 <p align="center">
   <em>List row → expanding detail card with continuous icon motion, cross-fading text, backdrop dim, and staged content reveal, all driven by one transition session.</em>
 </p>
@@ -19,13 +21,14 @@ What it provides:
 
 ## Requirements
 
-- React Native with the New Architecture enabled
-- `@react-navigation/native-stack`
-- `react-native-reanimated`
-- `react-native-screens`
-- `react-native-worklets`
+- React Native **>= 0.76** with the New Architecture (Fabric) enabled
+- React **>= 18**
+- `@react-navigation/native` and `@react-navigation/native-stack` **>= 6** (validated on 7.x)
+- `react-native-reanimated` **>= 4**
+- `react-native-screens` **>= 4**
+- `react-native-worklets` **>= 0.8**
 
-The example app in this repository is currently validated on React Native 0.83, React 19, and Reanimated 4.
+The example app in this repository is validated on React Native 0.83, React 19, and Reanimated 4.
 
 ## Installation
 
@@ -419,6 +422,7 @@ See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for
 
 ## Further Documentation
 
+- [CHANGELOG.md](CHANGELOG.md) for release notes
 - [docs/architecture-plan.md](docs/architecture-plan.md) for the runtime architecture and contributor-level internals
 - [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for support boundaries and planned improvements
 - [docs/library-comparison.md](docs/library-comparison.md) for a comparison with other shared transition approaches
