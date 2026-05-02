@@ -1,8 +1,8 @@
 # react-native-screen-choreography
 
-Choreographed shared element transitions for React Native with multi-element coordination, progress-driven companion motion, and a native overlay host above the navigation stack.
+Choreographed shared element transitions for React Native with multi-element coordination.
 
-> **Status:** pre-1.0. The public API is converging but minor versions can still introduce breaking changes. See [CHANGELOG.md](CHANGELOG.md).
+> **Status:** pre-1.0. The public API is converging but minor versions can still introduce breaking changes.
 
 
 <p align="center">
