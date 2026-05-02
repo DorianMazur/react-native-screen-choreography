@@ -3,7 +3,7 @@ import {
   getScreenRole,
   getSessionPhase,
   shouldBlockInteraction,
-} from '../src/screenVisibility';
+} from '../src/core/screenVisibility';
 import type { TransitionSessionData } from '../src/types';
 
 function makeSession(

@@ -1,5 +1,5 @@
-import type { RegisteredElement, ElementMetrics } from './types';
-import { debugLog, debugWarn } from './debug/logger';
+import type { RegisteredElement, ElementMetrics } from '../types';
+import { debugLog, debugWarn } from '../debug/logger';
 
 export class ElementRegistry {
   private elements = new Map<string, RegisteredElement[]>();

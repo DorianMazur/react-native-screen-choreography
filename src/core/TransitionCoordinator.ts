@@ -1,14 +1,14 @@
-import { makeMutable, type SharedValue } from 'react-native-reanimated';
+import { type SharedValue } from 'react-native-reanimated';
 import { Platform } from 'react-native';
 import type {
   TransitionSessionData,
   ElementTransitionPair,
   TransitionState,
   RegisteredElement,
-} from './types';
+} from '../types';
 import type { ElementRegistry } from './ElementRegistry';
 import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
-import { debugLog, debugTrace, debugWarn } from './debug/logger';
+import { debugLog, debugTrace, debugWarn } from '../debug/logger';
 
 let sessionCounter = 0;
 
@@ -244,7 +244,7 @@ export class TransitionCoordinator {
 
       const measurements: (readonly [
         string,
-        import('./types').ElementMetrics | null,
+        import('../types').ElementMetrics | null,
       ])[] = measurableIds.map(
         (id) => [id, batchResults.get(id) ?? null] as const
       );
@@ -390,7 +390,7 @@ export class TransitionCoordinator {
     const batchResults =
       batchEntries.length > 0
         ? await measureElementsBatched(batchEntries)
-        : new Map<string, import('./types').ElementMetrics | null>();
+        : new Map<string, import('../types').ElementMetrics | null>();
 
     const pairs: ElementTransitionPair[] = [];
 
@@ -492,8 +492,4 @@ export class TransitionCoordinator {
       this.activeSession = { ...this.activeSession, state };
     }
   }
-}
-
-export function createProgressValue(): SharedValue<number> {
-  return makeMutable(0);
 }

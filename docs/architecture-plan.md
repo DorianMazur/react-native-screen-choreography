@@ -77,7 +77,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 - provides a stable `screenId`
 - reads volatile transition state from `ChoreographyContext` and lifecycle callbacks (`setScreenReady`, `unregisterScreen`) from `ChoreographyActionsContext` so its registration effect depends only on stable identities and never re-runs on session changes
 - reports layout readiness via a double-RAF after each `onLayout`
-- drives screen-level visibility through a single direction-agnostic model derived from `(direction, role, phase, progress)`. The pure helpers live in `src/screenVisibility.ts` and are unit-tested:
+- drives screen-level visibility through a single direction-agnostic model derived from `(direction, role, phase, progress)`. The pure helpers live in `src/core/screenVisibility.ts` and are unit-tested:
   - **`role`** is one of `source`, `target`, or `inactive` and comes from `getScreenRole(session, screenId)`
   - **`phase`** is one of `idle`, `preparing`, `active`, `completing`, `cancelling` and comes from `getSessionPhase(session, pendingTargetScreenId, screenId)` (treats `state: 'measuring'` and a matching `pendingTargetScreenId` as `preparing`)
   - the worklet computes a normalized progress `t = direction === 'forward' ? progress : 1 - progress` and applies one rule set:
@@ -217,13 +217,14 @@ type ChoreographyDebugConfig =
     };
 ```
 
-The provider applies the resolved config inside a `useEffect` so toggling debug never re-creates the registry or coordinator. The logger keeps a bounded ring buffer, suppresses identical consecutive lines as `... (×N)` unless `logEveryFrame` is set, and gates verbose measurement traces behind `level: 'trace'`. The matching imperative API (`setDebugEnabled`, `setDebugLevel`, `setDebugCoalesce`, `isTraceEnabled`, `getDebugLogs`, `clearDebugLogs`) is exported from the package.
+The provider applies the resolved config inside a `useEffect` so toggling debug never re-creates the registry or coordinator. The logger keeps a bounded ring buffer, suppresses identical consecutive lines as `... (×N)` unless `logEveryFrame` is set, and gates verbose measurement traces behind `level: 'trace'`. The package also exports a `setDebugEnabled` helper for toggling logging from outside the provider.
 
 ## Files Worth Reading
 
-- `src/ChoreographyProvider.tsx`
-- `src/TransitionCoordinator.ts`
-- `src/TransitionOverlay.tsx`
+- `src/components/ChoreographyProvider.tsx`
+- `src/core/TransitionCoordinator.ts`
+- `src/core/TransitionOverlay.tsx`
+- `src/native/NativeTransitionHost.tsx`
 - `src/hooks/useChoreographyNavigation.ts`
 - `src/hooks/useChoreographyProgress.ts`
 

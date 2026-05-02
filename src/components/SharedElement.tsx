@@ -10,9 +10,9 @@ import Animated, {
   useAnimatedRef,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import type { ElementSnapshot, SharedElementTransition } from './types';
-import { ChoreographyActionsContext } from './hooks/ChoreographyContext';
-import { useScreenId } from './hooks/useScreenId';
+import type { ElementSnapshot, SharedElementTransition } from '../types';
+import { ChoreographyActionsContext } from '../core/ChoreographyContext';
+import { useScreenId } from '../core/screenIdContext';
 
 export interface SharedElementProps {
   /** Unique identifier for this shared element. Must match across screens. */

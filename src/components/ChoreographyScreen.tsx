@@ -1,17 +1,17 @@
 import React, { useCallback, useContext, useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import { ScreenIdContext } from './hooks/useScreenId';
+import { ScreenIdContext } from '../core/screenIdContext';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
-} from './hooks/ChoreographyContext';
+} from '../core/ChoreographyContext';
 import {
   deriveScreenOpacity,
   getScreenRole,
   getSessionPhase,
   shouldBlockInteraction,
-} from './screenVisibility';
+} from '../core/screenVisibility';
 
 interface ChoreographyScreenProps {
   screenId: string;

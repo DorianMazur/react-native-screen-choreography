@@ -1,8 +1,10 @@
 // Components
-export { ChoreographyProvider } from './ChoreographyProvider';
-export { SharedElement } from './SharedElement';
-export { ChoreographyScreen } from './ChoreographyScreen';
-export { TransitionOverlay } from './TransitionOverlay';
+export { ChoreographyProvider } from './components/ChoreographyProvider';
+export { ChoreographyScreen } from './components/ChoreographyScreen';
+export {
+  SharedElement,
+  type SharedElementProps,
+} from './components/SharedElement';
 
 // Stand-in components
 export { StandInContainer } from './standin/StandInContainer';
@@ -15,74 +17,31 @@ export {
 } from './standin/resolveSurfaceStyle';
 
 // Hooks
-export { useChoreography } from './hooks/useChoreography';
-export { useScreenId } from './hooks/useScreenId';
+export { useChoreographyNavigation } from './hooks/useChoreographyNavigation';
 export {
   useChoreographyProgress,
-  useProgressRevealStyle,
   useLatchedReveal,
   useStaggeredReveal,
 } from './hooks/useChoreographyProgress';
-export { useChoreographyNavigation } from './hooks/useChoreographyNavigation';
 
-// Engine
-export { ElementRegistry } from './ElementRegistry';
-export {
-  TransitionCoordinator,
-  createProgressValue,
-} from './TransitionCoordinator';
-
-// Utilities
-export {
-  measureElement,
-  measureElements,
-  measureElementsBatched,
-  type BatchMeasureEntry,
-} from './measurement';
-
-// Utilities
-export { Springs, Easings } from './animations/springs';
-
-// Constants
-export {
-  DEFAULT_SPRING,
-  SNAPPY_SPRING,
-  FAST_SPRING,
-  PROGRESS_RANGES,
-  DEFAULT_BACKDROP_OPACITY,
-} from './constants';
+// Spring & easing presets
+export { Springs, Easings } from './core/constants';
 
 // Debug
-export {
-  setDebugEnabled,
-  setDebugLevel,
-  setDebugCoalesce,
-  isDebugEnabled,
-  isTraceEnabled,
-  getDebugLogs,
-  clearDebugLogs,
-} from './debug/logger';
+export { setDebugEnabled } from './debug/logger';
 
 // Types
 export type {
   SpringConfig,
   ElementMetrics,
-  SharedElementTransitionSide,
-  SharedElementTransitionRendererProps,
-  SharedElementTransitionRenderer,
-  SharedElementTransition,
-  RegisteredElement,
-  TransitionState,
-  ElementTransitionPair,
   ElementSnapshot,
-  TransitionSessionData,
+  SharedElementTransition,
+  SharedElementTransitionRenderer,
+  SharedElementTransitionRendererProps,
+  SharedElementTransitionSide,
   TransitionConfig,
   ChoreographyNavigationOptions,
-  ChoreographyContextValue,
   ChoreographyDebugConfig,
   ChoreographyDebugLevel,
   ChoreographyDebugCategory,
-  DebugInfo,
 } from './types';
-
-export type { SharedElementProps } from './SharedElement';

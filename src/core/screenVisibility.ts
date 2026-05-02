@@ -1,4 +1,4 @@
-import type { TransitionSessionData } from './types';
+import type { TransitionSessionData } from '../types';
 
 export type ScreenRole = 'source' | 'target' | 'inactive';
 

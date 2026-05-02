@@ -1,7 +1,7 @@
 import type { AnimatedRef } from 'react-native-reanimated';
 import { measure } from 'react-native-reanimated';
 import { runOnUIAsync } from 'react-native-worklets';
-import type { ElementMetrics, NodeHandleRef } from './types';
+import type { ElementMetrics, NodeHandleRef } from '../types';
 import { MEASUREMENT_TIMEOUT } from './constants';
 
 type RawMetrics = {
@@ -161,27 +161,6 @@ export function measureElement(
 
     measureElementWithJsRef(ref, settle);
   });
-}
-
-export async function measureElements(
-  refs: Map<string, NodeHandleRef>,
-  animatedRefs?: Map<string, AnimatedRef<any>>
-): Promise<Map<string, ElementMetrics>> {
-  const results = new Map<string, ElementMetrics>();
-  const entries = Array.from(refs.entries());
-
-  const measurements = await Promise.all(
-    entries.map(([id, ref]) => measureElement(ref, animatedRefs?.get(id)))
-  );
-
-  entries.forEach(([id], index) => {
-    const m = measurements[index];
-    if (m) {
-      results.set(id, m);
-    }
-  });
-
-  return results;
 }
 
 export interface BatchMeasureEntry {

@@ -21,8 +21,14 @@ Use these files as the source of truth:
 
 ## Repository Layout
 
-- `src/`: public API, provider, coordinator, hooks, overlay, and animation helpers
-- `example/`: React Native example app showing the reference list-to-detail flow
+- `src/`: public API (`index.tsx`, `types.ts`)
+- `src/components/`: `ChoreographyProvider`, `ChoreographyScreen`, `SharedElement`
+- `src/core/`: registry, coordinator, overlay, measurement, constants, contexts, visibility
+- `src/native/`: Fabric component spec and native host bridge
+- `src/hooks/`: public progress and navigation hooks
+- `src/standin/`: stand-in primitives
+- `src/debug/`: logger
+- `example/`: React Native example app
 - `docs/`: developer-facing technical and integration documentation
 - `__tests__/`: Jest coverage for core utilities and infrastructure
 - `android/` and `ios/`: native transition host implementation
@@ -41,7 +47,7 @@ Current important exports include:
 - `useLatchedReveal`
 - `useStaggeredReveal`
 - stand-in primitives: `StandInContainer`, `StandInElement`, `StandInCrossfade`, `resolveSurfaceStyle`
-- debug helpers: `setDebugEnabled`, `setDebugLevel`, `setDebugCoalesce`, `isDebugEnabled`, `isTraceEnabled`, `getDebugLogs`, `clearDebugLogs`
+- debug helpers: `setDebugEnabled`
 - types: `ElementSnapshot`, `ChoreographyDebugConfig`, `ChoreographyDebugLevel`, `ChoreographyDebugCategory`
 
 ## Runtime Assumptions
@@ -55,7 +61,7 @@ Current important exports include:
 - the coordinator captures a frozen `ElementSnapshot` per pair at session start; the overlay must read those snapshots, never live `SharedElement` props
 - real elements are hidden in the same frame the overlay first paints (driven by `handleOverlayReady` / `handleHostPresentationReady`), not when the session activates
 - the provider exposes two contexts: stable `ChoreographyActionsContext` for lifecycle callbacks and volatile `ChoreographyContext` for active-session state — keep registration effects depending on the actions context only
-- screen-level visibility lives in `src/screenVisibility.ts` and must stay direction-agnostic: derive `(role, phase)` from the session, then compute opacity and pointer-events from `(direction, role, phase, progress)`. Do not add forward-only special cases back to `ChoreographyScreen`.
+- screen-level visibility lives in `src/core/screenVisibility.ts` and must stay direction-agnostic: derive `(role, phase)` from the session, then compute opacity and pointer-events from `(direction, role, phase, progress)`. Do not add forward-only special cases back to `ChoreographyScreen`.
 
 ## Current Feature Boundaries
 
@@ -92,9 +98,10 @@ Run these from the repository root unless noted otherwise:
 
 When debugging or extending behavior, start here:
 
-- `src/ChoreographyProvider.tsx`
-- `src/TransitionCoordinator.ts`
-- `src/TransitionOverlay.tsx`
+- `src/components/ChoreographyProvider.tsx`
+- `src/core/TransitionCoordinator.ts`
+- `src/core/TransitionOverlay.tsx`
+- `src/native/NativeTransitionHost.tsx`
 - `src/standin/StandInContainer.tsx`
 - `src/hooks/useChoreographyNavigation.ts`
 - `src/hooks/useChoreographyProgress.ts`

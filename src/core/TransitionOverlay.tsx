@@ -5,7 +5,7 @@ import type {
   TransitionSessionData,
   ElementTransitionPair,
   SharedElementTransitionRendererProps,
-} from './types';
+} from '../types';
 
 interface TransitionOverlayProps {
   session: TransitionSessionData | null;

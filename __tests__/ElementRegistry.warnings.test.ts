@@ -1,4 +1,4 @@
-import { ElementRegistry } from '../src/ElementRegistry';
+import { ElementRegistry } from '../src/core/ElementRegistry';
 import {
   setDebugEnabled,
   setDebugLevel,

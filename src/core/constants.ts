@@ -1,6 +1,5 @@
-import type { SpringConfig } from './types';
-
-// ─── Default Spring Configs ──────────────────────────────────────
+import { Easing } from 'react-native-reanimated';
+import type { SpringConfig } from '../types';
 
 export const DEFAULT_SPRING: SpringConfig = {
   damping: 28,
@@ -26,14 +25,10 @@ export const FAST_SPRING: SpringConfig = {
   restSpeedThreshold: 0.001,
 };
 
-// ─── Timing Defaults ─────────────────────────────────────────────
-
 export const DEFAULT_DURATION = 750;
 export const REVERSE_DURATION = 500;
 export const CONTENT_REVEAL_DURATION = 200;
 export const STAGGER_DELAY = 40;
-
-// ─── Progress Ranges ─────────────────────────────────────────────
 
 export const PROGRESS_RANGES = {
   backdrop: { start: 0, end: 0.3 },
@@ -44,8 +39,30 @@ export const PROGRESS_RANGES = {
   contentReveal: { start: 0.7, end: 1.0 },
 } as const;
 
-// ─── Visual Defaults ─────────────────────────────────────────────
-
 export const DEFAULT_BACKDROP_OPACITY = 0.5;
 export const DEFAULT_CORNER_RADIUS = 16;
 export const MEASUREMENT_TIMEOUT = 500;
+
+export const Springs = {
+  /** Default spring for primary geometry transitions */
+  default: DEFAULT_SPRING,
+  /** Slightly snappier spring for focal elements and quick emphasis */
+  snappy: SNAPPY_SPRING,
+  /** Fast spring for reverse transitions */
+  fast: FAST_SPRING,
+  /** Gentle spring for subtle movements */
+  gentle: {
+    damping: 28,
+    mass: 1,
+    stiffness: 180,
+  } satisfies SpringConfig,
+} as const;
+
+export const Easings = {
+  /** Standard ease-out for content reveals */
+  contentReveal: Easing.out(Easing.cubic),
+  /** Ease-in-out for smooth interpolation */
+  smooth: Easing.inOut(Easing.cubic),
+  /** Sharp ease-out for quick actions */
+  sharp: Easing.out(Easing.quad),
+} as const;

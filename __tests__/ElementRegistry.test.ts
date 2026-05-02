@@ -1,4 +1,4 @@
-import { ElementRegistry } from '../src/ElementRegistry';
+import { ElementRegistry } from '../src/core/ElementRegistry';
 import type { RegisteredElement } from '../src/types';
 
 function createMockElement(

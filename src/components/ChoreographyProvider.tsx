@@ -16,23 +16,23 @@ import type {
   ChoreographyDebugConfig,
   RegisteredElement,
   TransitionSessionData,
-} from './types';
-import { ElementRegistry } from './ElementRegistry';
-import { NativeTransitionHost } from './NativeTransitionHost';
-import { TransitionCoordinator } from './TransitionCoordinator';
-import { TransitionOverlay } from './TransitionOverlay';
+} from '../types';
+import { ElementRegistry } from '../core/ElementRegistry';
+import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import { TransitionCoordinator } from '../core/TransitionCoordinator';
+import { TransitionOverlay } from '../core/TransitionOverlay';
 import {
   ChoreographyContext,
   ChoreographyActionsContext,
   type ChoreographyContextType,
   type ChoreographyActionsType,
-} from './hooks/ChoreographyContext';
+} from '../core/ChoreographyContext';
 import {
   debugTrace,
   setDebugCoalesce,
   setDebugEnabled,
   setDebugLevel,
-} from './debug/logger';
+} from '../debug/logger';
 
 function TransitionHostPortal({
   active,

@@ -129,7 +129,7 @@ export function App() {
 
 At `info` you get one line per major lifecycle event (transition start, active, complete, cancel). At `trace` you also get measurement and readiness traces. Identical consecutive log lines are coalesced as `... (×N)` unless you set `logEveryFrame: true`.
 
-You can also drive the logger imperatively from anywhere via the exported helpers `setDebugEnabled`, `setDebugLevel`, `setDebugCoalesce`, `isDebugEnabled`, `isTraceEnabled`, `getDebugLogs`, and `clearDebugLogs`.
+You can also toggle the logger imperatively from anywhere via the exported `setDebugEnabled` helper.
 
 ## Troubleshooting
 
@@ -263,29 +263,24 @@ function TokenListScreen({ navigation }) {
 
 ### 4. Add companion motion on the detail screen
 
-`useChoreographyProgress` exposes the shared progress value and common derived behaviors such as backdrop dim and early settle handling when the user starts interacting before the transition is fully settled. `useProgressRevealStyle` adds a generic fade-and-lift reveal for any supporting content block.
+`useChoreographyProgress` exposes the shared progress value and common derived behaviors such as backdrop dim and early settle handling when the user starts interacting before the transition is fully settled. Combine it with `useLatchedReveal` and `useStaggeredReveal` to drive companion content.
 
 ```tsx
 import Animated from 'react-native-reanimated';
 import {
   useChoreographyProgress,
-  useProgressRevealStyle,
   useLatchedReveal,
   useStaggeredReveal,
 } from 'react-native-screen-choreography';
 
 function TokenDetailScreen() {
   const { backdropStyle, settleTransition } = useChoreographyProgress();
-  const supportingVisualStyle = useProgressRevealStyle();
   const showSections = useLatchedReveal();
   const { getItemStyle } = useStaggeredReveal(4, { stagger: 0.04 });
 
   return (
     <ScrollView onScrollBeginDrag={settleTransition}>
       <Animated.View style={[styles.backdrop, backdropStyle]} />
-      <Animated.View style={supportingVisualStyle}>
-        <SummaryVisual />
-      </Animated.View>
       {showSections ? (
         <Animated.View style={getItemStyle(0)}>
           <SectionOne />
@@ -323,20 +318,21 @@ function TokenDetailScreen() {
 | --- | --- |
 | `useChoreographyNavigation(navigation)` | `navigate()` and `goBack()` integrated with the transition system |
 | `useChoreographyProgress()` | `progress`, `backdropStyle`, `isActive`, `settleTransition()` to snap to the current screen endpoint and complete the session |
-| `useProgressRevealStyle(config?)` | Animated style for a generic progress-driven fade-and-lift reveal |
 | `useLatchedReveal(config?)` | Boolean gate that opens at a progress threshold and stays visible once revealed |
 | `useStaggeredReveal(count, config?)` | `getItemStyle(index)` for staged reveal sections |
-| `useChoreography()` | Low-level access to context and the active session |
 
-### Utilities
+### Stand-in primitives
 
-These are advanced exports rather than the primary app-facing API, but they are part of the public surface today.
-
-| Utility | Purpose |
+| Primitive | Purpose |
 | --- | --- |
-| `measureElement(ref, animatedRef?)` | Measure a single element and normalize screen-space metrics |
-| `measureElements(refs, animatedRefs?)` | Measure many elements through the legacy per-element path |
-| `measureElementsBatched(entries)` | Batch many measurements through one UI-runtime call; used internally by the coordinator |
+| `StandInContainer` | Animates the surface (position, size, corner radius, shadow) on the overlay |
+| `StandInElement` | Animates a single anchor (e.g. a logo or label) between source and target metrics |
+| `StandInCrossfade` | Crossfades two stand-in renderings of the same role |
+| `resolveSurfaceStyle(style)` | Extracts surface-level styling from a `ViewStyle` for use inside a stand-in |
+
+### Spring & easing presets
+
+`Springs` and `Easings` export the canonical spring/easing values used by the library and are re-exported for app-level companion motion.
 
 ### Transition Renderers
 

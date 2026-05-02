@@ -8,9 +8,9 @@ import { scheduleOnRN } from 'react-native-worklets';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
-} from './ChoreographyContext';
-import { useScreenId } from './useScreenId';
-import { PROGRESS_RANGES, DEFAULT_BACKDROP_OPACITY } from '../constants';
+} from '../core/ChoreographyContext';
+import { useScreenId } from '../core/screenIdContext';
+import { PROGRESS_RANGES, DEFAULT_BACKDROP_OPACITY } from '../core/constants';
 
 function resolveSettledProgress(
   activeSession: ChoreographyContextType['activeSession'],
@@ -85,62 +85,6 @@ export function useChoreographyProgress() {
     isActive,
     settleTransition,
   };
-}
-
-/**
- * Hook for a generic progress-driven reveal style.
- * Useful for supporting visual content such as charts, media, summaries,
- * or any other block that should fade and lift into place after the main
- * geometry has mostly settled.
- */
-export function useProgressRevealStyle(
-  config: {
-    startProgress?: number;
-    endProgress?: number;
-    fromOpacity?: number;
-    toOpacity?: number;
-    fromTranslateY?: number;
-    toTranslateY?: number;
-  } = {}
-) {
-  const ctx = useContext(ChoreographyContext) as ChoreographyContextType;
-  if (!ctx) {
-    throw new Error(
-      'useProgressRevealStyle must be used within a <ChoreographyProvider>'
-    );
-  }
-
-  const {
-    startProgress = PROGRESS_RANGES.supportingReveal.start,
-    endProgress = PROGRESS_RANGES.supportingReveal.end,
-    fromOpacity = 0,
-    toOpacity = 1,
-    fromTranslateY = 20,
-    toTranslateY = 0,
-  } = config;
-
-  const { progress } = ctx;
-
-  return useAnimatedStyle(() => {
-    return {
-      opacity: interpolate(
-        progress.value,
-        [startProgress, endProgress],
-        [fromOpacity, toOpacity],
-        'clamp'
-      ),
-      transform: [
-        {
-          translateY: interpolate(
-            progress.value,
-            [startProgress, endProgress],
-            [fromTranslateY, toTranslateY],
-            'clamp'
-          ),
-        },
-      ],
-    };
-  });
 }
 
 /**

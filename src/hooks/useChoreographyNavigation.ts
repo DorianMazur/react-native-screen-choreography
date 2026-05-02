@@ -11,10 +11,10 @@ import { scheduleOnRN } from 'react-native-worklets';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
-} from './ChoreographyContext';
-import { useScreenId } from './useScreenId';
+} from '../core/ChoreographyContext';
+import { useScreenId } from '../core/screenIdContext';
 import type { ChoreographyNavigationOptions } from '../types';
-import { DEFAULT_SPRING, FAST_SPRING } from '../constants';
+import { DEFAULT_SPRING, FAST_SPRING } from '../core/constants';
 import { debugLog, isDebugEnabled } from '../debug/logger';
 
 interface PendingNavigationRequest {

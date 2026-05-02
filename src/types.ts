@@ -108,33 +108,6 @@ export interface ChoreographyNavigationOptions {
   duration?: number;
 }
 
-export interface ChoreographyContextValue {
-  registerElement: (element: RegisteredElement) => void;
-  unregisterElement: (id: string, screenId: string) => void;
-  startTransition: (config: {
-    groupId: string;
-    sourceScreenId: string;
-    targetScreenId: string;
-    direction: 'forward' | 'backward';
-  }) => Promise<void>;
-  completeTransition: (sessionId: string) => void;
-  cancelTransition: (sessionId: string) => void;
-  activeSession: TransitionSessionData | null;
-  progress: SharedValue<number>;
-  debug: boolean;
-}
-
-export interface DebugInfo {
-  elementCount: number;
-  activeTransition: boolean;
-  pairs: Array<{
-    id: string;
-    sourceMetrics: ElementMetrics | null;
-    targetMetrics: ElementMetrics | null;
-  }>;
-  logs: string[];
-}
-
 export type ChoreographyDebugLevel = 'error' | 'warn' | 'info' | 'trace';
 
 export type ChoreographyDebugCategory =

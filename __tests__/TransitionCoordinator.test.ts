@@ -1,5 +1,5 @@
-import { TransitionCoordinator } from '../src/TransitionCoordinator';
-import { ElementRegistry } from '../src/ElementRegistry';
+import { TransitionCoordinator } from '../src/core/TransitionCoordinator';
+import { ElementRegistry } from '../src/core/ElementRegistry';
 import type {
   ElementSnapshot,
   RegisteredElement,
