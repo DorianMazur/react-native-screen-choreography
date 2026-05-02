@@ -368,16 +368,8 @@ export function ChoreographyProvider({
   );
 
   const completeTransition = useCallback(() => {
-    const coordinator = coordinatorRef.current!;
-    // Two-phase end: un-hide reals this frame, drop overlay next frame.
-    // Stops Android Fabric from flashing when the overlay unmount lands
-    // before the opacity commit.
-    coordinator.releaseHiddenElements();
-    syncHiddenElements();
-    requestAnimationFrame(() => {
-      coordinator.completeTransition();
-    });
-  }, [syncHiddenElements]);
+    coordinatorRef.current!.completeTransition();
+  }, []);
 
   const cancelTransition = useCallback(() => {
     coordinatorRef.current!.cancelTransition();

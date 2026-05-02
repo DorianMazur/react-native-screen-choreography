@@ -14,8 +14,10 @@ using namespace facebook::react;
 
 @implementation ScreenChoreographyView {
   UIView * _hostView;
+  UIView * _dismissalSnapshot;
   BOOL _active;
   NSInteger _presentationRequestId;
+  NSInteger _dismissalRequestId;
 }
 
 + (ComponentDescriptorProvider)componentDescriptorProvider
@@ -61,6 +63,9 @@ using namespace facebook::react;
 
   _active = NO;
   _presentationRequestId = 0;
+  _dismissalRequestId = 0;
+  [_dismissalSnapshot removeFromSuperview];
+  _dismissalSnapshot = nil;
   _hostView.hidden = YES;
   self.alpha = 0.0;
 }
@@ -76,13 +81,51 @@ using namespace facebook::react;
     _active = newViewProps.active;
 
     if (_active) {
+      _dismissalRequestId += 1;
+      [_dismissalSnapshot removeFromSuperview];
+      _dismissalSnapshot = nil;
       _hostView.hidden = NO;
       self.alpha = 1.0;
       [self schedulePresentationReady];
     } else {
       _presentationRequestId += 1;
-      self.alpha = 0.0;
-      _hostView.hidden = YES;
+      UIView *snapshot = nil;
+      if (_hostView.window != nil && !CGRectIsEmpty(_hostView.bounds)) {
+        snapshot = [_hostView snapshotViewAfterScreenUpdates:NO];
+      }
+
+      [_dismissalSnapshot removeFromSuperview];
+      _dismissalSnapshot = nil;
+
+      if (snapshot != nil) {
+        snapshot.frame = _hostView.frame;
+        snapshot.userInteractionEnabled = NO;
+        [self addSubview:snapshot];
+        _dismissalSnapshot = snapshot;
+        self.alpha = 1.0;
+        _hostView.hidden = YES;
+
+        NSInteger dismissalId = ++_dismissalRequestId;
+        __weak __typeof(self) weakSelf = self;
+        // Two main-runloop hops ≈ two display-link ticks: long enough for any
+        // pending Reanimated UI commit to land before we clear the snapshot.
+        dispatch_async(dispatch_get_main_queue(), ^{
+          dispatch_async(dispatch_get_main_queue(), ^{
+            __strong __typeof(weakSelf) strongSelf = weakSelf;
+            if (strongSelf == nil || strongSelf->_active ||
+                dismissalId != strongSelf->_dismissalRequestId) {
+              return;
+            }
+            [strongSelf->_dismissalSnapshot removeFromSuperview];
+            strongSelf->_dismissalSnapshot = nil;
+            strongSelf.alpha = 0.0;
+          });
+        });
+      } else {
+        _dismissalRequestId += 1;
+        self.alpha = 0.0;
+        _hostView.hidden = YES;
+      }
     }
   }
 }
