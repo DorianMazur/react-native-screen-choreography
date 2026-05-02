@@ -131,41 +131,6 @@ At `info` you get one line per major lifecycle event (transition start, active, 
 
 You can also drive the logger imperatively from anywhere via the exported helpers `setDebugEnabled`, `setDebugLevel`, `setDebugCoalesce`, `isDebugEnabled`, `isTraceEnabled`, `getDebugLogs`, and `clearDebugLogs`.
 
-## Transition Lifecycle
-
-A forward transition runs through a fixed sequence. Understanding this order is enough to debug almost any visible issue.
-
-```
-tap → preMeasure source → set pendingTarget → navigation.navigate
-     → target screen mounts → SharedElements register on target
-     → coordinator waits for stable target measurements
-     → freeze source/target snapshots onto each pair
-     → updateSession({ state: 'active' })
-          ↓
-     overlay <Layout> commits + native host presents
-          ↓
-     handleOverlayReady(sessionId) → syncHiddenElements()
-          ↓
-     reals are hidden the same frame the overlay first paints
-          ↓
-     waitForOverlayReady resolves → clear pendingTarget
-          ↓
-     progress: 0 → 1 (spring/timing)
-          ↓
-     onFinish → completeTransition → state 'completing'
-          ↓
-     hiddenElements.clear() → updateSession(null)
-          ↓
-     reals reveal, overlay unmounts on same commit
-```
-
-Key invariants the runtime guarantees:
-
-- **Registration is stable.** `SharedElement` registers exactly once per `(id, groupId, screenId)` and does not re-register when `children`, `transition`, or `style` change. The coordinator calls `getSnapshot()` once at session start to capture a frozen view.
-- **Snapshots are frozen.** Once a session is `active`, the overlay never reads live `SharedElement` props. Re-renders, focus changes, or list-row recycling on the source side cannot affect the in-flight overlay.
-- **Hide handoff is overlay-paint-driven.** Real elements are not hidden when the session activates; they are hidden in the same frame the overlay's `useLayoutEffect` (and the native host's presentation ack) fire. This eliminates the start-of-animation blank flash.
-- **Reveal is progress-driven.** The destination screen reveals at `progress.value > 0.001` on the UI thread; reals stay individually hidden via per-element `SharedValue<number>` flags until the session is cleared.
-
 ## Troubleshooting
 
 | Symptom | Likely cause | Fix |
@@ -427,7 +392,6 @@ See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for
 
 ## Further Documentation
 
-- [CHANGELOG.md](CHANGELOG.md) for release notes
 - [docs/architecture-plan.md](docs/architecture-plan.md) for the runtime architecture and contributor-level internals
 - [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for support boundaries and planned improvements
 - [docs/library-comparison.md](docs/library-comparison.md) for a comparison with other shared transition approaches
