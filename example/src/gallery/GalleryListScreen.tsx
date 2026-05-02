@@ -21,6 +21,7 @@ import {
   galleryPhotoTransition,
   galleryTitleTransition,
   galleryLocationTransition,
+  galleryGlyphTransition,
 } from './galleryTransitions';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -99,13 +100,21 @@ function Tile({
               from={photo.gradientFrom}
               to={photo.gradientTo}
               style={styles.tilePhoto}
-            >
-              <View style={styles.tileGlyphWrap}>
-                <Text style={styles.tileGlyph}>{photo.glyph}</Text>
-              </View>
-            </GradientBlock>
+            />
             <View style={styles.tileScrim} pointerEvents="none" />
           </SharedElement>
+          <View style={styles.tileGlyphWrap} pointerEvents="none">
+            <SharedElement
+              id={`photo.${photo.id}.glyph`}
+              groupId={`photo.${photo.id}`}
+              transition={galleryGlyphTransition}
+              style={styles.tileGlyphBox}
+            >
+              <View style={styles.glyphCenter}>
+                <Text style={styles.tileGlyph}>{photo.glyph}</Text>
+              </View>
+            </SharedElement>
+          </View>
           <View style={styles.tileMeta}>
             <SharedElement
               id={`photo.${photo.id}.title`}
@@ -182,14 +191,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   tileGlyphWrap: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Sized so list:detail ratio (72/160) matches fontSize ratio (54/120),
+  // making the overlay's scaled-down detail glyph pixel-identical to the
+  // real list glyph at handoff — no pop at session start/end.
+  tileGlyphBox: {
+    width: 72,
+    height: 72,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Children of a SharedElement get re-rendered standalone inside the
+  // overlay (without the wrapping box's flex layout), so we centre the
+  // glyph here so both the live and the carried copies stay anchored to
+  // the same point.
+  glyphCenter: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
   tileGlyph: {
-    fontSize: 56,
+    fontSize: 54,
     color: 'rgba(255,255,255,0.75)',
     fontWeight: '200',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   tileScrim: {
     position: 'absolute',

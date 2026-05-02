@@ -10,16 +10,20 @@ export const galleryFrameTransition = makeSurfaceTransition(
   { backgroundColor: theme.surface, borderRadius: 0 }
 );
 
-// Photo stretches independently in X and Y so it tracks the morphing frame
-// (tile aspect → full-width hero aspect) instead of locking to source aspect.
-// Radii match the frame so the overlay clips to rounded corners mid-flight.
-// `singleContent` carries only the larger gradient+glyph (no crossfade) so
-// the icon morphs in place instead of doubling-up mid-flight.
 export const galleryPhotoTransition = makeStretchTransition({
   sourceBorderRadius: theme.radius.lg,
   targetBorderRadius: 0,
   singleContent: true,
 });
-// Identical text in both screens — single-element scale, no crossfade.
+
 export const galleryTitleTransition = textMorphTransition;
 export const galleryLocationTransition = textMorphTransition;
+
+// Glyph is rendered inside square wraps on both screens, so the stretch
+// renderer's W/H interpolation naturally produces a *uniform* scale and the
+// icon never squishes — even when the source tile is taller than the target
+// hero (the tall tiles in the grid don't share an aspect ratio with the
+// detail hero box).
+export const galleryGlyphTransition = makeStretchTransition({
+  singleContent: true,
+});

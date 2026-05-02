@@ -25,6 +25,7 @@ import {
   galleryPhotoTransition,
   galleryTitleTransition,
   galleryLocationTransition,
+  galleryGlyphTransition,
 } from './galleryTransitions';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -71,13 +72,22 @@ export function GalleryDetailScreen({
                   from={photo.gradientFrom}
                   to={photo.gradientTo}
                   style={styles.heroPhoto}
-                >
-                  <View style={styles.heroGlyphWrap}>
-                    <Text style={styles.heroGlyph}>{photo.glyph}</Text>
-                  </View>
-                </GradientBlock>
+                />
                 <View style={styles.heroScrim} pointerEvents="none" />
               </SharedElement>
+
+              <View style={styles.heroGlyphWrap} pointerEvents="none">
+                <SharedElement
+                  id={`photo.${photo.id}.glyph`}
+                  groupId={`photo.${photo.id}`}
+                  transition={galleryGlyphTransition}
+                  style={styles.heroGlyphBox}
+                >
+                  <View style={styles.glyphCenter}>
+                    <Text style={styles.heroGlyph}>{photo.glyph}</Text>
+                  </View>
+                </SharedElement>
+              </View>
 
               <Pressable
                 onPress={() => goBack()}
@@ -171,7 +181,23 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   heroGlyphWrap: {
-    flex: 1,
+    ...StyleSheet.absoluteFillObject,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // Square box so the source/target SharedElement aspect ratios match and
+  // the stretch renderer scales the glyph uniformly. Sized to match the
+  // 120pt glyph's natural footprint.
+  heroGlyphBox: {
+    width: 160,
+    height: 160,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  // The overlay re-renders SharedElement children without the wrapping
+  // box's flex layout, so we recentre the glyph inside its own bounds.
+  glyphCenter: {
+    ...StyleSheet.absoluteFillObject,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -179,6 +205,8 @@ const styles = StyleSheet.create({
     fontSize: 120,
     color: 'rgba(255,255,255,0.75)',
     fontWeight: '200',
+    textAlign: 'center',
+    includeFontPadding: false,
   },
   heroScrim: {
     position: 'absolute',
