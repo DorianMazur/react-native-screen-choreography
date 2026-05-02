@@ -4,8 +4,13 @@ Choreographed shared element transitions for React Native with multi-element coo
 
 > **Status:** pre-1.0. The public API is converging but minor versions can still introduce breaking changes. See [CHANGELOG.md](CHANGELOG.md).
 
+
 <p align="center">
-  <em>List row → expanding detail card with continuous icon motion, cross-fading text, backdrop dim, and staged content reveal, all driven by one transition session.</em>
+  <img src="docs/demo_1.gif" alt="Wallet portfolio: token row morphs into detail card" width="240" />
+  &nbsp;
+  <img src="docs/demo_2.gif" alt="Music library: track artwork expands into now-playing screen" width="240" />
+  &nbsp;
+  <img src="docs/demo_3.gif" alt="Photo gallery: tile morphs into full-bleed hero" width="240" />
 </p>
 
 ## Overview
