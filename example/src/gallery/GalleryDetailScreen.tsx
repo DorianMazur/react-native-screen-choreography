@@ -160,7 +160,6 @@ const styles = StyleSheet.create({
   frame: {
     width: SCREEN_WIDTH,
     height: SCREEN_WIDTH * 1.2,
-    backgroundColor: theme.surface,
     overflow: 'hidden',
   },
   frameInner: {

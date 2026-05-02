@@ -468,6 +468,18 @@ export class TransitionCoordinator {
     this.updateSession(null);
   }
 
+  /**
+   * Clears the hidden set without ending the session, so consumers can
+   * un-hide real elements one frame before the overlay tears down.
+   * Prevents a one-frame flash on Android Fabric where the overlay
+   * unmount can commit before the un-hide opacity does.
+   */
+  releaseHiddenElements(): void {
+    if (!this.activeSession) return;
+    if (this.hiddenElements.size === 0) return;
+    this.hiddenElements.clear();
+  }
+
   cancelTransition(): void {
     if (!this.activeSession) return;
 

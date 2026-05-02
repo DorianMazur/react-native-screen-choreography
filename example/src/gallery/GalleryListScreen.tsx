@@ -172,7 +172,6 @@ const styles = StyleSheet.create({
   tileFrame: {
     flex: 1,
     borderRadius: theme.radius.lg,
-    backgroundColor: theme.surface,
     overflow: 'hidden',
   },
   tileFrameInner: {
