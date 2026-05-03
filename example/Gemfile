@@ -14,3 +14,6 @@ gem 'bigdecimal'
 gem 'logger'
 gem 'benchmark'
 gem 'mutex_m'
+# Ruby 3.4 removed `kconv` from stdlib; CFPropertyList (used by cocoapods/xcodeproj)
+# still `require 'kconv'`. The `nkf` gem ships a Kconv shim.
+gem 'nkf'
