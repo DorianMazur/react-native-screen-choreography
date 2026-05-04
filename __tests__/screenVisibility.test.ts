@@ -85,7 +85,10 @@ describe('deriveScreenOpacity', () => {
 
   it('hides the future target during preparing phase', () => {
     expect(deriveScreenOpacity('forward', 'target', 'preparing', 0)).toBe(0);
-    expect(deriveScreenOpacity('backward', 'target', 'preparing', 1)).toBe(0);
+    // Backward direction: the target screen is already mounted underneath
+    // and must stay visible during the ~150ms session-prep window to avoid
+    // a black flash before the overlay activates.
+    expect(deriveScreenOpacity('backward', 'target', 'preparing', 1)).toBe(1);
   });
 
   it('does not touch the source during preparing phase', () => {

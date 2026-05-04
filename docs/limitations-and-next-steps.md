@@ -22,7 +22,7 @@ Other setups may work, but they are not the primary support target yet.
 | --- | --- | --- |
 | Runtime architecture | New Architecture only | Use Fabric-enabled React Native apps for now |
 | Navigator integration | Best with native-stack and disabled stack animation | Keep the navigator from competing with the overlay |
-| Gesture progress | Reverse transitions are time-driven, not gesture-driven | Treat swipe-back as a normal navigation event, not a shared progress source |
+| Gesture progress | Any back navigation (header back, hardware back, programmatic `goBack`, swipe-back) plays the reverse animation, but progress is time-driven — the user's finger does not yet drive `progress.value` | Treat swipe-back as a back-navigation trigger; the overlay still owns the visual transition. Finger-tracked progress is on the roadmap |
 | Startup latency | Forward transitions still depend on live target measurement | Prefer stable structural target elements and avoid unnecessary target churn |
 | Stand-in fidelity | Overlay stand-ins are React-rendered, not native snapshots | Keep shared content deterministic and avoid unstable ambient state |
 | Rapid interruptions | Fast push-pop-push handling is improved but still a hardening area | Keep regression coverage around rapid interruption paths |
@@ -43,7 +43,7 @@ Other setups may work, but they are not the primary support target yet.
 ### Highest leverage
 
 1. Add a snapshot or replica path for startup-critical elements such as the card container and icon (the in-tree `getSnapshot` freezes the React layer; native bitmap fidelity is still future work).
-2. Wire reverse progress to native-stack gesture progress.
+2. Wire reverse progress to the user's finger via native-stack gesture progress / RNScreens v2 `goBackGesture` events, so swipe-back becomes interactive instead of just a trigger for a time-driven reverse.
 3. Promote registry collisions from dev warnings to a compound `(id, screenId)` primary key so cross-screen `groupId` conflicts cannot misroute a transition.
 4. Add an ergonomic helper API (`createChoreography`, `morphSurface`, `move`, `crossfade`, `fadeIn`, `fadeOut`, `stagger`, `<Choreography.Group>`) on top of the current primitives.
 

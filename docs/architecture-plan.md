@@ -160,6 +160,15 @@ There are two main reverse paths today.
 - the detail route is popped
 - progress animates back over the visible source screen
 
+### Back-navigation interception
+
+Any back action on a screen that was entered through `useChoreographyNavigation.navigate()` plays the reverse animation, even if the app does not call `goBack()` through the hook. This is achieved by a `beforeRemove` listener installed inside `ChoreographyScreen`:
+
+- on every back attempt (header back, hardware back, programmatic `navigation.goBack()`, swipe-back), the listener inspects the current route's `_choreographyGroup` / `_choreographySourceScreen` params (set by the forward `navigate()`)
+- if those params are present and no session is already running, the listener calls `e.preventDefault()`, runs `runReverseTransition(...)`, and re-dispatches `e.data.action` once the choreography has handed off to the spring
+- if a session is already running (e.g. `useChoreographyNavigation.goBack()` initiated this back), the listener defers to the existing logic
+- `runReverseTransition` lives in `src/core/runReverseTransition.ts` and is shared by both the listener and the standalone-reverse path inside `useChoreographyNavigation.goBack`, so the two entry points produce identical behavior
+
 ## Visibility And Readiness Rules
 
 Three separate concepts control whether the user sees real screen content during a transition:

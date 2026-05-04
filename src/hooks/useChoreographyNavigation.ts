@@ -676,54 +676,8 @@ export function useChoreographyNavigation(navigation: any) {
           });
         }
       } else {
-        const routeState = navigation.getState?.()?.routes;
-        const params = routeState?.[routeState.length - 1]?.params as any;
-        const groupId = params?._choreographyGroup;
-        const sourceScreenId = params?._choreographySourceScreen;
-
-        if (groupId && sourceScreenId) {
-          const currentRoute = routeState?.[routeState.length - 1];
-          const targetScreenId = currentRoute?.name;
-
-          logNavigation(
-            () =>
-              `goBack create standalone reverse group=${groupId} source=${sourceScreenId} target=${targetScreenId ?? 'unknown'}`
-          );
-
-          await preMeasureGroup(groupId, targetScreenId);
-
-          const reverseSession = await startTransition({
-            groupId,
-            sourceScreenId: targetScreenId,
-            targetScreenId: sourceScreenId,
-            direction: 'backward',
-          });
-
-          if (!reverseSession) {
-            navigation.goBack();
-            return;
-          }
-
-          const springConfig = options?.spring ?? FAST_SPRING;
-          await waitForNextFrame();
-          navigation.goBack();
-          const animationToken = createProgressAnimationToken();
-          requestAnimationFrame(() => {
-            progress.value = withSpring(0, springConfig, (finished) => {
-              if (finished) {
-                progress.value = 0;
-                scheduleOnRN(
-                  finishSettledReverseTransition,
-                  animationToken,
-                  reverseSession.id
-                );
-              }
-            });
-          });
-        } else {
-          logNavigation('goBack plain navigation');
-          navigation.goBack();
-        }
+        logNavigation('goBack delegating to navigation.goBack()');
+        navigation.goBack();
       }
     },
     [
@@ -734,10 +688,8 @@ export function useChoreographyNavigation(navigation: any) {
       invalidateProgressAnimation,
       logNavigation,
       navigation,
-      preMeasureGroup,
       progress,
       refreshActiveSessionMetrics,
-      startTransition,
       waitForNextFrame,
     ]
   );

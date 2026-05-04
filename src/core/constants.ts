@@ -17,9 +17,9 @@ export const SNAPPY_SPRING: SpringConfig = {
 };
 
 export const FAST_SPRING: SpringConfig = {
-  damping: 30,
+  damping: 28,
   mass: 1,
-  stiffness: 320,
+  stiffness: 400,
   overshootClamping: true,
   restDisplacementThreshold: 0.001,
   restSpeedThreshold: 0.001,

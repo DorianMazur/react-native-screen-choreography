@@ -1,10 +1,12 @@
 import React, { useCallback, useContext, useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenIdContext } from '../core/screenIdContext';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
+  type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import {
   deriveScreenOpacity,
@@ -12,6 +14,7 @@ import {
   getSessionPhase,
   shouldBlockInteraction,
 } from '../core/screenVisibility';
+import { runReverseTransition } from '../core/runReverseTransition';
 
 interface ChoreographyScreenProps {
   screenId: string;
@@ -29,6 +32,14 @@ export function ChoreographyScreen({
   const actions = useContext(ChoreographyActionsContext);
   const readinessTokenRef = useRef(0);
 
+  const ctxRef = useRef<ChoreographyContextType | null>(choreography);
+  useEffect(() => {
+    ctxRef.current = choreography;
+  }, [choreography]);
+
+  const navigation = useNavigation<any>();
+  const route = useRoute();
+
   const session = choreography?.activeSession ?? null;
   const pendingTargetScreenId = choreography?.pendingTargetScreenId ?? null;
   const progress = choreography?.progress ?? null;
@@ -39,8 +50,17 @@ export function ChoreographyScreen({
   const direction = session?.direction ?? 'forward';
 
   const isPendingTarget = pendingTargetScreenId === screenId;
+  // For backward transitions the target screen is already mounted and
+  // visible underneath the source — hiding it during `preparing` would
+  // cause a black flash for the ~150ms before the session activates.
+  // Only hide forward targets (newly mounted screens that should remain
+  // invisible until the overlay swaps them in).
   const staticOpacity =
-    isPendingTarget || (role === 'target' && phase === 'preparing') ? 0 : 1;
+    isPendingTarget && direction === 'forward'
+      ? 0
+      : role === 'target' && phase === 'preparing' && direction === 'forward'
+        ? 0
+        : 1;
 
   const revealStyle = useAnimatedStyle(() => {
     const value = progress?.value ?? 0;
@@ -61,6 +81,57 @@ export function ChoreographyScreen({
       unregisterScreen?.(screenId);
     };
   }, [screenId, setScreenReady, unregisterScreen]);
+
+  const dispatchingSelfRef = useRef(false);
+  useEffect(() => {
+    if (!navigation?.addListener) {
+      return;
+    }
+
+    const unsubscribe = navigation.addListener('beforeRemove', (e: any) => {
+      if (dispatchingSelfRef.current) {
+        dispatchingSelfRef.current = false;
+        return;
+      }
+
+      const ctx = ctxRef.current;
+      if (!ctx) {
+        return;
+      }
+
+      if (ctx.activeSession) {
+        return;
+      }
+
+      const params = (route?.params ?? {}) as Record<string, unknown>;
+      const groupId = params._choreographyGroup as string | undefined;
+      const sourceScreenId = params._choreographySourceScreen as
+        | string
+        | undefined;
+
+      if (!groupId || !sourceScreenId) {
+        return;
+      }
+
+      e.preventDefault();
+
+      runReverseTransition({
+        ctx,
+        groupId,
+        sourceScreenId,
+        currentScreenId: screenId,
+        popAction: () => {
+          dispatchingSelfRef.current = true;
+          navigation.dispatch(e.data.action);
+        },
+      }).catch(() => {
+        // runReverseTransition swallows its own errors and always calls
+        // popAction; this catch is just to satisfy lint's no-floating-promises.
+      });
+    });
+
+    return unsubscribe;
+  }, [navigation, route, screenId]);
 
   const handleLayout = useCallback(() => {
     if (!setScreenReady) {

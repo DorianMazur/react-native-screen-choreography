@@ -84,7 +84,10 @@ export function deriveScreenOpacity(
     return 1;
   }
   if (phase === 'preparing') {
-    return role === 'target' ? 0 : 1;
+    if (role === 'target') {
+      return direction === 'backward' ? 1 : 0;
+    }
+    return 1;
   }
   const t = direction === 'forward' ? progressValue : 1 - progressValue;
   if (role === 'target') {

@@ -256,9 +256,10 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
   },
   backText: {
-    fontSize: 17,
     color: theme.textSecondary,
+    fontSize: 15,
     fontWeight: '500',
+    marginBottom: 12,
   },
   detailCard: {
     marginHorizontal: 16,
