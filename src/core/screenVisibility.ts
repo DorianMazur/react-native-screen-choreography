@@ -2,12 +2,6 @@ import type { TransitionSessionData } from '../types';
 
 export type ScreenRole = 'source' | 'target' | 'inactive';
 
-/**
- * - `idle`: no session, no pending target
- * - `preparing`: pending target set or session measuring; overlay not yet painted
- * - `active`: overlay owns the frame, progress animates
- * - `completing` / `cancelling`: session winding down
- */
 export type SessionPhase =
   | 'idle'
   | 'preparing'
@@ -59,15 +53,6 @@ export function getSessionPhase(
   return 'idle';
 }
 
-/**
- * Direction-agnostic screen opacity. Maps progress to
- * `t = forward ? progress : 1 - progress`, then:
- *
- * - target + preparing  → 0
- * - target + active     → 1 once t > 0.001
- * - source + active     → fade out over t ∈ [0, 0.4]
- * - everything else     → 1
- */
 export function deriveScreenOpacity(
   direction: TransitionDirection,
   role: ScreenRole,
@@ -98,7 +83,6 @@ export function deriveScreenOpacity(
   return 1 - t / 0.4;
 }
 
-/** Block pointer events on participating screens during preparing/active. */
 export function shouldBlockInteraction(
   role: ScreenRole,
   phase: SessionPhase

@@ -6,12 +6,6 @@ import type {
   TransitionSessionData,
 } from '../types';
 
-/**
- * Stable callbacks that never change after provider initialisation.
- * Consumers (SharedElement, ChoreographyScreen) subscribe to this narrow
- * context to avoid re-running lifecycle effects whenever transition state
- * changes.
- */
 export interface ChoreographyActionsType {
   registerElement: (element: RegisteredElement) => void;
   unregisterElement: (id: string, screenId: string) => void;

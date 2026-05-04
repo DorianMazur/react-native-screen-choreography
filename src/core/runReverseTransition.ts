@@ -9,16 +9,6 @@ function logSpringSettled(finished: boolean) {
   debugLog(`[BackIntercept] spring callback fired finished=${finished}`);
 }
 
-/**
- * Shared reverse-transition runner used by:
- *  - the back-navigation interceptor in {@link ChoreographyScreen}
- *  - the standalone-reverse path in `useChoreographyNavigation.goBack`
- *
- * Caller controls when the route is actually popped via {@link Args.popAction}
- * so this helper can be driven from either an explicit `goBack()` (where we
- * dispatch `navigation.goBack()` ourselves) or from a `beforeRemove` listener
- * (where we re-dispatch `e.data.action` after `preventDefault`).
- */
 export interface RunReverseTransitionArgs {
   ctx: ChoreographyContextType;
   /** Shared element group id (the `_choreographyGroup` route param). */

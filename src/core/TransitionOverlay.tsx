@@ -10,7 +10,6 @@ import type {
 interface TransitionOverlayProps {
   session: TransitionSessionData | null;
   progress: SharedValue<number>;
-  /** Called once the overlay has committed pairs for the given session. */
   onReady?: (sessionId: string) => void;
 }
 
@@ -32,7 +31,6 @@ export function TransitionOverlay({
     return null;
   }
 
-  // Sort pairs by z-index (containers first/back, then other elements on top)
   const sortedPairs = [...session.pairs].sort((a, b) => {
     const aZ = getPairZIndex(a);
     const bZ = getPairZIndex(b);

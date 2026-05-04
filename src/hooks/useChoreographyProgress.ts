@@ -178,9 +178,6 @@ export function useStaggeredReveal(
     totalRange - stagger * Math.max(0, itemCount - 1)
   );
 
-  /**
-   * Get animated style for a specific item index.
-   */
   function getItemStyle(index: number) {
     const itemStart = startProgress + stagger * index;
     const itemEnd = Math.min(itemStart + itemDuration, 1);
