@@ -105,12 +105,15 @@ The provider deliberately does **not** hide real elements when a session becomes
 - allows the same `id` to exist on multiple screens at once
 - emits dev warnings when the same `id` is registered on the same screen with conflicting `groupId`s, or across screens with conflicting `groupId`s
 - keeps the latest measured metrics for each element
+- exposes `subscribe(listener)` so the coordinator can await registration and metrics events instead of polling on a timer
 
 ### `TransitionCoordinator`
 
-- pre-measures source elements before navigation
-- waits for target elements to register and stabilize
+- pre-measures source elements before navigation and captures opt-in source bitmaps while the source is still visible
+- waits for target elements to register via registry subscription events (with a 500ms safety deadline) instead of a 16ms polling loop
+- validates cached target metrics from previous sessions with one batched measurement; only falls back to the multi-read stability loop when the cache is missing or stale
 - creates source/target element pairs and freezes a `sourceSnapshot` and `targetSnapshot` onto each pair before promoting the session to `active`
+- attaches native bitmaps (`sourceBitmap` / `targetBitmap`) to pairs whose elements use `snapshotMode: 'bitmap'`, and releases the underlying files when the session completes or cancels
 - can refresh source or target metrics for the active session in place
 - maintains the `hiddenElements` set; the provider mirrors it onto per-element shared values when the overlay paints
 - completes or cancels the active session through a single `state` transition (`measuring → active → completing | cancelling → cleared`)
@@ -118,8 +121,15 @@ The provider deliberately does **not** hide real elements when a session becomes
 ### `NativeTransitionHost`
 
 - lives above the native stack in `FullWindowOverlay`
-- reports when the host is presented and ready
+- reports when the host is presented and ready: iOS emits `onPresentationReady` from a `CATransaction` completion block after the mount commit, Android emits from the first `dispatchDraw` after activation (with a two-frame fallback)
 - gives the JS runtime a reliable handoff point before revealing the pushed screen
+
+### `ScreenChoreographySnapshot`
+
+- TurboModule that captures a PNG bitmap of a view subtree by react tag (`UIGraphicsImageRenderer` + `drawViewHierarchyInRect` on iOS, `view.draw(Canvas)` on Android)
+- subtree rendering deliberately ignores ancestor opacity, so hidden pending-target elements still produce faithful bitmaps
+- writes into a dedicated cache subdirectory; `releaseSnapshot(uri)` deletes files and refuses paths outside that directory
+- entirely opt-in via `SharedElement`'s `snapshotMode="bitmap"`; when the module is missing, capture degrades to `null` and renderers fall back to React stand-ins
 
 ### `TransitionOverlay`
 
@@ -179,14 +189,15 @@ Three separate concepts control whether the user sees real screen content during
 
 ## Measurement Model
 
-The current runtime still relies on live measurement.
+The runtime measures live views but avoids timing-based polling where it can.
 
 - source elements are measured before navigation
-- target elements are measured after mount
+- target registration is awaited through registry subscription events
+- target metrics from previous sessions are cached per `(screenId, id)` and validated with one batched read on repeated opens; mismatches fall back to the stability loop
 - startup waits are biased toward structural elements such as the container and icon
 - reused reverse paths can refresh active session metrics after the source screen becomes visible again
 
-This is still the largest startup cost in the current architecture.
+First-open structural measurement is still the largest startup cost in the current architecture.
 
 ## Progress And Companion Motion
 
@@ -239,9 +250,9 @@ The provider applies the resolved config inside a `useEffect` so toggling debug 
 
 ## Current Pressure Points
 
-- startup still depends on live target measurement
+- first-open startup still depends on live target measurement (repeated opens use the validated metrics cache)
 - interactive gesture progress is not wired yet
 - the registry is keyed by `id`; cross-screen `groupId` conflicts only produce dev warnings, not hard failures
-- no snapshot or replica path exists yet for startup-critical elements (the freeze in `getSnapshot` covers the React layer, not native bitmap fidelity)
+- bitmap snapshots are per-element opt-in; there is no automatic fidelity detection for complex content
 
 See [limitations-and-next-steps.md](limitations-and-next-steps.md) for the current support boundaries and roadmap.

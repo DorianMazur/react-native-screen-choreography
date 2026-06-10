@@ -231,3 +231,182 @@ describe('TransitionCoordinator snapshot freezing', () => {
     expect(coordinator.getHiddenElements().size).toBe(0);
   }, 5000);
 });
+
+describe('TransitionCoordinator readiness and metrics cache', () => {
+  let registry: ElementRegistry;
+  let progress: { value: number };
+  let coordinator: TransitionCoordinator;
+
+  beforeEach(() => {
+    registry = new ElementRegistry();
+    progress = { value: 0 };
+    coordinator = new TransitionCoordinator(registry, progress as any);
+  });
+
+  function countingRef(metrics: {
+    pageX: number;
+    pageY: number;
+    width: number;
+    height: number;
+  }) {
+    const state = { calls: 0, metrics };
+    const node = {
+      measureInWindow: (cb: Function) => {
+        state.calls += 1;
+        cb(
+          state.metrics.pageX,
+          state.metrics.pageY,
+          state.metrics.width,
+          state.metrics.height
+        );
+      },
+    };
+    return { ref: () => node, state };
+  }
+
+  test('pairs when the target registers after the transition starts', async () => {
+    const snap: { current: ElementSnapshot } = {
+      current: { content: null, transition },
+    };
+
+    registry.register(
+      makeElement(
+        {
+          screenId: 'list',
+          metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+        },
+        snap
+      )
+    );
+
+    const sessionPromise = coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+
+    // Target mounts late — the event-driven wait must pick it up without
+    // burning the full registration deadline.
+    setTimeout(() => {
+      registry.register(
+        makeElement(
+          {
+            screenId: 'detail',
+            ref: refWithMetrics({
+              pageX: 0,
+              pageY: 0,
+              width: 200,
+              height: 200,
+            }),
+          },
+          snap
+        )
+      );
+    }, 60);
+
+    const session = await sessionPromise;
+
+    expect(session).not.toBeNull();
+    expect(session!.pairs).toHaveLength(1);
+    expect(session!.pairs[0]!.targetMetrics).toEqual({
+      pageX: 0,
+      pageY: 0,
+      width: 200,
+      height: 200,
+    });
+  }, 5000);
+
+  test('repeated transitions validate cached target metrics with fewer reads', async () => {
+    const snap: { current: ElementSnapshot } = {
+      current: { content: null, transition },
+    };
+    const target = countingRef({ pageX: 0, pageY: 0, width: 200, height: 200 });
+
+    const registerBoth = () => {
+      registry.register(
+        makeElement(
+          {
+            screenId: 'list',
+            metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+          },
+          snap
+        )
+      );
+      registry.register(
+        makeElement({ screenId: 'detail', ref: target.ref }, snap)
+      );
+    };
+
+    registerBoth();
+    await coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+    coordinator.completeTransition();
+
+    const firstRunReads = target.state.calls;
+    target.state.calls = 0;
+
+    await coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+    coordinator.completeTransition();
+
+    // Hot path: one cache-validation read plus the pairing re-measure,
+    // instead of the multi-read stability loop.
+    expect(target.state.calls).toBeLessThan(firstRunReads);
+    expect(target.state.calls).toBeLessThanOrEqual(2);
+  }, 5000);
+
+  test('stale cached target metrics fall back to fresh measurement', async () => {
+    const snap: { current: ElementSnapshot } = {
+      current: { content: null, transition },
+    };
+    const target = countingRef({ pageX: 0, pageY: 0, width: 200, height: 200 });
+
+    registry.register(
+      makeElement(
+        {
+          screenId: 'list',
+          metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+        },
+        snap
+      )
+    );
+    registry.register(
+      makeElement({ screenId: 'detail', ref: target.ref }, snap)
+    );
+
+    await coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+    coordinator.completeTransition();
+
+    // Target layout changed since the cached session.
+    target.state.metrics = { pageX: 10, pageY: 30, width: 320, height: 240 };
+
+    const session = await coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+
+    expect(session).not.toBeNull();
+    expect(session!.pairs[0]!.targetMetrics).toEqual({
+      pageX: 10,
+      pageY: 30,
+      width: 320,
+      height: 240,
+    });
+  }, 5000);
+});

@@ -5,9 +5,11 @@ import type {
   ElementTransitionPair,
   TransitionState,
   RegisteredElement,
+  ElementBitmap,
 } from '../types';
 import type { ElementRegistry } from './ElementRegistry';
 import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
+import { captureElementBitmap, releaseElementBitmap } from './snapshotCapture';
 import { debugLog, debugTrace, debugWarn } from '../debug/logger';
 
 let sessionCounter = 0;
@@ -27,6 +29,21 @@ export class TransitionCoordinator {
   private onSessionChange: (session: TransitionSessionData | null) => void =
     () => {};
   private hiddenElements = new Set<string>();
+  /**
+   * Last known-good target metrics keyed by `${screenId}:${id}`. Lets
+   * repeated opens of the same target layout validate with one batched
+   * measurement instead of running the stable-measurement loop.
+   */
+  private targetMetricsCache = new Map<
+    string,
+    { pageX: number; pageY: number; width: number; height: number }
+  >();
+  /**
+   * Source bitmaps captured during `preMeasureGroup` (while the source is
+   * still mounted and visible), keyed by `${screenId}:${id}` and consumed
+   * when the session pairs are built.
+   */
+  private pendingSourceBitmaps = new Map<string, ElementBitmap>();
 
   constructor(registry: ElementRegistry, progress: SharedValue<number>) {
     this.registry = registry;
@@ -75,6 +92,31 @@ export class TransitionCoordinator {
         this.registry.updateMetrics(element.id, screenId, metrics);
       }
     }
+
+    // Capture source bitmaps for opt-in elements while they are still
+    // mounted and visible — native-stack may detach them after navigation.
+    await Promise.all(
+      elements.map(async (element) => {
+        if (element.getSnapshot().snapshotMode !== 'bitmap') {
+          return;
+        }
+
+        const key = `${screenId}:${element.id}`;
+        const previous = this.pendingSourceBitmaps.get(key);
+        if (previous) {
+          this.pendingSourceBitmaps.delete(key);
+          releaseElementBitmap(previous);
+        }
+
+        const bitmap = await captureElementBitmap(element.ref);
+        if (bitmap) {
+          this.pendingSourceBitmaps.set(key, bitmap);
+          debugTrace(
+            `[Coordinator] Captured source bitmap id="${element.id}" screen="${screenId}"`
+          );
+        }
+      })
+    );
 
     debugTrace(
       `[Coordinator] Pre-measure complete group="${groupId}" screen="${screenId}" duration=${elapsedMs(preMeasureStartedAt)}`
@@ -145,40 +187,69 @@ export class TransitionCoordinator {
     });
   }
 
-  private async waitForTargets(
+  private waitForTargets(
     elementIds: string[],
     targetScreenId: string,
     expectedIds?: string[]
   ): Promise<void> {
     const waitStartedAt = nowMs();
-    const deadline = Date.now() + 500;
     const requiredIds = expectedIds?.length ? expectedIds : elementIds;
+    const requireAll = Boolean(expectedIds?.length);
 
-    while (Date.now() < deadline) {
-      const readyIds = requiredIds.filter(
+    const countReady = () =>
+      requiredIds.filter(
         (id) => !!this.registry.getByIdAndScreen(id, targetScreenId)
+      ).length;
+
+    const isSatisfied = () => {
+      const readyCount = countReady();
+      if (readyCount > 0 && readyCount === requiredIds.length) {
+        return true;
+      }
+      return !requireAll && readyCount > 0;
+    };
+
+    if (isSatisfied()) {
+      debugTrace(
+        `[Coordinator] Target elements ready screen="${targetScreenId}" count=${countReady()}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
       );
-
-      if (readyIds.length > 0 && readyIds.length === requiredIds.length) {
-        debugTrace(
-          `[Coordinator] Target elements ready screen="${targetScreenId}" count=${readyIds.length}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
-        );
-        return;
-      }
-
-      if (!expectedIds?.length && readyIds.length > 0) {
-        debugTrace(
-          `[Coordinator] Partial target availability screen="${targetScreenId}" count=${readyIds.length}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
-        );
-        return;
-      }
-
-      await new Promise<void>((resolve) => setTimeout(resolve, 16));
+      return Promise.resolve();
     }
 
-    debugWarn(
-      `[Coordinator] Timed out waiting for target elements on screen "${targetScreenId}" duration=${elapsedMs(waitStartedAt)}`
-    );
+    // Event-driven: resolve as soon as the registry mutation that satisfies
+    // the predicate lands, instead of polling on a 16ms timer.
+    return new Promise<void>((resolve) => {
+      let settled = false;
+
+      const settle = (timedOut: boolean) => {
+        if (settled) {
+          return;
+        }
+        settled = true;
+        unsubscribe();
+        clearTimeout(timeoutId);
+
+        if (timedOut) {
+          debugWarn(
+            `[Coordinator] Timed out waiting for target elements on screen "${targetScreenId}" ready=${countReady()}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
+          );
+        } else {
+          debugTrace(
+            `[Coordinator] Target elements ready screen="${targetScreenId}" count=${countReady()}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
+          );
+        }
+
+        resolve();
+      };
+
+      const unsubscribe = this.registry.subscribe(() => {
+        if (isSatisfied()) {
+          settle(false);
+        }
+      });
+
+      const timeoutId = setTimeout(() => settle(true), 500);
+    });
   }
 
   private metricsAreClose(
@@ -195,6 +266,68 @@ export class TransitionCoordinator {
     );
   }
 
+  /**
+   * Hot path for repeated opens: when every candidate has a cached metric
+   * from a previous session on the same target screen, run one batched
+   * measurement and accept immediately if it matches the cache. Returns
+   * `true` when the cache validated and the stability loop can be skipped.
+   */
+  private async tryCachedTargetMeasurements(
+    targetScreenId: string,
+    candidateIds: string[]
+  ): Promise<boolean> {
+    if (candidateIds.length === 0) {
+      return false;
+    }
+
+    const validateStartedAt = nowMs();
+    const elements: NonNullable<
+      ReturnType<ElementRegistry['getByIdAndScreen']>
+    >[] = [];
+
+    for (const id of candidateIds) {
+      if (!this.targetMetricsCache.has(`${targetScreenId}:${id}`)) {
+        return false;
+      }
+
+      const element = this.registry.getByIdAndScreen(id, targetScreenId);
+      if (!element) {
+        return false;
+      }
+      elements.push(element);
+    }
+
+    const results = await measureElementsBatched(
+      elements.map((element) => ({
+        id: element.id,
+        ref: element.ref,
+        animatedRef: element.animatedRef,
+      }))
+    );
+
+    for (const id of candidateIds) {
+      const cached = this.targetMetricsCache.get(`${targetScreenId}:${id}`)!;
+      const measured = results.get(id);
+
+      if (!measured || !this.metricsAreClose(cached, measured)) {
+        debugTrace(
+          `[Coordinator] Cached target metrics stale screen="${targetScreenId}" id="${id}" duration=${elapsedMs(validateStartedAt)}`
+        );
+        return false;
+      }
+    }
+
+    for (const id of candidateIds) {
+      const measured = results.get(id)!;
+      this.registry.updateMetrics(id, targetScreenId, measured);
+    }
+
+    debugTrace(
+      `[Coordinator] Cached target metrics validated screen="${targetScreenId}" ids=${candidateIds.length} duration=${elapsedMs(validateStartedAt)}`
+    );
+    return true;
+  }
+
   private async waitForStableTargetMeasurements(
     targetScreenId: string,
     candidateIds: string[],
@@ -207,6 +340,11 @@ export class TransitionCoordinator {
     const requireExtendedStability = options?.extendedStability ?? false;
     const requiredStableReads =
       Platform.OS === 'android' && requireExtendedStability ? 4 : 2;
+
+    if (await this.tryCachedTargetMeasurements(targetScreenId, candidateIds)) {
+      return;
+    }
+
     let previousMeasurements = new Map<
       string,
       {
@@ -427,9 +565,13 @@ export class TransitionCoordinator {
       debugWarn(
         `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
       );
+      this.releasePendingSourceBitmaps(sourceScreenId, elementIds);
       this.updateSession(null);
       return null;
     }
+
+    await this.attachPairBitmaps(pairs, sourceScreenId);
+    this.releasePendingSourceBitmaps(sourceScreenId, elementIds);
 
     debugLog(
       `[Coordinator] Transition "${sessionId}" active pairs=${pairs.length}/${elementIds.length} pairing=${elapsedMs(pairingStartedAt)} totalPrep=${elapsedMs(transitionStartedAt)}`
@@ -438,6 +580,16 @@ export class TransitionCoordinator {
     for (const pair of pairs) {
       this.hiddenElements.add(`${pair.id}:${pair.source.screenId}`);
       this.hiddenElements.add(`${pair.id}:${pair.target.screenId}`);
+    }
+
+    if (this.targetMetricsCache.size > 200) {
+      this.targetMetricsCache.clear();
+    }
+    for (const pair of pairs) {
+      this.targetMetricsCache.set(
+        `${targetScreenId}:${pair.id}`,
+        pair.targetMetrics
+      );
     }
 
     this.progress.value = direction === 'forward' ? 0 : 1;
@@ -465,6 +617,7 @@ export class TransitionCoordinator {
 
     this.hiddenElements.clear();
 
+    this.releaseSessionBitmaps(this.activeSession);
     this.updateSession(null);
   }
 
@@ -479,7 +632,74 @@ export class TransitionCoordinator {
 
     this.progress.value = this.activeSession.direction === 'forward' ? 0 : 1;
 
+    this.releaseSessionBitmaps(this.activeSession);
     this.updateSession(null);
+  }
+
+  /** Attach native bitmaps to pairs whose snapshot mode requests them. */
+  private async attachPairBitmaps(
+    pairs: ElementTransitionPair[],
+    sourceScreenId: string
+  ): Promise<void> {
+    const wantsBitmaps = pairs.filter(
+      (pair) =>
+        pair.sourceSnapshot.snapshotMode === 'bitmap' ||
+        pair.targetSnapshot.snapshotMode === 'bitmap'
+    );
+
+    if (wantsBitmaps.length === 0) {
+      return;
+    }
+
+    const captureStartedAt = nowMs();
+
+    await Promise.all(
+      wantsBitmaps.map(async (pair) => {
+        const key = `${sourceScreenId}:${pair.id}`;
+        const pending = this.pendingSourceBitmaps.get(key);
+        if (pending) {
+          this.pendingSourceBitmaps.delete(key);
+          pair.sourceBitmap = pending;
+        } else {
+          pair.sourceBitmap =
+            (await captureElementBitmap(pair.source.ref)) ?? undefined;
+        }
+
+        pair.targetBitmap =
+          (await captureElementBitmap(pair.target.ref)) ?? undefined;
+      })
+    );
+
+    debugTrace(
+      `[Coordinator] Pair bitmaps attached count=${wantsBitmaps.length} duration=${elapsedMs(captureStartedAt)}`
+    );
+  }
+
+  private releasePendingSourceBitmaps(
+    screenId: string,
+    elementIds: string[]
+  ): void {
+    for (const id of elementIds) {
+      const key = `${screenId}:${id}`;
+      const bitmap = this.pendingSourceBitmaps.get(key);
+      if (bitmap) {
+        this.pendingSourceBitmaps.delete(key);
+        releaseElementBitmap(bitmap);
+      }
+    }
+  }
+
+  private releaseSessionBitmaps(session: TransitionSessionData | null): void {
+    if (!session) return;
+
+    for (const pair of session.pairs) {
+      if (pair.sourceBitmap) {
+        releaseElementBitmap(pair.sourceBitmap);
+      }
+      if (pair.targetBitmap) {
+        releaseElementBitmap(pair.targetBitmap);
+      }
+    }
   }
 
   private updateSession(session: TransitionSessionData | null) {

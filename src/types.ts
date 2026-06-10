@@ -18,11 +18,32 @@ export interface ElementMetrics {
   height: number;
 }
 
+/**
+ * Controls native bitmap snapshotting for a shared element.
+ * - `'none'` (default): the overlay renders React stand-ins only.
+ * - `'bitmap'`: the coordinator captures a native bitmap of the real view
+ *   at session start and exposes it to the transition renderer as
+ *   `source.bitmap` / `target.bitmap` for pixel-faithful stand-ins.
+ */
+export type SharedElementSnapshotMode = 'none' | 'bitmap';
+
+/** A captured native bitmap of a shared element's view subtree. */
+export interface ElementBitmap {
+  /** file:// URI of the captured PNG. */
+  uri: string;
+  /** Width in density-independent points. */
+  width: number;
+  /** Height in density-independent points. */
+  height: number;
+}
+
 export interface SharedElementTransitionSide {
   screenId: string;
   metrics: ElementMetrics;
   style?: ViewStyle;
   content?: ReactNode;
+  /** Native bitmap captured at session start when `snapshotMode: 'bitmap'`. */
+  bitmap?: ElementBitmap;
 }
 
 export interface SharedElementTransitionRendererProps {
@@ -50,6 +71,8 @@ export interface ElementSnapshot {
   content: ReactNode;
   style?: ViewStyle;
   transition: SharedElementTransition;
+  /** Native bitmap capture preference for this element. */
+  snapshotMode?: SharedElementSnapshotMode;
 }
 
 export interface RegisteredElement {
@@ -82,6 +105,10 @@ export interface ElementTransitionPair {
   sourceSnapshot: ElementSnapshot;
   /** Frozen target snapshot captured when the session became active. */
   targetSnapshot: ElementSnapshot;
+  /** Native bitmap of the source element when `snapshotMode: 'bitmap'`. */
+  sourceBitmap?: ElementBitmap;
+  /** Native bitmap of the target element when `snapshotMode: 'bitmap'`. */
+  targetBitmap?: ElementBitmap;
 }
 
 export interface TransitionSessionData {

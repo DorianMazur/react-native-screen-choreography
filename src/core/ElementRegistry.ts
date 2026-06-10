@@ -1,12 +1,33 @@
 import type { RegisteredElement, ElementMetrics } from '../types';
 import { debugLog, debugWarn } from '../debug/logger';
 
+export type RegistryListener = () => void;
+
 export class ElementRegistry {
   private elements = new Map<string, RegisteredElement[]>();
+  private listeners = new Set<RegistryListener>();
   private debug = false;
 
   setDebug(enabled: boolean) {
     this.debug = enabled;
+  }
+
+  /**
+   * Subscribe to registry mutations (register / unregister / metrics
+   * updates). Listeners are invoked synchronously after each mutation so
+   * waiters can re-check readiness predicates without polling.
+   */
+  subscribe(listener: RegistryListener): () => void {
+    this.listeners.add(listener);
+    return () => {
+      this.listeners.delete(listener);
+    };
+  }
+
+  private notifyListeners(): void {
+    for (const listener of [...this.listeners]) {
+      listener();
+    }
   }
 
   private key(id: string): string {
@@ -49,6 +70,8 @@ export class ElementRegistry {
         `[Registry] Registered "${element.id}" on screen "${element.screenId}" (group: ${element.groupId ?? 'none'})`
       );
     }
+
+    this.notifyListeners();
   }
 
   unregister(id: string, screenId: string): void {
@@ -66,6 +89,8 @@ export class ElementRegistry {
     if (this.debug) {
       debugLog(`[Registry] Unregistered "${id}" from screen "${screenId}"`);
     }
+
+    this.notifyListeners();
   }
 
   getById(id: string): RegisteredElement[] {
@@ -123,6 +148,7 @@ export class ElementRegistry {
 
     if (updated) {
       this.elements.set(key, next);
+      this.notifyListeners();
     }
   }
 
@@ -136,6 +162,7 @@ export class ElementRegistry {
 
   clear(): void {
     this.elements.clear();
+    this.notifyListeners();
   }
 
   getDebugSnapshot(): Array<{

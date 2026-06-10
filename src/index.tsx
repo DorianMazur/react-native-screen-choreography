@@ -34,7 +34,9 @@ export { setDebugEnabled } from './debug/logger';
 export type {
   SpringConfig,
   ElementMetrics,
+  ElementBitmap,
   ElementSnapshot,
+  SharedElementSnapshotMode,
   SharedElementTransition,
   SharedElementTransitionRenderer,
   SharedElementTransitionRendererProps,

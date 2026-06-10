@@ -66,8 +66,8 @@ Current important exports include:
 ## Current Feature Boundaries
 
 - interactive gesture progress is not wired yet
-- startup still depends on live target measurement for structural elements
-- the runtime does not yet use native snapshots or replicas for shared content (the in-tree `ElementSnapshot` freezes the React layer only)
+- startup still depends on live target measurement for structural elements on first open; repeated opens validate cached target metrics with a single batched read
+- shared content renders as React stand-ins by default; `SharedElement` accepts an opt-in `snapshotMode="bitmap"` that captures a native bitmap (TurboModule `ScreenChoreographySnapshot`) exposed to renderers as `source.bitmap` / `target.bitmap`
 - the registry is keyed by `id`; cross-screen `groupId` conflicts only emit dev warnings
 - rapid interruption paths are actively hardened and should be regression-tested after changes
 

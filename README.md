@@ -308,7 +308,7 @@ function TokenDetailScreen() {
 | --- | --- |
 | `ChoreographyProvider` | Hosts the registry, coordinator, overlay, and native transition host; accepts `debug`, `onTransitionStart`, and `onTransitionEnd` |
 | `ChoreographyScreen` | Provides a stable `screenId` for registration, readiness tracking, and progress-driven visibility orchestration — source screens fade out during forward transitions and destination screens are revealed from the first spring frame with only the shared elements individually hidden |
-| `SharedElement` | Registers one shared element by `id`, `groupId`, and `transition`; the transition renderer defines exactly how the overlay animates that pair |
+| `SharedElement` | Registers one shared element by `id`, `groupId`, and `transition`; the transition renderer defines exactly how the overlay animates that pair. Accepts `snapshotMode="bitmap"` to capture a pixel-faithful native bitmap of the real view at session start |
 
 `onTransitionStart(session)` fires when a session becomes active with resolved pairs. `onTransitionEnd(session)` fires after the active session completes or is cancelled, which makes them useful for instrumentation, analytics, or app-level UI coordination.
 
@@ -349,6 +349,7 @@ The renderer receives:
 
 - `progress` and `direction` for the active session
 - `source` and `target` objects with `screenId`, measured bounds, flattened style, and rendered content
+- `source.bitmap` / `target.bitmap` (`ElementBitmap` with a `file://` URI and point size) when the element opted into `snapshotMode="bitmap"` — render it with an `Image` inside a stand-in for pixel-faithful motion of complex content
 - `zIndex` so related transitions can layer predictably
 
 The library ships low-level building blocks such as `StandInContainer`, `StandInElement`, `StandInCrossfade`, and `resolveSurfaceStyle`, but it does not choose stock presets for you anymore. App code owns the visual recipe.
@@ -380,8 +381,8 @@ For app code, the cleanest pattern is:
 
 - The best-supported setup is still `@react-navigation/native-stack` with stack animation disabled.
 - Interactive gesture progress is not wired yet.
-- Transition startup still depends on live target measurement for structural elements.
-- Complex shared content is rendered as overlay stand-ins, not native bitmap snapshots.
+- Transition startup still depends on live target measurement for structural elements, though repeated opens of the same target layout reuse cached metrics after one validation read.
+- Overlay stand-ins are React-rendered by default; native bitmap snapshots are opt-in per element via `snapshotMode="bitmap"`.
 - The element registry is keyed by `id` (per-screen lookups by `(id, screenId)` work, but two screens cannot register the same `id` with different `groupId`s without a warning).
 
 See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for current constraints, workarounds, and roadmap priorities.

@@ -163,4 +163,48 @@ describe('ElementRegistry', () => {
       hasMetrics: false,
     });
   });
+
+  describe('subscribe', () => {
+    test('notifies on register, unregister, and metrics updates', () => {
+      const listener = jest.fn();
+      registry.subscribe(listener);
+
+      registry.register(createMockElement());
+      expect(listener).toHaveBeenCalledTimes(1);
+
+      registry.updateMetrics('test-element', 'screen-1', {
+        pageX: 1,
+        pageY: 2,
+        width: 3,
+        height: 4,
+      });
+      expect(listener).toHaveBeenCalledTimes(2);
+
+      registry.unregister('test-element', 'screen-1');
+      expect(listener).toHaveBeenCalledTimes(3);
+    });
+
+    test('does not notify for no-op metrics updates', () => {
+      const listener = jest.fn();
+      registry.subscribe(listener);
+
+      registry.updateMetrics('missing', 'screen-1', {
+        pageX: 1,
+        pageY: 2,
+        width: 3,
+        height: 4,
+      });
+      expect(listener).not.toHaveBeenCalled();
+    });
+
+    test('unsubscribe stops notifications', () => {
+      const listener = jest.fn();
+      const unsubscribe = registry.subscribe(listener);
+
+      unsubscribe();
+      registry.register(createMockElement());
+
+      expect(listener).not.toHaveBeenCalled();
+    });
+  });
 });

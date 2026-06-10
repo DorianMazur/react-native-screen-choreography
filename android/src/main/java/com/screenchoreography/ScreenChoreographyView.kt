@@ -15,6 +15,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private var active = false
   private var presentationRequestId = 0
   private var dismissalRequestId = 0
+  private var pendingPresentationAck = false
   private var dismissalBitmap: Bitmap? = null
   private val mainHandler = Handler(Looper.getMainLooper())
 
@@ -36,6 +37,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     active = value
     if (!value) {
       presentationRequestId += 1
+      pendingPresentationAck = false
       val w = width
       val h = height
       clearDismissalBitmap()
@@ -90,6 +92,18 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       return
     }
     super.dispatchDraw(canvas)
+
+    if (pendingPresentationAck && active) {
+      pendingPresentationAck = false
+      val requestId = presentationRequestId
+      // Post so the callback runs after this frame's draw traversal has
+      // fully completed, not in the middle of it.
+      mainHandler.post {
+        if (active && requestId == presentationRequestId && windowToken != null) {
+          onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble())
+        }
+      }
+    }
   }
 
   override fun onAttachedToWindow() {
@@ -119,12 +133,18 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     }
 
     val requestId = ++presentationRequestId
-    post {
-      if (!active || requestId != presentationRequestId || windowToken == null) {
-        return@post
-      }
+    // Deterministic path: ack from the first dispatchDraw after activation,
+    // so the JS handshake observes a frame that actually painted the overlay.
+    pendingPresentationAck = true
+    invalidate()
 
-      onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble())
-    }
+    // Fallback for the rare case where no draw pass runs (e.g. an already
+    // valid hardware layer): two frames is enough for any pending commit.
+    mainHandler.postDelayed({
+      if (active && requestId == presentationRequestId && pendingPresentationAck && windowToken != null) {
+        pendingPresentationAck = false
+        onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble())
+      }
+    }, 32)
   }
 }

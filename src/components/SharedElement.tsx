@@ -10,7 +10,11 @@ import Animated, {
   useAnimatedRef,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import type { ElementSnapshot, SharedElementTransition } from '../types';
+import type {
+  ElementSnapshot,
+  SharedElementSnapshotMode,
+  SharedElementTransition,
+} from '../types';
 import { ChoreographyActionsContext } from '../core/ChoreographyContext';
 import { useScreenId } from '../core/screenIdContext';
 
@@ -21,6 +25,13 @@ export interface SharedElementProps {
   groupId?: string;
   /** Explicit transition renderer for this shared element pair. */
   transition: SharedElementTransition;
+  /**
+   * Opt into native bitmap capture for this element. When `'bitmap'`, the
+   * coordinator captures a pixel-faithful snapshot of the real view at
+   * session start and exposes it to the transition renderer as
+   * `source.bitmap` / `target.bitmap`. Defaults to `'none'`.
+   */
+  snapshotMode?: SharedElementSnapshotMode;
   /** Children to wrap. */
   children: React.ReactNode;
   /** Additional style for the wrapper. */
@@ -37,6 +48,7 @@ export function SharedElement({
   id,
   groupId,
   transition,
+  snapshotMode,
   children,
   style,
 }: SharedElementProps) {
@@ -64,12 +76,17 @@ export function SharedElement({
   transitionRef.current = transition;
   const styleRef = useRef<ViewStyle | undefined>(flattenedStyle);
   styleRef.current = flattenedStyle;
+  const snapshotModeRef = useRef<SharedElementSnapshotMode | undefined>(
+    snapshotMode
+  );
+  snapshotModeRef.current = snapshotMode;
 
   const getSnapshot = useCallback<() => ElementSnapshot>(
     () => ({
       content: childrenRef.current,
       style: styleRef.current,
       transition: transitionRef.current,
+      snapshotMode: snapshotModeRef.current,
     }),
     []
   );

@@ -138,7 +138,12 @@ using namespace facebook::react;
 
   NSInteger requestId = ++_presentationRequestId;
   __weak __typeof(self) weakSelf = self;
-  dispatch_async(dispatch_get_main_queue(), ^{
+  // Emit from a CATransaction completion block so the ack fires after the
+  // current transaction (including this Fabric mount pass) has been
+  // committed to the render server, instead of an arbitrary main-queue hop
+  // that can run before the overlay content is actually presentable.
+  [CATransaction begin];
+  [CATransaction setCompletionBlock:^{
     __strong __typeof(weakSelf) strongSelf = weakSelf;
     if (strongSelf == nil || !strongSelf->_active || strongSelf.window == nil ||
       strongSelf->_eventEmitter == nil || requestId != strongSelf->_presentationRequestId) {
@@ -151,7 +156,8 @@ using namespace facebook::react;
       ScreenChoreographyViewEventEmitter::OnPresentationReady{
         .timestamp = CACurrentMediaTime() * 1000.0,
       });
-  });
+  }];
+  [CATransaction commit];
 }
 
 @end
