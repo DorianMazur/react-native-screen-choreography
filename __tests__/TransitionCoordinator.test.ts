@@ -1,7 +1,7 @@
 import { TransitionCoordinator } from '../src/core/TransitionCoordinator';
 import { ElementRegistry } from '../src/core/ElementRegistry';
 import type {
-  ElementSnapshot,
+  ElementPresentation,
   RegisteredElement,
   SharedElementTransition,
   TransitionSessionData,
@@ -25,7 +25,7 @@ function refWithMetrics(metrics: {
 
 function makeElement(
   overrides: Partial<RegisteredElement>,
-  snapshotState: { current: ElementSnapshot }
+  presentationState: { current: ElementPresentation }
 ): RegisteredElement {
   return {
     id: 'card',
@@ -33,12 +33,12 @@ function makeElement(
     screenId: 'list',
     ref: refWithMetrics({ pageX: 0, pageY: 0, width: 50, height: 50 }),
     metrics: null,
-    getSnapshot: () => snapshotState.current,
+    getPresentation: () => presentationState.current,
     ...overrides,
   };
 }
 
-describe('TransitionCoordinator snapshot freezing', () => {
+describe('TransitionCoordinator presentation freezing', () => {
   let registry: ElementRegistry;
   let progress: { value: number };
   let coordinator: TransitionCoordinator;
@@ -49,15 +49,15 @@ describe('TransitionCoordinator snapshot freezing', () => {
     coordinator = new TransitionCoordinator(registry, progress as any);
   });
 
-  test('captures source/target snapshots once at session start', async () => {
-    const sourceSnap: { current: ElementSnapshot } = {
+  test('captures source/target presentations once at session start', async () => {
+    const sourcePresentation: { current: ElementPresentation } = {
       current: {
         content: 'source-v1',
         style: { backgroundColor: 'red' },
         transition,
       },
     };
-    const targetSnap: { current: ElementSnapshot } = {
+    const targetPresentation: { current: ElementPresentation } = {
       current: {
         content: 'target-v1',
         style: { backgroundColor: 'blue' },
@@ -79,7 +79,7 @@ describe('TransitionCoordinator snapshot freezing', () => {
           }),
           metrics: { pageX: 10, pageY: 20, width: 100, height: 50 },
         },
-        sourceSnap
+        sourcePresentation
       )
     );
     registry.register(
@@ -96,7 +96,7 @@ describe('TransitionCoordinator snapshot freezing', () => {
           }),
           metrics: { pageX: 0, pageY: 0, width: 320, height: 200 },
         },
-        targetSnap
+        targetPresentation
       )
     );
 
@@ -120,33 +120,33 @@ describe('TransitionCoordinator snapshot freezing', () => {
     expect(active.pairs).toHaveLength(1);
     const pair = active.pairs[0]!;
 
-    // Frozen snapshots are stored on the pair.
-    expect(pair.sourceSnapshot.content).toBe('source-v1');
-    expect(pair.targetSnapshot.content).toBe('target-v1');
-    expect(pair.sourceSnapshot.style?.backgroundColor).toBe('red');
-    expect(pair.targetSnapshot.style?.backgroundColor).toBe('blue');
+    // Frozen presentations are stored on the pair.
+    expect(pair.sourcePresentation.content).toBe('source-v1');
+    expect(pair.targetPresentation.content).toBe('target-v1');
+    expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
+    expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
 
     // Mutating the underlying SharedElement state AFTER the session started
     // must NOT affect what the overlay renders — the snapshot is frozen.
-    sourceSnap.current = {
+    sourcePresentation.current = {
       content: 'source-v2',
       style: { backgroundColor: 'green' },
       transition,
     };
-    targetSnap.current = {
+    targetPresentation.current = {
       content: 'target-v2',
       style: { backgroundColor: 'yellow' },
       transition,
     };
 
-    expect(pair.sourceSnapshot.content).toBe('source-v1');
-    expect(pair.targetSnapshot.content).toBe('target-v1');
-    expect(pair.sourceSnapshot.style?.backgroundColor).toBe('red');
-    expect(pair.targetSnapshot.style?.backgroundColor).toBe('blue');
+    expect(pair.sourcePresentation.content).toBe('source-v1');
+    expect(pair.targetPresentation.content).toBe('target-v1');
+    expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
+    expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
   }, 5000);
 
   test('hidden elements are released after completeTransition', async () => {
-    const snap: { current: ElementSnapshot } = {
+    const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
 
@@ -189,7 +189,7 @@ describe('TransitionCoordinator snapshot freezing', () => {
   }, 5000);
 
   test('cancelTransition also releases hidden elements', async () => {
-    const snap: { current: ElementSnapshot } = {
+    const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
 
@@ -265,7 +265,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
   }
 
   test('pairs when the target registers after the transition starts', async () => {
-    const snap: { current: ElementSnapshot } = {
+    const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
 
@@ -318,7 +318,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
   }, 5000);
 
   test('discovers pair ids only from the source screen group', async () => {
-    const snap: { current: ElementSnapshot } = {
+    const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
 
@@ -364,7 +364,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
   }, 5000);
 
   test('repeated transitions validate cached target metrics with fewer reads', async () => {
-    const snap: { current: ElementSnapshot } = {
+    const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
     const target = countingRef({ pageX: 0, pageY: 0, width: 200, height: 200 });
@@ -411,7 +411,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
   }, 5000);
 
   test('stale cached target metrics fall back to fresh measurement', async () => {
-    const snap: { current: ElementSnapshot } = {
+    const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
     const target = countingRef({ pageX: 0, pageY: 0, width: 200, height: 200 });

@@ -14,7 +14,8 @@ using namespace facebook::react;
 
 @implementation ScreenChoreographyView {
   UIView * _hostView;
-  UIView * _dismissalSnapshot;
+  // Host-only teardown frame; this never captures or reaches a shared element.
+  UIView * _dismissalFrame;
   BOOL _active;
   NSInteger _presentationRequestId;
   NSInteger _dismissalRequestId;
@@ -64,8 +65,8 @@ using namespace facebook::react;
   _active = NO;
   _presentationRequestId = 0;
   _dismissalRequestId = 0;
-  [_dismissalSnapshot removeFromSuperview];
-  _dismissalSnapshot = nil;
+  [_dismissalFrame removeFromSuperview];
+  _dismissalFrame = nil;
   _hostView.hidden = YES;
   self.alpha = 0.0;
 }
@@ -82,8 +83,8 @@ using namespace facebook::react;
 
     if (_active) {
       _dismissalRequestId += 1;
-      [_dismissalSnapshot removeFromSuperview];
-      _dismissalSnapshot = nil;
+      [_dismissalFrame removeFromSuperview];
+      _dismissalFrame = nil;
       _hostView.hidden = NO;
       self.alpha = 1.0;
       [self schedulePresentationReady];
@@ -94,14 +95,14 @@ using namespace facebook::react;
         snapshot = [_hostView snapshotViewAfterScreenUpdates:NO];
       }
 
-      [_dismissalSnapshot removeFromSuperview];
-      _dismissalSnapshot = nil;
+      [_dismissalFrame removeFromSuperview];
+      _dismissalFrame = nil;
 
       if (snapshot != nil) {
         snapshot.frame = _hostView.frame;
         snapshot.userInteractionEnabled = NO;
         [self addSubview:snapshot];
-        _dismissalSnapshot = snapshot;
+        _dismissalFrame = snapshot;
         self.alpha = 1.0;
         _hostView.hidden = YES;
 
@@ -116,8 +117,8 @@ using namespace facebook::react;
                 dismissalId != strongSelf->_dismissalRequestId) {
               return;
             }
-            [strongSelf->_dismissalSnapshot removeFromSuperview];
-            strongSelf->_dismissalSnapshot = nil;
+            [strongSelf->_dismissalFrame removeFromSuperview];
+            strongSelf->_dismissalFrame = nil;
             strongSelf.alpha = 0.0;
           });
         });

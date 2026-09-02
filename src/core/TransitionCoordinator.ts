@@ -5,11 +5,9 @@ import type {
   ElementTransitionPair,
   TransitionState,
   RegisteredElement,
-  ElementBitmap,
 } from '../types';
 import type { ElementRegistry } from './ElementRegistry';
 import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
-import { captureElementBitmap, releaseElementBitmap } from './snapshotCapture';
 import { debugLog, debugTrace, debugWarn } from '../debug/logger';
 import { getElementIdentityKey } from './elementIdentity';
 
@@ -39,13 +37,6 @@ export class TransitionCoordinator {
     string,
     { pageX: number; pageY: number; width: number; height: number }
   >();
-  /**
-   * Source bitmaps captured during `preMeasureGroup` (while the source is
-   * still mounted and visible), keyed by `${screenId}:${id}` and consumed
-   * when the session pairs are built.
-   */
-  private pendingSourceBitmaps = new Map<string, ElementBitmap>();
-
   constructor(registry: ElementRegistry, progress: SharedValue<number>) {
     this.registry = registry;
     this.progress = progress;
@@ -97,31 +88,6 @@ export class TransitionCoordinator {
         this.registry.updateMetrics(element.id, screenId, metrics, groupId);
       }
     }
-
-    // Capture source bitmaps for opt-in elements while they are still
-    // mounted and visible — native-stack may detach them after navigation.
-    await Promise.all(
-      elements.map(async (element) => {
-        if (element.getSnapshot().snapshotMode !== 'bitmap') {
-          return;
-        }
-
-        const key = this.elementKey(screenId, groupId, element.id);
-        const previous = this.pendingSourceBitmaps.get(key);
-        if (previous) {
-          this.pendingSourceBitmaps.delete(key);
-          releaseElementBitmap(previous);
-        }
-
-        const bitmap = await captureElementBitmap(element.ref);
-        if (bitmap) {
-          this.pendingSourceBitmaps.set(key, bitmap);
-          debugTrace(
-            `[Coordinator] Captured source bitmap id="${element.id}" screen="${screenId}"`
-          );
-        }
-      })
-    );
 
     debugTrace(
       `[Coordinator] Pre-measure complete group="${groupId}" screen="${screenId}" duration=${elapsedMs(preMeasureStartedAt)}`
@@ -580,9 +546,10 @@ export class TransitionCoordinator {
     const pairs: ElementTransitionPair[] = [];
 
     for (const { id, source, target } of pairingCandidates) {
-      const sourceSnapshot = source.getSnapshot();
-      const targetSnapshot = target.getSnapshot();
-      const transition = sourceSnapshot.transition ?? targetSnapshot.transition;
+      const sourcePresentation = source.getPresentation();
+      const targetPresentation = target.getPresentation();
+      const transition =
+        sourcePresentation.transition ?? targetPresentation.transition;
       const sourceMetrics = batchResults.get(`source:${id}`) ?? source.metrics;
       const targetMetrics = batchResults.get(`target:${id}`) ?? target.metrics;
 
@@ -603,8 +570,8 @@ export class TransitionCoordinator {
         sourceMetrics,
         targetMetrics,
         transition,
-        sourceSnapshot,
-        targetSnapshot,
+        sourcePresentation,
+        targetPresentation,
       });
     }
 
@@ -612,13 +579,9 @@ export class TransitionCoordinator {
       debugWarn(
         `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
       );
-      this.releasePendingSourceBitmaps(sourceScreenId, groupId, elementIds);
       this.updateSession(null);
       return null;
     }
-
-    await this.attachPairBitmaps(pairs, sourceScreenId, groupId);
-    this.releasePendingSourceBitmaps(sourceScreenId, groupId, elementIds);
 
     debugLog(
       `[Coordinator] Transition "${sessionId}" active pairs=${pairs.length}/${elementIds.length} pairing=${elapsedMs(pairingStartedAt)} totalPrep=${elapsedMs(transitionStartedAt)}`
@@ -676,7 +639,6 @@ export class TransitionCoordinator {
 
     this.hiddenElements.clear();
 
-    this.releaseSessionBitmaps(this.activeSession);
     this.updateSession(null);
   }
 
@@ -691,76 +653,7 @@ export class TransitionCoordinator {
 
     this.progress.value = this.activeSession.direction === 'forward' ? 0 : 1;
 
-    this.releaseSessionBitmaps(this.activeSession);
     this.updateSession(null);
-  }
-
-  /** Attach native bitmaps to pairs whose snapshot mode requests them. */
-  private async attachPairBitmaps(
-    pairs: ElementTransitionPair[],
-    sourceScreenId: string,
-    groupId: string
-  ): Promise<void> {
-    const wantsBitmaps = pairs.filter(
-      (pair) =>
-        pair.sourceSnapshot.snapshotMode === 'bitmap' ||
-        pair.targetSnapshot.snapshotMode === 'bitmap'
-    );
-
-    if (wantsBitmaps.length === 0) {
-      return;
-    }
-
-    const captureStartedAt = nowMs();
-
-    await Promise.all(
-      wantsBitmaps.map(async (pair) => {
-        const key = this.elementKey(sourceScreenId, groupId, pair.id);
-        const pending = this.pendingSourceBitmaps.get(key);
-        if (pending) {
-          this.pendingSourceBitmaps.delete(key);
-          pair.sourceBitmap = pending;
-        } else {
-          pair.sourceBitmap =
-            (await captureElementBitmap(pair.source.ref)) ?? undefined;
-        }
-
-        pair.targetBitmap =
-          (await captureElementBitmap(pair.target.ref)) ?? undefined;
-      })
-    );
-
-    debugTrace(
-      `[Coordinator] Pair bitmaps attached count=${wantsBitmaps.length} duration=${elapsedMs(captureStartedAt)}`
-    );
-  }
-
-  private releasePendingSourceBitmaps(
-    screenId: string,
-    groupId: string,
-    elementIds: string[]
-  ): void {
-    for (const id of elementIds) {
-      const key = this.elementKey(screenId, groupId, id);
-      const bitmap = this.pendingSourceBitmaps.get(key);
-      if (bitmap) {
-        this.pendingSourceBitmaps.delete(key);
-        releaseElementBitmap(bitmap);
-      }
-    }
-  }
-
-  private releaseSessionBitmaps(session: TransitionSessionData | null): void {
-    if (!session) return;
-
-    for (const pair of session.pairs) {
-      if (pair.sourceBitmap) {
-        releaseElementBitmap(pair.sourceBitmap);
-      }
-      if (pair.targetBitmap) {
-        releaseElementBitmap(pair.targetBitmap);
-      }
-    }
   }
 
   private updateSession(session: TransitionSessionData | null) {

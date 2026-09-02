@@ -71,16 +71,14 @@ function StandInRenderer({ pair, progress, direction }: StandInRendererProps) {
     source: {
       screenId: pair.source.screenId,
       metrics: pair.sourceMetrics,
-      style: pair.sourceSnapshot.style,
-      content: pair.sourceSnapshot.content,
-      bitmap: pair.sourceBitmap,
+      style: pair.sourcePresentation.style,
+      content: pair.sourcePresentation.content,
     },
     target: {
       screenId: pair.target.screenId,
       metrics: pair.targetMetrics,
-      style: pair.targetSnapshot.style,
-      content: pair.targetSnapshot.content,
-      bitmap: pair.targetBitmap,
+      style: pair.targetPresentation.style,
+      content: pair.targetPresentation.content,
     },
   };
 

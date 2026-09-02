@@ -18,32 +18,11 @@ export interface ElementMetrics {
   height: number;
 }
 
-/**
- * Controls native bitmap snapshotting for a shared element.
- * - `'none'` (default): the overlay renders React stand-ins only.
- * - `'bitmap'`: the coordinator captures a native bitmap of the real view
- *   at session start and exposes it to the transition renderer as
- *   `source.bitmap` / `target.bitmap` for pixel-faithful stand-ins.
- */
-export type SharedElementSnapshotMode = 'none' | 'bitmap';
-
-/** A captured native bitmap of a shared element's view subtree. */
-export interface ElementBitmap {
-  /** file:// URI of the captured PNG. */
-  uri: string;
-  /** Width in density-independent points. */
-  width: number;
-  /** Height in density-independent points. */
-  height: number;
-}
-
 export interface SharedElementTransitionSide {
   screenId: string;
   metrics: ElementMetrics;
   style?: ViewStyle;
   content?: ReactNode;
-  /** Native bitmap captured at session start when `snapshotMode: 'bitmap'`. */
-  bitmap?: ElementBitmap;
 }
 
 export interface SharedElementTransitionRendererProps {
@@ -65,14 +44,11 @@ export interface SharedElementTransition {
 
 export type NodeHandleRef = React.RefObject<any> | (() => any);
 
-/** Frozen visual snapshot captured at session start; the overlay reads
- * exclusively from this so re-renders cannot affect an in-flight stand-in. */
-export interface ElementSnapshot {
+/** Frozen renderer input captured at session start. */
+export interface ElementPresentation {
   content: ReactNode;
   style?: ViewStyle;
   transition: SharedElementTransition;
-  /** Native bitmap capture preference for this element. */
-  snapshotMode?: SharedElementSnapshotMode;
 }
 
 export interface RegisteredElement {
@@ -82,8 +58,8 @@ export interface RegisteredElement {
   ref: NodeHandleRef;
   animatedRef?: AnimatedRef<any>;
   metrics: ElementMetrics | null;
-  /** Captures content/style/transition once at session start. */
-  getSnapshot: () => ElementSnapshot;
+  /** Captures content, style, and transition once at session start. */
+  getPresentation: () => ElementPresentation;
 }
 
 export type TransitionState =
@@ -101,14 +77,10 @@ export interface ElementTransitionPair {
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
   transition: SharedElementTransition;
-  /** Frozen source snapshot captured when the session became active. */
-  sourceSnapshot: ElementSnapshot;
-  /** Frozen target snapshot captured when the session became active. */
-  targetSnapshot: ElementSnapshot;
-  /** Native bitmap of the source element when `snapshotMode: 'bitmap'`. */
-  sourceBitmap?: ElementBitmap;
-  /** Native bitmap of the target element when `snapshotMode: 'bitmap'`. */
-  targetBitmap?: ElementBitmap;
+  /** Frozen source renderer input captured when the session became active. */
+  sourcePresentation: ElementPresentation;
+  /** Frozen target renderer input captured when the session became active. */
+  targetPresentation: ElementPresentation;
 }
 
 export interface TransitionSessionData {

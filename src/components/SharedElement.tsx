@@ -10,11 +10,7 @@ import Animated, {
   useAnimatedRef,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import type {
-  ElementSnapshot,
-  SharedElementSnapshotMode,
-  SharedElementTransition,
-} from '../types';
+import type { ElementPresentation, SharedElementTransition } from '../types';
 import { ChoreographyActionsContext } from '../core/ChoreographyContext';
 import { useScreenId } from '../core/screenIdContext';
 
@@ -25,13 +21,6 @@ export interface SharedElementProps {
   groupId?: string;
   /** Renderer defining exactly how this shared pair animates. */
   transition: SharedElementTransition;
-  /**
-   * Opt into native bitmap capture for this element. When `'bitmap'`, the
-   * coordinator captures a pixel-faithful snapshot of the real view at
-   * session start and exposes it to the transition renderer as
-   * `source.bitmap` / `target.bitmap`. Defaults to `'none'`.
-   */
-  snapshotMode?: SharedElementSnapshotMode;
   /** Children to wrap. */
   children: React.ReactNode;
   /** Additional style for the wrapper. */
@@ -41,14 +30,13 @@ export interface SharedElementProps {
 /**
  * Wraps content participating in a shared transition. Registration is
  * stable per `(id, groupId, screenId)`; the coordinator captures a frozen
- * `ElementSnapshot` via `getSnapshot()` at session start, so re-renders or
+ * `ElementPresentation` via `getPresentation()` at session start, so re-renders or
  * prop changes never affect an in-flight overlay.
  */
 export function SharedElement({
   id,
   groupId,
   transition,
-  snapshotMode,
   children,
   style,
 }: SharedElementProps) {
@@ -67,7 +55,7 @@ export function SharedElement({
     () => (style ? (StyleSheet.flatten(style) as ViewStyle) : undefined),
     [style]
   );
-  // Latest-value refs mutated during render so getSnapshot() always
+  // Latest-value refs mutated during render so getPresentation() always
   // reflects current props without forcing re-registration.
   const childrenRef = useRef<React.ReactNode>(children);
   childrenRef.current = children;
@@ -75,17 +63,11 @@ export function SharedElement({
   transitionRef.current = transition;
   const styleRef = useRef<ViewStyle | undefined>(flattenedStyle);
   styleRef.current = flattenedStyle;
-  const snapshotModeRef = useRef<SharedElementSnapshotMode | undefined>(
-    snapshotMode
-  );
-  snapshotModeRef.current = snapshotMode;
-
-  const getSnapshot = useCallback<() => ElementSnapshot>(
+  const getPresentation = useCallback<() => ElementPresentation>(
     () => ({
       content: childrenRef.current,
       style: styleRef.current,
       transition: transitionRef.current,
-      snapshotMode: snapshotModeRef.current,
     }),
     []
   );
@@ -108,7 +90,7 @@ export function SharedElement({
       ref: getNode,
       animatedRef,
       metrics: null,
-      getSnapshot,
+      getPresentation,
     });
 
     return () => {
@@ -120,7 +102,7 @@ export function SharedElement({
     screenId,
     getNode,
     animatedRef,
-    getSnapshot,
+    getPresentation,
     registerElement,
     unregisterElement,
   ]);

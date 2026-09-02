@@ -16,7 +16,8 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private var presentationRequestId = 0
   private var dismissalRequestId = 0
   private var pendingPresentationAck = false
-  private var dismissalBitmap: Bitmap? = null
+  // Host-only teardown frame; this never captures or reaches a shared element.
+  private var dismissalFrame: Bitmap? = null
   private val mainHandler = Handler(Looper.getMainLooper())
 
   init {
@@ -40,14 +41,14 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       pendingPresentationAck = false
       val w = width
       val h = height
-      clearDismissalBitmap()
+      clearDismissalFrame()
 
       if (w > 0 && h > 0) {
         try {
           val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
           val canvas = Canvas(bmp)
           super.dispatchDraw(canvas)
-          dismissalBitmap = bmp
+          dismissalFrame = bmp
           alpha = 1f
           visibility = View.VISIBLE
           invalidate()
@@ -59,7 +60,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
               if (active || dismissalId != dismissalRequestId) {
                 return@post
               }
-              clearDismissalBitmap()
+              clearDismissalFrame()
               alpha = 0f
               visibility = View.INVISIBLE
               invalidate()
@@ -78,7 +79,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     }
 
     dismissalRequestId += 1
-    clearDismissalBitmap()
+    clearDismissalFrame()
     alpha = 1f
     visibility = View.VISIBLE
     invalidate()
@@ -86,7 +87,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   override fun dispatchDraw(canvas: Canvas) {
-    val bmp = dismissalBitmap
+    val bmp = dismissalFrame
     if (bmp != null && !bmp.isRecycled) {
       canvas.drawBitmap(bmp, 0f, 0f, null)
       return
@@ -115,13 +116,13 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
-    clearDismissalBitmap()
+    clearDismissalFrame()
     mainHandler.removeCallbacksAndMessages(null)
   }
 
-  private fun clearDismissalBitmap() {
-    val bmp = dismissalBitmap ?: return
-    dismissalBitmap = null
+  private fun clearDismissalFrame() {
+    val bmp = dismissalFrame ?: return
+    dismissalFrame = null
     if (!bmp.isRecycled) {
       bmp.recycle()
     }

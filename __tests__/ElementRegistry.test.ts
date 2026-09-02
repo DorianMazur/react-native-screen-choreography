@@ -10,7 +10,7 @@ function createMockElement(
     screenId: 'screen-1',
     ref: () => null,
     metrics: null,
-    getSnapshot: () => ({
+    getPresentation: () => ({
       content: null,
       transition: { renderer: () => null },
     }),

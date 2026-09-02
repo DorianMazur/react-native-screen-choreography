@@ -6,12 +6,12 @@ import {
   getDebugLogs,
   clearDebugLogs,
 } from '../src/debug/logger';
-import type { ElementSnapshot, RegisteredElement } from '../src/types';
+import type { ElementPresentation, RegisteredElement } from '../src/types';
 
 function makeElement(
   overrides: Partial<RegisteredElement> = {}
 ): RegisteredElement {
-  const snapshot: ElementSnapshot = {
+  const presentation: ElementPresentation = {
     content: null,
     transition: { renderer: () => null },
   };
@@ -21,7 +21,7 @@ function makeElement(
     screenId: 'screen-1',
     ref: () => null,
     metrics: null,
-    getSnapshot: () => snapshot,
+    getPresentation: () => presentation,
     ...overrides,
   };
 }

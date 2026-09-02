@@ -24,7 +24,7 @@ Other setups may work, but they are not the primary support target yet.
 | Navigator integration | Best with native-stack and disabled stack animation | Keep the navigator from competing with the overlay |
 | Gesture progress | `useInteractiveTransition` lets a custom gesture drive backward progress, but native-stack's built-in swipe progress is not connected automatically | Use the controlled hook for custom gestures; treat the built-in swipe as a time-driven back trigger |
 | Startup latency | First-open forward transitions depend on live target measurement; repeated opens validate cached target metrics with one batched read | Prefer stable structural target elements and avoid unnecessary target churn |
-| Renderer fidelity | Custom renderers receive frozen React content by default; `snapshotMode="bitmap"` additionally captures native bitmaps | Use bitmap input for images mid-load, gradients, or platform widgets, and program the handoff in the renderer |
+| Renderer fidelity | Custom renderers receive frozen React content, style, and metrics; arbitrary native view pixels are not captured | Build transition content from React-renderable state and keep native-only views outside shared pairs |
 | Rapid interruptions | Fast push-pop-push handling is improved but still a hardening area | Keep regression coverage around rapid interruption paths |
 | Virtualized lists | Off-screen source rows cannot be measured | Start transitions from mounted, visible source elements |
 | Accessibility and RTL | Broader validation is still needed | Test large text, RTL, and accessibility flows in app-specific layouts |
@@ -45,7 +45,7 @@ Other setups may work, but they are not the primary support target yet.
 1. Connect `useInteractiveTransition` to native-stack gesture progress when a stable public event is available.
 2. Add velocity-aware finish/cancel helpers and gesture integration examples.
 3. Publish renderer recipes for surfaces, moving content, clipping, and crossfades without making them automatic defaults.
-4. Validate custom bitmap-to-live handoffs under image loading and rapid interruption.
+4. Document renderer patterns for images, gradients, and other state-driven content.
 
 ### Medium-term
 

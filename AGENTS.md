@@ -48,7 +48,7 @@ Current important exports include:
 - `useStaggeredReveal`
 - stand-in primitives: `StandInContainer`, `StandInElement`, `StandInCrossfade`, `resolveSurfaceStyle`
 - debug helpers: `setDebugEnabled`
-- types: `ElementSnapshot`, `ChoreographyDebugConfig`, `ChoreographyDebugLevel`, `ChoreographyDebugCategory`
+- types: `ElementPresentation`, `ChoreographyDebugConfig`, `ChoreographyDebugLevel`, `ChoreographyDebugCategory`
 
 ## Runtime Assumptions
 
@@ -58,7 +58,7 @@ Current important exports include:
 - the overlay should own the visible transition instead of competing with navigator animation
 - progress-driven companion motion is part of the intended public API
 - `SharedElement` registration is **stable** per `(id, groupId, screenId)` — do not introduce changes that cause unregister/re-register on prop or render changes
-- the coordinator captures a frozen `ElementSnapshot` per pair at session start; the overlay must read those snapshots, never live `SharedElement` props
+- the coordinator captures a frozen `ElementPresentation` per pair at session start; the overlay must read those presentations, never live `SharedElement` props
 - real elements are hidden in the same frame the overlay first paints (driven by `handleOverlayReady` / `handleHostPresentationReady`), not when the session activates
 - the provider exposes two contexts: stable `ChoreographyActionsContext` for lifecycle callbacks and volatile `ChoreographyContext` for active-session state — keep registration effects depending on the actions context only
 - screen-level visibility lives in `src/core/screenVisibility.ts` and must stay direction-agnostic: derive `(role, phase)` from the session, then compute opacity and pointer-events from `(direction, role, phase, progress)`. Do not add forward-only special cases back to `ChoreographyScreen`.
@@ -67,7 +67,7 @@ Current important exports include:
 
 - custom gesture progress is exposed through `useInteractiveTransition`; native-stack swipe progress is not connected automatically yet
 - startup still depends on live target measurement for structural elements on first open; repeated opens validate cached target metrics with a single batched read
-- shared content renders as React stand-ins by default; `SharedElement` accepts an opt-in `snapshotMode="bitmap"` that captures a native bitmap (TurboModule `ScreenChoreographySnapshot`) exposed to renderers as `source.bitmap` / `target.bitmap`
+- transition renderers receive frozen React content, style, and metrics; the library does not capture or prescribe visual representations
 - the registry is keyed by compound `(screenId, groupId, id)` identity, and pair discovery is scoped to the source screen's group
 - rapid interruption paths are actively hardened and should be regression-tested after changes
 

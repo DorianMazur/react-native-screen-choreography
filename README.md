@@ -188,7 +188,7 @@ import { cardTransition, nameTransition } from './tokenTransitions';
 </SharedElement>
 ```
 
-Set `snapshotMode="bitmap"` only when a custom renderer needs pixel-faithful source and target PNGs. Snapshot capture supplies `source.bitmap` and `target.bitmap`; it never decides how those images move, resize, fade, or hand off.
+Each transition renderer receives frozen React content, flattened style, and measured source/target bounds. The library does not capture native images or choose how a pair moves, resizes, fades, or hands off.
 
 ### 3. Navigate through the choreography hook
 
@@ -333,7 +333,6 @@ The renderer receives:
 
 - `progress` and `direction` for the active session
 - `source` and `target` objects with `screenId`, measured bounds, flattened style, and rendered content
-- `source.bitmap` / `target.bitmap` (`ElementBitmap` with a `file://` URI and point size) when the element opted into `snapshotMode="bitmap"` — render it with an `Image` inside a stand-in for pixel-faithful motion of complex content
 - `zIndex` so related transitions can layer predictably
 
 The low-level `StandInContainer`, `StandInElement`, `StandInCrossfade`, and `resolveSurfaceStyle` exports remain available for custom visual recipes.
@@ -366,7 +365,7 @@ For app code, the cleanest pattern is:
 - The best-supported setup is still `@react-navigation/native-stack` with stack animation disabled.
 - Custom back gestures can control progress with `useInteractiveTransition`; native-stack's built-in swipe progress is not connected automatically.
 - Transition startup still depends on live target measurement for structural elements, though repeated opens of the same target layout reuse cached metrics after one validation read.
-- Renderers receive frozen React content by default; `snapshotMode="bitmap"` additionally supplies native snapshots without prescribing how to render them.
+- Renderers receive frozen React content, style, and metrics; native view capture is intentionally outside the library's scope.
 - Elements use compound `(screenId, groupId, id)` identities; the same ID can safely appear in several groups.
 
 See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for current constraints, workarounds, and roadmap priorities.

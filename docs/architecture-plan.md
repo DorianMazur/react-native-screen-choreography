@@ -90,14 +90,14 @@ The provider deliberately does **not** hide real elements when a session becomes
 
 ### `SharedElement`
 
-- registers exactly once per `(id, groupId, screenId)` on mount and unregisters on unmount; the registration effect depends only on stable values (`id`, `groupId`, `screenId`, the registration callbacks, and `getSnapshot`) so ancestor re-renders, focus changes, or prop churn do not cause re-registration
+- registers exactly once per `(id, groupId, screenId)` on mount and unregisters on unmount; the registration effect depends only on stable values (`id`, `groupId`, `screenId`, the registration callbacks, and `getPresentation`) so ancestor re-renders, focus changes, or prop churn do not cause re-registration
 - keeps the latest `children`, `style`, and `transition` in mutable refs that are written every render
-- exposes a stable `getSnapshot(): ElementSnapshot` to the registry; the coordinator calls it once at session start to freeze the visual contract used by the overlay
+- exposes a stable `getPresentation(): ElementPresentation` to the registry; the coordinator calls it once at session start to freeze the visual contract used by the overlay
 - reads a per-element hidden shared value in `useAnimatedStyle`, keeping original elements hidden while their transition renderer owns the overlay presentation
 
-### Frozen Snapshots
+### Frozen Presentations
 
-`ElementTransitionPair` carries `sourceSnapshot` and `targetSnapshot` (`ElementSnapshot { content, style?, transition }`). Once the session reaches the `active` state, the overlay reads exclusively from those frozen snapshots — it never calls back into a `SharedElement` for live content. This is what makes the overlay immune to source-side re-renders, list cell recycling, and prop changes that happen during a transition.
+`ElementTransitionPair` carries `sourcePresentation` and `targetPresentation` (`ElementPresentation { content, style?, transition }`). Once the session reaches the `active` state, the overlay reads exclusively from those frozen presentations — it never calls back into a `SharedElement` for live content. This is what makes the overlay immune to source-side re-renders, list cell recycling, and prop changes that happen during a transition.
 
 ### `ElementRegistry`
 
@@ -109,11 +109,10 @@ The provider deliberately does **not** hide real elements when a session becomes
 
 ### `TransitionCoordinator`
 
-- pre-measures source elements before navigation and captures opt-in source bitmaps while the source is still visible
+- pre-measures source elements before navigation
 - waits for target elements to register via registry subscription events (with a 500ms safety deadline) instead of a 16ms polling loop
 - validates cached target metrics from previous sessions with one batched measurement; only falls back to the multi-read stability loop when the cache is missing or stale
-- discovers expected IDs from the source screen's group, creates only matching source/target pairs, and freezes a `sourceSnapshot` and `targetSnapshot` onto each pair before promoting the session to `active`
-- attaches native bitmaps (`sourceBitmap` / `targetBitmap`) to pairs whose elements use `snapshotMode: 'bitmap'`, and releases the underlying files when the session completes or cancels
+- discovers expected IDs from the source screen's group, creates only matching source/target pairs, and freezes a `sourcePresentation` and `targetPresentation` onto each pair before promoting the session to `active`
 - can refresh source or target metrics for the active session in place
 - maintains the `hiddenElements` set; the provider mirrors it onto per-element shared values when the overlay paints
 - completes or cancels the active session through a single `state` transition (`measuring → active → completing | cancelling → cleared`)
@@ -123,13 +122,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 - lives above the native stack in `FullWindowOverlay`
 - reports when the host is presented and ready: iOS emits `onPresentationReady` from a `CATransaction` completion block after the mount commit, Android emits from the first `dispatchDraw` after activation (with a two-frame fallback)
 - gives the JS runtime a reliable handoff point before revealing the pushed screen
-
-### `ScreenChoreographySnapshot`
-
-- TurboModule that captures a PNG bitmap of a view subtree by react tag (`UIGraphicsImageRenderer` + `drawViewHierarchyInRect` on iOS, `view.draw(Canvas)` on Android)
-- subtree rendering deliberately ignores ancestor opacity, so hidden pending-target elements still produce faithful bitmaps
-- writes into a dedicated cache subdirectory; `releaseSnapshot(uri)` deletes files and refuses paths outside that directory
-- entirely opt-in via `SharedElement`'s `snapshotMode="bitmap"`; when the module is missing, capture degrades to `null` and renderers fall back to React stand-ins
+- retains one private host frame for two ticks during teardown to cover the native/React commit boundary; this is not per-element capture and is never exposed to renderers
 
 ### `TransitionOverlay`
 
@@ -145,7 +138,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 4. Navigation pushes the target route with stack animation disabled.
 5. Target `SharedElement`s register as the destination mounts.
 6. `TransitionCoordinator` waits for the structural target elements to exist and stabilize.
-7. The coordinator captures `getSnapshot()` for every paired element and stores frozen `sourceSnapshot`/`targetSnapshot` on each pair, then promotes the session to `active`.
+7. The coordinator captures `getPresentation()` for every paired element and stores frozen `sourcePresentation`/`targetPresentation` on each pair, then promotes the session to `active`.
 8. `TransitionOverlay` mounts and `NativeTransitionHost` reports presentation ready. Each callback runs `syncHiddenElements()` so the originals are hidden the same frame the overlay first paints. A 150ms safety-net hides them anyway if neither callback fires.
 9. Pending target hiding is cleared.
 10. Reanimated drives progress from `0` to `1`.
@@ -257,6 +250,6 @@ The provider applies the resolved config inside a `useEffect` so toggling debug 
 
 - first-open startup still depends on live target measurement (repeated opens use the validated metrics cache)
 - native-stack's built-in swipe progress is not wired automatically; custom gestures can use `useInteractiveTransition`
-- bitmap snapshots are per-element opt-in; there is no automatic fidelity detection for complex content
+- renderers operate on frozen React content and cannot capture arbitrary native view pixels
 
 See [limitations-and-next-steps.md](limitations-and-next-steps.md) for the current support boundaries and roadmap.
