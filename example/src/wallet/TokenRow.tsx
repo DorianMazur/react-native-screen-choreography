@@ -61,7 +61,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             >
               <Text style={styles.value}>
                 $
-                {token.value.toLocaleString('en-US', {
+                {token.price.toLocaleString('en-US', {
                   minimumFractionDigits: 2,
                 })}
               </Text>
@@ -122,7 +122,7 @@ const styles = StyleSheet.create({
   },
   name: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: theme.text,
   },
   symbol: {
@@ -135,12 +135,12 @@ const styles = StyleSheet.create({
   },
   value: {
     fontSize: 16,
-    fontWeight: '600',
+    fontWeight: '700',
     color: theme.text,
   },
   change: {
     fontSize: 13,
-    fontWeight: '500',
+    fontWeight: '600',
     marginTop: 2,
   },
   changePositive: {

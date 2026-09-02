@@ -11,6 +11,7 @@ import type { ElementRegistry } from './ElementRegistry';
 import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
 import { captureElementBitmap, releaseElementBitmap } from './snapshotCapture';
 import { debugLog, debugTrace, debugWarn } from '../debug/logger';
+import { getElementIdentityKey } from './elementIdentity';
 
 let sessionCounter = 0;
 
@@ -50,6 +51,10 @@ export class TransitionCoordinator {
     this.progress = progress;
   }
 
+  private elementKey(screenId: string, groupId: string, id: string): string {
+    return getElementIdentityKey(screenId, groupId, id);
+  }
+
   setDebug(enabled: boolean) {
     this.registry.setDebug(enabled);
   }
@@ -68,14 +73,14 @@ export class TransitionCoordinator {
 
   async preMeasureGroup(groupId: string, screenId: string): Promise<void> {
     const preMeasureStartedAt = nowMs();
-    const elementIds = this.registry.getGroupElementIds(groupId);
+    const elementIds = this.registry.getGroupElementIds(groupId, screenId);
 
     debugTrace(
       `[Coordinator] Pre-measuring ${elementIds.length} elements in group "${groupId}" on screen "${screenId}"`
     );
 
     const elements = elementIds
-      .map((id) => this.registry.getByIdAndScreen(id, screenId))
+      .map((id) => this.registry.getByIdAndScreen(id, screenId, groupId))
       .filter((element): element is NonNullable<typeof element> => !!element);
 
     const batchEntries: BatchMeasureEntry[] = elements.map((element) => ({
@@ -89,7 +94,7 @@ export class TransitionCoordinator {
     for (const element of elements) {
       const metrics = results.get(element.id) ?? null;
       if (metrics) {
-        this.registry.updateMetrics(element.id, screenId, metrics);
+        this.registry.updateMetrics(element.id, screenId, metrics, groupId);
       }
     }
 
@@ -101,7 +106,7 @@ export class TransitionCoordinator {
           return;
         }
 
-        const key = `${screenId}:${element.id}`;
+        const key = this.elementKey(screenId, groupId, element.id);
         const previous = this.pendingSourceBitmaps.get(key);
         if (previous) {
           this.pendingSourceBitmaps.delete(key);
@@ -157,7 +162,12 @@ export class TransitionCoordinator {
       const previousMetrics =
         side === 'source' ? pair.sourceMetrics : pair.targetMetrics;
 
-      this.registry.updateMetrics(pair.id, element.screenId, nextMetrics);
+      this.registry.updateMetrics(
+        pair.id,
+        element.screenId,
+        nextMetrics,
+        session.groupId
+      );
 
       if (this.metricsAreClose(previousMetrics, nextMetrics)) {
         return pair;
@@ -190,6 +200,7 @@ export class TransitionCoordinator {
   private waitForTargets(
     elementIds: string[],
     targetScreenId: string,
+    groupId: string,
     expectedIds?: string[]
   ): Promise<void> {
     const waitStartedAt = nowMs();
@@ -198,7 +209,7 @@ export class TransitionCoordinator {
 
     const countReady = () =>
       requiredIds.filter(
-        (id) => !!this.registry.getByIdAndScreen(id, targetScreenId)
+        (id) => !!this.registry.getByIdAndScreen(id, targetScreenId, groupId)
       ).length;
 
     const isSatisfied = () => {
@@ -274,6 +285,7 @@ export class TransitionCoordinator {
    */
   private async tryCachedTargetMeasurements(
     targetScreenId: string,
+    groupId: string,
     candidateIds: string[]
   ): Promise<boolean> {
     if (candidateIds.length === 0) {
@@ -286,11 +298,19 @@ export class TransitionCoordinator {
     >[] = [];
 
     for (const id of candidateIds) {
-      if (!this.targetMetricsCache.has(`${targetScreenId}:${id}`)) {
+      if (
+        !this.targetMetricsCache.has(
+          this.elementKey(targetScreenId, groupId, id)
+        )
+      ) {
         return false;
       }
 
-      const element = this.registry.getByIdAndScreen(id, targetScreenId);
+      const element = this.registry.getByIdAndScreen(
+        id,
+        targetScreenId,
+        groupId
+      );
       if (!element) {
         return false;
       }
@@ -306,7 +326,9 @@ export class TransitionCoordinator {
     );
 
     for (const id of candidateIds) {
-      const cached = this.targetMetricsCache.get(`${targetScreenId}:${id}`)!;
+      const cached = this.targetMetricsCache.get(
+        this.elementKey(targetScreenId, groupId, id)
+      )!;
       const measured = results.get(id);
 
       if (!measured || !this.metricsAreClose(cached, measured)) {
@@ -319,7 +341,7 @@ export class TransitionCoordinator {
 
     for (const id of candidateIds) {
       const measured = results.get(id)!;
-      this.registry.updateMetrics(id, targetScreenId, measured);
+      this.registry.updateMetrics(id, targetScreenId, measured, groupId);
     }
 
     debugTrace(
@@ -330,6 +352,7 @@ export class TransitionCoordinator {
 
   private async waitForStableTargetMeasurements(
     targetScreenId: string,
+    groupId: string,
     candidateIds: string[],
     options?: {
       extendedStability?: boolean;
@@ -341,7 +364,13 @@ export class TransitionCoordinator {
     const requiredStableReads =
       Platform.OS === 'android' && requireExtendedStability ? 4 : 2;
 
-    if (await this.tryCachedTargetMeasurements(targetScreenId, candidateIds)) {
+    if (
+      await this.tryCachedTargetMeasurements(
+        targetScreenId,
+        groupId,
+        candidateIds
+      )
+    ) {
       return;
     }
 
@@ -358,7 +387,7 @@ export class TransitionCoordinator {
 
     while (Date.now() < deadline) {
       const measurableIds = candidateIds.filter(
-        (id) => !!this.registry.getByIdAndScreen(id, targetScreenId)
+        (id) => !!this.registry.getByIdAndScreen(id, targetScreenId, groupId)
       );
 
       if (measurableIds.length === 0) {
@@ -367,7 +396,9 @@ export class TransitionCoordinator {
       }
 
       const measurableElements = measurableIds
-        .map((id) => this.registry.getByIdAndScreen(id, targetScreenId))
+        .map((id) =>
+          this.registry.getByIdAndScreen(id, targetScreenId, groupId)
+        )
         .filter((element): element is NonNullable<typeof element> => !!element);
 
       const batchEntries: BatchMeasureEntry[] = measurableElements.map(
@@ -405,7 +436,7 @@ export class TransitionCoordinator {
         }
 
         currentMeasurements.set(id, metrics);
-        this.registry.updateMetrics(id, targetScreenId, metrics);
+        this.registry.updateMetrics(id, targetScreenId, metrics, groupId);
       }
 
       if (!allMeasured) {
@@ -473,16 +504,24 @@ export class TransitionCoordinator {
       direction,
     });
 
-    const elementIds = this.registry.getGroupElementIds(groupId);
+    const elementIds = this.registry.getGroupElementIds(
+      groupId,
+      sourceScreenId
+    );
 
     debugTrace(
       `[Coordinator] Found ${elementIds.length} element IDs in group "${groupId}"`
     );
 
-    await this.waitForTargets(elementIds, targetScreenId, elementIds);
-    await this.waitForStableTargetMeasurements(targetScreenId, elementIds, {
-      extendedStability: direction === 'forward',
-    });
+    await this.waitForTargets(elementIds, targetScreenId, groupId, elementIds);
+    await this.waitForStableTargetMeasurements(
+      targetScreenId,
+      groupId,
+      elementIds,
+      {
+        extendedStability: direction === 'forward',
+      }
+    );
 
     const pairingStartedAt = nowMs();
 
@@ -497,8 +536,16 @@ export class TransitionCoordinator {
     const batchEntries: BatchMeasureEntry[] = [];
 
     for (const id of elementIds) {
-      const source = this.registry.getByIdAndScreen(id, sourceScreenId);
-      const target = this.registry.getByIdAndScreen(id, targetScreenId);
+      const source = this.registry.getByIdAndScreen(
+        id,
+        sourceScreenId,
+        groupId
+      );
+      const target = this.registry.getByIdAndScreen(
+        id,
+        targetScreenId,
+        groupId
+      );
 
       if (!source || !target) {
         debugWarn(
@@ -546,8 +593,8 @@ export class TransitionCoordinator {
         continue;
       }
 
-      this.registry.updateMetrics(id, sourceScreenId, sourceMetrics);
-      this.registry.updateMetrics(id, targetScreenId, targetMetrics);
+      this.registry.updateMetrics(id, sourceScreenId, sourceMetrics, groupId);
+      this.registry.updateMetrics(id, targetScreenId, targetMetrics, groupId);
 
       pairs.push({
         id,
@@ -565,21 +612,33 @@ export class TransitionCoordinator {
       debugWarn(
         `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
       );
-      this.releasePendingSourceBitmaps(sourceScreenId, elementIds);
+      this.releasePendingSourceBitmaps(sourceScreenId, groupId, elementIds);
       this.updateSession(null);
       return null;
     }
 
-    await this.attachPairBitmaps(pairs, sourceScreenId);
-    this.releasePendingSourceBitmaps(sourceScreenId, elementIds);
+    await this.attachPairBitmaps(pairs, sourceScreenId, groupId);
+    this.releasePendingSourceBitmaps(sourceScreenId, groupId, elementIds);
 
     debugLog(
       `[Coordinator] Transition "${sessionId}" active pairs=${pairs.length}/${elementIds.length} pairing=${elapsedMs(pairingStartedAt)} totalPrep=${elapsedMs(transitionStartedAt)}`
     );
 
     for (const pair of pairs) {
-      this.hiddenElements.add(`${pair.id}:${pair.source.screenId}`);
-      this.hiddenElements.add(`${pair.id}:${pair.target.screenId}`);
+      this.hiddenElements.add(
+        getElementIdentityKey(
+          pair.source.screenId,
+          pair.source.groupId,
+          pair.id
+        )
+      );
+      this.hiddenElements.add(
+        getElementIdentityKey(
+          pair.target.screenId,
+          pair.target.groupId,
+          pair.id
+        )
+      );
     }
 
     if (this.targetMetricsCache.size > 200) {
@@ -587,7 +646,7 @@ export class TransitionCoordinator {
     }
     for (const pair of pairs) {
       this.targetMetricsCache.set(
-        `${targetScreenId}:${pair.id}`,
+        this.elementKey(targetScreenId, groupId, pair.id),
         pair.targetMetrics
       );
     }
@@ -639,7 +698,8 @@ export class TransitionCoordinator {
   /** Attach native bitmaps to pairs whose snapshot mode requests them. */
   private async attachPairBitmaps(
     pairs: ElementTransitionPair[],
-    sourceScreenId: string
+    sourceScreenId: string,
+    groupId: string
   ): Promise<void> {
     const wantsBitmaps = pairs.filter(
       (pair) =>
@@ -655,7 +715,7 @@ export class TransitionCoordinator {
 
     await Promise.all(
       wantsBitmaps.map(async (pair) => {
-        const key = `${sourceScreenId}:${pair.id}`;
+        const key = this.elementKey(sourceScreenId, groupId, pair.id);
         const pending = this.pendingSourceBitmaps.get(key);
         if (pending) {
           this.pendingSourceBitmaps.delete(key);
@@ -677,10 +737,11 @@ export class TransitionCoordinator {
 
   private releasePendingSourceBitmaps(
     screenId: string,
+    groupId: string,
     elementIds: string[]
   ): void {
     for (const id of elementIds) {
-      const key = `${screenId}:${id}`;
+      const key = this.elementKey(screenId, groupId, id);
       const bitmap = this.pendingSourceBitmaps.get(key);
       if (bitmap) {
         this.pendingSourceBitmaps.delete(key);

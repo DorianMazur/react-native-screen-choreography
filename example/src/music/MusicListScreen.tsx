@@ -6,15 +6,14 @@ import {
   useChoreographyNavigation,
 } from 'react-native-screen-choreography';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { GradientBlock } from '../GradientBlock';
 import { theme } from '../theme';
 import { TRACKS, type Track } from './data';
 import {
-  musicCardTransition,
-  musicArtworkTransition,
-  musicTitleTransition,
-  musicArtistTransition,
+  musicBackgroundTransition,
+  musicContentTransition,
+  musicItemTransition,
 } from './musicTransitions';
+import { TrackItem } from './TrackItem';
 
 export function MusicListScreen({ navigation }: { navigation: any }) {
   const { navigate } = useChoreographyNavigation(navigation);
@@ -56,52 +55,38 @@ export function MusicListScreen({ navigation }: { navigation: any }) {
 }
 
 function Row({ track, onPress }: { track: Track; onPress: () => void }) {
+  const groupId = `track.${track.id}`;
+
   return (
     <Pressable onPress={onPress} style={styles.rowPressable}>
-      <SharedElement
-        id={`track.${track.id}.card`}
-        groupId={`track.${track.id}`}
-        transition={musicCardTransition}
-        style={styles.row}
-      >
-        <View style={styles.rowInner}>
-          <SharedElement
-            id={`track.${track.id}.artwork`}
-            groupId={`track.${track.id}`}
-            transition={musicArtworkTransition}
-          >
-            <GradientBlock
-              from={track.gradientFrom}
-              to={track.gradientTo}
-              style={styles.artwork}
-              borderRadius={theme.radius.sm}
-            >
-              <View style={styles.artGlyphWrap}>
-                <Text style={styles.artGlyph}>{track.glyph}</Text>
-              </View>
-            </GradientBlock>
-          </SharedElement>
+      <View style={styles.row}>
+        <SharedElement
+          id="background"
+          groupId={groupId}
+          transition={musicBackgroundTransition}
+          style={styles.rowBackground}
+        >
+          <View style={styles.fill} />
+        </SharedElement>
 
-          <View style={styles.meta}>
-            <SharedElement
-              id={`track.${track.id}.title`}
-              groupId={`track.${track.id}`}
-              transition={musicTitleTransition}
-            >
-              <Text style={styles.title2}>{track.title}</Text>
-            </SharedElement>
-            <SharedElement
-              id={`track.${track.id}.artist`}
-              groupId={`track.${track.id}`}
-              transition={musicArtistTransition}
-            >
-              <Text style={styles.artist}>{track.artist}</Text>
-            </SharedElement>
-          </View>
+        <SharedElement
+          id="item"
+          groupId={groupId}
+          transition={musicItemTransition}
+          style={styles.itemLayer}
+        >
+          <TrackItem track={track} />
+        </SharedElement>
 
-          <Text style={styles.duration}>{track.duration}</Text>
-        </View>
-      </SharedElement>
+        <SharedElement
+          id="content"
+          groupId={groupId}
+          transition={musicContentTransition}
+          style={styles.contentAnchor}
+        >
+          <View />
+        </SharedElement>
+      </View>
     </Pressable>
   );
 }
@@ -142,46 +127,26 @@ const styles = StyleSheet.create({
     paddingHorizontal: 4,
   },
   row: {
+    height: 76,
+    position: 'relative',
+  },
+  rowBackground: {
+    ...StyleSheet.absoluteFillObject,
     backgroundColor: theme.surface,
     borderRadius: theme.radius.md,
+    overflow: 'hidden',
   },
-  rowInner: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    paddingHorizontal: 12,
-    gap: 12,
+  itemLayer: {
+    ...StyleSheet.absoluteFillObject,
   },
-  artwork: {
-    width: 56,
-    height: 56,
+  contentAnchor: {
+    position: 'absolute',
+    top: 76,
+    left: 0,
+    right: 0,
+    height: 1,
   },
-  artGlyphWrap: {
+  fill: {
     flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  artGlyph: {
-    fontSize: 26,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '300',
-  },
-  meta: {
-    flex: 1,
-  },
-  title2: {
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  artist: {
-    color: theme.textMuted,
-    fontSize: 13,
-    marginTop: 2,
-  },
-  duration: {
-    color: theme.textMuted,
-    fontSize: 13,
-    fontVariant: ['tabular-nums'],
   },
 });

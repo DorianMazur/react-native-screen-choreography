@@ -16,12 +16,7 @@ import { useScreenId } from '../core/screenIdContext';
 import type { ChoreographyNavigationOptions } from '../types';
 import { DEFAULT_SPRING, FAST_SPRING } from '../core/constants';
 import { debugLog, isDebugEnabled } from '../debug/logger';
-
-interface PendingNavigationRequest {
-  screenName: string;
-  params?: any;
-  options?: ChoreographyNavigationOptions;
-}
+import { NavigationSessionController } from '../core/NavigationSessionController';
 
 function nowMs(): number {
   return Date.now();
@@ -76,12 +71,12 @@ export function useChoreographyNavigation(navigation: any) {
     refreshActiveSessionMetrics,
   } = ctx;
 
-  const navigateLockRef = useRef(false);
-  const pendingNavigationRef = useRef<PendingNavigationRequest | null>(null);
-  const progressAnimationTokenRef = useRef(0);
-  const activeSessionRef = useRef<ChoreographyContextType['activeSession']>(
-    ctx.activeSession
-  );
+  const controllerRef = useRef<NavigationSessionController | null>(null);
+  if (!controllerRef.current) {
+    controllerRef.current = new NavigationSessionController();
+    controllerRef.current.setActiveSession(ctx.activeSession);
+  }
+  const controller = controllerRef.current;
   const logNavigation = useCallback(
     (message: string | (() => string)) => {
       if (!isDebugEnabled()) return;
@@ -92,29 +87,29 @@ export function useChoreographyNavigation(navigation: any) {
   );
 
   const releaseNavigationLock = useCallback(() => {
-    navigateLockRef.current = false;
-  }, []);
+    controller.releaseNavigationLock();
+  }, [controller]);
 
   const invalidateProgressAnimation = useCallback(() => {
-    progressAnimationTokenRef.current += 1;
-  }, []);
+    controller.invalidateAnimation();
+  }, [controller]);
 
   const createProgressAnimationToken = useCallback(() => {
-    progressAnimationTokenRef.current += 1;
-    return progressAnimationTokenRef.current;
-  }, []);
+    return controller.createAnimationToken();
+  }, [controller]);
 
-  const isCurrentProgressAnimationToken = useCallback((token: number) => {
-    return progressAnimationTokenRef.current === token;
-  }, []);
+  const isCurrentProgressAnimationToken = useCallback(
+    (token: number) => controller.isCurrentAnimation(token),
+    [controller]
+  );
 
   useEffect(() => {
-    activeSessionRef.current = ctx.activeSession;
-  }, [ctx.activeSession]);
+    controller.setActiveSession(ctx.activeSession);
+  }, [controller, ctx.activeSession]);
 
   const isCurrentSessionAnimation = useCallback(
-    (sessionId: string) => activeSessionRef.current?.id === sessionId,
-    []
+    (sessionId: string) => controller.isCurrentSession(sessionId),
+    [controller]
   );
 
   const getNavigationBlockReasons = useCallback(
@@ -125,7 +120,7 @@ export function useChoreographyNavigation(navigation: any) {
         reasons.push('not-focused');
       }
 
-      if (navigateLockRef.current) {
+      if (controller.isNavigationLocked()) {
         reasons.push('navigate-lock');
       }
 
@@ -139,17 +134,18 @@ export function useChoreographyNavigation(navigation: any) {
 
       return reasons.length > 0 ? reasons.join(', ') : 'none';
     },
-    [ctx.activeSession, ctx.pendingTargetScreenId, isFocused]
+    [controller, ctx.activeSession, ctx.pendingTargetScreenId, isFocused]
   );
 
   useEffect(() => {
     if (!ctx.activeSession && !ctx.pendingTargetScreenId) {
-      if (navigateLockRef.current) {
+      if (controller.isNavigationLocked()) {
         logNavigation('idle state reached, releasing navigation lock');
       }
       releaseNavigationLock();
     }
   }, [
+    controller,
     ctx.activeSession,
     ctx.pendingTargetScreenId,
     logNavigation,
@@ -239,7 +235,7 @@ export function useChoreographyNavigation(navigation: any) {
       if (!isCurrentSessionAnimation(sessionId)) {
         logNavigation(
           () =>
-            `ignore stale forward completion token=${token} session=${sessionId} current=${describeSession(activeSessionRef.current)}`
+            `ignore stale forward completion token=${token} session=${sessionId} current=${describeSession(controller.getActiveSession())}`
         );
         return;
       }
@@ -252,6 +248,7 @@ export function useChoreographyNavigation(navigation: any) {
     },
     [
       completeTransition,
+      controller,
       isCurrentProgressAnimationToken,
       isCurrentSessionAnimation,
       logNavigation,
@@ -269,7 +266,7 @@ export function useChoreographyNavigation(navigation: any) {
       if (!isCurrentSessionAnimation(sessionId)) {
         logNavigation(
           () =>
-            `ignore stale reverse completion token=${token} session=${sessionId} current=${describeSession(activeSessionRef.current)}`
+            `ignore stale reverse completion token=${token} session=${sessionId} current=${describeSession(controller.getActiveSession())}`
         );
         return;
       }
@@ -285,6 +282,7 @@ export function useChoreographyNavigation(navigation: any) {
     },
     [
       completeTransition,
+      controller,
       isCurrentProgressAnimationToken,
       isCurrentSessionAnimation,
       logNavigation,
@@ -305,7 +303,7 @@ export function useChoreographyNavigation(navigation: any) {
       if (!isCurrentSessionAnimation(sessionId)) {
         logNavigation(
           () =>
-            `ignore stale settled-reverse completion token=${token} session=${sessionId} current=${describeSession(activeSessionRef.current)}`
+            `ignore stale settled-reverse completion token=${token} session=${sessionId} current=${describeSession(controller.getActiveSession())}`
         );
         return;
       }
@@ -319,6 +317,7 @@ export function useChoreographyNavigation(navigation: any) {
     },
     [
       completeTransition,
+      controller,
       isCurrentProgressAnimationToken,
       isCurrentSessionAnimation,
       logNavigation,
@@ -356,7 +355,7 @@ export function useChoreographyNavigation(navigation: any) {
       );
 
       if (canInterruptActiveReturn) {
-        pendingNavigationRef.current = null;
+        controller.clearQueuedNavigation();
         await interruptReturnTransition();
         interruptedSettlingReturn = true;
         logNavigation(
@@ -367,7 +366,7 @@ export function useChoreographyNavigation(navigation: any) {
 
       const isBlocked = Boolean(
         !isFocused ||
-        navigateLockRef.current ||
+        controller.isNavigationLocked() ||
         (!interruptedSettlingReturn && ctx.activeSession) ||
         ctx.pendingTargetScreenId
       );
@@ -379,56 +378,63 @@ export function useChoreographyNavigation(navigation: any) {
             `tap navigate blocked target=${screenName} reasons=${reasons}${allowQueue ? ' -> queued' : ' -> dropped'}`
         );
         if (allowQueue) {
-          pendingNavigationRef.current = {
+          controller.queueNavigation({
             screenName,
             params,
             options,
-          };
+          });
         }
         return;
       }
 
-      pendingNavigationRef.current = null;
-      navigateLockRef.current = true;
+      controller.clearQueuedNavigation();
+      controller.acquireNavigationLock();
 
       try {
-        const preMeasureStartedAt = nowMs();
-        logNavigation(() => `preMeasure start group=${groupId}`);
-        await preMeasureGroup(groupId, sourceScreenId);
-        logNavigation(
-          () =>
-            `preMeasure end group=${groupId} duration=${elapsedMs(preMeasureStartedAt)}`
-        );
-
-        setPendingTargetScreen(targetScreenId);
-        logNavigation(() => `pending target set target=${targetScreenId}`);
-
-        navigation.navigate(screenName, {
-          ...params,
-          _choreographySourceScreen: sourceScreenId,
-          _choreographyGroup: groupId,
-        });
-        logNavigation(
-          () =>
-            `navigation dispatched target=${screenName} elapsed=${elapsedMs(tapStartedAt)}`
-        );
-
-        if (Platform.OS === 'android') {
-          const screenReadyStartedAt = nowMs();
-          await waitForScreenReady(targetScreenId);
-          await waitForNextFrame();
-          logNavigation(
-            () =>
-              `android screen ready target=${targetScreenId} duration=${elapsedMs(screenReadyStartedAt)} total=${elapsedMs(tapStartedAt)}`
-          );
-        }
-
         const transitionPrepareStartedAt = nowMs();
-        const session = await startTransition({
+        const session = await controller.prepareForwardTransition({
           groupId,
           sourceScreenId,
           targetScreenId,
-          direction: 'forward',
+          isAndroid: Platform.OS === 'android',
+          preMeasureGroup: async (group, screen) => {
+            const startedAt = nowMs();
+            logNavigation(() => `preMeasure start group=${group}`);
+            await preMeasureGroup(group, screen);
+            logNavigation(
+              () =>
+                `preMeasure end group=${group} duration=${elapsedMs(startedAt)}`
+            );
+          },
+          setPendingTargetScreen: (pendingScreenId) => {
+            setPendingTargetScreen(pendingScreenId);
+            logNavigation(
+              () =>
+                `pending target ${pendingScreenId ? `set target=${pendingScreenId}` : `cleared target=${targetScreenId}`}`
+            );
+          },
+          dispatchNavigation: () => {
+            navigation.navigate(screenName, {
+              ...params,
+              _choreographySourceScreen: sourceScreenId,
+              _choreographyGroup: groupId,
+            });
+            logNavigation(
+              () =>
+                `navigation dispatched target=${screenName} elapsed=${elapsedMs(tapStartedAt)}`
+            );
+          },
+          waitForScreenReady: async (pendingScreenId) => {
+            const startedAt = nowMs();
+            await waitForScreenReady(pendingScreenId);
+            logNavigation(
+              () =>
+                `android screen ready target=${pendingScreenId} duration=${elapsedMs(startedAt)} total=${elapsedMs(tapStartedAt)}`
+            );
+          },
+          waitForNextFrame,
+          startTransition,
+          waitForOverlayReady,
         });
 
         if (!session) {
@@ -436,8 +442,6 @@ export function useChoreographyNavigation(navigation: any) {
             () =>
               `transition preparation failed target=${screenName} elapsed=${elapsedMs(tapStartedAt)}`
           );
-          releaseNavigationLock();
-          setPendingTargetScreen(null);
           return;
         }
 
@@ -445,15 +449,6 @@ export function useChoreographyNavigation(navigation: any) {
           () =>
             `transition prepared session=${session.id} duration=${elapsedMs(transitionPrepareStartedAt)} total=${elapsedMs(tapStartedAt)}`
         );
-
-        const overlayWaitStartedAt = nowMs();
-        await waitForOverlayReady(session.id);
-        logNavigation(
-          () =>
-            `overlay ready session=${session.id} duration=${elapsedMs(overlayWaitStartedAt)} total=${elapsedMs(tapStartedAt)}`
-        );
-        setPendingTargetScreen(null);
-        logNavigation(() => `pending target cleared target=${targetScreenId}`);
 
         const springConfig = options?.spring ?? DEFAULT_SPRING;
         const animationToken = createProgressAnimationToken();
@@ -493,14 +488,13 @@ export function useChoreographyNavigation(navigation: any) {
           () =>
             `navigate error target=${screenName} elapsed=${elapsedMs(tapStartedAt)} error=${error instanceof Error ? error.message : String(error)}`
         );
-        releaseNavigationLock();
-        setPendingTargetScreen(null);
         throw error;
       }
     },
     [
       ctx.activeSession,
       ctx.pendingTargetScreenId,
+      controller,
       canInterruptReturnToCurrentScreen,
       createProgressAnimationToken,
       currentScreenId,
@@ -512,7 +506,6 @@ export function useChoreographyNavigation(navigation: any) {
       navigation,
       progress,
       preMeasureGroup,
-      releaseNavigationLock,
       setPendingTargetScreen,
       startTransition,
       waitForOverlayReady,
@@ -527,7 +520,7 @@ export function useChoreographyNavigation(navigation: any) {
     );
     const isBlocked = Boolean(
       !isFocused ||
-      navigateLockRef.current ||
+      controller.isNavigationLocked() ||
       (!canInterruptActiveReturn && ctx.activeSession) ||
       ctx.pendingTargetScreenId
     );
@@ -536,7 +529,7 @@ export function useChoreographyNavigation(navigation: any) {
       return;
     }
 
-    const pendingRequest = pendingNavigationRef.current;
+    const pendingRequest = controller.peekQueuedNavigation();
     if (!pendingRequest) {
       return;
     }
@@ -546,7 +539,7 @@ export function useChoreographyNavigation(navigation: any) {
         `replay candidate target=${pendingRequest.screenName} session=${describeSession(ctx.activeSession)}`
     );
 
-    pendingNavigationRef.current = null;
+    controller.takeQueuedNavigation();
     let cancelled = false;
 
     const replayPendingNavigation = async () => {
@@ -570,7 +563,7 @@ export function useChoreographyNavigation(navigation: any) {
 
       const blockedAgain = Boolean(
         !isFocused ||
-        navigateLockRef.current ||
+        controller.isNavigationLocked() ||
         (!canInterruptLatestReturn && ctx.activeSession) ||
         ctx.pendingTargetScreenId
       );
@@ -581,8 +574,8 @@ export function useChoreographyNavigation(navigation: any) {
           () =>
             `replay blocked target=${pendingRequest.screenName} reasons=${reasons} -> requeued`
         );
-        if (!pendingNavigationRef.current) {
-          pendingNavigationRef.current = pendingRequest;
+        if (!controller.peekQueuedNavigation()) {
+          controller.queueNavigation(pendingRequest);
         }
         return;
       }
@@ -612,6 +605,7 @@ export function useChoreographyNavigation(navigation: any) {
   }, [
     canInterruptReturnToCurrentScreen,
     choreographyNavigate,
+    controller,
     ctx.activeSession,
     ctx.pendingTargetScreenId,
     getNavigationBlockReasons,
@@ -636,7 +630,7 @@ export function useChoreographyNavigation(navigation: any) {
             () =>
               `goBack interrupt active forward session elapsed=${elapsedMs(goBackStartedAt)}`
           );
-          pendingNavigationRef.current = null;
+          controller.clearQueuedNavigation();
           cancelAnimation(progress);
           invalidateProgressAnimation();
           progress.value = Math.max(progress.value, 0.12);
@@ -682,6 +676,7 @@ export function useChoreographyNavigation(navigation: any) {
     },
     [
       ctx.activeSession,
+      controller,
       createProgressAnimationToken,
       finishReverseTransition,
       finishSettledReverseTransition,

@@ -44,23 +44,25 @@ describe('ElementRegistry warnings', () => {
     clearDebugLogs();
   });
 
-  test('warns on duplicate id+screen with conflicting groupIds', () => {
+  test('allows the same id on one screen in different groups', () => {
     registry.register(makeElement({ groupId: 'group-a' }));
     registry.register(makeElement({ groupId: 'group-b' }));
 
     const logs = getDebugLogs();
-    expect(logs.some((log) => log.includes('Duplicate id'))).toBe(true);
+    expect(logs.some((log) => log.includes('duplicate element'))).toBe(false);
+    expect(registry.getById('shared')).toHaveLength(2);
   });
 
-  test('does not warn for identical (id, groupId, screenId) re-registration', () => {
+  test('warns for an exact compound identity re-registration', () => {
     registry.register(makeElement({ groupId: 'group-a' }));
     registry.register(makeElement({ groupId: 'group-a' }));
 
     const logs = getDebugLogs();
-    expect(logs.some((log) => log.includes('Duplicate id'))).toBe(false);
+    expect(logs.some((log) => log.includes('duplicate element'))).toBe(true);
+    expect(registry.getById('shared')).toHaveLength(1);
   });
 
-  test('warns when same id is registered with different groups across screens', () => {
+  test('allows the same id in different groups across screens', () => {
     registry.register(
       makeElement({ groupId: 'group-a', screenId: 'screen-1' })
     );
@@ -69,9 +71,7 @@ describe('ElementRegistry warnings', () => {
     );
 
     const logs = getDebugLogs();
-    expect(
-      logs.some((log) => log.includes('conflicting groupIds across screens'))
-    ).toBe(true);
+    expect(logs.some((log) => log.includes('duplicate element'))).toBe(false);
   });
 
   test('two list rows with same element id but different groupIds do not collide', () => {
@@ -90,10 +90,7 @@ describe('ElementRegistry warnings', () => {
       })
     );
 
-    // Both registrations should be present (registry currently keys by id only,
-    // but uses groupId as the matching dimension).
-    expect(registry.getById('card')).toHaveLength(1);
-    // Once different screens are added the registry holds entries per screen.
+    expect(registry.getById('card')).toHaveLength(2);
     registry.register(
       makeElement({
         id: 'card',
@@ -101,6 +98,9 @@ describe('ElementRegistry warnings', () => {
         screenId: 'detail',
       })
     );
-    expect(registry.getById('card')).toHaveLength(2);
+    expect(registry.getById('card')).toHaveLength(3);
+    expect(
+      registry.getByIdAndScreen('card', 'list', 'token.eth')?.groupId
+    ).toBe('token.eth');
   });
 });

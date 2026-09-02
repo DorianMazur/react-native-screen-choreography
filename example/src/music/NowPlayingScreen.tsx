@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, Dimensions } from 'react-native';
+import { View, Text, StyleSheet, Pressable } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
@@ -14,22 +14,17 @@ import {
   SharedElement,
   useChoreographyNavigation,
   useChoreographyProgress,
-  useLatchedReveal,
-  useStaggeredReveal,
 } from 'react-native-screen-choreography';
 import { SafeAreaView } from 'react-native-safe-area-context';
-import { GradientBlock } from '../GradientBlock';
 import { theme } from '../theme';
 import { TRACKS } from './data';
 import {
-  musicCardTransition,
-  musicArtworkTransition,
-  musicTitleTransition,
-  musicArtistTransition,
+  musicBackgroundTransition,
+  musicContentTransition,
+  musicItemTransition,
 } from './musicTransitions';
+import { TrackItem } from './TrackItem';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-const ARTWORK_SIZE = SCREEN_WIDTH - 64;
 const WAVE_BARS = 32;
 
 export function NowPlayingScreen({
@@ -42,12 +37,8 @@ export function NowPlayingScreen({
   const trackId = route.params?.trackId ?? TRACKS[0]!.id;
   const track = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0]!;
   const { goBack } = useChoreographyNavigation(navigation);
-  const { settleTransition, progress } = useChoreographyProgress();
-  const showControls = useLatchedReveal({ resetKey: track.id });
-  const { getItemStyle } = useStaggeredReveal(3, { stagger: 0.05 });
-  const waveSectionStyle = getItemStyle(0);
-  const controlsStyle = getItemStyle(1);
-  const metaRowStyle = getItemStyle(2);
+  const { settleTransition } = useChoreographyProgress();
+  const groupId = `track.${track.id}`;
 
   const playhead = useSharedValue(0);
   React.useEffect(() => {
@@ -62,104 +53,65 @@ export function NowPlayingScreen({
     );
   }, [playhead, track.id]);
 
-  // Backdrop fades from full-card → blurred fullscreen ambient as progress grows.
-  const backdropStyle = useAnimatedStyle(() => ({
-    opacity: progress.value,
-  }));
-
   return (
     <ChoreographyScreen screenId="NowPlaying">
-      <View style={styles.root}>
-        <Animated.View
-          style={[StyleSheet.absoluteFill, backdropStyle]}
-          pointerEvents="none"
+      <View style={styles.root} onTouchStart={settleTransition}>
+        <SharedElement
+          id="background"
+          groupId={groupId}
+          transition={musicBackgroundTransition}
+          style={styles.screenBackground}
         >
-          <GradientBlock
-            from={track.gradientFrom}
-            to={'#000000'}
-            angle={180}
-            style={StyleSheet.absoluteFill}
-          />
-          <View style={[StyleSheet.absoluteFill, styles.bgScrim]} />
-        </Animated.View>
+          <View style={styles.fill} />
+        </SharedElement>
 
-        <SafeAreaView style={styles.safe} onTouchStart={settleTransition}>
-          <View style={styles.header}>
-            <Pressable onPress={() => goBack()} hitSlop={12}>
-              <Text style={styles.headerAction}>↓ Close</Text>
-            </Pressable>
-            <Text style={styles.headerCaption}>Now Playing</Text>
-            <View style={styles.headerSpacer} />
-          </View>
-
-          <View style={styles.artworkSlot}>
+        <SafeAreaView style={styles.foreground} pointerEvents="box-none">
+          <View style={styles.selectedItemSlot}>
             <SharedElement
-              id={`track.${track.id}.card`}
-              groupId={`track.${track.id}`}
-              transition={musicCardTransition}
-              style={styles.artworkFrame}
+              id="item"
+              groupId={groupId}
+              transition={musicItemTransition}
+              style={styles.selectedItem}
             >
-              <SharedElement
-                id={`track.${track.id}.artwork`}
-                groupId={`track.${track.id}`}
-                transition={musicArtworkTransition}
-              >
-                <GradientBlock
-                  from={track.gradientFrom}
-                  to={track.gradientTo}
-                  style={styles.artworkLarge}
-                  borderRadius={theme.radius.xl}
-                >
-                  <View style={styles.artGlyphWrap}>
-                    <Text style={styles.artGlyph}>{track.glyph}</Text>
-                  </View>
-                </GradientBlock>
-              </SharedElement>
+              <TrackItem track={track} />
             </SharedElement>
           </View>
 
-          <View style={styles.titleBlock}>
-            <SharedElement
-              id={`track.${track.id}.title`}
-              groupId={`track.${track.id}`}
-              transition={musicTitleTransition}
-            >
-              <Text style={styles.title}>{track.title}</Text>
-            </SharedElement>
-            <SharedElement
-              id={`track.${track.id}.artist`}
-              groupId={`track.${track.id}`}
-              transition={musicArtistTransition}
-            >
-              <Text style={styles.artist}>
-                {track.artist} · {track.album}
-              </Text>
-            </SharedElement>
-          </View>
-
-          {showControls ? (
-            <>
-              <Animated.View style={[styles.section, waveSectionStyle]}>
+          <SharedElement
+            id="content"
+            groupId={groupId}
+            transition={musicContentTransition}
+            style={styles.revealContent}
+          >
+            <View style={styles.revealContentInner}>
+              <View style={styles.content}>
+                <Text style={styles.eyebrow}>Now playing</Text>
+                <Text style={styles.album}>{track.album}</Text>
                 <Waveform accent={track.accent} playhead={playhead} />
                 <View style={styles.timeRow}>
                   <Text style={styles.timeText}>1:42</Text>
                   <Text style={styles.timeText}>{track.duration}</Text>
                 </View>
-              </Animated.View>
+              </View>
 
-              <Animated.View style={[styles.controls, controlsStyle]}>
+              <View style={styles.controls}>
                 <ControlButton glyph="⤆" />
                 <PlayButton accent={track.accent} />
                 <ControlButton glyph="⤻" />
-              </Animated.View>
+              </View>
 
-              <Animated.View style={[styles.metaRow, metaRowStyle]}>
-                <MetaPill label="BPM" value={String(track.bpm)} />
-                <MetaPill label="Year" value={String(track.releaseYear)} />
-                <MetaPill label="Quality" value="Lossless" />
-              </Animated.View>
-            </>
-          ) : null}
+              <View style={styles.footer}>
+                <View style={styles.metaRow}>
+                  <MetaPill label="BPM" value={String(track.bpm)} />
+                  <MetaPill label="Year" value={String(track.releaseYear)} />
+                  <MetaPill label="Quality" value="Lossless" />
+                </View>
+                <Pressable style={styles.closeButton} onPress={() => goBack()}>
+                  <Text style={styles.closeLabel}>Close player</Text>
+                </Pressable>
+              </View>
+            </View>
+          </SharedElement>
         </SafeAreaView>
       </View>
     </ChoreographyScreen>
@@ -254,79 +206,49 @@ function MetaPill({ label, value }: { label: string; value: string }) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: theme.bg,
+    backgroundColor: 'transparent',
   },
-  safe: {
+  screenBackground: {
+    ...StyleSheet.absoluteFillObject,
+    backgroundColor: theme.surface,
+    borderRadius: 0,
+  },
+  fill: {
     flex: 1,
   },
-  header: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 20,
+  foreground: {
+    ...StyleSheet.absoluteFillObject,
+    zIndex: 1,
+  },
+  selectedItemSlot: {
+    paddingHorizontal: 16,
     paddingTop: 8,
-    paddingBottom: 16,
   },
-  headerAction: {
-    color: theme.text,
-    fontSize: 15,
-    fontWeight: '500',
-    width: 60,
+  selectedItem: {
+    height: 76,
   },
-  headerCaption: {
-    color: theme.textMuted,
+  revealContent: {
+    flex: 1,
+  },
+  revealContentInner: {
+    flex: 1,
+  },
+  content: {
+    paddingHorizontal: 28,
+    paddingTop: 44,
+  },
+  eyebrow: {
+    color: theme.music.accent,
     fontSize: 12,
-    fontWeight: '600',
-    letterSpacing: 1.2,
+    fontWeight: '700',
     textTransform: 'uppercase',
   },
-  headerSpacer: {
-    width: 60,
-  },
-  bgScrim: {
-    backgroundColor: 'rgba(0,0,0,0.45)',
-  },
-  artworkSlot: {
-    alignItems: 'center',
-    paddingTop: 8,
-  },
-  artworkFrame: {
-    width: ARTWORK_SIZE,
-    height: ARTWORK_SIZE,
-    borderRadius: theme.radius.xl,
-    overflow: 'hidden',
-  },
-  artworkLarge: {
-    flex: 1,
-  },
-  artGlyphWrap: {
-    flex: 1,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  artGlyph: {
-    fontSize: 100,
-    color: 'rgba(255,255,255,0.85)',
-    fontWeight: '200',
-  },
-  titleBlock: {
-    paddingHorizontal: 32,
-    paddingTop: 24,
-  },
-  title: {
+  album: {
     color: theme.text,
     fontSize: 28,
     fontWeight: '700',
-    letterSpacing: -0.4,
-  },
-  artist: {
-    color: theme.textSecondary,
-    fontSize: 16,
     marginTop: 6,
-  },
-  section: {
-    paddingHorizontal: 28,
-    paddingTop: 28,
+    marginBottom: 28,
   },
   wave: {
     flexDirection: 'row',
@@ -382,9 +304,13 @@ const styles = StyleSheet.create({
   },
   metaRow: {
     flexDirection: 'row',
-    paddingHorizontal: 28,
-    paddingTop: 24,
     gap: 10,
+  },
+  footer: {
+    marginTop: 'auto',
+    paddingHorizontal: 28,
+    paddingBottom: 8,
+    gap: 16,
   },
   metaPill: {
     flex: 1,
@@ -405,5 +331,18 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
     marginTop: 4,
+  },
+  closeButton: {
+    height: 48,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: theme.borderStrong,
+    borderRadius: theme.radius.md,
+  },
+  closeLabel: {
+    color: theme.textSecondary,
+    fontSize: 15,
+    fontWeight: '600',
   },
 });

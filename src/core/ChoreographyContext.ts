@@ -8,8 +8,16 @@ import type {
 
 export interface ChoreographyActionsType {
   registerElement: (element: RegisteredElement) => void;
-  unregisterElement: (id: string, screenId: string) => void;
-  isElementHidden: (id: string, screenId: string) => SharedValue<number>;
+  unregisterElement: (
+    id: string,
+    screenId: string,
+    groupId: string | undefined
+  ) => void;
+  isElementHidden: (
+    id: string,
+    screenId: string,
+    groupId?: string
+  ) => SharedValue<number>;
   setScreenReady: (screenId: string, ready: boolean) => void;
   unregisterScreen: (screenId: string) => void;
   waitForScreenReady: (screenId: string) => Promise<void>;
@@ -20,11 +28,19 @@ export const ChoreographyActionsContext =
 
 export interface ChoreographyContextType {
   registerElement: (element: RegisteredElement) => void;
-  unregisterElement: (id: string, screenId: string) => void;
+  unregisterElement: (
+    id: string,
+    screenId: string,
+    groupId: string | undefined
+  ) => void;
   setScreenReady: (screenId: string, ready: boolean) => void;
   unregisterScreen: (screenId: string) => void;
   waitForScreenReady: (screenId: string) => Promise<void>;
-  isElementHidden: (id: string, screenId: string) => SharedValue<number>;
+  isElementHidden: (
+    id: string,
+    screenId: string,
+    groupId?: string
+  ) => SharedValue<number>;
   activeSession: TransitionSessionData | null;
   pendingTargetScreenId: string | null;
   setPendingTargetScreen: (screenId: string | null) => void;

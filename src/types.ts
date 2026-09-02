@@ -135,6 +135,24 @@ export interface ChoreographyNavigationOptions {
   duration?: number;
 }
 
+export interface InteractiveBackOptions {
+  /** Group to control. Defaults to the route metadata set by navigate(). */
+  group?: string;
+  /** Screen being returned to. Defaults to the route metadata. */
+  targetScreenId?: string;
+}
+
+export interface InteractiveTransitionSettleOptions {
+  spring?: SpringConfig;
+  duration?: number;
+}
+
+export interface InteractiveTransitionSession {
+  id: string;
+  /** Gesture progress: 0 is untouched detail, 1 is a completed back. */
+  progress: SharedValue<number>;
+}
+
 export type ChoreographyDebugLevel = 'error' | 'warn' | 'info' | 'trace';
 
 export type ChoreographyDebugCategory =

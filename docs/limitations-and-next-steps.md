@@ -22,9 +22,9 @@ Other setups may work, but they are not the primary support target yet.
 | --- | --- | --- |
 | Runtime architecture | New Architecture only | Use Fabric-enabled React Native apps for now |
 | Navigator integration | Best with native-stack and disabled stack animation | Keep the navigator from competing with the overlay |
-| Gesture progress | Any back navigation (header back, hardware back, programmatic `goBack`, swipe-back) plays the reverse animation, but progress is time-driven — the user's finger does not yet drive `progress.value` | Treat swipe-back as a back-navigation trigger; the overlay still owns the visual transition. Finger-tracked progress is on the roadmap |
+| Gesture progress | `useInteractiveTransition` lets a custom gesture drive backward progress, but native-stack's built-in swipe progress is not connected automatically | Use the controlled hook for custom gestures; treat the built-in swipe as a time-driven back trigger |
 | Startup latency | First-open forward transitions depend on live target measurement; repeated opens validate cached target metrics with one batched read | Prefer stable structural target elements and avoid unnecessary target churn |
-| Stand-in fidelity | Overlay stand-ins are React-rendered by default; `snapshotMode="bitmap"` captures a native bitmap per element for renderers that want pixel-faithful motion | Use `snapshotMode="bitmap"` for complex content (images mid-load, gradients, platform widgets) and render `source.bitmap` / `target.bitmap` in the transition renderer |
+| Renderer fidelity | Custom renderers receive frozen React content by default; `snapshotMode="bitmap"` additionally captures native bitmaps | Use bitmap input for images mid-load, gradients, or platform widgets, and program the handoff in the renderer |
 | Rapid interruptions | Fast push-pop-push handling is improved but still a hardening area | Keep regression coverage around rapid interruption paths |
 | Virtualized lists | Off-screen source rows cannot be measured | Start transitions from mounted, visible source elements |
 | Accessibility and RTL | Broader validation is still needed | Test large text, RTL, and accessibility flows in app-specific layouts |
@@ -42,10 +42,10 @@ Other setups may work, but they are not the primary support target yet.
 
 ### Highest leverage
 
-1. Build on the opt-in bitmap snapshot path (`snapshotMode="bitmap"`, TurboModule `ScreenChoreographySnapshot`) with automatic crossfade-to-live handoff at settle and a ready-made bitmap stand-in primitive.
-2. Wire reverse progress to the user's finger via native-stack gesture progress / RNScreens v2 `goBackGesture` events, so swipe-back becomes interactive instead of just a trigger for a time-driven reverse.
-3. Promote registry collisions from dev warnings to a compound `(id, screenId)` primary key so cross-screen `groupId` conflicts cannot misroute a transition.
-4. Add an ergonomic helper API (`createChoreography`, `morphSurface`, `move`, `crossfade`, `fadeIn`, `fadeOut`, `stagger`, `<Choreography.Group>`) on top of the current primitives.
+1. Connect `useInteractiveTransition` to native-stack gesture progress when a stable public event is available.
+2. Add velocity-aware finish/cancel helpers and gesture integration examples.
+3. Publish renderer recipes for surfaces, moving content, clipping, and crossfades without making them automatic defaults.
+4. Validate custom bitmap-to-live handoffs under image loading and rapid interruption.
 
 ### Medium-term
 
@@ -55,7 +55,7 @@ Other setups may work, but they are not the primary support target yet.
 
 ### Longer-term
 
-8. Add higher-level presets for common patterns such as card-to-detail and gallery transitions.
+8. Add more complete example choreographies for common product patterns without prescribing one renderer per element type.
 
 ## What The Library Already Does Well
 

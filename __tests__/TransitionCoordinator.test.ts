@@ -317,6 +317,52 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     });
   }, 5000);
 
+  test('discovers pair ids only from the source screen group', async () => {
+    const snap: { current: ElementSnapshot } = {
+      current: { content: null, transition },
+    };
+
+    registry.register(
+      makeElement(
+        {
+          id: 'card',
+          screenId: 'list',
+          metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+        },
+        snap
+      )
+    );
+    registry.register(
+      makeElement(
+        {
+          id: 'card',
+          screenId: 'detail',
+          metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+        },
+        snap
+      )
+    );
+    registry.register(
+      makeElement(
+        {
+          id: 'mounted-elsewhere',
+          screenId: 'third-screen',
+          metrics: { pageX: 0, pageY: 0, width: 20, height: 20 },
+        },
+        snap
+      )
+    );
+
+    const session = await coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+
+    expect(session?.pairs.map((pair) => pair.id)).toEqual(['card']);
+  }, 5000);
+
   test('repeated transitions validate cached target metrics with fewer reads', async () => {
     const snap: { current: ElementSnapshot } = {
       current: { content: null, transition },

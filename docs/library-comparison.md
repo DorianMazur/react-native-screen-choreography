@@ -113,7 +113,7 @@ This library is not automatically better for every app.
 - It has more setup than a plain navigator transition.
 - It is currently best with `@react-navigation/native-stack` and disabled stack animation.
 - It still depends on live target measurement for startup-critical elements.
-- Interactive gesture progress is still a future improvement.
+- Custom gestures can drive progress through `useInteractiveTransition`; automatic native-stack swipe progress remains a future integration.
 
 If your app only needs one simple shared image transition, this library may be more infrastructure than you need.
 

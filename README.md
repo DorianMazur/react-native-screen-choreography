@@ -140,7 +140,7 @@ You can also toggle the logger imperatively from anywhere via the exported `setD
 | Detail screen shows opaque background behind the morphing card | Detail route is not transparent | Use `presentation: 'containedTransparentModal'` and `contentStyle: { backgroundColor: 'transparent' }` |
 | `Coordinator: No valid pairs found` warning | Target `SharedElement` never registered or measured to zero size | Make sure the target screen is wrapped in `ChoreographyScreen` and the element is not inside a virtualized off-screen cell |
 | Animation runs but elements snap at the end | Per-frame style mutation on container shadows | Use `boxShadow` (RN 0.76+) and animate `opacity` instead of `shadowColor`/`elevation`/`shadowRadius` per frame |
-| `[Registry] duplicate id` warning | Same `id` registered on the same screen with conflicting `groupId`s | Make `id` unique per `(id, screenId)` and use a single `groupId` per element across screens |
+| `[Registry] Replacing duplicate element` warning | The same `(screenId, groupId, id)` identity mounted twice | Make each `id` unique within its screen and group |
 | Reverse transition jumps on Android | Live re-measurement of the source row was needed but the row was off-screen | Keep the source row mounted and visible (avoid scrolling away while a detail is open) |
 | Logs are very noisy | `debug={true}` enables `info` level | Use `debug={false}`, or `debug={{ level: 'warn' }}` for production-style output |
 
@@ -162,74 +162,33 @@ function TokenListScreen() {
 }
 ```
 
-### 2. Define transitions and mark matching shared elements
+### 2. Mark matching shared elements
 
-Use the same `id` and `groupId` on source and target elements. The `groupId` represents one transition session. The `id` represents one element within that session. Each `SharedElement` also receives an explicit `transition` object that defines how that pair renders in the overlay.
+Use the same `id` and `groupId` on source and target elements. The `groupId` represents one transition session and the `id` represents one element within it. Every element requires a developer-authored `transition` renderer; the library coordinates the session but does not choose the visual behavior.
 
 ```tsx
-import {
-  SharedElement,
-  StandInContainer,
-  StandInCrossfade,
-  resolveSurfaceStyle,
-  type SharedElementTransition,
-} from 'react-native-screen-choreography';
-
-const cardTransition: SharedElementTransition = {
-  renderer: function CardTransition({ progress, direction, source, target }) {
-    return (
-      <StandInContainer
-        progress={progress}
-        direction={direction}
-        sourceMetrics={source.metrics}
-        targetMetrics={target.metrics}
-        sourceStyle={resolveSurfaceStyle(source.style)}
-        targetStyle={resolveSurfaceStyle(target.style)}
-      />
-    );
-  },
-  zIndex: 0,
-};
-
-const textTransition: SharedElementTransition = {
-  renderer: function TextTransition({
-    progress,
-    direction,
-    source,
-    target,
-    zIndex,
-  }) {
-    return (
-      <StandInCrossfade
-        progress={progress}
-        direction={direction}
-        sourceMetrics={source.metrics}
-        targetMetrics={target.metrics}
-        sourceContent={source.content}
-        targetContent={target.content}
-        zIndex={zIndex}
-      />
-    );
-  },
-  zIndex: 2,
-};
+import { SharedElement } from 'react-native-screen-choreography';
+import { cardTransition, nameTransition } from './tokenTransitions';
 
 <SharedElement
-  id={`token.${token.id}.card`}
+  id="card"
   groupId={`token.${token.id}`}
   transition={cardTransition}
+  style={styles.card}
 >
-  <View style={styles.card}>
+  <View>
     <SharedElement
-      id={`token.${token.id}.name`}
+      id="name"
       groupId={`token.${token.id}`}
-      transition={textTransition}
+      transition={nameTransition}
     >
       <Text>{token.name}</Text>
     </SharedElement>
   </View>
 </SharedElement>
 ```
+
+Set `snapshotMode="bitmap"` only when a custom renderer needs pixel-faithful source and target PNGs. Snapshot capture supplies `source.bitmap` and `target.bitmap`; it never decides how those images move, resize, fade, or hand off.
 
 ### 3. Navigate through the choreography hook
 
@@ -291,12 +250,36 @@ function TokenDetailScreen() {
 }
 ```
 
+### 5. Drive a custom back gesture
+
+`useInteractiveTransition` prepares a backward session without popping the route. Its exposed `progress` is gesture-normalized: `0` is the untouched detail and `1` is a completed back gesture.
+
+```tsx
+const {
+  beginBack,
+  setProgress,
+  finish,
+  cancel,
+  progress,
+  isActive,
+} = useInteractiveTransition();
+
+const session = await beginBack();
+if (session) {
+  setProgress(translationX / screenWidth);
+  translationX > screenWidth * 0.4 ? finish() : cancel();
+}
+```
+
+`setProgress` is a worklet-compatible callback for per-frame gesture updates. Call `beginBack()` and wait for it to resolve before sending updates. This controlled API does not automatically receive native-stack's built-in swipe progress yet.
+
 ## Mental Model
 
 - `ChoreographyProvider` owns the registry, transition coordinator, overlay, and active session state.
 - `ChoreographyScreen` manages visibility for both roles: the source screen's non-shared content fades out as the forward animation begins, while the destination screen is revealed from the first spring frame with only the shared elements hidden individually (the overlay stand-ins own those positions).
 - `SharedElement` tags matching source and target elements.
-- `useChoreographyNavigation` starts and reverses sessions.
+- `useChoreographyNavigation` starts and reverses time-driven sessions.
+- `useInteractiveTransition` prepares and controls custom gesture-driven back sessions.
 - `useChoreographyProgress` lets the screen react to the active session.
 - `useLatchedReveal` and `useStaggeredReveal` help detail screens reveal content without duplicating transition lifecycle code.
 
@@ -308,7 +291,7 @@ function TokenDetailScreen() {
 | --- | --- |
 | `ChoreographyProvider` | Hosts the registry, coordinator, overlay, and native transition host; accepts `debug`, `onTransitionStart`, and `onTransitionEnd` |
 | `ChoreographyScreen` | Provides a stable `screenId` for registration, readiness tracking, and progress-driven visibility orchestration — source screens fade out during forward transitions and destination screens are revealed from the first spring frame with only the shared elements individually hidden |
-| `SharedElement` | Registers one shared element by `id`, `groupId`, and `transition`; the transition renderer defines exactly how the overlay animates that pair. Accepts `snapshotMode="bitmap"` to capture a pixel-faithful native bitmap of the real view at session start |
+| `SharedElement` | Registers one shared element by compound `(screenId, groupId, id)` identity and requires the renderer that defines its overlay behavior |
 
 `onTransitionStart(session)` fires when a session becomes active with resolved pairs. `onTransitionEnd(session)` fires after the active session completes or is cancelled, which makes them useful for instrumentation, analytics, or app-level UI coordination.
 
@@ -317,6 +300,7 @@ function TokenDetailScreen() {
 | Hook | Returns |
 | --- | --- |
 | `useChoreographyNavigation(navigation)` | `navigate()` and `goBack()` integrated with the transition system |
+| `useInteractiveTransition()` | `beginBack()`, worklet-compatible `setProgress()`, `finish()`, `cancel()`, normalized `progress`, and `isActive` for custom gestures |
 | `useChoreographyProgress()` | `progress`, `backdropStyle`, `isActive`, `settleTransition()` to snap to the current screen endpoint and complete the session |
 | `useLatchedReveal(config?)` | Boolean gate that opens at a progress threshold and stays visible once revealed |
 | `useStaggeredReveal(count, config?)` | `getItemStyle(index)` for staged reveal sections |
@@ -352,7 +336,7 @@ The renderer receives:
 - `source.bitmap` / `target.bitmap` (`ElementBitmap` with a `file://` URI and point size) when the element opted into `snapshotMode="bitmap"` — render it with an `Image` inside a stand-in for pixel-faithful motion of complex content
 - `zIndex` so related transitions can layer predictably
 
-The library ships low-level building blocks such as `StandInContainer`, `StandInElement`, `StandInCrossfade`, and `resolveSurfaceStyle`, but it does not choose stock presets for you anymore. App code owns the visual recipe.
+The low-level `StandInContainer`, `StandInElement`, `StandInCrossfade`, and `resolveSurfaceStyle` exports remain available for custom visual recipes.
 
 ### Core Transition Config
 
@@ -372,18 +356,18 @@ interface ChoreographyNavigationOptions {
 
 For app code, the cleanest pattern is:
 
-- define reusable `SharedElementTransition` objects close to the feature or screen that owns the transition
-- declare each element's overlay behavior once at the `SharedElement` site with `transition={...}`
+- define each `SharedElementTransition` close to the feature that owns its visual behavior
+- use separate shared elements for independently moving layers such as a background surface, artwork, and labels
 - pass only `transitionConfig.group` during navigation in the common case
 - pass `spring` or `duration` as navigation options when you want to override the default transition animation
 
 ## Known Limitations
 
 - The best-supported setup is still `@react-navigation/native-stack` with stack animation disabled.
-- Interactive gesture progress is not wired yet.
+- Custom back gestures can control progress with `useInteractiveTransition`; native-stack's built-in swipe progress is not connected automatically.
 - Transition startup still depends on live target measurement for structural elements, though repeated opens of the same target layout reuse cached metrics after one validation read.
-- Overlay stand-ins are React-rendered by default; native bitmap snapshots are opt-in per element via `snapshotMode="bitmap"`.
-- The element registry is keyed by `id` (per-screen lookups by `(id, screenId)` work, but two screens cannot register the same `id` with different `groupId`s without a warning).
+- Renderers receive frozen React content by default; `snapshotMode="bitmap"` additionally supplies native snapshots without prescribing how to render them.
+- Elements use compound `(screenId, groupId, id)` identities; the same ID can safely appear in several groups.
 
 See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for current constraints, workarounds, and roadmap priorities.
 

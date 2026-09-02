@@ -23,7 +23,7 @@ export interface SharedElementProps {
   id: string;
   /** Group identifier. Elements in the same group transition together. */
   groupId?: string;
-  /** Explicit transition renderer for this shared element pair. */
+  /** Renderer defining exactly how this shared pair animates. */
   transition: SharedElementTransition;
   /**
    * Opt into native bitmap capture for this element. When `'bitmap'`, the
@@ -67,7 +67,6 @@ export function SharedElement({
     () => (style ? (StyleSheet.flatten(style) as ViewStyle) : undefined),
     [style]
   );
-
   // Latest-value refs mutated during render so getSnapshot() always
   // reflects current props without forcing re-registration.
   const childrenRef = useRef<React.ReactNode>(children);
@@ -113,7 +112,7 @@ export function SharedElement({
     });
 
     return () => {
-      unregisterElement(id, screenId);
+      unregisterElement(id, screenId, groupId);
     };
   }, [
     id,
@@ -126,7 +125,7 @@ export function SharedElement({
     unregisterElement,
   ]);
 
-  const hidden = isElementHidden(id, screenId);
+  const hidden = isElementHidden(id, screenId, groupId);
 
   const animatedStyle = useAnimatedStyle(() => {
     return {

@@ -7,8 +7,6 @@ import Animated, {
 } from 'react-native-reanimated';
 import {
   StandInContainer,
-  StandInCrossfade,
-  StandInElement,
   resolveSurfaceStyle,
   type ElementMetrics,
   type SharedElementTransition,
@@ -169,37 +167,50 @@ function TokenTextTransitionRenderer({
   target,
   zIndex,
 }: SharedElementTransitionRendererProps) {
-  return (
-    <StandInElement
-      progress={progress}
-      direction={direction}
-      sourceMetrics={source.metrics}
-      targetMetrics={target.metrics}
-      sourceContent={source.content}
-      targetContent={target.content}
-      zIndex={zIndex}
-    />
+  const t = useDerivedValue(() =>
+    direction === 'backward' ? 1 - progress.value : progress.value
   );
-}
+  const animatedStyle = useAnimatedStyle(() => {
+    const scaleFromHeight =
+      target.metrics.height > 0
+        ? source.metrics.height / target.metrics.height
+        : 1;
 
-function TokenValueTransitionRenderer({
-  progress,
-  direction,
-  source,
-  target,
-  zIndex,
-}: SharedElementTransitionRendererProps) {
+    return {
+      left: interpolate(
+        t.value,
+        [0, 1],
+        [source.metrics.pageX, target.metrics.pageX],
+        'clamp'
+      ),
+      top: interpolate(
+        t.value,
+        [0, 1],
+        [source.metrics.pageY, target.metrics.pageY],
+        'clamp'
+      ),
+      transform: [
+        {
+          scale: interpolate(t.value, [0, 1], [scaleFromHeight, 1], 'clamp'),
+        },
+      ],
+    };
+  });
+
   return (
-    <StandInCrossfade
-      progress={progress}
-      direction={direction}
-      sourceMetrics={source.metrics}
-      targetMetrics={target.metrics}
-      sourceContent={source.content}
-      targetContent={target.content}
-      fadeRange={[0.18, 0.58]}
-      zIndex={zIndex}
-    />
+    <Animated.View
+      style={[
+        styles.textCarry,
+        {
+          width: target.metrics.width,
+          height: target.metrics.height,
+          zIndex,
+        },
+        animatedStyle,
+      ]}
+    >
+      {target.content}
+    </Animated.View>
   );
 }
 
@@ -219,7 +230,7 @@ export const tokenTextTransition: SharedElementTransition = {
 };
 
 export const tokenValueTransition: SharedElementTransition = {
-  renderer: TokenValueTransitionRenderer,
+  renderer: TokenTextTransitionRenderer,
   zIndex: 1,
 };
 
@@ -227,5 +238,10 @@ const styles = StyleSheet.create({
   morphContent: {
     position: 'absolute',
     overflow: 'visible',
+  },
+  textCarry: {
+    position: 'absolute',
+    overflow: 'visible',
+    transformOrigin: 'top left',
   },
 });

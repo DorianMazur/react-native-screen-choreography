@@ -93,7 +93,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 - registers exactly once per `(id, groupId, screenId)` on mount and unregisters on unmount; the registration effect depends only on stable values (`id`, `groupId`, `screenId`, the registration callbacks, and `getSnapshot`) so ancestor re-renders, focus changes, or prop churn do not cause re-registration
 - keeps the latest `children`, `style`, and `transition` in mutable refs that are written every render
 - exposes a stable `getSnapshot(): ElementSnapshot` to the registry; the coordinator calls it once at session start to freeze the visual contract used by the overlay
-- reads `hidden.value` synchronously during render to set an `initialOpacity` static style before `animatedStyle`; this ensures React's first committed frame never paints an element visible when its SV is already at 1 (hidden) from a prior transition
+- reads a per-element hidden shared value in `useAnimatedStyle`, keeping original elements hidden while their transition renderer owns the overlay presentation
 
 ### Frozen Snapshots
 
@@ -101,9 +101,9 @@ The provider deliberately does **not** hide real elements when a session becomes
 
 ### `ElementRegistry`
 
-- stores registered elements by `id` (per-screen lookups via `(id, screenId)` keys)
+- stores registered elements by compound `(screenId, groupId, id)` identity
 - allows the same `id` to exist on multiple screens at once
-- emits dev warnings when the same `id` is registered on the same screen with conflicting `groupId`s, or across screens with conflicting `groupId`s
+- allows the same `id` to exist in different groups on one screen and warns only when an exact compound identity is replaced
 - keeps the latest measured metrics for each element
 - exposes `subscribe(listener)` so the coordinator can await registration and metrics events instead of polling on a timer
 
@@ -112,7 +112,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 - pre-measures source elements before navigation and captures opt-in source bitmaps while the source is still visible
 - waits for target elements to register via registry subscription events (with a 500ms safety deadline) instead of a 16ms polling loop
 - validates cached target metrics from previous sessions with one batched measurement; only falls back to the multi-read stability loop when the cache is missing or stale
-- creates source/target element pairs and freezes a `sourceSnapshot` and `targetSnapshot` onto each pair before promoting the session to `active`
+- discovers expected IDs from the source screen's group, creates only matching source/target pairs, and freezes a `sourceSnapshot` and `targetSnapshot` onto each pair before promoting the session to `active`
 - attaches native bitmaps (`sourceBitmap` / `targetBitmap`) to pairs whose elements use `snapshotMode: 'bitmap'`, and releases the underlying files when the session completes or cancels
 - can refresh source or target metrics for the active session in place
 - maintains the `hiddenElements` set; the provider mirrors it onto per-element shared values when the overlay paints
@@ -207,6 +207,11 @@ The shared progress value is the contract between the transition runtime and com
 - `useLatchedReveal()` keeps staged content visible once it has crossed its reveal threshold
 - `useStaggeredReveal()` creates per-item reveal styles from the same session progress
 - `settleTransition()` lets a screen settle to its current endpoint as soon as the user starts scrolling or otherwise interacting
+- `useInteractiveTransition()` prepares a backward session and maps gesture-normalized progress (`0` detail, `1` back complete) onto the existing semantic progress value (`1` detail, `0` list)
+
+## Navigation Session Controller
+
+`NavigationSessionController` owns navigation locking, last-request queueing, animation tokens, and active-session validation outside React. `useChoreographyNavigation` retains platform effects and Reanimated scheduling while delegating mutable session decisions to this directly testable controller.
 
 ## Extending The Library
 
@@ -251,8 +256,7 @@ The provider applies the resolved config inside a `useEffect` so toggling debug 
 ## Current Pressure Points
 
 - first-open startup still depends on live target measurement (repeated opens use the validated metrics cache)
-- interactive gesture progress is not wired yet
-- the registry is keyed by `id`; cross-screen `groupId` conflicts only produce dev warnings, not hard failures
+- native-stack's built-in swipe progress is not wired automatically; custom gestures can use `useInteractiveTransition`
 - bitmap snapshots are per-element opt-in; there is no automatic fidelity detection for complex content
 
 See [limitations-and-next-steps.md](limitations-and-next-steps.md) for the current support boundaries and roadmap.

@@ -33,6 +33,7 @@ import {
   setDebugEnabled,
   setDebugLevel,
 } from '../debug/logger';
+import { getElementIdentityKey } from '../core/elementIdentity';
 
 function TransitionHostPortal({
   active,
@@ -196,20 +197,23 @@ export function ChoreographyProvider({
     registryRef.current!.register(element);
   }, []);
 
-  const unregisterElement = useCallback((id: string, screenId: string) => {
-    registryRef.current!.unregister(id, screenId);
-    const key = `${id}:${screenId}`;
-    const sv = hiddenMapRef.current.get(key);
-    if (sv) {
-      if (coordinatorRef.current?.getHiddenElements().has(key)) {
-        // Element is hidden by an active transition; preserve the SV so a
-        // re-mounting element gets back the same value=1 and never flashes.
-        return;
+  const unregisterElement = useCallback(
+    (id: string, screenId: string, groupId: string | undefined) => {
+      registryRef.current!.unregister(id, screenId, groupId);
+      const key = getElementIdentityKey(screenId, groupId, id);
+      const sv = hiddenMapRef.current.get(key);
+      if (sv) {
+        if (coordinatorRef.current?.getHiddenElements().has(key)) {
+          // Element is hidden by an active transition; preserve the SV so a
+          // re-mounting element gets back the same value=1 and never flashes.
+          return;
+        }
+        sv.value = 0;
+        hiddenMapRef.current.delete(key);
       }
-      sv.value = 0;
-      hiddenMapRef.current.delete(key);
-    }
-  }, []);
+    },
+    []
+  );
 
   const setScreenReady = useCallback((screenId: string, ready: boolean) => {
     let state = screenStateRef.current.get(screenId);
@@ -291,8 +295,8 @@ export function ChoreographyProvider({
   }, []);
 
   const isElementHidden = useCallback(
-    (id: string, screenId: string): SharedValue<number> => {
-      const key = `${id}:${screenId}`;
+    (id: string, screenId: string, groupId?: string): SharedValue<number> => {
+      const key = getElementIdentityKey(screenId, groupId, id);
       let sv = hiddenMapRef.current.get(key);
       if (!sv) {
         const isHidden = coordinatorRef.current?.getHiddenElements().has(key)

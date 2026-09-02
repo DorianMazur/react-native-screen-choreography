@@ -124,7 +124,7 @@ export function TokenDetailScreen({
                     ]}
                   >
                     {isPositiveChange ? '+' : ''}
-                    {token.change24h.toFixed(2)}% today
+                    {token.change24h.toFixed(2)}%
                   </Text>
                 </SharedElement>
               </View>

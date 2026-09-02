@@ -9,8 +9,11 @@ function createMockElement(
     groupId: 'test-group',
     screenId: 'screen-1',
     ref: () => null,
-    config: {},
     metrics: null,
+    getSnapshot: () => ({
+      content: null,
+      transition: { renderer: () => null },
+    }),
     ...overrides,
   };
 }
@@ -47,9 +50,29 @@ describe('ElementRegistry', () => {
     expect(result).toHaveLength(1);
   });
 
+  test('keeps the same id in different groups on one screen', () => {
+    registry.register(createMockElement({ groupId: 'group-1' }));
+    registry.register(createMockElement({ groupId: 'group-2' }));
+
+    expect(registry.getById('test-element')).toHaveLength(2);
+    expect(
+      registry.getByIdAndScreen('test-element', 'screen-1', 'group-2')?.groupId
+    ).toBe('group-2');
+  });
+
+  test('unregister removes only the exact compound identity', () => {
+    registry.register(createMockElement({ groupId: undefined }));
+    registry.register(createMockElement({ groupId: 'group-2' }));
+
+    registry.unregister('test-element', 'screen-1', undefined);
+
+    expect(registry.getById('test-element')).toHaveLength(1);
+    expect(registry.getById('test-element')[0]?.groupId).toBe('group-2');
+  });
+
   test('unregisters an element', () => {
     registry.register(createMockElement());
-    registry.unregister('test-element', 'screen-1');
+    registry.unregister('test-element', 'screen-1', 'test-group');
 
     const result = registry.getById('test-element');
     expect(result).toHaveLength(0);
@@ -59,7 +82,7 @@ describe('ElementRegistry', () => {
     registry.register(createMockElement({ screenId: 'screen-1' }));
     registry.register(createMockElement({ screenId: 'screen-2' }));
 
-    registry.unregister('test-element', 'screen-1');
+    registry.unregister('test-element', 'screen-1', 'test-group');
 
     const result = registry.getById('test-element');
     expect(result).toHaveLength(1);
@@ -113,6 +136,19 @@ describe('ElementRegistry', () => {
     expect(result).toHaveLength(2);
     expect(result).toContain('a');
     expect(result).toContain('b');
+  });
+
+  test('getGroupElementIds can be scoped to one source screen', () => {
+    registry.register(
+      createMockElement({ id: 'source', screenId: 'screen-1' })
+    );
+    registry.register(
+      createMockElement({ id: 'target-only', screenId: 'screen-2' })
+    );
+
+    expect(registry.getGroupElementIds('test-group', 'screen-1')).toEqual([
+      'source',
+    ]);
   });
 
   test('updateMetrics updates cached metrics', () => {
@@ -180,7 +216,7 @@ describe('ElementRegistry', () => {
       });
       expect(listener).toHaveBeenCalledTimes(2);
 
-      registry.unregister('test-element', 'screen-1');
+      registry.unregister('test-element', 'screen-1', 'test-group');
       expect(listener).toHaveBeenCalledTimes(3);
     });
 

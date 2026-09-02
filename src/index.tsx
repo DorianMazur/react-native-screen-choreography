@@ -18,6 +18,7 @@ export {
 
 // Hooks
 export { useChoreographyNavigation } from './hooks/useChoreographyNavigation';
+export { useInteractiveTransition } from './hooks/useInteractiveTransition';
 export {
   useChoreographyProgress,
   useLatchedReveal,
@@ -43,6 +44,9 @@ export type {
   SharedElementTransitionSide,
   TransitionConfig,
   ChoreographyNavigationOptions,
+  InteractiveBackOptions,
+  InteractiveTransitionSession,
+  InteractiveTransitionSettleOptions,
   ChoreographyDebugConfig,
   ChoreographyDebugLevel,
   ChoreographyDebugCategory,
