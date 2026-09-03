@@ -1,6 +1,6 @@
 # Example App
 
-This example app demonstrates the current reference transition for `react-native-screen-choreography`: a wallet-style token list that expands a tapped row into a detail card.
+This example app contains gallery, music, wallet, and live-payload transition recipes for `react-native-screen-choreography`.
 
 ## What It Demonstrates
 
@@ -11,6 +11,7 @@ This example app demonstrates the current reference transition for `react-native
 - early settle handling when detail interaction starts mid-transition
 - staged reveal of detail content
 - fast push-pop-push interruption handling
+- native view reparenting with one stateful player instance shared between compact and expanded hosts
 
 ## Important Runtime Setup
 
@@ -59,6 +60,9 @@ yarn start
 - `src/TokenDetailScreen.tsx` for companion animations and reverse navigation
 - `src/TokenRow.tsx` for shared element structure on the list row
 - `src/sharedTransitions.tsx` for the explicit transition renderer definitions
+- `src/live/LivePlayerListScreen.tsx` for the single live payload owner
+- `src/live/LivePlayerDetailScreen.tsx` for the destination-only `LiveTarget`
+- `src/live/LivePlayerSurface.tsx` for state that survives native reparenting
 
 ## What To Test Manually
 
@@ -67,3 +71,4 @@ yarn start
 - start scrolling during an active detail transition and verify `settleTransition()` snaps cleanly to the detail endpoint
 - go back quickly and tap a different token once
 - repeat push-pop cycles to check for flashes, dropped reverses, or large startup delays
+- start the live player, open and close its detail route, and verify its elapsed time and play/pause state never reset

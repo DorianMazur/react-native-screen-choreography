@@ -6,6 +6,7 @@ export interface SpringConfig {
   damping?: number;
   mass?: number;
   stiffness?: number;
+  velocity?: number;
   overshootClamping?: boolean;
   restDisplacementThreshold?: number;
   restSpeedThreshold?: number;
@@ -27,6 +28,7 @@ export interface SharedElementTransitionSide {
 
 export interface SharedElementTransitionRendererProps {
   id: string;
+  groupId: string;
   progress: SharedValue<number>;
   direction: 'forward' | 'backward';
   zIndex: number;
@@ -40,6 +42,8 @@ export type SharedElementTransitionRenderer =
 export interface SharedElementTransition {
   renderer: SharedElementTransitionRenderer;
   zIndex?: number;
+  /** `live` pairs animate the real native view, so they are never hidden. */
+  mode?: 'standin' | 'live';
 }
 
 export type NodeHandleRef = React.RefObject<any> | (() => any);
@@ -57,6 +61,8 @@ export interface RegisteredElement {
   screenId: string;
   ref: NodeHandleRef;
   animatedRef?: AnimatedRef<any>;
+  /** Resolves a nested measurement target without re-registering the element. */
+  getAnimatedRef?: () => AnimatedRef<any> | undefined;
   metrics: ElementMetrics | null;
   /** Captures content, style, and transition once at session start. */
   getPresentation: () => ElementPresentation;
@@ -117,6 +123,15 @@ export interface InteractiveBackOptions {
 export interface InteractiveTransitionSettleOptions {
   spring?: SpringConfig;
   duration?: number;
+  /** Gesture progress velocity in normalized progress units per second. */
+  velocity?: number;
+}
+
+export interface InteractiveTransitionDecisionOptions extends InteractiveTransitionSettleOptions {
+  /** Progress required to finish when projected velocity is applied. */
+  threshold?: number;
+  /** Seconds of release velocity used to project the final progress. */
+  velocityImpact?: number;
 }
 
 export interface InteractiveTransitionSession {

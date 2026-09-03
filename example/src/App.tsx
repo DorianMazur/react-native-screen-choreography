@@ -11,6 +11,8 @@ import { GalleryListScreen } from './gallery/GalleryListScreen';
 import { GalleryDetailScreen } from './gallery/GalleryDetailScreen';
 import { MusicListScreen } from './music/MusicListScreen';
 import { NowPlayingScreen } from './music/NowPlayingScreen';
+import { LivePlayerListScreen } from './live/LivePlayerListScreen';
+import { LivePlayerDetailScreen } from './live/LivePlayerDetailScreen';
 
 const Stack = createNativeStackNavigator();
 
@@ -64,6 +66,16 @@ export default function App() {
             <Stack.Screen
               name="TokenDetail"
               component={TokenDetailScreen}
+              options={detailOptions}
+            />
+
+            <Stack.Screen
+              name="LivePlayerList"
+              component={LivePlayerListScreen}
+            />
+            <Stack.Screen
+              name="LivePlayerDetail"
+              component={LivePlayerDetailScreen}
               options={detailOptions}
             />
           </Stack.Navigator>

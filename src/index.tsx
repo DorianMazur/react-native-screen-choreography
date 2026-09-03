@@ -3,8 +3,15 @@ export { ChoreographyProvider } from './components/ChoreographyProvider';
 export { ChoreographyScreen } from './components/ChoreographyScreen';
 export {
   SharedElement,
+  type LiveSharedElementProps,
+  type LiveSharedElementTargetProps,
   type SharedElementProps,
+  type SharedElementTargetProps,
 } from './components/SharedElement';
+export {
+  createSharedElementComponent,
+  type SharedElementComponentProps,
+} from './components/createSharedElementComponent';
 
 // Stand-in components
 export { StandInContainer } from './standin/StandInContainer';
@@ -18,6 +25,7 @@ export {
 
 // Hooks
 export { useChoreographyNavigation } from './hooks/useChoreographyNavigation';
+export { useChoreographyBlocker } from './hooks/useChoreographyBlocker';
 export { useInteractiveTransition } from './hooks/useInteractiveTransition';
 export {
   useChoreographyProgress,
@@ -27,6 +35,11 @@ export {
 
 // Spring & easing presets
 export { Springs, Easings } from './core/constants';
+export type {
+  ScreenRole,
+  SessionPhase,
+  TransitionDirection,
+} from './core/screenVisibility';
 
 // Debug
 export { setDebugEnabled } from './debug/logger';
@@ -45,6 +58,7 @@ export type {
   InteractiveBackOptions,
   InteractiveTransitionSession,
   InteractiveTransitionSettleOptions,
+  InteractiveTransitionDecisionOptions,
   ChoreographyDebugConfig,
   ChoreographyDebugLevel,
   ChoreographyDebugCategory,

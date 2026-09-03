@@ -10,6 +10,7 @@ import {
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import { useScreenId } from '../core/screenIdContext';
+import { getScreenRole, getSessionPhase } from '../core/screenVisibility';
 import { PROGRESS_RANGES, DEFAULT_BACKDROP_OPACITY } from '../core/constants';
 
 function resolveSettledProgress(
@@ -55,8 +56,11 @@ export function useChoreographyProgress() {
   }
 
   const screenId = useScreenId();
-  const { progress, activeSession, completeTransition } = ctx;
+  const { progress, activeSession, pendingTargetScreenId, completeTransition } =
+    ctx;
   const isActive = activeSession !== null;
+  const role = getScreenRole(activeSession, screenId);
+  const phase = getSessionPhase(activeSession, pendingTargetScreenId, screenId);
 
   const backdropStyle = useAnimatedStyle(() => {
     return {
@@ -83,6 +87,11 @@ export function useChoreographyProgress() {
     progress,
     backdropStyle,
     isActive,
+    role,
+    phase,
+    direction: activeSession?.direction ?? null,
+    groupId: activeSession?.groupId ?? null,
+    sessionId: activeSession?.id ?? null,
     settleTransition,
   };
 }

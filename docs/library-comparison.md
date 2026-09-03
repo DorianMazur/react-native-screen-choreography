@@ -16,17 +16,25 @@ The point is not that every other library is bad. The point is that `react-nativ
 
 If you only need one simple shared element with minimal choreography, other options can still be simpler.
 
+## Compared With `react-native-screen-transitions`
+
+`react-native-screen-transitions` is the broader toolkit. Its Blank Stack, screen interpolators, pan/pinch gesture runtime, snap-point sheets, scroll handoff, masks, presets, Bounds API, native-stack adapter, and Expo Router integration make it a stronger choice when an application needs to own the complete screen-transition model.
+
+`react-native-screen-choreography` stays focused on native-stack sessions containing independently rendered element pairs. Its distinguishing model is one frozen presentation and renderer per pair, companion motion from the same session progress, explicit native overlay presentation acknowledgements, and an opt-in live payload path built on `react-native-teleport`.
+
+Choose Screen Transitions for broad navigation animation and gesture infrastructure. Choose Screen Choreography when the transition is primarily a coordinated collection of feature-owned element renderers or when one stateful native payload must move through that choreography without remounting.
+
 ## Comparison Table
 
-| Capability | react-native-screen-choreography | react-native-shared-element | Reanimated Shared Element Transitions | Plain React Navigation screen transitions |
-| --- | --- | --- | --- | --- |
-| Multi-element choreography | Yes, one session can coordinate many elements | Limited, mostly element-by-element | Limited, primarily pair matching | No |
-| Companion motion from shared progress | Yes | No first-class API | No first-class API | No |
-| Overlay ownership above native-stack containers | Yes, with a native host | Native transition view, but older integration model | Navigator-coupled implementation | No |
-| Interruption handling | Explicit runtime concern | Limited | Limited / experimental | Screen-level only |
-| Public API for staged reveal content | Yes | No | No | No |
-| Current architecture target | Modern Fabric + Reanimated runtime | Older ecosystem assumptions | Experimental path inside Reanimated | Screen animations only |
-| Best use case | Rich card-to-detail and multi-element flows | Low-level shared element primitives | Simple tag-based demos and experiments | Basic screen-to-screen motion |
+| Capability                                      | react-native-screen-choreography              | react-native-shared-element                         | Reanimated Shared Element Transitions  | Plain React Navigation screen transitions |
+| ----------------------------------------------- | --------------------------------------------- | --------------------------------------------------- | -------------------------------------- | ----------------------------------------- |
+| Multi-element choreography                      | Yes, one session can coordinate many elements | Limited, mostly element-by-element                  | Limited, primarily pair matching       | No                                        |
+| Companion motion from shared progress           | Yes                                           | No first-class API                                  | No first-class API                     | No                                        |
+| Overlay ownership above native-stack containers | Yes, with a native host                       | Native transition view, but older integration model | Navigator-coupled implementation       | No                                        |
+| Interruption handling                           | Explicit runtime concern                      | Limited                                             | Limited / experimental                 | Screen-level only                         |
+| Public API for staged reveal content            | Yes                                           | No                                                  | No                                     | No                                        |
+| Current architecture target                     | Modern Fabric + Reanimated runtime            | Older ecosystem assumptions                         | Experimental path inside Reanimated    | Screen animations only                    |
+| Best use case                                   | Rich card-to-detail and multi-element flows   | Low-level shared element primitives                 | Simple tag-based demos and experiments | Basic screen-to-screen motion             |
 
 ## Compared With `react-native-shared-element`
 

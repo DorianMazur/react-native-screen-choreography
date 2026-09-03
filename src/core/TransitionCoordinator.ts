@@ -3,7 +3,6 @@ import { Platform } from 'react-native';
 import type {
   TransitionSessionData,
   ElementTransitionPair,
-  TransitionState,
   RegisteredElement,
 } from '../types';
 import type { ElementRegistry } from './ElementRegistry';
@@ -21,9 +20,14 @@ function elapsedMs(startedAt: number): string {
   return `${Date.now() - startedAt}ms`;
 }
 
+function getAnimatedRef(element: RegisteredElement) {
+  return element.getAnimatedRef?.() ?? element.animatedRef;
+}
+
 export class TransitionCoordinator {
   private registry: ElementRegistry;
   private activeSession: TransitionSessionData | null = null;
+  private settledScreenId: string | null = null;
   private progress: SharedValue<number>;
   private onSessionChange: (session: TransitionSessionData | null) => void =
     () => {};
@@ -58,6 +62,10 @@ export class TransitionCoordinator {
     return this.activeSession;
   }
 
+  getSettledScreenId(): string | null {
+    return this.settledScreenId;
+  }
+
   getHiddenElements(): Set<string> {
     return this.hiddenElements;
   }
@@ -77,7 +85,7 @@ export class TransitionCoordinator {
     const batchEntries: BatchMeasureEntry[] = elements.map((element) => ({
       id: element.id,
       ref: element.ref,
-      animatedRef: element.animatedRef,
+      animatedRef: getAnimatedRef(element),
     }));
 
     const results = await measureElementsBatched(batchEntries);
@@ -106,7 +114,7 @@ export class TransitionCoordinator {
       return {
         id: pair.id,
         ref: element.ref,
-        animatedRef: element.animatedRef,
+        animatedRef: getAnimatedRef(element),
       };
     });
 
@@ -287,7 +295,7 @@ export class TransitionCoordinator {
       elements.map((element) => ({
         id: element.id,
         ref: element.ref,
-        animatedRef: element.animatedRef,
+        animatedRef: getAnimatedRef(element),
       }))
     );
 
@@ -371,7 +379,7 @@ export class TransitionCoordinator {
         (element) => ({
           id: element.id,
           ref: element.ref,
-          animatedRef: element.animatedRef,
+          animatedRef: getAnimatedRef(element),
         })
       );
 
@@ -526,14 +534,14 @@ export class TransitionCoordinator {
         batchEntries.push({
           id: `source:${id}`,
           ref: source.ref,
-          animatedRef: source.animatedRef,
+          animatedRef: getAnimatedRef(source),
         });
       }
       if (shouldRemeasureTarget || !target.metrics) {
         batchEntries.push({
           id: `target:${id}`,
           ref: target.ref,
-          animatedRef: target.animatedRef,
+          animatedRef: getAnimatedRef(target),
         });
       }
     }
@@ -588,6 +596,11 @@ export class TransitionCoordinator {
     );
 
     for (const pair of pairs) {
+      // A live pair's single native view is what animates; hiding its
+      // endpoint wrapper would blank the frame the view lands in.
+      if (pair.transition.mode === 'live') {
+        continue;
+      }
       this.hiddenElements.add(
         getElementIdentityKey(
           pair.source.screenId,
@@ -635,10 +648,8 @@ export class TransitionCoordinator {
 
     debugLog(`[Coordinator] Completing transition "${this.activeSession.id}"`);
 
-    this.updateSessionState('completing');
-
+    this.settledScreenId = this.activeSession.targetScreenId;
     this.hiddenElements.clear();
-
     this.updateSession(null);
   }
 
@@ -647,23 +658,14 @@ export class TransitionCoordinator {
 
     debugLog(`[Coordinator] Cancelling transition "${this.activeSession.id}"`);
 
-    this.updateSessionState('cancelling');
-
+    this.settledScreenId = this.activeSession.sourceScreenId;
     this.hiddenElements.clear();
-
     this.progress.value = this.activeSession.direction === 'forward' ? 0 : 1;
-
     this.updateSession(null);
   }
 
   private updateSession(session: TransitionSessionData | null) {
     this.activeSession = session;
     this.onSessionChange(session);
-  }
-
-  private updateSessionState(state: TransitionState) {
-    if (this.activeSession) {
-      this.activeSession = { ...this.activeSession, state };
-    }
   }
 }

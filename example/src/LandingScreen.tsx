@@ -82,6 +82,14 @@ export function LandingScreen({ navigation }: { navigation: any }) {
               to="#7C5CFF"
               onPress={() => navigation.navigate('TokenList')}
             />
+            <DemoTile
+              label="04 · Live player"
+              title="One player, two screens"
+              subtitle="Playback state survives native reparenting."
+              from="#17201C"
+              to="#D8E6A3"
+              onPress={() => navigation.navigate('LivePlayerList')}
+            />
           </View>
 
           <View style={styles.footer}>

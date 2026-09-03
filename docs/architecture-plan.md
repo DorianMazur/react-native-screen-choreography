@@ -197,10 +197,18 @@ First-open structural measurement is still the largest startup cost in the curre
 The shared progress value is the contract between the transition runtime and companion screen motion.
 
 - `useChoreographyProgress()` exposes the shared progress value and common derived behaviors
+- the progress hook also exposes the current screen role, lifecycle phase, direction, group, and session identity
 - `useLatchedReveal()` keeps staged content visible once it has crossed its reveal threshold
 - `useStaggeredReveal()` creates per-item reveal styles from the same session progress
 - `settleTransition()` lets a screen settle to its current endpoint as soon as the user starts scrolling or otherwise interacting
 - `useInteractiveTransition()` prepares a backward session and maps gesture-normalized progress (`0` detail, `1` back complete) onto the existing semantic progress value (`1` detail, `0` list)
+- interactive sessions can project normalized release velocity through `settle()` and preserve that velocity in the endpoint spring
+
+## Readiness And Live Payloads
+
+`ScreenReadinessRegistry` combines screen layout readiness with reference-counted application blockers. `ChoreographyScreen ready={false}` and `useChoreographyBlocker().acquire()` both hold the existing pre-transition readiness wait; neither creates a separate transition lifecycle.
+
+Normal pairs render frozen `ElementPresentation` values. `SharedElement.Live` is a distinct opt-in path: `react-native-teleport` physically reparents one React-owned native subtree into a pair-specific overlay host during animation and into `SharedElement.LiveTarget` at the settled detail endpoint. The original owner must remain mounted, and ordinary shared elements remain preferable when live native state is unnecessary.
 
 ## Navigation Session Controller
 
@@ -250,6 +258,6 @@ The provider applies the resolved config inside a `useEffect` so toggling debug 
 
 - first-open startup still depends on live target measurement (repeated opens use the validated metrics cache)
 - native-stack's built-in swipe progress is not wired automatically; custom gestures can use `useInteractiveTransition`
-- renderers operate on frozen React content and cannot capture arbitrary native view pixels
+- ordinary renderers operate on frozen React content rather than captured native pixels; live native state requires the explicit teleport path
 
 See [limitations-and-next-steps.md](limitations-and-next-steps.md) for the current support boundaries and roadmap.

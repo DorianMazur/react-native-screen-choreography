@@ -185,6 +185,53 @@ describe('TransitionCoordinator presentation freezing', () => {
     expect(coordinator.getHiddenElements().size).toBe(2);
 
     coordinator.completeTransition();
+    expect(coordinator.getActiveSession()).toBeNull();
+    expect(coordinator.getHiddenElements().size).toBe(0);
+    expect(coordinator.getSettledScreenId()).toBe('detail');
+  }, 5000);
+
+  test('live pairs are never hidden because the real view is what animates', async () => {
+    const liveTransition: SharedElementTransition = {
+      renderer: () => null,
+      mode: 'live',
+    };
+    const snap: { current: ElementPresentation } = {
+      current: { content: null, transition: liveTransition },
+    };
+
+    registry.register(
+      makeElement(
+        {
+          id: 'player',
+          groupId: 'group',
+          screenId: 'list',
+          ref: refWithMetrics({ pageX: 0, pageY: 0, width: 50, height: 50 }),
+          metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+        },
+        snap
+      )
+    );
+    registry.register(
+      makeElement(
+        {
+          id: 'player',
+          groupId: 'group',
+          screenId: 'detail',
+          ref: refWithMetrics({ pageX: 0, pageY: 0, width: 100, height: 100 }),
+          metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+        },
+        snap
+      )
+    );
+
+    const session = await coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+
+    expect(session?.pairs).toHaveLength(1);
     expect(coordinator.getHiddenElements().size).toBe(0);
   }, 5000);
 
@@ -228,7 +275,9 @@ describe('TransitionCoordinator presentation freezing', () => {
     expect(coordinator.getHiddenElements().size).toBe(2);
 
     coordinator.cancelTransition();
+    expect(coordinator.getActiveSession()).toBeNull();
     expect(coordinator.getHiddenElements().size).toBe(0);
+    expect(coordinator.getSettledScreenId()).toBe('list');
   }, 5000);
 });
 

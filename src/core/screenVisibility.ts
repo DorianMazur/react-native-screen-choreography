@@ -76,7 +76,9 @@ export function deriveScreenOpacity(
   }
   const t = direction === 'forward' ? progressValue : 1 - progressValue;
   if (role === 'target') {
-    return t > 0.001 ? 1 : 0;
+    if (t <= 0) return 0;
+    if (t >= 0.4) return 1;
+    return t / 0.4;
   }
   if (t <= 0) return 1;
   if (t >= 0.4) return 0;

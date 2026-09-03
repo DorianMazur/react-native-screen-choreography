@@ -19,11 +19,14 @@ import { runReverseTransition } from '../core/runReverseTransition';
 interface ChoreographyScreenProps {
   screenId: string;
   children: React.ReactNode;
+  /** Additional app readiness gate applied after the screen has laid out. */
+  ready?: boolean;
 }
 
 export function ChoreographyScreen({
   screenId,
   children,
+  ready = true,
 }: ChoreographyScreenProps) {
   // Volatile session state from ChoreographyContext; stable lifecycle
   // callbacks from ChoreographyActionsContext so registration never
@@ -31,6 +34,7 @@ export function ChoreographyScreen({
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
   const readinessTokenRef = useRef(0);
+  const layoutReadyRef = useRef(false);
 
   const ctxRef = useRef<ChoreographyContextType | null>(choreography);
   useEffect(() => {
@@ -81,6 +85,14 @@ export function ChoreographyScreen({
       unregisterScreen?.(screenId);
     };
   }, [screenId, setScreenReady, unregisterScreen]);
+
+  useEffect(() => {
+    if (!ready) {
+      setScreenReady?.(screenId, false);
+    } else if (layoutReadyRef.current) {
+      setScreenReady?.(screenId, true);
+    }
+  }, [ready, screenId, setScreenReady]);
 
   const dispatchingSelfRef = useRef(false);
   useEffect(() => {
@@ -140,16 +152,18 @@ export function ChoreographyScreen({
 
     readinessTokenRef.current += 1;
     const token = readinessTokenRef.current;
+    layoutReadyRef.current = false;
     setScreenReady(screenId, false);
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {
         if (readinessTokenRef.current === token) {
-          setScreenReady(screenId, true);
+          layoutReadyRef.current = true;
+          setScreenReady(screenId, ready);
         }
       });
     });
-  }, [screenId, setScreenReady]);
+  }, [ready, screenId, setScreenReady]);
 
   return (
     <ScreenIdContext.Provider value={screenId}>

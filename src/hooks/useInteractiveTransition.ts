@@ -7,13 +7,17 @@ import {
   withSpring,
   withTiming,
 } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { ChoreographyContext } from '../core/ChoreographyContext';
 import { FAST_SPRING } from '../core/constants';
-import { toInteractiveSessionProgress } from '../core/interactiveProgress';
+import {
+  resolveInteractiveTransitionOutcome,
+  toInteractiveSessionProgress,
+} from '../core/interactiveProgress';
 import { useScreenId } from '../core/screenIdContext';
 import type {
   InteractiveBackOptions,
+  InteractiveTransitionDecisionOptions,
   InteractiveTransitionSession,
   InteractiveTransitionSettleOptions,
 } from '../types';
@@ -41,7 +45,17 @@ export function useInteractiveTransition() {
   const sessionIdRef = useRef<string | null>(null);
   const beginTokenRef = useRef(0);
   const preparingRef = useRef(false);
+  const settlementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isActive, setIsActive] = useState(false);
+
+  const clearSettlementTimer = useCallback(() => {
+    if (settlementTimerRef.current !== null) {
+      clearTimeout(settlementTimerRef.current);
+      settlementTimerRef.current = null;
+    }
+  }, []);
+
+  useEffect(() => clearSettlementTimer, [clearSettlementTimer]);
 
   useEffect(() => {
     const sessionId = sessionIdRef.current;
@@ -133,6 +147,7 @@ export function useInteractiveTransition() {
 
   const finishOnRN = useCallback(
     (sessionId: string) => {
+      clearSettlementTimer();
       if (sessionIdRef.current !== sessionId) {
         return;
       }
@@ -141,11 +156,12 @@ export function useInteractiveTransition() {
       navigation.goBack();
       requestAnimationFrame(() => completeTransition());
     },
-    [completeTransition, navigation]
+    [clearSettlementTimer, completeTransition, navigation]
   );
 
   const cancelOnRN = useCallback(
     (sessionId: string) => {
+      clearSettlementTimer();
       if (sessionIdRef.current !== sessionId) {
         return;
       }
@@ -153,7 +169,7 @@ export function useInteractiveTransition() {
       setIsActive(false);
       cancelTransition();
     },
-    [cancelTransition]
+    [cancelTransition, clearSettlementTimer]
   );
 
   const finish = useCallback(
@@ -163,27 +179,48 @@ export function useInteractiveTransition() {
         return;
       }
 
-      cancelAnimation(progress);
-      const onFinished = (finished?: boolean) => {
+      clearSettlementTimer();
+      const duration = options.duration;
+      const spring = options.spring;
+      const velocity = options.velocity;
+      scheduleOnUI(() => {
         'worklet';
-        if (finished) {
-          progress.value = 0;
-          scheduleOnRN(finishOnRN, sessionId);
-        }
-      };
+        cancelAnimation(progress);
+        const onFinished = (finished?: boolean) => {
+          'worklet';
+          if (finished) {
+            progress.value = 0;
+            scheduleOnRN(finishOnRN, sessionId);
+          }
+        };
 
-      progress.value = options.duration
-        ? withTiming(
-            0,
-            {
-              duration: options.duration,
-              easing: Easing.out(Easing.cubic),
-            },
-            onFinished
-          )
-        : withSpring(0, options.spring ?? FAST_SPRING, onFinished);
+        progress.value = duration
+          ? withTiming(
+              0,
+              {
+                duration,
+                easing: Easing.out(Easing.cubic),
+              },
+              onFinished
+            )
+          : withSpring(
+              0,
+              {
+                ...FAST_SPRING,
+                ...spring,
+                ...(velocity === undefined ? {} : { velocity: -velocity }),
+              },
+              onFinished
+            );
+      });
+      if (duration) {
+        settlementTimerRef.current = setTimeout(() => {
+          progress.value = 0;
+          finishOnRN(sessionId);
+        }, duration + 50);
+      }
     },
-    [finishOnRN, progress]
+    [clearSettlementTimer, finishOnRN, progress]
   );
 
   const cancel = useCallback(
@@ -195,27 +232,66 @@ export function useInteractiveTransition() {
         return;
       }
 
-      cancelAnimation(progress);
-      const onFinished = (finished?: boolean) => {
+      clearSettlementTimer();
+      const duration = options.duration;
+      const spring = options.spring;
+      const velocity = options.velocity;
+      scheduleOnUI(() => {
         'worklet';
-        if (finished) {
-          progress.value = 1;
-          scheduleOnRN(cancelOnRN, sessionId);
-        }
-      };
+        cancelAnimation(progress);
+        const onFinished = (finished?: boolean) => {
+          'worklet';
+          if (finished) {
+            progress.value = 1;
+            scheduleOnRN(cancelOnRN, sessionId);
+          }
+        };
 
-      progress.value = options.duration
-        ? withTiming(
-            1,
-            {
-              duration: options.duration,
-              easing: Easing.out(Easing.cubic),
-            },
-            onFinished
-          )
-        : withSpring(1, options.spring ?? FAST_SPRING, onFinished);
+        progress.value = duration
+          ? withTiming(
+              1,
+              {
+                duration,
+                easing: Easing.out(Easing.cubic),
+              },
+              onFinished
+            )
+          : withSpring(
+              1,
+              {
+                ...FAST_SPRING,
+                ...spring,
+                ...(velocity === undefined ? {} : { velocity: -velocity }),
+              },
+              onFinished
+            );
+      });
+      if (duration) {
+        settlementTimerRef.current = setTimeout(() => {
+          progress.value = 1;
+          cancelOnRN(sessionId);
+        }, duration + 50);
+      }
     },
-    [cancelOnRN, progress]
+    [cancelOnRN, clearSettlementTimer, progress]
+  );
+
+  const settle = useCallback(
+    (options: InteractiveTransitionDecisionOptions = {}) => {
+      const outcome = resolveInteractiveTransitionOutcome({
+        progress: gestureProgress.value,
+        velocity: options.velocity,
+        threshold: options.threshold,
+        velocityImpact: options.velocityImpact,
+      });
+
+      if (outcome === 'finish') {
+        finish(options);
+      } else {
+        cancel(options);
+      }
+    },
+    [cancel, finish, gestureProgress]
   );
 
   return {
@@ -223,6 +299,7 @@ export function useInteractiveTransition() {
     setProgress,
     finish,
     cancel,
+    settle,
     progress: gestureProgress,
     isActive,
   };

@@ -45,6 +45,7 @@ export function TransitionOverlay({
           pair={pair}
           progress={progress}
           direction={session.direction}
+          sessionGroupId={session.groupId}
         />
       ))}
     </Animated.View>
@@ -59,12 +60,19 @@ interface StandInRendererProps {
   pair: ElementTransitionPair;
   progress: SharedValue<number>;
   direction: TransitionSessionData['direction'];
+  sessionGroupId: string;
 }
 
-function StandInRenderer({ pair, progress, direction }: StandInRendererProps) {
+function StandInRenderer({
+  pair,
+  progress,
+  direction,
+  sessionGroupId,
+}: StandInRendererProps) {
   const Renderer = pair.transition.renderer;
   const rendererProps: SharedElementTransitionRendererProps = {
     id: pair.id,
+    groupId: pair.source.groupId ?? pair.target.groupId ?? sessionGroupId,
     progress,
     direction,
     zIndex: getPairZIndex(pair),

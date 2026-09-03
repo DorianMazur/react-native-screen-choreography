@@ -20,6 +20,8 @@ export interface ChoreographyActionsType {
   ) => SharedValue<number>;
   setScreenReady: (screenId: string, ready: boolean) => void;
   unregisterScreen: (screenId: string) => void;
+  acquireScreenBlocker: (screenId: string) => () => void;
+  getSettledScreenId: () => string | null;
   waitForScreenReady: (screenId: string) => Promise<void>;
 }
 
@@ -35,6 +37,7 @@ export interface ChoreographyContextType {
   ) => void;
   setScreenReady: (screenId: string, ready: boolean) => void;
   unregisterScreen: (screenId: string) => void;
+  acquireScreenBlocker: (screenId: string) => () => void;
   waitForScreenReady: (screenId: string) => Promise<void>;
   isElementHidden: (
     id: string,

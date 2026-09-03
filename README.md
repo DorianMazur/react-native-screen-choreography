@@ -4,7 +4,6 @@ Choreographed shared element transitions for React Native with multi-element coo
 
 > **Status:** pre-1.0. The public API is converging but minor versions can still introduce breaking changes.
 
-
 <p align="center">
   <img src="docs/demo_1.gif" alt="Wallet portfolio: token row morphs into detail card" width="240" />
   &nbsp;
@@ -31,6 +30,7 @@ What it provides:
 - `@react-navigation/native` and `@react-navigation/native-stack` **>= 6** (validated on 7.x)
 - `react-native-reanimated` **>= 4**
 - `react-native-screens` **>= 4**
+- `react-native-teleport` **>= 1.2**
 - `react-native-worklets` **>= 0.8**
 
 The example app in this repository is validated on React Native 0.83, React 19, and Reanimated 4.
@@ -41,20 +41,20 @@ Install the library and its required peers:
 
 ```bash
 npm install react-native-screen-choreography
-npm install react-native-reanimated react-native-worklets @react-navigation/native @react-navigation/native-stack react-native-screens
+npm install react-native-reanimated react-native-worklets @react-navigation/native @react-navigation/native-stack react-native-screens react-native-teleport
 ```
 
 Or with Yarn:
 
 ```bash
 yarn add react-native-screen-choreography
-yarn add react-native-reanimated react-native-worklets @react-navigation/native @react-navigation/native-stack react-native-screens
+yarn add react-native-reanimated react-native-worklets @react-navigation/native @react-navigation/native-stack react-native-screens react-native-teleport
 ```
 
 Your Babel setup must include `react-native-worklets/plugin`. The library relies on UI-thread worklets for measurement, scheduling, and transition coordination; without this plugin the runtime will fail when those worklets execute. The example in this repo uses:
 
 ```js
-plugins: ['react-native-worklets/plugin']
+plugins: ['react-native-worklets/plugin'];
 ```
 
 For iOS, install pods after adding the dependency:
@@ -133,16 +133,16 @@ You can also toggle the logger imperatively from anywhere via the exported `setD
 
 ## Troubleshooting
 
-| Symptom | Likely cause | Fix |
-| --- | --- | --- |
-| Blank flash at the start of the animation | Overlay host not committed before reals were hidden | Make sure `ChoreographyProvider` is mounted above `NavigationContainer` and the provider is not unmounting between routes |
-| Source card double-renders during animation | Stack `animation` is not `'none'`, so the navigator is animating the route under the overlay | Set `screenOptions={{ animation: 'none' }}` |
-| Detail screen shows opaque background behind the morphing card | Detail route is not transparent | Use `presentation: 'containedTransparentModal'` and `contentStyle: { backgroundColor: 'transparent' }` |
-| `Coordinator: No valid pairs found` warning | Target `SharedElement` never registered or measured to zero size | Make sure the target screen is wrapped in `ChoreographyScreen` and the element is not inside a virtualized off-screen cell |
-| Animation runs but elements snap at the end | Per-frame style mutation on container shadows | Use `boxShadow` (RN 0.76+) and animate `opacity` instead of `shadowColor`/`elevation`/`shadowRadius` per frame |
-| `[Registry] Replacing duplicate element` warning | The same `(screenId, groupId, id)` identity mounted twice | Make each `id` unique within its screen and group |
-| Reverse transition jumps on Android | Live re-measurement of the source row was needed but the row was off-screen | Keep the source row mounted and visible (avoid scrolling away while a detail is open) |
-| Logs are very noisy | `debug={true}` enables `info` level | Use `debug={false}`, or `debug={{ level: 'warn' }}` for production-style output |
+| Symptom                                                        | Likely cause                                                                                 | Fix                                                                                                                        |
+| -------------------------------------------------------------- | -------------------------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------------------------- |
+| Blank flash at the start of the animation                      | Overlay host not committed before reals were hidden                                          | Make sure `ChoreographyProvider` is mounted above `NavigationContainer` and the provider is not unmounting between routes  |
+| Source card double-renders during animation                    | Stack `animation` is not `'none'`, so the navigator is animating the route under the overlay | Set `screenOptions={{ animation: 'none' }}`                                                                                |
+| Detail screen shows opaque background behind the morphing card | Detail route is not transparent                                                              | Use `presentation: 'containedTransparentModal'` and `contentStyle: { backgroundColor: 'transparent' }`                     |
+| `Coordinator: No valid pairs found` warning                    | Target `SharedElement` never registered or measured to zero size                             | Make sure the target screen is wrapped in `ChoreographyScreen` and the element is not inside a virtualized off-screen cell |
+| Animation runs but elements snap at the end                    | Per-frame style mutation on container shadows                                                | Use `boxShadow` (RN 0.76+) and animate `opacity` instead of `shadowColor`/`elevation`/`shadowRadius` per frame             |
+| `[Registry] Replacing duplicate element` warning               | The same `(screenId, groupId, id)` identity mounted twice                                    | Make each `id` unique within its screen and group                                                                          |
+| Reverse transition jumps on Android                            | Live re-measurement of the source row was needed but the row was off-screen                  | Keep the source row mounted and visible (avoid scrolling away while a detail is open)                                      |
+| Logs are very noisy                                            | `debug={true}` enables `info` level                                                          | Use `debug={false}`, or `debug={{ level: 'warn' }}` for production-style output                                            |
 
 ## Quick Start
 
@@ -160,6 +160,18 @@ function TokenListScreen() {
     </ChoreographyScreen>
   );
 }
+```
+
+Pass `ready={false}` while destination data or visual state is not ready to measure. For async work that can overlap, use a reference-counted blocker:
+
+```tsx
+const { acquire } = useChoreographyBlocker();
+
+useEffect(() => {
+  const release = acquire();
+  prepareDestination().finally(release);
+  return release;
+}, [acquire]);
 ```
 
 ### 2. Mark matching shared elements
@@ -185,10 +197,45 @@ import { cardTransition, nameTransition } from './tokenTransitions';
       <Text>{token.name}</Text>
     </SharedElement>
   </View>
-</SharedElement>
+</SharedElement>;
 ```
 
 Each transition renderer receives frozen React content, flattened style, and measured source/target bounds. The library does not capture native images or choose how a pair moves, resizes, fades, or hands off.
+
+Use `SharedElement.Target` when the shared wrapper owns interaction or layout but a nested child owns the visual bounds:
+
+```tsx
+<SharedElement id="artwork" groupId={groupId} transition={artworkTransition}>
+  <Pressable style={styles.row}>
+    <SharedElement.Target style={styles.artwork}>
+      <Image source={image} style={styles.fill} />
+    </SharedElement.Target>
+    <Text>{title}</Text>
+  </Pressable>
+</SharedElement>
+```
+
+`createSharedElementComponent(Component)` makes a ref-forwarding native component shared without adding a wrapper view.
+
+### Live native payloads
+
+Use `SharedElement.Live` and `SharedElement.LiveTarget` when one stateful native subtree must survive the move. The live owner renders exactly once; `react-native-teleport` reparents it into the transition overlay and then into the destination host.
+
+```tsx
+// Source owns the only player instance.
+<SharedElement.Live id="player" groupId="player.demo" style={styles.compact}>
+  <VideoPlayer />
+</SharedElement.Live>
+
+// Destination only supplies bounds and a native host.
+<SharedElement.LiveTarget
+  id="player"
+  groupId="player.demo"
+  style={styles.expanded}
+/>
+```
+
+The screen containing `SharedElement.Live` must stay mounted while the payload is hosted elsewhere. Use this for video, maps, camera previews, editors, or other stateful native views; use ordinary `SharedElement` renderers for normal static content.
 
 ### 3. Navigate through the choreography hook
 
@@ -255,23 +302,20 @@ function TokenDetailScreen() {
 `useInteractiveTransition` prepares a backward session without popping the route. Its exposed `progress` is gesture-normalized: `0` is the untouched detail and `1` is a completed back gesture.
 
 ```tsx
-const {
-  beginBack,
-  setProgress,
-  finish,
-  cancel,
-  progress,
-  isActive,
-} = useInteractiveTransition();
+const { beginBack, setProgress, settle, progress, isActive } =
+  useInteractiveTransition();
 
 const session = await beginBack();
 if (session) {
   setProgress(translationX / screenWidth);
-  translationX > screenWidth * 0.4 ? finish() : cancel();
+  settle({
+    velocity: velocityX / screenWidth,
+    threshold: 0.4,
+  });
 }
 ```
 
-`setProgress` is a worklet-compatible callback for per-frame gesture updates. Call `beginBack()` and wait for it to resolve before sending updates. This controlled API does not automatically receive native-stack's built-in swipe progress yet.
+`setProgress` is a worklet-compatible callback for per-frame gesture updates. `settle()` projects normalized release velocity and carries it into the endpoint spring; `finish()` and `cancel()` remain available for explicit decisions. This controlled API does not automatically receive native-stack's built-in swipe progress yet.
 
 ## Mental Model
 
@@ -287,32 +331,36 @@ if (session) {
 
 ### Components
 
-| Component | Purpose |
-| --- | --- |
-| `ChoreographyProvider` | Hosts the registry, coordinator, overlay, and native transition host; accepts `debug`, `onTransitionStart`, and `onTransitionEnd` |
-| `ChoreographyScreen` | Provides a stable `screenId` for registration, readiness tracking, and progress-driven visibility orchestration — source screens fade out during forward transitions and destination screens are revealed from the first spring frame with only the shared elements individually hidden |
-| `SharedElement` | Registers one shared element by compound `(screenId, groupId, id)` identity and requires the renderer that defines its overlay behavior |
+| Component                           | Purpose                                                                                                                                                                                                                                                                                 |
+| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `ChoreographyProvider`              | Hosts the registry, coordinator, overlay, and native transition host; accepts `debug`, `onTransitionStart`, and `onTransitionEnd`                                                                                                                                                       |
+| `ChoreographyScreen`                | Provides a stable `screenId` for registration, readiness tracking, and progress-driven visibility orchestration — source screens fade out during forward transitions and destination screens are revealed from the first spring frame with only the shared elements individually hidden |
+| `SharedElement`                     | Registers one shared element by compound `(screenId, groupId, id)` identity and requires the renderer that defines its overlay behavior                                                                                                                                                 |
+| `SharedElement.Target`              | Measures a nested visual child while the outer shared element retains layout and visibility ownership                                                                                                                                                                                   |
+| `SharedElement.Live` / `LiveTarget` | Reparents one live native subtree through the overlay into a destination host without remounting it                                                                                                                                                                                     |
+| `createSharedElementComponent()`    | Adds shared-element registration directly to a ref-forwarding component without another wrapper                                                                                                                                                                                         |
 
 `onTransitionStart(session)` fires when a session becomes active with resolved pairs. `onTransitionEnd(session)` fires after the active session completes or is cancelled, which makes them useful for instrumentation, analytics, or app-level UI coordination.
 
 ### Hooks
 
-| Hook | Returns |
-| --- | --- |
-| `useChoreographyNavigation(navigation)` | `navigate()` and `goBack()` integrated with the transition system |
-| `useInteractiveTransition()` | `beginBack()`, worklet-compatible `setProgress()`, `finish()`, `cancel()`, normalized `progress`, and `isActive` for custom gestures |
-| `useChoreographyProgress()` | `progress`, `backdropStyle`, `isActive`, `settleTransition()` to snap to the current screen endpoint and complete the session |
-| `useLatchedReveal(config?)` | Boolean gate that opens at a progress threshold and stays visible once revealed |
-| `useStaggeredReveal(count, config?)` | `getItemStyle(index)` for staged reveal sections |
+| Hook                                    | Returns                                                                                                                                               |
+| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
+| `useChoreographyNavigation(navigation)` | `navigate()` and `goBack()` integrated with the transition system                                                                                     |
+| `useChoreographyBlocker()`              | Reference-counted `acquire()` function for delaying destination measurement until async preparation completes                                         |
+| `useInteractiveTransition()`            | `beginBack()`, worklet-compatible `setProgress()`, velocity-aware `settle()`, explicit `finish()` / `cancel()`, normalized `progress`, and `isActive` |
+| `useChoreographyProgress()`             | `progress`, `role`, `phase`, `direction`, session identity, `backdropStyle`, `isActive`, and `settleTransition()`                                     |
+| `useLatchedReveal(config?)`             | Boolean gate that opens at a progress threshold and stays visible once revealed                                                                       |
+| `useStaggeredReveal(count, config?)`    | `getItemStyle(index)` for staged reveal sections                                                                                                      |
 
 ### Stand-in primitives
 
-| Primitive | Purpose |
-| --- | --- |
-| `StandInContainer` | Animates the surface (position, size, corner radius, shadow) on the overlay |
-| `StandInElement` | Animates a single anchor (e.g. a logo or label) between source and target metrics |
-| `StandInCrossfade` | Crossfades two stand-in renderings of the same role |
-| `resolveSurfaceStyle(style)` | Extracts surface-level styling from a `ViewStyle` for use inside a stand-in |
+| Primitive                    | Purpose                                                                           |
+| ---------------------------- | --------------------------------------------------------------------------------- |
+| `StandInContainer`           | Animates the surface (position, size, corner radius, shadow) on the overlay       |
+| `StandInElement`             | Animates a single anchor (e.g. a logo or label) between source and target metrics |
+| `StandInCrossfade`           | Crossfades two stand-in renderings of the same role                               |
+| `resolveSurfaceStyle(style)` | Extracts surface-level styling from a `ViewStyle` for use inside a stand-in       |
 
 ### Spring & easing presets
 
@@ -365,7 +413,7 @@ For app code, the cleanest pattern is:
 - The best-supported setup is still `@react-navigation/native-stack` with stack animation disabled.
 - Custom back gestures can control progress with `useInteractiveTransition`; native-stack's built-in swipe progress is not connected automatically.
 - Transition startup still depends on live target measurement for structural elements, though repeated opens of the same target layout reuse cached metrics after one validation read.
-- Renderers receive frozen React content, style, and metrics; native view capture is intentionally outside the library's scope.
+- Ordinary renderers receive frozen React content, style, and metrics rather than captured pixels. `SharedElement.Live` is the opt-in path for one stateful native subtree and requires its owner screen to remain mounted.
 - Elements use compound `(screenId, groupId, id)` identities; the same ID can safely appear in several groups.
 
 See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for current constraints, workarounds, and roadmap priorities.

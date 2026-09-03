@@ -12,6 +12,7 @@ import {
   type SharedValue,
 } from 'react-native-reanimated';
 import { FullWindowOverlay } from 'react-native-screens';
+import { PortalProvider } from 'react-native-teleport';
 import type {
   ChoreographyDebugConfig,
   RegisteredElement,
@@ -34,6 +35,7 @@ import {
   setDebugLevel,
 } from '../debug/logger';
 import { getElementIdentityKey } from '../core/elementIdentity';
+import { ScreenReadinessRegistry } from '../core/ScreenReadinessRegistry';
 
 function TransitionHostPortal({
   active,
@@ -136,9 +138,7 @@ export function ChoreographyProvider({
     },
     [resolveOverlayWaiters]
   );
-  const screenStateRef = useRef<
-    Map<string, { ready: boolean; waiters: Set<() => void> }>
-  >(new Map());
+  const screenReadinessRef = useRef(new ScreenReadinessRegistry());
 
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
@@ -216,49 +216,47 @@ export function ChoreographyProvider({
   );
 
   const setScreenReady = useCallback((screenId: string, ready: boolean) => {
-    let state = screenStateRef.current.get(screenId);
-    if (!state) {
-      state = { ready: false, waiters: new Set() };
-      screenStateRef.current.set(screenId, state);
-    }
-
-    state.ready = ready;
+    screenReadinessRef.current.setReady(screenId, ready);
 
     debugTrace(
       () =>
-        `[Provider] Screen ready=${ready} screen="${screenId}" waiters=${state.waiters.size}`
+        `[Provider] Screen ready=${ready} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
     );
-
-    if (ready) {
-      const waiters = [...state.waiters];
-      state.waiters.clear();
-      waiters.forEach((resolve) => resolve());
-    }
   }, []);
 
   const unregisterScreen = useCallback((screenId: string) => {
-    let state = screenStateRef.current.get(screenId);
-    if (!state) {
-      state = { ready: false, waiters: new Set() };
-      screenStateRef.current.set(screenId, state);
-    }
-
-    state.ready = false;
+    screenReadinessRef.current.unregister(screenId);
 
     debugTrace(
       () =>
-        `[Provider] Screen unregistered screen="${screenId}" preservingWaiters=${state.waiters.size}`
+        `[Provider] Screen unregistered screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
     );
   }, []);
 
-  const waitForScreenReady = useCallback(async (screenId: string) => {
-    let state = screenStateRef.current.get(screenId);
-    if (!state) {
-      state = { ready: false, waiters: new Set() };
-      screenStateRef.current.set(screenId, state);
-    }
+  const acquireScreenBlocker = useCallback((screenId: string) => {
+    debugTrace(() => `[Provider] Screen blocker acquired screen="${screenId}"`);
+    const release = screenReadinessRef.current.acquire(screenId);
+    let released = false;
+    return () => {
+      if (released) {
+        return;
+      }
+      released = true;
+      release();
+      debugTrace(
+        () =>
+          `[Provider] Screen blocker released screen="${screenId}" remaining=${screenReadinessRef.current.getBlockerCount(screenId)}`
+      );
+    };
+  }, []);
 
-    if (state.ready) {
+  const getSettledScreenId = useCallback(
+    () => coordinatorRef.current?.getSettledScreenId() ?? null,
+    []
+  );
+
+  const waitForScreenReady = useCallback(async (screenId: string) => {
+    if (screenReadinessRef.current.isReady(screenId)) {
       debugTrace(
         () => `[Provider] waitForScreenReady immediate screen="${screenId}"`
       );
@@ -271,27 +269,11 @@ export function ChoreographyProvider({
       () => `[Provider] waitForScreenReady start screen="${screenId}"`
     );
 
-    await new Promise<void>((resolve) => {
-      const currentState = screenStateRef.current.get(screenId)!;
-      const onReady = () => {
-        clearTimeout(timeoutId);
-        debugTrace(
-          () =>
-            `[Provider] waitForScreenReady resolved screen="${screenId}" duration=${Date.now() - waitStartedAt}ms`
-        );
-        resolve();
-      };
-      const timeoutId = setTimeout(() => {
-        currentState.waiters.delete(onReady);
-        debugTrace(
-          () =>
-            `[Provider] waitForScreenReady timeout screen="${screenId}" duration=${Date.now() - waitStartedAt}ms`
-        );
-        resolve();
-      }, 700);
-
-      currentState.waiters.add(onReady);
-    });
+    const ready = await screenReadinessRef.current.waitForReady(screenId, 700);
+    debugTrace(
+      () =>
+        `[Provider] waitForScreenReady ${ready ? 'resolved' : 'timeout'} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)} duration=${Date.now() - waitStartedAt}ms`
+    );
   }, []);
 
   const isElementHidden = useCallback(
@@ -372,11 +354,11 @@ export function ChoreographyProvider({
   );
 
   const completeTransition = useCallback(() => {
-    coordinatorRef.current!.completeTransition();
+    coordinatorRef.current?.completeTransition();
   }, []);
 
   const cancelTransition = useCallback(() => {
-    coordinatorRef.current!.cancelTransition();
+    coordinatorRef.current?.cancelTransition();
   }, []);
 
   const setPendingTargetScreen = useCallback((screenId: string | null) => {
@@ -420,6 +402,8 @@ export function ChoreographyProvider({
       isElementHidden,
       setScreenReady,
       unregisterScreen,
+      acquireScreenBlocker,
+      getSettledScreenId,
       waitForScreenReady,
     }),
     [
@@ -428,6 +412,8 @@ export function ChoreographyProvider({
       isElementHidden,
       setScreenReady,
       unregisterScreen,
+      acquireScreenBlocker,
+      getSettledScreenId,
       waitForScreenReady,
     ]
   );
@@ -438,6 +424,7 @@ export function ChoreographyProvider({
       unregisterElement,
       setScreenReady,
       unregisterScreen,
+      acquireScreenBlocker,
       waitForScreenReady,
       isElementHidden,
       activeSession,
@@ -457,6 +444,7 @@ export function ChoreographyProvider({
       unregisterElement,
       setScreenReady,
       unregisterScreen,
+      acquireScreenBlocker,
       waitForScreenReady,
       isElementHidden,
       activeSession,
@@ -474,25 +462,27 @@ export function ChoreographyProvider({
   );
 
   return (
-    <ChoreographyActionsContext.Provider value={actionsValue}>
-      <ChoreographyContext.Provider value={contextValue}>
-        {children}
-        <TransitionHostPortal
-          active={Boolean(isOverlayActive && activeSession)}
-        >
-          <NativeTransitionHost
+    <PortalProvider>
+      <ChoreographyActionsContext.Provider value={actionsValue}>
+        <ChoreographyContext.Provider value={contextValue}>
+          {children}
+          <TransitionHostPortal
             active={Boolean(isOverlayActive && activeSession)}
-            onPresentationReady={handleHostPresentationReady}
           >
-            <TransitionOverlay
-              session={activeSession}
-              progress={progress}
-              onReady={handleOverlayReady}
-            />
-          </NativeTransitionHost>
-        </TransitionHostPortal>
-      </ChoreographyContext.Provider>
-    </ChoreographyActionsContext.Provider>
+            <NativeTransitionHost
+              active={Boolean(isOverlayActive && activeSession)}
+              onPresentationReady={handleHostPresentationReady}
+            >
+              <TransitionOverlay
+                session={activeSession}
+                progress={progress}
+                onReady={handleOverlayReady}
+              />
+            </NativeTransitionHost>
+          </TransitionHostPortal>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    </PortalProvider>
   );
 }
 
