@@ -31,7 +31,7 @@ export default function RootLayout() {
           screenOptions={{
             headerShown: false,
             animation: 'none',
-            contentStyle: { backgroundColor: 'transparent' },
+            contentStyle: { backgroundColor: palette.bg },
           }}
         >
           <Stack.Screen name="index" />
@@ -39,6 +39,7 @@ export default function RootLayout() {
             name="gallery/[photoId]"
             options={{
               presentation: 'containedTransparentModal',
+              contentStyle: { backgroundColor: 'transparent' },
               gestureEnabled: false,
             }}
           />
@@ -46,6 +47,7 @@ export default function RootLayout() {
             name="music/[trackId]"
             options={{
               presentation: 'containedTransparentModal',
+              contentStyle: { backgroundColor: 'transparent' },
               gestureEnabled: false,
             }}
           />
@@ -53,6 +55,7 @@ export default function RootLayout() {
             name="wallet/[tokenId]"
             options={{
               presentation: 'containedTransparentModal',
+              contentStyle: { backgroundColor: 'transparent' },
               gestureEnabled: false,
             }}
           />
@@ -60,6 +63,7 @@ export default function RootLayout() {
             name="live-player/detail"
             options={{
               presentation: 'containedTransparentModal',
+              contentStyle: { backgroundColor: 'transparent' },
               gestureEnabled: false,
             }}
           />
