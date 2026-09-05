@@ -82,39 +82,37 @@ function LiveSharedElementRenderer({
   target,
   zIndex,
 }: SharedElementTransitionRendererProps) {
+  const sourceX = source.metrics.pageX;
+  const sourceY = source.metrics.pageY;
+  const sourceWidth = source.metrics.width;
+  const sourceHeight = source.metrics.height;
+  const targetX = target.metrics.pageX;
+  const targetY = target.metrics.pageY;
+  const targetWidth = target.metrics.width;
+  const targetHeight = target.metrics.height;
   const timeline = useDerivedValue(() =>
     direction === 'backward' ? 1 - progress.value : progress.value
   );
   const animatedStyle = useAnimatedStyle(() => {
     const heightProgress = getExpansionProgress(
       timeline.value,
-      source.metrics.height,
-      target.metrics.height
+      sourceHeight,
+      targetHeight
     );
 
     return {
-      left: interpolate(
-        timeline.value,
-        [0, 1],
-        [source.metrics.pageX, target.metrics.pageX],
-        'clamp'
-      ),
-      top: interpolate(
-        timeline.value,
-        [0, 1],
-        [source.metrics.pageY, target.metrics.pageY],
-        'clamp'
-      ),
+      left: interpolate(timeline.value, [0, 1], [sourceX, targetX], 'clamp'),
+      top: interpolate(timeline.value, [0, 1], [sourceY, targetY], 'clamp'),
       width: interpolate(
         timeline.value,
         [0, 1],
-        [source.metrics.width, target.metrics.width],
+        [sourceWidth, targetWidth],
         'clamp'
       ),
       height: interpolate(
         heightProgress,
         [0, 1],
-        [source.metrics.height, target.metrics.height],
+        [sourceHeight, targetHeight],
         'clamp'
       ),
     };
@@ -370,7 +368,7 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   liveHost: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
   livePortal: {
     flex: 1,

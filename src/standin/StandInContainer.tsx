@@ -130,7 +130,7 @@ const styles = StyleSheet.create({
     overflow: 'visible',
   },
   shadowLayer: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     overflow: 'visible',
   },
   contentHost: {

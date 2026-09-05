@@ -97,11 +97,11 @@ describe('deriveScreenOpacity', () => {
   });
 
   describe('forward direction, active phase', () => {
-    it('fades the target in over progress [0, 0.4]', () => {
+    it('reveals the target as soon as active progress starts', () => {
       expect(deriveScreenOpacity('forward', 'target', 'active', 0)).toBe(0);
-      expect(
-        deriveScreenOpacity('forward', 'target', 'active', 0.2)
-      ).toBeCloseTo(0.5);
+      expect(deriveScreenOpacity('forward', 'target', 'active', 0.001)).toBe(0);
+      expect(deriveScreenOpacity('forward', 'target', 'active', 0.002)).toBe(1);
+      expect(deriveScreenOpacity('forward', 'target', 'active', 0.2)).toBe(1);
       expect(deriveScreenOpacity('forward', 'target', 'active', 0.4)).toBe(1);
       expect(deriveScreenOpacity('forward', 'target', 'active', 1)).toBe(1);
     });
@@ -117,12 +117,16 @@ describe('deriveScreenOpacity', () => {
   });
 
   describe('backward direction, active phase', () => {
-    it('fades in the target screen we are returning to', () => {
+    it('reveals the target screen as soon as backward progress starts', () => {
       // For backward, t = 1 - progress. progress starts near 1 and decreases.
       expect(deriveScreenOpacity('backward', 'target', 'active', 1)).toBe(0);
-      expect(
-        deriveScreenOpacity('backward', 'target', 'active', 0.8)
-      ).toBeCloseTo(0.5);
+      expect(deriveScreenOpacity('backward', 'target', 'active', 0.9995)).toBe(
+        0
+      );
+      expect(deriveScreenOpacity('backward', 'target', 'active', 0.998)).toBe(
+        1
+      );
+      expect(deriveScreenOpacity('backward', 'target', 'active', 0.8)).toBe(1);
       expect(deriveScreenOpacity('backward', 'target', 'active', 0.6)).toBe(1);
       expect(deriveScreenOpacity('backward', 'target', 'active', 0.5)).toBe(1);
       expect(deriveScreenOpacity('backward', 'target', 'active', 0)).toBe(1);

@@ -40,4 +40,29 @@ describe('ScreenReadinessRegistry', () => {
     expect(registry.getBlockerCount('Detail')).toBe(1);
     jest.useRealTimers();
   });
+
+  it('settles pending readiness as false when the screen unregisters', async () => {
+    const registry = new ScreenReadinessRegistry();
+    let result: boolean | undefined;
+    const waiting = registry.waitForReady('Detail', 1000);
+    waiting.then((ready) => {
+      result = ready;
+    });
+
+    registry.unregister('Detail');
+    await Promise.resolve();
+
+    expect(result).toBe(false);
+    await expect(waiting).resolves.toBe(false);
+  });
+
+  it('settles all pending readiness waits as false on disposal', async () => {
+    const registry = new ScreenReadinessRegistry();
+    const first = registry.waitForReady('First', 1000);
+    const second = registry.waitForReady('Second', 1000);
+
+    registry.dispose();
+
+    await expect(Promise.all([first, second])).resolves.toEqual([false, false]);
+  });
 });

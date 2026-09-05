@@ -1,5 +1,4 @@
 import { useCallback, useContext, useEffect, useRef, useState } from 'react';
-import { useNavigation, useRoute } from '@react-navigation/native';
 import {
   cancelAnimation,
   Easing,
@@ -22,7 +21,15 @@ import type {
   InteractiveTransitionSettleOptions,
 } from '../types';
 
-export function useInteractiveTransition() {
+interface InteractiveTransitionNavigatorOptions {
+  navigateBack: () => void;
+  routeParams?: Record<string, unknown>;
+}
+
+export function useInteractiveTransitionNavigator({
+  navigateBack,
+  routeParams,
+}: InteractiveTransitionNavigatorOptions) {
   const choreography = useContext(ChoreographyContext);
   if (!choreography) {
     throw new Error(
@@ -30,8 +37,6 @@ export function useInteractiveTransition() {
     );
   }
 
-  const navigation = useNavigation<any>();
-  const route = useRoute();
   const screenId = useScreenId();
   const {
     activeSession,
@@ -41,6 +46,7 @@ export function useInteractiveTransition() {
     waitForOverlayReady,
     completeTransition,
     cancelTransition,
+    getNavigationLineage,
   } = choreography;
   const sessionIdRef = useRef<string | null>(null);
   const beginTokenRef = useRef(0);
@@ -55,7 +61,19 @@ export function useInteractiveTransition() {
     }
   }, []);
 
-  useEffect(() => clearSettlementTimer, [clearSettlementTimer]);
+  useEffect(
+    () => () => {
+      clearSettlementTimer();
+      beginTokenRef.current += 1;
+      preparingRef.current = false;
+      const sessionId = sessionIdRef.current;
+      sessionIdRef.current = null;
+      if (sessionId) {
+        cancelTransition(sessionId);
+      }
+    },
+    [cancelTransition, clearSettlementTimer]
+  );
 
   useEffect(() => {
     const sessionId = sessionIdRef.current;
@@ -83,11 +101,15 @@ export function useInteractiveTransition() {
         return null;
       }
 
-      const params = (route.params ?? {}) as Record<string, unknown>;
+      const lineage = getNavigationLineage(screenId);
+      const params = routeParams ?? {};
       const groupId =
-        options.group ?? (params._choreographyGroup as string | undefined);
+        options.group ??
+        lineage?.groupId ??
+        (params._choreographyGroup as string | undefined);
       const targetScreenId =
         options.targetScreenId ??
+        lineage?.sourceScreenId ??
         (params._choreographySourceScreen as string | undefined);
 
       if (!groupId || !targetScreenId) {
@@ -112,12 +134,19 @@ export function useInteractiveTransition() {
         }
 
         if (beginTokenRef.current !== beginToken) {
-          cancelTransition();
+          cancelTransition(session.id);
           return null;
         }
 
         sessionIdRef.current = session.id;
-        await waitForOverlayReady(session.id);
+        const overlayReady = await waitForOverlayReady(session.id);
+        if (!overlayReady) {
+          if (sessionIdRef.current === session.id) {
+            sessionIdRef.current = null;
+          }
+          cancelTransition(session.id);
+          return null;
+        }
 
         if (sessionIdRef.current !== session.id) {
           return null;
@@ -135,10 +164,11 @@ export function useInteractiveTransition() {
     [
       activeSession,
       cancelTransition,
+      getNavigationLineage,
       gestureProgress,
       preMeasureGroup,
       progress,
-      route.params,
+      routeParams,
       screenId,
       startTransition,
       waitForOverlayReady,
@@ -153,10 +183,10 @@ export function useInteractiveTransition() {
       }
       sessionIdRef.current = null;
       setIsActive(false);
-      navigation.goBack();
-      requestAnimationFrame(() => completeTransition());
+      navigateBack();
+      requestAnimationFrame(() => completeTransition(sessionId));
     },
-    [clearSettlementTimer, completeTransition, navigation]
+    [clearSettlementTimer, completeTransition, navigateBack]
   );
 
   const cancelOnRN = useCallback(
@@ -167,7 +197,7 @@ export function useInteractiveTransition() {
       }
       sessionIdRef.current = null;
       setIsActive(false);
-      cancelTransition();
+      cancelTransition(sessionId);
     },
     [cancelTransition, clearSettlementTimer]
   );

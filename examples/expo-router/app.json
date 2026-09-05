@@ -1,0 +1,22 @@
+{
+  "expo": {
+    "name": "Screen Choreography Router",
+    "slug": "screen-choreography-router-example",
+    "version": "1.0.0",
+    "orientation": "portrait",
+    "scheme": "screenchoreographyrouter",
+    "userInterfaceStyle": "light",
+    "newArchEnabled": true,
+    "ios": {
+      "bundleIdentifier": "com.screenchoreography.routerexample"
+    },
+    "android": {
+      "package": "com.screenchoreography.routerexample",
+      "predictiveBackGestureEnabled": false
+    },
+    "plugins": ["expo-router"],
+    "experiments": {
+      "typedRoutes": true
+    }
+  }
+}

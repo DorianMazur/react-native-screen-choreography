@@ -29,6 +29,8 @@ export class TransitionCoordinator {
   private activeSession: TransitionSessionData | null = null;
   private settledScreenId: string | null = null;
   private progress: SharedValue<number>;
+  private operationGeneration = 0;
+  private preparationCancellers = new Set<() => void>();
   private onSessionChange: (session: TransitionSessionData | null) => void =
     () => {};
   private hiddenElements = new Set<string>();
@@ -48,6 +50,20 @@ export class TransitionCoordinator {
 
   private elementKey(screenId: string, groupId: string, id: string): string {
     return getElementIdentityKey(screenId, groupId, id);
+  }
+
+  private ownsOperation(generation: number, sessionId: string): boolean {
+    return (
+      this.operationGeneration === generation &&
+      this.activeSession?.id === sessionId
+    );
+  }
+
+  private invalidateOperations(): void {
+    this.operationGeneration += 1;
+    const cancellers = [...this.preparationCancellers];
+    this.preparationCancellers.clear();
+    cancellers.forEach((cancel) => cancel());
   }
 
   setDebug(enabled: boolean) {
@@ -175,7 +191,8 @@ export class TransitionCoordinator {
     elementIds: string[],
     targetScreenId: string,
     groupId: string,
-    expectedIds?: string[]
+    expectedIds?: string[],
+    ownsOperation: () => boolean = () => true
   ): Promise<void> {
     const waitStartedAt = nowMs();
     const requiredIds = expectedIds?.length ? expectedIds : elementIds;
@@ -205,14 +222,19 @@ export class TransitionCoordinator {
     // the predicate lands, instead of polling on a 16ms timer.
     return new Promise<void>((resolve) => {
       let settled = false;
+      let unsubscribe = () => {};
+      let timeoutId: ReturnType<typeof setTimeout> | null = null;
 
       const settle = (timedOut: boolean) => {
         if (settled) {
           return;
         }
         settled = true;
+        this.preparationCancellers.delete(cancel);
         unsubscribe();
-        clearTimeout(timeoutId);
+        if (timeoutId !== null) {
+          clearTimeout(timeoutId);
+        }
 
         if (timedOut) {
           debugWarn(
@@ -227,13 +249,16 @@ export class TransitionCoordinator {
         resolve();
       };
 
-      const unsubscribe = this.registry.subscribe(() => {
-        if (isSatisfied()) {
+      const cancel = () => settle(false);
+
+      unsubscribe = this.registry.subscribe(() => {
+        if (!ownsOperation() || isSatisfied()) {
           settle(false);
         }
       });
 
-      const timeoutId = setTimeout(() => settle(true), 500);
+      timeoutId = setTimeout(() => settle(true), 500);
+      this.preparationCancellers.add(cancel);
     });
   }
 
@@ -260,7 +285,8 @@ export class TransitionCoordinator {
   private async tryCachedTargetMeasurements(
     targetScreenId: string,
     groupId: string,
-    candidateIds: string[]
+    candidateIds: string[],
+    ownsOperation: () => boolean
   ): Promise<boolean> {
     if (candidateIds.length === 0) {
       return false;
@@ -299,6 +325,10 @@ export class TransitionCoordinator {
       }))
     );
 
+    if (!ownsOperation()) {
+      return false;
+    }
+
     for (const id of candidateIds) {
       const cached = this.targetMetricsCache.get(
         this.elementKey(targetScreenId, groupId, id)
@@ -314,6 +344,9 @@ export class TransitionCoordinator {
     }
 
     for (const id of candidateIds) {
+      if (!ownsOperation()) {
+        return false;
+      }
       const measured = results.get(id)!;
       this.registry.updateMetrics(id, targetScreenId, measured, groupId);
     }
@@ -330,11 +363,13 @@ export class TransitionCoordinator {
     candidateIds: string[],
     options?: {
       extendedStability?: boolean;
+      ownsOperation?: () => boolean;
     }
-  ): Promise<void> {
+  ): Promise<boolean> {
     const waitStartedAt = nowMs();
     const deadline = Date.now() + 500;
     const requireExtendedStability = options?.extendedStability ?? false;
+    const ownsOperation = options?.ownsOperation ?? (() => true);
     const requiredStableReads =
       Platform.OS === 'android' && requireExtendedStability ? 4 : 2;
 
@@ -342,10 +377,15 @@ export class TransitionCoordinator {
       await this.tryCachedTargetMeasurements(
         targetScreenId,
         groupId,
-        candidateIds
+        candidateIds,
+        ownsOperation
       )
     ) {
-      return;
+      return true;
+    }
+
+    if (!ownsOperation()) {
+      return false;
     }
 
     let previousMeasurements = new Map<
@@ -360,12 +400,19 @@ export class TransitionCoordinator {
     let stableReads = 0;
 
     while (Date.now() < deadline) {
+      if (!ownsOperation()) {
+        return false;
+      }
+
       const measurableIds = candidateIds.filter(
         (id) => !!this.registry.getByIdAndScreen(id, targetScreenId, groupId)
       );
 
       if (measurableIds.length === 0) {
         await new Promise<void>((resolve) => setTimeout(resolve, 16));
+        if (!ownsOperation()) {
+          return false;
+        }
         continue;
       }
 
@@ -384,6 +431,10 @@ export class TransitionCoordinator {
       );
 
       const batchResults = await measureElementsBatched(batchEntries);
+
+      if (!ownsOperation()) {
+        return false;
+      }
 
       const measurements: (readonly [
         string,
@@ -404,6 +455,9 @@ export class TransitionCoordinator {
       let allMeasured = true;
 
       for (const [id, metrics] of measurements) {
+        if (!ownsOperation()) {
+          return false;
+        }
         if (!metrics) {
           allMeasured = false;
           break;
@@ -433,7 +487,7 @@ export class TransitionCoordinator {
           debugTrace(
             `[Coordinator] Stable target measurements ready screen="${targetScreenId}" ids=${currentMeasurements.size} reads=${stableReads}/${requiredStableReads} duration=${elapsedMs(waitStartedAt)}`
           );
-          return;
+          return true;
         }
       } else {
         stableReads = 0;
@@ -441,11 +495,15 @@ export class TransitionCoordinator {
 
       previousMeasurements = currentMeasurements;
       await new Promise<void>((resolve) => setTimeout(resolve, 16));
+      if (!ownsOperation()) {
+        return false;
+      }
     }
 
     debugWarn(
       `[Coordinator] Timed out waiting for stable target measurements on screen "${targetScreenId}" duration=${elapsedMs(waitStartedAt)}`
     );
+    return ownsOperation();
   }
 
   async startTransition(config: {
@@ -462,6 +520,9 @@ export class TransitionCoordinator {
     }
 
     const sessionId = `session_${++sessionCounter}`;
+    const operationGeneration = ++this.operationGeneration;
+    const ownsOperation = () =>
+      this.ownsOperation(operationGeneration, sessionId);
 
     debugLog(
       `[Coordinator] Starting transition "${sessionId}" group="${groupId}" ${sourceScreenId} → ${targetScreenId}`
@@ -487,15 +548,29 @@ export class TransitionCoordinator {
       `[Coordinator] Found ${elementIds.length} element IDs in group "${groupId}"`
     );
 
-    await this.waitForTargets(elementIds, targetScreenId, groupId, elementIds);
-    await this.waitForStableTargetMeasurements(
+    await this.waitForTargets(
+      elementIds,
+      targetScreenId,
+      groupId,
+      elementIds,
+      ownsOperation
+    );
+    if (!ownsOperation()) {
+      return null;
+    }
+
+    const targetMeasurementsReady = await this.waitForStableTargetMeasurements(
       targetScreenId,
       groupId,
       elementIds,
       {
         extendedStability: direction === 'forward',
+        ownsOperation,
       }
     );
+    if (!targetMeasurementsReady || !ownsOperation()) {
+      return null;
+    }
 
     const pairingStartedAt = nowMs();
 
@@ -551,9 +626,16 @@ export class TransitionCoordinator {
         ? await measureElementsBatched(batchEntries)
         : new Map<string, import('../types').ElementMetrics | null>();
 
+    if (!ownsOperation()) {
+      return null;
+    }
+
     const pairs: ElementTransitionPair[] = [];
 
     for (const { id, source, target } of pairingCandidates) {
+      if (!ownsOperation()) {
+        return null;
+      }
       const sourcePresentation = source.getPresentation();
       const targetPresentation = target.getPresentation();
       const transition =
@@ -588,6 +670,10 @@ export class TransitionCoordinator {
         `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
       );
       this.updateSession(null);
+      return null;
+    }
+
+    if (!ownsOperation()) {
       return null;
     }
 
@@ -643,8 +729,15 @@ export class TransitionCoordinator {
     return this.activeSession;
   }
 
-  completeTransition(): void {
-    if (!this.activeSession) return;
+  completeTransition(sessionId?: string): void {
+    if (
+      !this.activeSession ||
+      (sessionId && this.activeSession.id !== sessionId)
+    ) {
+      return;
+    }
+
+    this.invalidateOperations();
 
     debugLog(`[Coordinator] Completing transition "${this.activeSession.id}"`);
 
@@ -653,7 +746,13 @@ export class TransitionCoordinator {
     this.updateSession(null);
   }
 
-  cancelTransition(): void {
+  cancelTransition(sessionId?: string): void {
+    if (sessionId && this.activeSession?.id !== sessionId) {
+      return;
+    }
+
+    this.invalidateOperations();
+
     if (!this.activeSession) return;
 
     debugLog(`[Coordinator] Cancelling transition "${this.activeSession.id}"`);
@@ -662,6 +761,14 @@ export class TransitionCoordinator {
     this.hiddenElements.clear();
     this.progress.value = this.activeSession.direction === 'forward' ? 0 : 1;
     this.updateSession(null);
+  }
+
+  dispose(): void {
+    this.invalidateOperations();
+    this.hiddenElements.clear();
+    this.targetMetricsCache.clear();
+    this.activeSession = null;
+    this.onSessionChange = () => {};
   }
 
   private updateSession(session: TransitionSessionData | null) {

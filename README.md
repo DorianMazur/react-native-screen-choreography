@@ -33,7 +33,7 @@ What it provides:
 - `react-native-teleport` **>= 1.2**
 - `react-native-worklets` **>= 0.8**
 
-The example app in this repository is validated on React Native 0.83, React 19, and Reanimated 4.
+The bare example is validated on React Native 0.83. The Expo Router example is validated on Expo SDK 57. Both use React 19 and Reanimated 4.
 
 ## Installation
 
@@ -106,6 +106,55 @@ export function App() {
   );
 }
 ```
+
+## Expo Router Setup
+
+Expo Router's native `Stack` uses the same underlying navigation primitives. Keep the provider in the root layout, disable the stack animation, and use a native development build because the package includes a custom native overlay host and cannot run in Expo Go.
+
+```tsx
+// src/app/_layout.tsx
+import { Stack } from 'expo-router';
+import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
+
+export default function RootLayout() {
+  return (
+    <ChoreographyProvider>
+      <Stack
+        screenOptions={{
+          headerShown: false,
+          animation: 'none',
+          contentStyle: { backgroundColor: 'transparent' },
+        }}
+      />
+    </ChoreographyProvider>
+  );
+}
+```
+
+Use the adapter from the `expo-router` subpath. `targetScreenId` must match the destination `ChoreographyScreen`; keeping it explicit supports dynamic routes without placing transition metadata in the URL.
+
+```tsx
+import { useRouter } from 'expo-router';
+import { useChoreographyRouter } from 'react-native-screen-choreography/expo-router';
+
+const router = useRouter();
+const { push } = useChoreographyRouter(router, 'GalleryList');
+
+push({
+  href: { pathname: '/gallery/[photoId]', params: { photoId: photo.id } },
+  targetScreenId: 'GalleryDetail',
+  transitionConfig: { group: `photo.${photo.id}` },
+});
+```
+
+```tsx
+// src/app/gallery/[photoId].tsx
+<ChoreographyScreen screenId="GalleryDetail">
+  {/** detail content */}
+</ChoreographyScreen>
+```
+
+The adapter also exposes `navigate()` and `back()`. Normal Expo Router deep links still work, but a choreography starts only when navigation originates from a mounted source element. Automatic progress from Expo Router's built-in native swipe gesture is not connected; use `useInteractiveTransition` for custom gestures.
 
 ## Debugging
 
@@ -410,7 +459,7 @@ For app code, the cleanest pattern is:
 
 ## Known Limitations
 
-- The best-supported setup is still `@react-navigation/native-stack` with stack animation disabled.
+- The best-supported setups are `@react-navigation/native-stack` and Expo Router's native `Stack`, both with stack animation disabled.
 - Custom back gestures can control progress with `useInteractiveTransition`; native-stack's built-in swipe progress is not connected automatically.
 - Transition startup still depends on live target measurement for structural elements, though repeated opens of the same target layout reuse cached metrics after one validation read.
 - Ordinary renderers receive frozen React content, style, and metrics rather than captured pixels. `SharedElement.Live` is the opt-in path for one stateful native subtree and requires its owner screen to remain mounted.
@@ -423,16 +472,26 @@ See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for
 - [docs/architecture-plan.md](docs/architecture-plan.md) for the runtime architecture and contributor-level internals
 - [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for support boundaries and planned improvements
 - [docs/library-comparison.md](docs/library-comparison.md) for a comparison with other shared transition approaches
-- [example/README.md](example/README.md) for the example app setup and files to inspect
+- [examples/react-navigation/README.md](examples/react-navigation/README.md) for the bare React Native example
+- [examples/expo-router/README.md](examples/expo-router/README.md) for the Expo Router example
 
-## Example App
+## Example Apps
 
-The example app demonstrates a wallet-style token list to detail transition.
+The bare React Navigation app contains the full demo gallery:
 
 ```bash
-cd example
+cd examples/react-navigation
 yarn install
 cd ios && pod install && cd ..
+yarn ios
+# or
+yarn android
+```
+
+The Expo Router app demonstrates typed file-based navigation to a dynamic detail route. It requires a native development build:
+
+```bash
+cd examples/expo-router
 yarn ios
 # or
 yarn android

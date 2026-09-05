@@ -11,11 +11,11 @@
         "!android/build",
         "src/*.ts",
         "src/*.tsx",
-        "example/package.json",
-        "example/android",
-        "!example/android/.gradle",
-        "!example/android/build",
-        "!example/android/app/build"
+        "examples/react-navigation/package.json",
+        "examples/react-navigation/android",
+        "!examples/react-navigation/android/.gradle",
+        "!examples/react-navigation/android/build",
+        "!examples/react-navigation/android/app/build"
       ],
       "outputs": []
     },
@@ -32,10 +32,10 @@
         "ios",
         "src/*.ts",
         "src/*.tsx",
-        "example/package.json",
-        "example/ios",
-        "!example/ios/build",
-        "!example/ios/Pods"
+        "examples/react-navigation/package.json",
+        "examples/react-navigation/ios",
+        "!examples/react-navigation/ios/build",
+        "!examples/react-navigation/ios/Pods"
       ],
       "outputs": []
     }

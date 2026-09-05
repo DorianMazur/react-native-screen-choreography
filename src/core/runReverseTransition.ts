@@ -11,7 +11,7 @@ function logSpringSettled(finished: boolean) {
 
 export interface RunReverseTransitionArgs {
   ctx: ChoreographyContextType;
-  /** Shared element group id (the `_choreographyGroup` route param). */
+  /** Shared element group ID from provider lineage or legacy route params. */
   groupId: string;
   /** Screen we are returning TO (the original forward source). */
   sourceScreenId: string;
@@ -39,8 +39,18 @@ export async function runReverseTransition(
     preMeasureGroup,
     startTransition,
     completeTransition,
+    cancelTransition,
     waitForOverlayReady,
   } = ctx;
+  let reverseSessionId: string | null = null;
+  let navigationCommitted = false;
+  const commitNavigation = () => {
+    if (navigationCommitted) {
+      return;
+    }
+    navigationCommitted = true;
+    popAction();
+  };
 
   try {
     debugLog('[BackIntercept] preMeasureGroup start');
@@ -61,9 +71,10 @@ export async function runReverseTransition(
       debugLog(
         '[BackIntercept] reverse session creation failed; falling back to plain pop'
       );
-      popAction();
+      commitNavigation();
       return;
     }
+    reverseSessionId = reverseSession.id;
 
     // Wait for the overlay to actually paint and the native host to ack the
     // presentation BEFORE we pop the route. Without this:
@@ -73,17 +84,22 @@ export async function runReverseTransition(
     //   * popping the route unmounts the source screen during the gap and
     //     the user just sees the destination snap into place.
     // The provider has a 150ms safety net for slow Android frames.
-    await waitForOverlayReady(reverseSession.id);
+    const overlayReady = await waitForOverlayReady(reverseSession.id);
+    if (!overlayReady) {
+      cancelTransition(reverseSession.id);
+      return;
+    }
     debugLog('[BackIntercept] overlay ready, calling popAction');
-    popAction();
+    commitNavigation();
     debugLog('[BackIntercept] popAction returned, scheduling spring');
 
+    const sessionId = reverseSession.id;
     progress.value = withSpring(0, spring, (finished) => {
       'worklet';
       scheduleOnRN(logSpringSettled, finished ?? false);
       if (finished) {
         progress.value = 0;
-        scheduleOnRN(completeTransition);
+        scheduleOnRN(completeTransition, sessionId);
       }
     });
   } catch (error) {
@@ -92,6 +108,9 @@ export async function runReverseTransition(
         error instanceof Error ? error.message : String(error)
       }`
     );
-    popAction();
+    if (reverseSessionId) {
+      cancelTransition(reverseSessionId);
+    }
+    commitNavigation();
   }
 }

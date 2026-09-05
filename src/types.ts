@@ -113,6 +113,12 @@ export interface ChoreographyNavigationOptions {
   duration?: number;
 }
 
+export interface ChoreographyNavigationLineage {
+  groupId: string;
+  sourceScreenId: string;
+  targetScreenId: string;
+}
+
 export interface InteractiveBackOptions {
   /** Group to control. Defaults to the route metadata set by navigate(). */
   group?: string;

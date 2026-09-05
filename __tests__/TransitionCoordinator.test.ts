@@ -38,6 +38,14 @@ function makeElement(
   };
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise;
+  });
+  return { promise, resolve };
+}
+
 describe('TransitionCoordinator presentation freezing', () => {
   let registry: ElementRegistry;
   let progress: { value: number };
@@ -365,6 +373,280 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
       height: 200,
     });
   }, 5000);
+
+  test('cancelled preparation cannot reactivate after target registration', async () => {
+    const snap: { current: ElementPresentation } = {
+      current: { content: null, transition },
+    };
+
+    registry.register(
+      makeElement(
+        {
+          screenId: 'list',
+          metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+        },
+        snap
+      )
+    );
+
+    const sessionPromise = coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+
+    coordinator.cancelTransition();
+    registry.register(
+      makeElement(
+        {
+          screenId: 'detail',
+          ref: refWithMetrics({
+            pageX: 0,
+            pageY: 0,
+            width: 200,
+            height: 200,
+          }),
+        },
+        snap
+      )
+    );
+
+    await expect(sessionPromise).resolves.toBeNull();
+    expect(coordinator.getActiveSession()).toBeNull();
+    expect(coordinator.getHiddenElements().size).toBe(0);
+  }, 5000);
+
+  test('cancelled preparation cannot reactivate after stable measurement', async () => {
+    const snap: { current: ElementPresentation } = {
+      current: { content: null, transition },
+    };
+    const stability = deferred<boolean>();
+    (coordinator as any).waitForStableTargetMeasurements = jest.fn(
+      () => stability.promise
+    );
+
+    registry.register(
+      makeElement(
+        {
+          screenId: 'list',
+          metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+        },
+        snap
+      )
+    );
+    registry.register(
+      makeElement(
+        {
+          screenId: 'detail',
+          metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+        },
+        snap
+      )
+    );
+
+    const sessionPromise = coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+    await Promise.resolve();
+
+    coordinator.cancelTransition();
+    stability.resolve(true);
+
+    await expect(sessionPromise).resolves.toBeNull();
+    expect(coordinator.getActiveSession()).toBeNull();
+    expect(coordinator.getHiddenElements().size).toBe(0);
+  });
+
+  test.each(['first', 'second'] as const)(
+    'keeps the replacement session when the superseded start finishes %s',
+    async (staleFinishOrder) => {
+      const snap: { current: ElementPresentation } = {
+        current: { content: null, transition },
+      };
+      const firstStability = deferred<boolean>();
+      const secondStability = deferred<boolean>();
+      (coordinator as any).waitForStableTargetMeasurements = jest.fn(
+        (targetScreenId: string) =>
+          targetScreenId === 'first-detail'
+            ? firstStability.promise
+            : secondStability.promise
+      );
+
+      for (const [id, groupId, sourceScreenId, targetScreenId] of [
+        ['first-card', 'first-group', 'first-list', 'first-detail'],
+        ['second-card', 'second-group', 'second-list', 'second-detail'],
+      ] as const) {
+        registry.register(
+          makeElement(
+            {
+              id,
+              groupId,
+              screenId: sourceScreenId,
+              metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+            },
+            snap
+          )
+        );
+        registry.register(
+          makeElement(
+            {
+              id,
+              groupId,
+              screenId: targetScreenId,
+              metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+            },
+            snap
+          )
+        );
+      }
+
+      const firstSessionPromise = coordinator.startTransition({
+        groupId: 'first-group',
+        sourceScreenId: 'first-list',
+        targetScreenId: 'first-detail',
+        direction: 'forward',
+      });
+      await Promise.resolve();
+      const secondSessionPromise = coordinator.startTransition({
+        groupId: 'second-group',
+        sourceScreenId: 'second-list',
+        targetScreenId: 'second-detail',
+        direction: 'forward',
+      });
+      await Promise.resolve();
+
+      if (staleFinishOrder === 'first') {
+        firstStability.resolve(true);
+        await expect(firstSessionPromise).resolves.toBeNull();
+        secondStability.resolve(true);
+      } else {
+        secondStability.resolve(true);
+      }
+
+      const secondSession = await secondSessionPromise;
+      if (staleFinishOrder === 'second') {
+        firstStability.resolve(true);
+        await expect(firstSessionPromise).resolves.toBeNull();
+      }
+
+      expect(secondSession?.targetScreenId).toBe('second-detail');
+      expect(coordinator.getActiveSession()?.id).toBe(secondSession?.id);
+      expect(coordinator.getHiddenElements().size).toBe(2);
+    }
+  );
+
+  test('stale empty-pair cleanup cannot clear a replacement session', async () => {
+    const snap: { current: ElementPresentation } = {
+      current: { content: null, transition },
+    };
+    const firstStability = deferred<boolean>();
+    const secondStability = deferred<boolean>();
+    (coordinator as any).waitForStableTargetMeasurements = jest.fn(
+      (targetScreenId: string) =>
+        targetScreenId === 'first-detail'
+          ? firstStability.promise
+          : secondStability.promise
+    );
+
+    for (const [id, groupId, sourceScreenId, targetScreenId] of [
+      ['first-card', 'first-group', 'first-list', 'first-detail'],
+      ['second-card', 'second-group', 'second-list', 'second-detail'],
+    ] as const) {
+      registry.register(
+        makeElement(
+          {
+            id,
+            groupId,
+            screenId: sourceScreenId,
+            metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+          },
+          snap
+        )
+      );
+      registry.register(
+        makeElement(
+          {
+            id,
+            groupId,
+            screenId: targetScreenId,
+            metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+          },
+          snap
+        )
+      );
+    }
+
+    const firstSessionPromise = coordinator.startTransition({
+      groupId: 'first-group',
+      sourceScreenId: 'first-list',
+      targetScreenId: 'first-detail',
+      direction: 'forward',
+    });
+    await Promise.resolve();
+    const secondSessionPromise = coordinator.startTransition({
+      groupId: 'second-group',
+      sourceScreenId: 'second-list',
+      targetScreenId: 'second-detail',
+      direction: 'forward',
+    });
+    await Promise.resolve();
+
+    secondStability.resolve(true);
+    const secondSession = await secondSessionPromise;
+    registry.unregister('first-card', 'first-detail', 'first-group');
+    firstStability.resolve(true);
+
+    await expect(firstSessionPromise).resolves.toBeNull();
+    expect(coordinator.getActiveSession()?.id).toBe(secondSession?.id);
+    expect(coordinator.getHiddenElements().size).toBe(2);
+  });
+
+  test('disposal invalidates preparation before it can activate', async () => {
+    const snap: { current: ElementPresentation } = {
+      current: { content: null, transition },
+    };
+    const stability = deferred<boolean>();
+    (coordinator as any).waitForStableTargetMeasurements = jest.fn(
+      () => stability.promise
+    );
+    registry.register(
+      makeElement(
+        {
+          screenId: 'list',
+          metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+        },
+        snap
+      )
+    );
+    registry.register(
+      makeElement(
+        {
+          screenId: 'detail',
+          metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+        },
+        snap
+      )
+    );
+
+    const sessionPromise = coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction: 'forward',
+    });
+    await Promise.resolve();
+
+    coordinator.dispose();
+    stability.resolve(true);
+
+    await expect(sessionPromise).resolves.toBeNull();
+    expect(coordinator.getActiveSession()).toBeNull();
+    expect(coordinator.getHiddenElements().size).toBe(0);
+  });
 
   test('discovers pair ids only from the source screen group', async () => {
     const snap: { current: ElementPresentation } = {

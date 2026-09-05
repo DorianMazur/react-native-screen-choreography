@@ -1,5 +1,4 @@
 import { useCallback, useContext, useEffect, useRef } from 'react';
-import { useIsFocused, useRoute } from '@react-navigation/native';
 import { Platform } from 'react-native';
 import {
   cancelAnimation,
@@ -12,11 +11,13 @@ import {
   ChoreographyContext,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
-import { useScreenId } from '../core/screenIdContext';
 import type { ChoreographyNavigationOptions } from '../types';
 import { DEFAULT_SPRING, FAST_SPRING } from '../core/constants';
 import { debugLog, isDebugEnabled } from '../debug/logger';
-import { NavigationSessionController } from '../core/NavigationSessionController';
+import {
+  NavigationSessionController,
+  type PendingNavigationRequest,
+} from '../core/NavigationSessionController';
 
 function nowMs(): number {
   return Date.now();
@@ -36,28 +37,23 @@ function describeSession(
   return `${session.direction}:${session.sourceScreenId}->${session.targetScreenId}:${session.state}`;
 }
 
-/**
- * Hook providing navigation functions with choreographed transitions.
- * Wraps React Navigation's navigate/goBack with transition orchestration.
- */
-export function useChoreographyNavigation(navigation: any) {
+export interface ChoreographyNavigatorBinding {
+  currentScreenId: string;
+  isFocused: boolean;
+  goBack: () => void;
+}
+
+export function useChoreographyNavigator({
+  currentScreenId,
+  isFocused,
+  goBack: navigateBack,
+}: ChoreographyNavigatorBinding) {
   const ctx = useContext(ChoreographyContext) as ChoreographyContextType;
   if (!ctx) {
     throw new Error(
       'useChoreographyNavigation must be used within a <ChoreographyProvider>'
     );
   }
-
-  const route = useRoute();
-  const isFocused = useIsFocused();
-  const screenId = useScreenId();
-  const currentScreenId =
-    screenId !== 'default'
-      ? screenId
-      : (route.name ??
-        navigation.getState?.()?.routes?.[navigation.getState?.()?.index ?? 0]
-          ?.name ??
-        'default');
 
   const {
     progress,
@@ -66,6 +62,7 @@ export function useChoreographyNavigation(navigation: any) {
     cancelTransition,
     completeTransition,
     setPendingTargetScreen,
+    setNavigationLineage,
     waitForOverlayReady,
     waitForScreenReady,
     refreshActiveSessionMetrics,
@@ -204,9 +201,9 @@ export function useChoreographyNavigation(navigation: any) {
       session.targetScreenId === currentScreenId
     ) {
       progress.value = 0;
-      completeTransition();
+      completeTransition(session.id);
     } else {
-      cancelTransition();
+      cancelTransition(session.id);
     }
 
     await waitForNextFrame();
@@ -244,7 +241,7 @@ export function useChoreographyNavigation(navigation: any) {
         () => `forward animation completed token=${token} session=${sessionId}`
       );
       releaseNavigationLock();
-      completeTransition();
+      completeTransition(sessionId);
     },
     [
       completeTransition,
@@ -275,9 +272,9 @@ export function useChoreographyNavigation(navigation: any) {
         () => `reverse animation completed token=${token} session=${sessionId}`
       );
       releaseNavigationLock();
-      navigation.goBack();
+      navigateBack();
       requestAnimationFrame(() => {
-        completeTransition();
+        completeTransition(sessionId);
       });
     },
     [
@@ -286,7 +283,7 @@ export function useChoreographyNavigation(navigation: any) {
       isCurrentProgressAnimationToken,
       isCurrentSessionAnimation,
       logNavigation,
-      navigation,
+      navigateBack,
       releaseNavigationLock,
     ]
   );
@@ -313,10 +310,10 @@ export function useChoreographyNavigation(navigation: any) {
           `settled reverse animation completed token=${token} session=${sessionId}`
       );
       releaseNavigationLock();
-      completeTransition();
+      cancelTransition(sessionId);
     },
     [
-      completeTransition,
+      cancelTransition,
       controller,
       isCurrentProgressAnimationToken,
       isCurrentSessionAnimation,
@@ -326,27 +323,21 @@ export function useChoreographyNavigation(navigation: any) {
   );
 
   const choreographyNavigate = useCallback(
-    async (
-      screenName: string,
-      params?: any,
-      options?: ChoreographyNavigationOptions,
-      allowQueue: boolean = true
-    ) => {
+    async (request: PendingNavigationRequest, allowQueue: boolean = true) => {
       const tapStartedAt = nowMs();
-      const groupId =
-        options?.transitionConfig?.group ?? params?.transitionGroup;
+      const { targetScreenId, dispatchNavigation, options } = request;
+      const groupId = options?.transitionConfig?.group;
       const sourceScreenId = currentScreenId;
-      const targetScreenId = screenName;
       let interruptedSettlingReturn = false;
 
       logNavigation(
         () =>
-          `tap navigate target=${screenName} group=${groupId ?? 'none'} allowQueue=${allowQueue} session=${describeSession(ctx.activeSession)}`
+          `tap navigate target=${targetScreenId} group=${groupId ?? 'none'} allowQueue=${allowQueue} session=${describeSession(ctx.activeSession)}`
       );
 
       if (!groupId) {
-        logNavigation(() => `plain navigate target=${screenName}`);
-        navigation.navigate(screenName, params);
+        logNavigation(() => `plain navigate target=${targetScreenId}`);
+        dispatchNavigation();
         return;
       }
 
@@ -360,7 +351,7 @@ export function useChoreographyNavigation(navigation: any) {
         interruptedSettlingReturn = true;
         logNavigation(
           () =>
-            `tap navigate interrupted current return target=${screenName} elapsed=${elapsedMs(tapStartedAt)}`
+            `tap navigate interrupted current return target=${targetScreenId} elapsed=${elapsedMs(tapStartedAt)}`
         );
       }
 
@@ -375,14 +366,10 @@ export function useChoreographyNavigation(navigation: any) {
         const reasons = getNavigationBlockReasons(interruptedSettlingReturn);
         logNavigation(
           () =>
-            `tap navigate blocked target=${screenName} reasons=${reasons}${allowQueue ? ' -> queued' : ' -> dropped'}`
+            `tap navigate blocked target=${targetScreenId} reasons=${reasons}${allowQueue ? ' -> queued' : ' -> dropped'}`
         );
         if (allowQueue) {
-          controller.queueNavigation({
-            screenName,
-            params,
-            options,
-          });
+          controller.queueNavigation(request);
         }
         return;
       }
@@ -414,23 +401,20 @@ export function useChoreographyNavigation(navigation: any) {
             );
           },
           dispatchNavigation: () => {
-            navigation.navigate(screenName, {
-              ...params,
-              _choreographySourceScreen: sourceScreenId,
-              _choreographyGroup: groupId,
-            });
+            dispatchNavigation();
             logNavigation(
               () =>
-                `navigation dispatched target=${screenName} elapsed=${elapsedMs(tapStartedAt)}`
+                `navigation dispatched target=${targetScreenId} elapsed=${elapsedMs(tapStartedAt)}`
             );
           },
           waitForScreenReady: async (pendingScreenId) => {
             const startedAt = nowMs();
-            await waitForScreenReady(pendingScreenId);
+            const ready = await waitForScreenReady(pendingScreenId);
             logNavigation(
               () =>
-                `android screen ready target=${pendingScreenId} duration=${elapsedMs(startedAt)} total=${elapsedMs(tapStartedAt)}`
+                `screen ready=${ready} target=${pendingScreenId} duration=${elapsedMs(startedAt)} total=${elapsedMs(tapStartedAt)}`
             );
+            return ready;
           },
           waitForNextFrame,
           startTransition,
@@ -440,10 +424,16 @@ export function useChoreographyNavigation(navigation: any) {
         if (!session) {
           logNavigation(
             () =>
-              `transition preparation failed target=${screenName} elapsed=${elapsedMs(tapStartedAt)}`
+              `transition preparation failed target=${targetScreenId} elapsed=${elapsedMs(tapStartedAt)}`
           );
           return;
         }
+
+        setNavigationLineage({
+          groupId,
+          sourceScreenId,
+          targetScreenId,
+        });
 
         logNavigation(
           () =>
@@ -452,9 +442,10 @@ export function useChoreographyNavigation(navigation: any) {
 
         const springConfig = options?.spring ?? DEFAULT_SPRING;
         const animationToken = createProgressAnimationToken();
+        const sessionId = session.id;
         logNavigation(
           () =>
-            `forward animation start session=${session.id} token=${animationToken} totalDelay=${elapsedMs(tapStartedAt)} interruptedSettlingReturn=${interruptedSettlingReturn}`
+            `forward animation start session=${sessionId} token=${animationToken} totalDelay=${elapsedMs(tapStartedAt)} interruptedSettlingReturn=${interruptedSettlingReturn}`
         );
 
         if (options?.duration) {
@@ -470,7 +461,7 @@ export function useChoreographyNavigation(navigation: any) {
                 scheduleOnRN(
                   finishForwardTransition,
                   animationToken,
-                  session.id
+                  sessionId
                 );
               }
             }
@@ -479,14 +470,14 @@ export function useChoreographyNavigation(navigation: any) {
           progress.value = withSpring(1, springConfig, (finished) => {
             if (finished) {
               progress.value = 1;
-              scheduleOnRN(finishForwardTransition, animationToken, session.id);
+              scheduleOnRN(finishForwardTransition, animationToken, sessionId);
             }
           });
         }
       } catch (error) {
         logNavigation(
           () =>
-            `navigate error target=${screenName} elapsed=${elapsedMs(tapStartedAt)} error=${error instanceof Error ? error.message : String(error)}`
+            `navigate error target=${targetScreenId} elapsed=${elapsedMs(tapStartedAt)} error=${error instanceof Error ? error.message : String(error)}`
         );
         throw error;
       }
@@ -503,9 +494,9 @@ export function useChoreographyNavigation(navigation: any) {
       isFocused,
       interruptReturnTransition,
       logNavigation,
-      navigation,
       progress,
       preMeasureGroup,
+      setNavigationLineage,
       setPendingTargetScreen,
       startTransition,
       waitForOverlayReady,
@@ -536,7 +527,7 @@ export function useChoreographyNavigation(navigation: any) {
 
     logNavigation(
       () =>
-        `replay candidate target=${pendingRequest.screenName} session=${describeSession(ctx.activeSession)}`
+        `replay candidate target=${pendingRequest.targetScreenId} session=${describeSession(ctx.activeSession)}`
     );
 
     controller.takeQueuedNavigation();
@@ -545,14 +536,14 @@ export function useChoreographyNavigation(navigation: any) {
     const replayPendingNavigation = async () => {
       if (!canInterruptActiveReturn) {
         logNavigation(
-          () => `replay waiting target=${pendingRequest.screenName}`
+          () => `replay waiting target=${pendingRequest.targetScreenId}`
         );
         await waitForReplayWindow();
       }
 
       if (cancelled) {
         logNavigation(
-          () => `replay cancelled target=${pendingRequest.screenName}`
+          () => `replay cancelled target=${pendingRequest.targetScreenId}`
         );
         return;
       }
@@ -572,7 +563,7 @@ export function useChoreographyNavigation(navigation: any) {
         const reasons = getNavigationBlockReasons(canInterruptLatestReturn);
         logNavigation(
           () =>
-            `replay blocked target=${pendingRequest.screenName} reasons=${reasons} -> requeued`
+            `replay blocked target=${pendingRequest.targetScreenId} reasons=${reasons} -> requeued`
         );
         if (!controller.peekQueuedNavigation()) {
           controller.queueNavigation(pendingRequest);
@@ -581,21 +572,16 @@ export function useChoreographyNavigation(navigation: any) {
       }
 
       logNavigation(
-        () => `replay launching target=${pendingRequest.screenName}`
+        () => `replay launching target=${pendingRequest.targetScreenId}`
       );
 
-      await choreographyNavigate(
-        pendingRequest.screenName,
-        pendingRequest.params,
-        pendingRequest.options,
-        false
-      );
+      await choreographyNavigate(pendingRequest, false);
     };
 
     replayPendingNavigation().catch((error) => {
       logNavigation(
         () =>
-          `replay error target=${pendingRequest.screenName} error=${error instanceof Error ? error.message : String(error)}`
+          `replay error target=${pendingRequest.targetScreenId} error=${error instanceof Error ? error.message : String(error)}`
       );
     });
 
@@ -634,7 +620,7 @@ export function useChoreographyNavigation(navigation: any) {
           cancelAnimation(progress);
           invalidateProgressAnimation();
           progress.value = Math.max(progress.value, 0.12);
-          navigation.goBack();
+          navigateBack();
           await waitForNextFrame();
           await refreshActiveSessionMetrics('source');
           logNavigation(
@@ -670,8 +656,8 @@ export function useChoreographyNavigation(navigation: any) {
           });
         }
       } else {
-        logNavigation('goBack delegating to navigation.goBack()');
-        navigation.goBack();
+        logNavigation('goBack delegating to router');
+        navigateBack();
       }
     },
     [
@@ -682,7 +668,7 @@ export function useChoreographyNavigation(navigation: any) {
       finishSettledReverseTransition,
       invalidateProgressAnimation,
       logNavigation,
-      navigation,
+      navigateBack,
       progress,
       refreshActiveSessionMetrics,
       waitForNextFrame,
@@ -690,11 +676,8 @@ export function useChoreographyNavigation(navigation: any) {
   );
 
   return {
-    navigate: (
-      screenName: string,
-      params?: any,
-      options?: ChoreographyNavigationOptions
-    ) => choreographyNavigate(screenName, params, options, true),
+    navigate: (request: PendingNavigationRequest) =>
+      choreographyNavigate(request, true),
     goBack: choreographyGoBack,
   };
 }

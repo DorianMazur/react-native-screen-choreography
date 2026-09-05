@@ -1,7 +1,7 @@
 interface ScreenReadinessState {
   ready: boolean;
   blockers: Set<symbol>;
-  waiters: Set<() => void>;
+  waiters: Set<(ready: boolean) => void>;
 }
 
 export class ScreenReadinessRegistry {
@@ -20,14 +20,18 @@ export class ScreenReadinessRegistry {
     return state.ready && state.blockers.size === 0;
   }
 
+  private settleWaiters(state: ScreenReadinessState, ready: boolean): void {
+    const waiters = [...state.waiters];
+    state.waiters.clear();
+    waiters.forEach((resolve) => resolve(ready));
+  }
+
   private resolveIfReady(state: ScreenReadinessState): void {
     if (!this.canStart(state)) {
       return;
     }
 
-    const waiters = [...state.waiters];
-    state.waiters.clear();
-    waiters.forEach((resolve) => resolve());
+    this.settleWaiters(state, true);
   }
 
   setReady(screenId: string, ready: boolean): void {
@@ -37,7 +41,13 @@ export class ScreenReadinessRegistry {
   }
 
   unregister(screenId: string): void {
-    this.getState(screenId).ready = false;
+    const state = this.screens.get(screenId);
+    if (!state) {
+      return;
+    }
+    state.ready = false;
+    this.settleWaiters(state, false);
+    this.screens.delete(screenId);
   }
 
   acquire(screenId: string): () => void {
@@ -81,9 +91,16 @@ export class ScreenReadinessRegistry {
         state.waiters.delete(onReady);
         resolve(ready);
       };
-      const onReady = () => finish(true);
+      const onReady = (ready: boolean) => finish(ready);
       const timeoutId = setTimeout(() => finish(false), timeoutMs);
       state.waiters.add(onReady);
     });
+  }
+
+  dispose(): void {
+    for (const state of this.screens.values()) {
+      this.settleWaiters(state, false);
+    }
+    this.screens.clear();
   }
 }

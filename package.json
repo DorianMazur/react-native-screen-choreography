@@ -10,6 +10,11 @@
       "types": "./lib/typescript/src/index.d.ts",
       "default": "./lib/module/index.js"
     },
+    "./expo-router": {
+      "source": "./src/expo-router.ts",
+      "types": "./lib/typescript/src/expo-router.d.ts",
+      "default": "./lib/module/expo-router.js"
+    },
     "./package.json": "./package.json"
   },
   "files": [
@@ -32,8 +37,10 @@
   ],
   "scripts": {
     "example": "yarn workspace react-native-screen-choreography-example",
+    "example:react-native": "yarn workspace react-native-screen-choreography-example",
+    "example:expo-router": "yarn workspace screen-choreography-expo-router-example",
     "test": "jest",
-    "clean": "del-cli android/build example/android/build example/android/app/build example/ios/build lib",
+    "clean": "del-cli android/build examples/react-navigation/android/build examples/react-navigation/android/app/build examples/react-navigation/ios/build examples/expo-router/android/build examples/expo-router/ios/build lib",
     "prepare": "bob build",
     "prepublishOnly": "yarn clean && yarn lint && yarn typecheck && yarn test --runInBand && yarn prepare",
     "typecheck": "tsc",
@@ -51,6 +58,7 @@
     "animation",
     "reanimated",
     "react-navigation",
+    "expo-router",
     "native-stack",
     "choreography",
     "fabric",
@@ -86,6 +94,7 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-ft-flow": "^3.0.11",
     "eslint-plugin-prettier": "^5.5.5",
+    "expo-router": "^57.0.18",
     "jest": "^29.7.0",
     "prettier": "^3.8.1",
     "react": "19.2.0",
@@ -101,6 +110,7 @@
   "peerDependencies": {
     "@react-navigation/native": ">=6.0.0",
     "@react-navigation/native-stack": ">=6.0.0",
+    "expo-router": ">=56.1.1",
     "react": ">=18.0.0",
     "react-native": ">=0.76.0",
     "react-native-reanimated": ">=4.0.0",
@@ -108,8 +118,19 @@
     "react-native-teleport": ">=1.2.0",
     "react-native-worklets": ">=0.8.0"
   },
+  "peerDependenciesMeta": {
+    "@react-navigation/native": {
+      "optional": true
+    },
+    "@react-navigation/native-stack": {
+      "optional": true
+    },
+    "expo-router": {
+      "optional": true
+    }
+  },
   "workspaces": [
-    "example"
+    "examples/*"
   ],
   "engines": {
     "node": ">=18"

@@ -116,6 +116,6 @@ export function StandInElement({
 
 const styles = StyleSheet.create({
   content: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
   },
 });

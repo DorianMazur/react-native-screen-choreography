@@ -15,6 +15,7 @@ import { FullWindowOverlay } from 'react-native-screens';
 import { PortalProvider } from 'react-native-teleport';
 import type {
   ChoreographyDebugConfig,
+  ChoreographyNavigationLineage,
   RegisteredElement,
   TransitionSessionData,
 } from '../types';
@@ -72,6 +73,12 @@ interface ChoreographyProviderProps {
   /** Called when a transition session completes or is cancelled */
   onTransitionEnd?: (session: TransitionSessionData) => void;
 }
+
+interface OverlayWaiter {
+  resolve: (ready: boolean) => void;
+  timeoutId: ReturnType<typeof setTimeout>;
+}
+
 function resolveDebugConfig(debug: ChoreographyDebugConfig | undefined) {
   if (!debug) {
     return { enabled: false, level: 'info' as const, coalesce: true };
@@ -103,6 +110,9 @@ export function ChoreographyProvider({
   const activeSessionRef = useRef<TransitionSessionData | null>(null);
   const hostPresentedSessionIdRef = useRef<string | null>(null);
   const overlayContentReadySessionIdRef = useRef<string | null>(null);
+  const navigationLineageRef = useRef<
+    Map<string, ChoreographyNavigationLineage>
+  >(new Map());
 
   // Refs let the coordinator closure see the latest callbacks without
   // re-creating it on each render.
@@ -110,7 +120,7 @@ export function ChoreographyProvider({
   onTransitionStartRef.current = onTransitionStart;
   const onTransitionEndRef = useRef(onTransitionEnd);
   onTransitionEndRef.current = onTransitionEnd;
-  const overlayWaitersRef = useRef<Map<string, Set<() => void>>>(new Map());
+  const overlayWaitersRef = useRef<Map<string, Set<OverlayWaiter>>>(new Map());
 
   const syncHiddenElements = useCallback(() => {
     const hidden = coordinatorRef.current!.getHiddenElements();
@@ -118,25 +128,36 @@ export function ChoreographyProvider({
       sv.value = hidden.has(key) ? 1 : 0;
     }
   }, []);
-  const resolveOverlayWaiters = useCallback((sessionId: string) => {
-    const waiters = overlayWaitersRef.current.get(sessionId);
-    if (!waiters) {
-      return;
-    }
+  const settleOverlayWaiters = useCallback(
+    (sessionId: string, ready: boolean) => {
+      const waiters = overlayWaitersRef.current.get(sessionId);
+      if (!waiters) {
+        return;
+      }
 
-    overlayWaitersRef.current.delete(sessionId);
-    waiters.forEach((resolve) => resolve());
-  }, []);
+      overlayWaitersRef.current.delete(sessionId);
+      waiters.forEach((waiter) => {
+        clearTimeout(waiter.timeoutId);
+        waiter.resolve(ready);
+      });
+    },
+    []
+  );
+  const cancelAllOverlayWaiters = useCallback(() => {
+    for (const sessionId of overlayWaitersRef.current.keys()) {
+      settleOverlayWaiters(sessionId, false);
+    }
+  }, [settleOverlayWaiters]);
   const resolveOverlayWaitersIfReady = useCallback(
     (sessionId: string) => {
       if (
         hostPresentedSessionIdRef.current === sessionId &&
         overlayContentReadySessionIdRef.current === sessionId
       ) {
-        resolveOverlayWaiters(sessionId);
+        settleOverlayWaiters(sessionId, true);
       }
     },
-    [resolveOverlayWaiters]
+    [settleOverlayWaiters]
   );
   const screenReadinessRef = useRef(new ScreenReadinessRegistry());
 
@@ -157,6 +178,9 @@ export function ChoreographyProvider({
       const previousSession = activeSessionRef.current;
       activeSessionRef.current = session;
       setActiveSession(session);
+      if (previousSession && previousSession.id !== session?.id) {
+        settleOverlayWaiters(previousSession.id, false);
+      }
       hostPresentedSessionIdRef.current = null;
       overlayContentReadySessionIdRef.current = null;
 
@@ -164,7 +188,6 @@ export function ChoreographyProvider({
         if (previousSession) {
           onTransitionEndRef.current?.(previousSession);
         }
-        overlayWaitersRef.current.clear();
         setPendingTargetScreenId(null);
         syncHiddenElements();
         return;
@@ -183,6 +206,20 @@ export function ChoreographyProvider({
       // here would cause a one-frame blank flash at transition start.
     });
   }
+
+  useEffect(
+    () => () => {
+      cancelAllOverlayWaiters();
+      screenReadinessRef.current.dispose();
+      coordinatorRef.current?.dispose();
+      hiddenMapRef.current.forEach((hidden) => {
+        hidden.value = 0;
+      });
+      hiddenMapRef.current.clear();
+      navigationLineageRef.current.clear();
+    },
+    [cancelAllOverlayWaiters]
+  );
 
   useEffect(() => {
     const resolved = resolveDebugConfig(debug);
@@ -255,12 +292,23 @@ export function ChoreographyProvider({
     []
   );
 
+  const setNavigationLineage = useCallback(
+    (lineage: ChoreographyNavigationLineage) => {
+      navigationLineageRef.current.set(lineage.targetScreenId, lineage);
+    },
+    []
+  );
+
+  const getNavigationLineage = useCallback((screenId: string) => {
+    return navigationLineageRef.current.get(screenId) ?? null;
+  }, []);
+
   const waitForScreenReady = useCallback(async (screenId: string) => {
     if (screenReadinessRef.current.isReady(screenId)) {
       debugTrace(
         () => `[Provider] waitForScreenReady immediate screen="${screenId}"`
       );
-      return;
+      return true;
     }
 
     const waitStartedAt = Date.now();
@@ -274,6 +322,7 @@ export function ChoreographyProvider({
       () =>
         `[Provider] waitForScreenReady ${ready ? 'resolved' : 'timeout'} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)} duration=${Date.now() - waitStartedAt}ms`
     );
+    return ready;
   }, []);
 
   const isElementHidden = useCallback(
@@ -324,41 +373,57 @@ export function ChoreographyProvider({
         hostPresentedSessionIdRef.current === sessionId &&
         overlayContentReadySessionIdRef.current === sessionId
       ) {
-        return;
+        return true;
       }
 
-      await new Promise<void>((resolve) => {
+      return new Promise<boolean>((resolve) => {
         let waiters = overlayWaitersRef.current.get(sessionId);
         if (!waiters) {
           waiters = new Set();
           overlayWaitersRef.current.set(sessionId, waiters);
         }
 
-        const onReady = () => {
-          clearTimeout(timeoutId);
-          resolve();
-        };
         // 150ms safety net for slow Android frames; also hides reals so the
         // spring never animates with originals visible behind the overlay.
         const timeoutId = setTimeout(() => {
-          waiters!.delete(onReady);
-          syncHiddenElements();
-          resolve();
+          waiters!.delete(waiter);
+          if (waiters!.size === 0) {
+            overlayWaitersRef.current.delete(sessionId);
+          }
+          if (activeSessionRef.current?.id === sessionId) {
+            syncHiddenElements();
+          }
+          resolve(true);
         }, 150);
 
-        waiters.add(onReady);
+        const waiter: OverlayWaiter = { resolve, timeoutId };
+        waiters.add(waiter);
         resolveOverlayWaitersIfReady(sessionId);
       });
     },
     [resolveOverlayWaitersIfReady, syncHiddenElements]
   );
 
-  const completeTransition = useCallback(() => {
-    coordinatorRef.current?.completeTransition();
+  const completeTransition = useCallback((sessionId?: string) => {
+    const session = activeSessionRef.current;
+    if (sessionId && session?.id !== sessionId) {
+      return;
+    }
+    if (session?.direction === 'backward') {
+      navigationLineageRef.current.delete(session.sourceScreenId);
+    }
+    coordinatorRef.current?.completeTransition(sessionId);
   }, []);
 
-  const cancelTransition = useCallback(() => {
-    coordinatorRef.current?.cancelTransition();
+  const cancelTransition = useCallback((sessionId?: string) => {
+    const session = activeSessionRef.current;
+    if (sessionId && session?.id !== sessionId) {
+      return;
+    }
+    if (session?.direction === 'forward') {
+      navigationLineageRef.current.delete(session.targetScreenId);
+    }
+    coordinatorRef.current?.cancelTransition(sessionId);
   }, []);
 
   const setPendingTargetScreen = useCallback((screenId: string | null) => {
@@ -430,6 +495,8 @@ export function ChoreographyProvider({
       activeSession,
       pendingTargetScreenId,
       setPendingTargetScreen,
+      setNavigationLineage,
+      getNavigationLineage,
       progress,
       preMeasureGroup,
       refreshActiveSessionMetrics,
@@ -450,6 +517,8 @@ export function ChoreographyProvider({
       activeSession,
       pendingTargetScreenId,
       setPendingTargetScreen,
+      setNavigationLineage,
+      getNavigationLineage,
       progress,
       preMeasureGroup,
       refreshActiveSessionMetrics,
@@ -488,7 +557,7 @@ export function ChoreographyProvider({
 
 const styles = StyleSheet.create({
   androidPortal: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     zIndex: 9999,
   },
 });

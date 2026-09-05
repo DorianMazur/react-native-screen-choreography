@@ -24,9 +24,9 @@ export {
 } from './standin/resolveSurfaceStyle';
 
 // Hooks
-export { useChoreographyNavigation } from './hooks/useChoreographyNavigation';
+export { useChoreographyNavigation } from './hooks/useReactNavigationChoreography';
 export { useChoreographyBlocker } from './hooks/useChoreographyBlocker';
-export { useInteractiveTransition } from './hooks/useInteractiveTransition';
+export { useInteractiveTransition } from './hooks/useReactNavigationInteractiveTransition';
 export {
   useChoreographyProgress,
   useLatchedReveal,
@@ -55,6 +55,7 @@ export type {
   SharedElementTransitionSide,
   TransitionConfig,
   ChoreographyNavigationOptions,
+  ChoreographyNavigationLineage,
   InteractiveBackOptions,
   InteractiveTransitionSession,
   InteractiveTransitionSettleOptions,

@@ -17,7 +17,8 @@ Use these files as the source of truth:
 - `README.md`: public package documentation and integration steps
 - `docs/architecture-plan.md`: runtime architecture and contributor-level internals
 - `docs/limitations-and-next-steps.md`: support boundaries, workarounds, and roadmap priorities
-- `example/README.md`: example app setup and manual exploration guide
+- `examples/react-navigation/README.md`: bare React Native example setup and manual exploration guide
+- `examples/expo-router/README.md`: Expo Router example setup and integration guide
 
 ## Repository Layout
 
@@ -28,7 +29,8 @@ Use these files as the source of truth:
 - `src/hooks/`: public progress and navigation hooks
 - `src/standin/`: stand-in primitives
 - `src/debug/`: logger
-- `example/`: React Native example app
+- `examples/react-navigation/`: bare React Native example app
+- `examples/expo-router/`: Expo Router development-build example app
 - `docs/`: developer-facing technical and integration documentation
 - `__tests__/`: Jest coverage for core utilities and infrastructure
 - `android/` and `ios/`: native transition host implementation
@@ -43,6 +45,7 @@ Current important exports include:
 - `ChoreographyScreen`
 - `SharedElement`
 - `useChoreographyNavigation`
+- `useChoreographyRouter` from the `react-native-screen-choreography/expo-router` subpath
 - `useChoreographyProgress`
 - `useLatchedReveal`
 - `useStaggeredReveal`
@@ -91,8 +94,10 @@ Run these from the repository root unless noted otherwise:
 - `yarn typecheck`
 - `yarn test --runInBand`
 - `yarn lint`
-- `cd example && yarn ios`
-- `cd example && yarn android`
+- `cd examples/react-navigation && yarn ios`
+- `cd examples/react-navigation && yarn android`
+- `cd examples/expo-router && yarn ios`
+- `cd examples/expo-router && yarn android`
 
 ## Areas To Inspect First
 

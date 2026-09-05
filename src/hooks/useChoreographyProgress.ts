@@ -80,7 +80,7 @@ export function useChoreographyProgress() {
     }
 
     progress.value = settledProgress;
-    completeTransition();
+    completeTransition(activeSession!.id);
   }, [activeSession, completeTransition, progress, screenId]);
 
   return {

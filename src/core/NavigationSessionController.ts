@@ -4,8 +4,8 @@ import type {
 } from '../types';
 
 export interface PendingNavigationRequest {
-  screenName: string;
-  params?: any;
+  targetScreenId: string;
+  dispatchNavigation: () => void;
   options?: ChoreographyNavigationOptions;
 }
 
@@ -17,7 +17,7 @@ interface PrepareForwardTransitionArgs {
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   setPendingTargetScreen: (screenId: string | null) => void;
   dispatchNavigation: () => void;
-  waitForScreenReady: (screenId: string) => Promise<void>;
+  waitForScreenReady: (screenId: string) => Promise<boolean>;
   waitForNextFrame: () => Promise<void>;
   startTransition: (config: {
     groupId: string;
@@ -25,7 +25,7 @@ interface PrepareForwardTransitionArgs {
     targetScreenId: string;
     direction: 'forward';
   }) => Promise<TransitionSessionData | null>;
-  waitForOverlayReady: (sessionId: string) => Promise<void>;
+  waitForOverlayReady: (sessionId: string) => Promise<boolean>;
 }
 
 /**
@@ -115,8 +115,14 @@ export class NavigationSessionController {
       setPendingTargetScreen(targetScreenId);
       dispatchNavigation();
 
+      const screenReady = await waitForScreenReady(targetScreenId);
+      if (!screenReady) {
+        this.releaseNavigationLock();
+        setPendingTargetScreen(null);
+        return null;
+      }
+
       if (isAndroid) {
-        await waitForScreenReady(targetScreenId);
         await waitForNextFrame();
       }
 
@@ -133,7 +139,12 @@ export class NavigationSessionController {
         return null;
       }
 
-      await waitForOverlayReady(session.id);
+      const overlayReady = await waitForOverlayReady(session.id);
+      if (!overlayReady) {
+        this.releaseNavigationLock();
+        setPendingTargetScreen(null);
+        return null;
+      }
       setPendingTargetScreen(null);
       return session;
     } catch (error) {
