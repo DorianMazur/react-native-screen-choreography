@@ -19,6 +19,7 @@ export function useChoreographyNavigation(navigation: any) {
         'default');
   const choreography = useChoreographyNavigator({
     currentScreenId,
+    currentRouteKey: route.key,
     isFocused,
     goBack: () => navigation.goBack(),
   });

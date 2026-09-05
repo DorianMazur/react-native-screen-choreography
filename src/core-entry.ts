@@ -1,6 +1,4 @@
-// Components
 export { ChoreographyProvider } from './components/ChoreographyProvider';
-export { ChoreographyScreen } from './components/ChoreographyScreen';
 export {
   SharedElement,
   type LiveSharedElementProps,
@@ -12,8 +10,6 @@ export {
   createSharedElementComponent,
   type SharedElementComponentProps,
 } from './components/createSharedElementComponent';
-
-// Stand-in components
 export { StandInContainer } from './standin/StandInContainer';
 export { StandInElement } from './standin/StandInElement';
 export { StandInCrossfade } from './standin/StandInCrossfade';
@@ -22,29 +18,19 @@ export {
   type BoxShadowEntry,
   type SurfaceTransitionStyle,
 } from './standin/resolveSurfaceStyle';
-
-// Hooks
-export { useChoreographyNavigation } from './hooks/useReactNavigationChoreography';
 export { useChoreographyBlocker } from './hooks/useChoreographyBlocker';
-export { useInteractiveTransition } from './hooks/useReactNavigationInteractiveTransition';
 export {
   useChoreographyProgress,
   useLatchedReveal,
   useStaggeredReveal,
 } from './hooks/useChoreographyProgress';
-
-// Spring & easing presets
 export { Springs, Easings } from './core/constants';
+export { setDebugEnabled } from './debug/logger';
 export type {
   ScreenRole,
   SessionPhase,
   TransitionDirection,
 } from './core/screenVisibility';
-
-// Debug
-export { setDebugEnabled } from './debug/logger';
-
-// Types
 export type {
   SpringConfig,
   ElementMetrics,

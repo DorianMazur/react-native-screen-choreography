@@ -1,11 +1,6 @@
 import React from 'react';
 import { Pressable, StyleSheet, Text, View } from 'react-native';
-import {
-  ChoreographyScreen,
-  SafeAreaView,
-  SharedElement,
-  useExampleNavigation,
-} from '../runtime';
+import { SafeAreaView, SharedElement, useExampleNavigation } from '../runtime';
 import { theme } from '../theme';
 import {
   LIVE_PLAYER_GROUP,
@@ -14,10 +9,10 @@ import {
 } from './LivePlayerSurface';
 
 export function LivePlayerListScreen() {
-  const { goBack, navigate } = useExampleNavigation('LivePlayerList');
+  const { goBack, navigate } = useExampleNavigation();
 
   return (
-    <ChoreographyScreen screenId="LivePlayerList">
+    <>
       <SafeAreaView style={styles.safe}>
         <View style={styles.header}>
           <Pressable onPress={() => goBack()} hitSlop={12}>
@@ -52,7 +47,7 @@ export function LivePlayerListScreen() {
           </Pressable>
         </View>
       </SafeAreaView>
-    </ChoreographyScreen>
+    </>
   );
 }
 

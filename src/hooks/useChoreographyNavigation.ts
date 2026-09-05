@@ -1,12 +1,9 @@
 import { useCallback, useContext, useEffect, useRef } from 'react';
 import { Platform } from 'react-native';
 import {
-  cancelAnimation,
-  withSpring,
-  withTiming,
-  Easing,
-} from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+  animateOwnedProgress,
+  setOwnedProgress,
+} from '../core/ProgressOwnership';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
@@ -39,12 +36,14 @@ function describeSession(
 
 export interface ChoreographyNavigatorBinding {
   currentScreenId: string;
+  currentRouteKey?: string;
   isFocused: boolean;
   goBack: () => void;
 }
 
 export function useChoreographyNavigator({
   currentScreenId,
+  currentRouteKey,
   isFocused,
   goBack: navigateBack,
 }: ChoreographyNavigatorBinding) {
@@ -57,6 +56,7 @@ export function useChoreographyNavigator({
 
   const {
     progress,
+    progressOwnership,
     preMeasureGroup,
     startTransition,
     cancelTransition,
@@ -87,17 +87,16 @@ export function useChoreographyNavigator({
     controller.releaseNavigationLock();
   }, [controller]);
 
-  const invalidateProgressAnimation = useCallback(() => {
-    controller.invalidateAnimation();
-  }, [controller]);
-
-  const createProgressAnimationToken = useCallback(() => {
-    return controller.createAnimationToken();
-  }, [controller]);
+  const createProgressAnimationToken = useCallback(
+    (sessionId: string) => {
+      return progressOwnership.claim(sessionId);
+    },
+    [progressOwnership]
+  );
 
   const isCurrentProgressAnimationToken = useCallback(
-    (token: number) => controller.isCurrentAnimation(token),
-    [controller]
+    (token: number) => progressOwnership.version === token,
+    [progressOwnership]
   );
 
   useEffect(() => {
@@ -105,8 +104,8 @@ export function useChoreographyNavigator({
   }, [controller, ctx.activeSession]);
 
   const isCurrentSessionAnimation = useCallback(
-    (sessionId: string) => controller.isCurrentSession(sessionId),
-    [controller]
+    (sessionId: string) => progressOwnership.isSession(sessionId),
+    [progressOwnership]
   );
 
   const getNavigationBlockReasons = useCallback(
@@ -184,7 +183,7 @@ export function useChoreographyNavigator({
 
   const interruptReturnTransition = useCallback(async () => {
     const session = ctx.activeSession;
-    if (!session) {
+    if (!session || !progressOwnership.isSession(session.id)) {
       return;
     }
 
@@ -192,15 +191,15 @@ export function useChoreographyNavigator({
     logNavigation(
       () => `interrupt return start session=${describeSession(session)}`
     );
-    cancelAnimation(progress);
-    invalidateProgressAnimation();
+    const token = progressOwnership.claim(session.id);
+    if (token === null) return;
     releaseNavigationLock();
 
     if (
       session.direction === 'backward' &&
       session.targetScreenId === currentScreenId
     ) {
-      progress.value = 0;
+      setOwnedProgress(progressOwnership, token, session.id, progress, 0);
       completeTransition(session.id);
     } else {
       cancelTransition(session.id);
@@ -215,9 +214,9 @@ export function useChoreographyNavigator({
     ctx.activeSession,
     currentScreenId,
     completeTransition,
-    invalidateProgressAnimation,
     logNavigation,
     progress,
+    progressOwnership,
     releaseNavigationLock,
     waitForNextFrame,
   ]);
@@ -274,7 +273,12 @@ export function useChoreographyNavigator({
       releaseNavigationLock();
       navigateBack();
       requestAnimationFrame(() => {
-        completeTransition(sessionId);
+        if (
+          isCurrentProgressAnimationToken(token) &&
+          isCurrentSessionAnimation(sessionId)
+        ) {
+          completeTransition(sessionId);
+        }
       });
     },
     [
@@ -376,6 +380,8 @@ export function useChoreographyNavigator({
 
       controller.clearQueuedNavigation();
       controller.acquireNavigationLock();
+      progressOwnership.invalidate();
+      const preparationVersion = progressOwnership.version;
 
       try {
         const transitionPrepareStartedAt = nowMs();
@@ -419,9 +425,13 @@ export function useChoreographyNavigator({
           waitForNextFrame,
           startTransition,
           waitForOverlayReady,
+          isPreparationCurrent: () =>
+            progressOwnership.version === preparationVersion,
+          isSessionCurrent: (sessionId) =>
+            progressOwnership.isSession(sessionId),
         });
 
-        if (!session) {
+        if (!session || !progressOwnership.isSession(session.id)) {
           logNavigation(
             () =>
               `transition preparation failed target=${targetScreenId} elapsed=${elapsedMs(tapStartedAt)}`
@@ -433,6 +443,7 @@ export function useChoreographyNavigator({
           groupId,
           sourceScreenId,
           targetScreenId,
+          sourceRouteKey: currentRouteKey,
         });
 
         logNavigation(
@@ -441,39 +452,24 @@ export function useChoreographyNavigator({
         );
 
         const springConfig = options?.spring ?? DEFAULT_SPRING;
-        const animationToken = createProgressAnimationToken();
+        const animationToken = createProgressAnimationToken(session.id);
+        if (animationToken === null) return;
         const sessionId = session.id;
         logNavigation(
           () =>
             `forward animation start session=${sessionId} token=${animationToken} totalDelay=${elapsedMs(tapStartedAt)} interruptedSettlingReturn=${interruptedSettlingReturn}`
         );
 
-        if (options?.duration) {
-          progress.value = withTiming(
-            1,
-            {
-              duration: options.duration,
-              easing: Easing.out(Easing.cubic),
-            },
-            (finished) => {
-              if (finished) {
-                progress.value = 1;
-                scheduleOnRN(
-                  finishForwardTransition,
-                  animationToken,
-                  sessionId
-                );
-              }
-            }
-          );
-        } else {
-          progress.value = withSpring(1, springConfig, (finished) => {
-            if (finished) {
-              progress.value = 1;
-              scheduleOnRN(finishForwardTransition, animationToken, sessionId);
-            }
-          });
-        }
+        animateOwnedProgress({
+          ownership: progressOwnership,
+          token: animationToken,
+          sessionId,
+          progress,
+          target: 1,
+          spring: springConfig,
+          duration: options?.duration,
+          onComplete: finishForwardTransition,
+        });
       } catch (error) {
         logNavigation(
           () =>
@@ -489,12 +485,14 @@ export function useChoreographyNavigator({
       canInterruptReturnToCurrentScreen,
       createProgressAnimationToken,
       currentScreenId,
+      currentRouteKey,
       finishForwardTransition,
       getNavigationBlockReasons,
       isFocused,
       interruptReturnTransition,
       logNavigation,
       progress,
+      progressOwnership,
       preMeasureGroup,
       setNavigationLineage,
       setPendingTargetScreen,
@@ -610,6 +608,8 @@ export function useChoreographyNavigator({
       if (session) {
         const springConfig = options?.spring ?? FAST_SPRING;
         const sessionId = session.id;
+        const animationToken = createProgressAnimationToken(sessionId);
+        if (animationToken === null) return;
 
         if (session.direction === 'forward') {
           logNavigation(
@@ -617,27 +617,31 @@ export function useChoreographyNavigator({
               `goBack interrupt active forward session elapsed=${elapsedMs(goBackStartedAt)}`
           );
           controller.clearQueuedNavigation();
-          cancelAnimation(progress);
-          invalidateProgressAnimation();
-          progress.value = Math.max(progress.value, 0.12);
+          setOwnedProgress(
+            progressOwnership,
+            animationToken,
+            sessionId,
+            progress,
+            Math.max(progress.value, 0.12)
+          );
           navigateBack();
           await waitForNextFrame();
+          if (!progressOwnership.isCurrent(animationToken, sessionId)) return;
           await refreshActiveSessionMetrics('source');
+          if (!progressOwnership.isCurrent(animationToken, sessionId)) return;
           logNavigation(
             () =>
               `goBack refreshed source metrics session=${sessionId} total=${elapsedMs(goBackStartedAt)}`
           );
-          const animationToken = createProgressAnimationToken();
           requestAnimationFrame(() => {
-            progress.value = withSpring(0, springConfig, (finished) => {
-              if (finished) {
-                progress.value = 0;
-                scheduleOnRN(
-                  finishSettledReverseTransition,
-                  animationToken,
-                  sessionId
-                );
-              }
+            animateOwnedProgress({
+              ownership: progressOwnership,
+              token: animationToken,
+              sessionId,
+              progress,
+              target: 0,
+              spring: springConfig,
+              onComplete: finishSettledReverseTransition,
             });
           });
         } else {
@@ -645,14 +649,14 @@ export function useChoreographyNavigator({
             () =>
               `goBack continue reverse session elapsed=${elapsedMs(goBackStartedAt)}`
           );
-          cancelAnimation(progress);
-          invalidateProgressAnimation();
-          const animationToken = createProgressAnimationToken();
-          progress.value = withSpring(0, springConfig, (finished) => {
-            if (finished) {
-              progress.value = 0;
-              scheduleOnRN(finishReverseTransition, animationToken, sessionId);
-            }
+          animateOwnedProgress({
+            ownership: progressOwnership,
+            token: animationToken,
+            sessionId,
+            progress,
+            target: 0,
+            spring: springConfig,
+            onComplete: finishReverseTransition,
           });
         }
       } else {
@@ -666,10 +670,10 @@ export function useChoreographyNavigator({
       createProgressAnimationToken,
       finishReverseTransition,
       finishSettledReverseTransition,
-      invalidateProgressAnimation,
       logNavigation,
       navigateBack,
       progress,
+      progressOwnership,
       refreshActiveSessionMetrics,
       waitForNextFrame,
     ]

@@ -1,1 +1,3 @@
-export { LivePlayerListScreen as default } from '../../../../shared/live/LivePlayerListScreen';
+import { LivePlayerListScreen } from '../../../../shared/live/LivePlayerListScreen';
+import { withExampleScreen } from '../../ExampleScreen';
+export default withExampleScreen('LivePlayerList', LivePlayerListScreen);

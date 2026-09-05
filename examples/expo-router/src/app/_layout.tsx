@@ -1,7 +1,6 @@
 import { ThemeProvider, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
-import '../exampleRuntime';
 import { theme as palette } from '../../../shared/theme';
 
 const theme = {

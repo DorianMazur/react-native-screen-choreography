@@ -1,1 +1,3 @@
-export { GalleryListScreen as default } from '../../../../shared/gallery/GalleryListScreen';
+import { GalleryListScreen } from '../../../../shared/gallery/GalleryListScreen';
+import { withExampleScreen } from '../../ExampleScreen';
+export default withExampleScreen('GalleryList', GalleryListScreen);

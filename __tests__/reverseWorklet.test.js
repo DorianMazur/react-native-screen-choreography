@@ -3,7 +3,7 @@ const { transformFileSync, traverse } = require('@babel/core');
 
 test('the reverse worklet captures a session ID, not frozen React content', () => {
   const { ast } = transformFileSync(
-    path.resolve(__dirname, '../src/core/runReverseTransition.ts'),
+    path.resolve(__dirname, '../src/core/ProgressOwnership.ts'),
     {
       configFile: false,
       babelrc: false,
@@ -30,14 +30,11 @@ test('the reverse worklet captures a session ID, not frozen React content', () =
     },
   });
 
-  expect(captures).toHaveLength(1);
-  expect(captures[0].sort()).toEqual(
-    [
-      'completeTransition',
-      'logSpringSettled',
-      'progress',
-      'scheduleOnRN',
-      'sessionId',
-    ].sort()
-  );
+  const capturedNames = captures.flat();
+  expect(capturedNames).toContain('sessionId');
+  expect(capturedNames).toContain('token');
+  expect(capturedNames).toContain('owner');
+  expect(capturedNames).not.toContain('ownership');
+  expect(capturedNames).not.toContain('reverseSession');
+  expect(capturedNames).not.toContain('ctx');
 });

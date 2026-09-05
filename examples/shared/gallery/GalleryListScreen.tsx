@@ -7,11 +7,7 @@ import {
   Pressable,
   Dimensions,
 } from 'react-native';
-import {
-  ChoreographyScreen,
-  SharedElement,
-  useExampleNavigation,
-} from '../runtime';
+import { SharedElement, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { GradientBlock } from '../GradientBlock';
 import { theme } from '../theme';
@@ -30,10 +26,10 @@ const TILES_PER_ROW = 2;
 const TILE_W = (SCREEN_WIDTH - 32 - TILE_GAP) / TILES_PER_ROW;
 
 export function GalleryListScreen() {
-  const { goBack, navigate } = useExampleNavigation('GalleryList');
+  const { goBack, navigate } = useExampleNavigation();
 
   return (
-    <ChoreographyScreen screenId="GalleryList">
+    <>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Pressable onPress={() => goBack()} hitSlop={12}>
@@ -67,7 +63,7 @@ export function GalleryListScreen() {
           ))}
         </ScrollView>
       </SafeAreaView>
-    </ChoreographyScreen>
+    </>
   );
 }
 

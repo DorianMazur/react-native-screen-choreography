@@ -7,20 +7,16 @@ import {
   StatusBar,
   Pressable,
 } from 'react-native';
-import {
-  ChoreographyScreen,
-  SafeAreaView,
-  useExampleNavigation,
-} from '../runtime';
+import { SafeAreaView, useExampleNavigation } from '../runtime';
 import { TokenRow } from './TokenRow';
 import { TOKENS } from './data';
 import { theme } from '../theme';
 
 export function TokenListScreen() {
-  const { goBack, navigate } = useExampleNavigation('TokenList');
+  const { goBack, navigate } = useExampleNavigation();
 
   return (
-    <ChoreographyScreen screenId="TokenList">
+    <>
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" />
 
@@ -58,7 +54,7 @@ export function TokenListScreen() {
           )}
         />
       </SafeAreaView>
-    </ChoreographyScreen>
+    </>
   );
 }
 

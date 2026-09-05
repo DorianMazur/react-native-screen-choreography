@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
-  ChoreographyScreen,
   SafeAreaView,
   SharedElement,
   useChoreographyProgress,
@@ -36,7 +35,7 @@ export function TokenDetailScreen({
 }) {
   const token = TOKENS.find((t) => t.id === tokenId) ?? TOKENS[0]!;
   const isPositiveChange = token.change24h >= 0;
-  const { goBack } = useExampleNavigation('TokenDetail');
+  const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyProgress();
   const shouldShowDetailSections = useLatchedReveal({ resetKey: token.id });
   const { getItemStyle } = useStaggeredReveal(5, { stagger: 0.04 });
@@ -47,7 +46,7 @@ export function TokenDetailScreen({
   const actionRowStyle = getItemStyle(4);
 
   return (
-    <ChoreographyScreen screenId="TokenDetail">
+    <>
       <SafeAreaView style={styles.container}>
         <ScrollView
           onScrollBeginDrag={settleTransition}
@@ -203,7 +202,7 @@ export function TokenDetailScreen({
           ) : null}
         </ScrollView>
       </SafeAreaView>
-    </ChoreographyScreen>
+    </>
   );
 }
 

@@ -37,6 +37,7 @@ import {
 } from '../debug/logger';
 import { getElementIdentityKey } from '../core/elementIdentity';
 import { ScreenReadinessRegistry } from '../core/ScreenReadinessRegistry';
+import { ProgressOwnership } from '../core/ProgressOwnership';
 
 function TransitionHostPortal({
   active,
@@ -100,6 +101,10 @@ export function ChoreographyProvider({
   onTransitionEnd,
 }: ChoreographyProviderProps) {
   const progress = useSharedValue(0);
+  const progressOwner = useSharedValue(0);
+  const [progressOwnership] = useState(
+    () => new ProgressOwnership(progressOwner, progress)
+  );
   const [activeSession, setActiveSession] =
     useState<TransitionSessionData | null>(null);
   const [pendingTargetScreenId, setPendingTargetScreenId] = useState<
@@ -175,6 +180,7 @@ export function ChoreographyProvider({
       progress
     );
     coordinatorRef.current.setOnSessionChange((session) => {
+      progressOwnership.setSession(session?.id ?? null);
       const previousSession = activeSessionRef.current;
       activeSessionRef.current = session;
       setActiveSession(session);
@@ -209,6 +215,8 @@ export function ChoreographyProvider({
 
   useEffect(
     () => () => {
+      progressOwnership.setSession(null);
+      progressOwnership.invalidate();
       cancelAllOverlayWaiters();
       screenReadinessRef.current.dispose();
       coordinatorRef.current?.dispose();
@@ -218,7 +226,7 @@ export function ChoreographyProvider({
       hiddenMapRef.current.clear();
       navigationLineageRef.current.clear();
     },
-    [cancelAllOverlayWaiters]
+    [cancelAllOverlayWaiters, progressOwnership]
   );
 
   useEffect(() => {
@@ -498,6 +506,7 @@ export function ChoreographyProvider({
       setNavigationLineage,
       getNavigationLineage,
       progress,
+      progressOwnership,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
@@ -520,6 +529,7 @@ export function ChoreographyProvider({
       setNavigationLineage,
       getNavigationLineage,
       progress,
+      progressOwnership,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,

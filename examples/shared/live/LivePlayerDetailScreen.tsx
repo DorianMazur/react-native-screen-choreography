@@ -5,7 +5,6 @@ import Animated, {
   useAnimatedStyle,
 } from 'react-native-reanimated';
 import {
-  ChoreographyScreen,
   SafeAreaView,
   SharedElement,
   useChoreographyProgress,
@@ -16,7 +15,7 @@ import { theme } from '../theme';
 import { LIVE_PLAYER_GROUP, LIVE_PLAYER_SPRING } from './LivePlayerSurface';
 
 export function LivePlayerDetailScreen() {
-  const { goBack } = useExampleNavigation('LivePlayerDetail');
+  const { goBack } = useExampleNavigation();
   const { progress } = useChoreographyProgress();
   const headerStyle = useAnimatedStyle(() => ({
     opacity: interpolate(progress.value, [0.55, 0.85], [0, 1], 'clamp'),
@@ -36,7 +35,7 @@ export function LivePlayerDetailScreen() {
   }));
 
   return (
-    <ChoreographyScreen screenId="LivePlayerDetail">
+    <>
       <InteractiveBackGesture>
         <View style={styles.root}>
           <SafeAreaView style={styles.safe}>
@@ -64,7 +63,7 @@ export function LivePlayerDetailScreen() {
           </SafeAreaView>
         </View>
       </InteractiveBackGesture>
-    </ChoreographyScreen>
+    </>
   );
 }
 

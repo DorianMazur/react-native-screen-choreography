@@ -1,9 +1,11 @@
 import { withSpring } from 'react-native-reanimated';
+import { ProgressOwnership } from '../src/core/ProgressOwnership';
 import { runReverseTransition } from '../src/core/runReverseTransition';
 import type { ChoreographyContextType } from '../src/core/ChoreographyContext';
 import type { TransitionSessionData } from '../src/types';
 
 jest.mock('react-native-reanimated', () => ({
+  cancelAnimation: jest.fn(),
   withSpring: jest.fn(),
   Easing: {
     out: (easing: (value: number) => number) => easing,
@@ -31,10 +33,19 @@ function createSession(id: string): TransitionSessionData {
 function createContext(
   overrides: Partial<ChoreographyContextType> = {}
 ): ChoreographyContextType {
+  const progress = { value: 1 } as ChoreographyContextType['progress'];
+  const progressOwnership = new ProgressOwnership(
+    { value: 0 } as ChoreographyContextType['progress'],
+    progress
+  );
   return {
-    progress: { value: 1 },
+    progress,
+    progressOwnership,
     preMeasureGroup: jest.fn(async () => {}),
-    startTransition: jest.fn(async () => createSession('reverse-session')),
+    startTransition: jest.fn(async () => {
+      progressOwnership.setSession('reverse-session');
+      return createSession('reverse-session');
+    }),
     waitForOverlayReady: jest.fn(async () => true),
     completeTransition: jest.fn(),
     cancelTransition: jest.fn(),
@@ -45,6 +56,44 @@ function createContext(
 describe('runReverseTransition ownership', () => {
   beforeEach(() => {
     mockedWithSpring.mockReset();
+  });
+
+  test('does not animate or redispatch when another blocker keeps the route', async () => {
+    const frame = jest
+      .spyOn(global, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        callback(0);
+        return 1;
+      });
+    const ctx = createContext();
+    const popAction = jest.fn();
+    await runReverseTransition({
+      ctx,
+      groupId: 'group',
+      sourceScreenId: 'list',
+      currentScreenId: 'detail',
+      popAction,
+      isRouteRemoved: () => false,
+    });
+    expect(popAction).toHaveBeenCalledTimes(1);
+    expect(mockedWithSpring).not.toHaveBeenCalled();
+    expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
+    frame.mockRestore();
+  });
+
+  test('a removed screen cannot dispatch after premeasurement', async () => {
+    const ctx = createContext();
+    const popAction = jest.fn();
+    await runReverseTransition({
+      ctx,
+      groupId: 'group',
+      sourceScreenId: 'list',
+      currentScreenId: 'detail',
+      popAction,
+      canContinue: () => false,
+    });
+    expect(ctx.startTransition).not.toHaveBeenCalled();
+    expect(popAction).not.toHaveBeenCalled();
   });
 
   test('qualifies a late spring completion with its original session', async () => {
@@ -72,9 +121,12 @@ describe('runReverseTransition ownership', () => {
     });
 
     currentSessionId = 'replacement-session';
+    ctx.progressOwnership.setSession(currentSessionId);
+    ctx.progress.value = 0.7;
     springCallback?.(true);
 
-    expect(completeTransition).toHaveBeenCalledWith('reverse-session');
+    expect(completeTransition).not.toHaveBeenCalled();
+    expect(ctx.progress.value).toBe(0.7);
     expect(currentSessionId).toBe('replacement-session');
   });
 

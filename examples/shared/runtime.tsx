@@ -1,7 +1,27 @@
-import React from 'react';
-import type { ChoreographyNavigationOptions } from 'react-native-screen-choreography';
+import React, { createContext, useContext } from 'react';
+import type {
+  ChoreographyNavigationOptions,
+  InteractiveBackOptions,
+  InteractiveTransitionSession,
+  InteractiveTransitionSettleOptions,
+  InteractiveTransitionDecisionOptions,
+} from 'react-native-screen-choreography/core';
+import type { SharedValue } from 'react-native-reanimated';
 
-type ChoreographyModule = typeof import('react-native-screen-choreography');
+export {
+  SharedElement,
+  StandInContainer,
+  StandInCrossfade,
+  StandInElement,
+  resolveSurfaceStyle,
+  useChoreographyProgress,
+  useLatchedReveal,
+  useStaggeredReveal,
+} from 'react-native-screen-choreography/core';
+export {
+  SafeAreaView,
+  useSafeAreaInsets,
+} from 'react-native-safe-area-context';
 
 export type DemoListScreenId =
   | 'GalleryList'
@@ -24,149 +44,60 @@ export interface ExampleNavigation {
   goBack: (options?: ChoreographyNavigationOptions) => Promise<void>;
 }
 
-export interface ExampleRuntime {
-  ChoreographyScreen: ChoreographyModule['ChoreographyScreen'];
-  SharedElement: ChoreographyModule['SharedElement'];
-  StandInContainer: ChoreographyModule['StandInContainer'];
-  StandInCrossfade: ChoreographyModule['StandInCrossfade'];
-  StandInElement: ChoreographyModule['StandInElement'];
-  resolveSurfaceStyle: ChoreographyModule['resolveSurfaceStyle'];
-  useChoreographyProgress: ChoreographyModule['useChoreographyProgress'];
-  useInteractiveTransition: ChoreographyModule['useInteractiveTransition'];
-  useLatchedReveal: ChoreographyModule['useLatchedReveal'];
-  useStaggeredReveal: ChoreographyModule['useStaggeredReveal'];
-  SafeAreaView: React.ElementType;
-  useSafeAreaInsets: () => {
-    top: number;
-    right: number;
-    bottom: number;
-    left: number;
-  };
-  useExampleNavigation: (screenId: string) => ExampleNavigation;
+export type DemoScreenId =
+  | 'Landing'
+  | DemoListScreenId
+  | DemoDetailDestination['screen'];
+
+export interface ExampleInteractiveTransition {
+  beginBack: (
+    options?: InteractiveBackOptions
+  ) => Promise<InteractiveTransitionSession | null>;
+  setProgress: (value: number) => void;
+  finish: (options?: InteractiveTransitionSettleOptions) => void;
+  cancel: (options?: InteractiveTransitionSettleOptions) => void;
+  settle: (options?: InteractiveTransitionDecisionOptions) => void;
+  progress: SharedValue<number>;
+  isActive: boolean;
 }
 
-let runtime: ExampleRuntime | null = null;
+const NavigationContext = createContext<ExampleNavigation | null>(null);
+const InteractiveContext = createContext<ExampleInteractiveTransition | null>(
+  null
+);
 
-export function configureExampleRuntime(nextRuntime: ExampleRuntime) {
-  runtime = nextRuntime;
+export function ExampleBindings({
+  navigation,
+  interactive,
+  children,
+}: {
+  navigation: ExampleNavigation;
+  interactive: ExampleInteractiveTransition;
+  children: React.ReactNode;
+}) {
+  return (
+    <NavigationContext.Provider value={navigation}>
+      <InteractiveContext.Provider value={interactive}>
+        {children}
+      </InteractiveContext.Provider>
+    </NavigationContext.Provider>
+  );
 }
 
-function getRuntime(): ExampleRuntime {
-  if (!runtime) {
-    throw new Error('The example runtime was not configured by the app shell.');
-  }
-  return runtime;
+export function useExampleNavigation(): ExampleNavigation {
+  const navigation = useContext(NavigationContext);
+  if (!navigation)
+    throw new Error(
+      'Shared screens must be rendered inside an app ExampleScreen.'
+    );
+  return navigation;
 }
 
-type ChoreographyScreenProps = React.ComponentProps<
-  ChoreographyModule['ChoreographyScreen']
->;
-
-export function ChoreographyScreen(props: ChoreographyScreenProps) {
-  const Component = getRuntime().ChoreographyScreen;
-  return <Component {...props} />;
-}
-
-type SharedElementComponent = ChoreographyModule['SharedElement'];
-
-function SharedElementRoot(
-  props: React.ComponentProps<SharedElementComponent>
-) {
-  const Component = getRuntime().SharedElement;
-  return <Component {...props} />;
-}
-
-SharedElementRoot.Live = function SharedElementLive(
-  props: React.ComponentProps<SharedElementComponent['Live']>
-) {
-  const Component = getRuntime().SharedElement.Live;
-  return <Component {...props} />;
-};
-
-SharedElementRoot.LiveTarget = function SharedElementLiveTarget(
-  props: React.ComponentProps<SharedElementComponent['LiveTarget']>
-) {
-  const Component = getRuntime().SharedElement.LiveTarget;
-  return <Component {...props} />;
-};
-
-SharedElementRoot.Target = function SharedElementTarget(
-  props: React.ComponentProps<SharedElementComponent['Target']>
-) {
-  const Component = getRuntime().SharedElement.Target;
-  return <Component {...props} />;
-};
-
-export const SharedElement =
-  SharedElementRoot as unknown as SharedElementComponent;
-
-type StandInContainerProps = React.ComponentProps<
-  ChoreographyModule['StandInContainer']
->;
-
-export function StandInContainer(props: StandInContainerProps) {
-  const Component = getRuntime().StandInContainer;
-  return <Component {...props} />;
-}
-
-type StandInCrossfadeProps = React.ComponentProps<
-  ChoreographyModule['StandInCrossfade']
->;
-
-export function StandInCrossfade(props: StandInCrossfadeProps) {
-  const Component = getRuntime().StandInCrossfade;
-  return <Component {...props} />;
-}
-
-type StandInElementProps = React.ComponentProps<
-  ChoreographyModule['StandInElement']
->;
-
-export function StandInElement(props: StandInElementProps) {
-  const Component = getRuntime().StandInElement;
-  return <Component {...props} />;
-}
-
-interface SafeAreaViewProps {
-  children?: React.ReactNode;
-  edges?: readonly ('top' | 'right' | 'bottom' | 'left')[];
-  pointerEvents?: 'auto' | 'box-none' | 'box-only' | 'none';
-  style?: unknown;
-}
-
-export function SafeAreaView(props: SafeAreaViewProps) {
-  const Component = getRuntime().SafeAreaView;
-  return <Component {...props} />;
-}
-
-export const resolveSurfaceStyle: ChoreographyModule['resolveSurfaceStyle'] = (
-  ...args
-) => getRuntime().resolveSurfaceStyle(...args);
-
-export function useChoreographyProgress() {
-  return getRuntime().useChoreographyProgress();
-}
-
-export function useInteractiveTransition() {
-  return getRuntime().useInteractiveTransition();
-}
-
-export function useLatchedReveal(
-  ...args: Parameters<ChoreographyModule['useLatchedReveal']>
-) {
-  return getRuntime().useLatchedReveal(...args);
-}
-
-export function useStaggeredReveal(
-  ...args: Parameters<ChoreographyModule['useStaggeredReveal']>
-) {
-  return getRuntime().useStaggeredReveal(...args);
-}
-
-export function useSafeAreaInsets() {
-  return getRuntime().useSafeAreaInsets();
-}
-
-export function useExampleNavigation(screenId: string) {
-  return getRuntime().useExampleNavigation(screenId);
+export function useInteractiveTransition(): ExampleInteractiveTransition {
+  const interactive = useContext(InteractiveContext);
+  if (!interactive)
+    throw new Error(
+      'Interactive demos must be rendered inside an app ExampleScreen.'
+    );
+  return interactive;
 }

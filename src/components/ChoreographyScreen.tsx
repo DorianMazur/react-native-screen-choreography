@@ -1,5 +1,9 @@
-import { useEffect, useRef } from 'react';
-import { useNavigation, useRoute } from '@react-navigation/native';
+import {
+  useNavigation,
+  usePreventRemove,
+  useRoute,
+} from '@react-navigation/native';
+import { isSingleRouteBack } from '../core/removalAction';
 import {
   ChoreographyScreenBase,
   type ChoreographyScreenProps,
@@ -9,35 +13,33 @@ import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemo
 export type { ChoreographyScreenProps } from './ChoreographyScreenBase';
 
 export function ChoreographyScreen(props: ChoreographyScreenProps) {
-  const navigation = useNavigation<any>();
+  const navigation = useNavigation();
   const route = useRoute();
   const routeParams = (route.params ?? {}) as Record<string, unknown>;
-  const dispatchingSelfRef = useRef(false);
-  const interceptRemoval = useChoreographyScreenRemoval({
-    screenId: props.screenId,
-    legacyGroupId: routeParams._choreographyGroup as string | undefined,
-    legacySourceScreenId: routeParams._choreographySourceScreen as
-      | string
-      | undefined,
-  });
-
-  useEffect(() => {
-    return navigation.addListener('beforeRemove', (event: any) => {
-      if (dispatchingSelfRef.current) {
-        dispatchingSelfRef.current = false;
-        return;
-      }
-
-      const intercepted = interceptRemoval(() => {
-        dispatchingSelfRef.current = true;
-        navigation.dispatch(event.data.action);
-      });
-
-      if (intercepted) {
-        event.preventDefault();
-      }
+  const { interceptRemoval, preventRemove, sourceScreenId, sourceRouteKey } =
+    useChoreographyScreenRemoval({
+      screenId: props.screenId,
+      legacyGroupId: routeParams._choreographyGroup as string | undefined,
+      legacySourceScreenId: routeParams._choreographySourceScreen as
+        | string
+        | undefined,
     });
-  }, [interceptRemoval, navigation]);
+
+  usePreventRemove(preventRemove, ({ data }) => {
+    const resume = () => navigation.dispatch(data.action);
+    const canAnimate = isSingleRouteBack(
+      data.action,
+      navigation.getState(),
+      route.key,
+      sourceScreenId,
+      sourceRouteKey
+    );
+    const isRemoved = () =>
+      !navigation
+        .getState()
+        ?.routes.some((candidate) => candidate.key === route.key);
+    if (!interceptRemoval(resume, canAnimate, isRemoved)) resume();
+  });
 
   return <ChoreographyScreenBase {...props} />;
 }

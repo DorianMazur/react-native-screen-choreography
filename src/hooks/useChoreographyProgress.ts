@@ -12,6 +12,7 @@ import {
 import { useScreenId } from '../core/screenIdContext';
 import { getScreenRole, getSessionPhase } from '../core/screenVisibility';
 import { PROGRESS_RANGES, DEFAULT_BACKDROP_OPACITY } from '../core/constants';
+import { setOwnedProgress } from '../core/ProgressOwnership';
 
 function resolveSettledProgress(
   activeSession: ChoreographyContextType['activeSession'],
@@ -29,7 +30,7 @@ function resolveSettledProgress(
     return activeSession.direction === 'forward' ? 1 : 0;
   }
 
-  return activeSession.direction === 'forward' ? 1 : 0;
+  return null;
 }
 
 /**
@@ -56,8 +57,14 @@ export function useChoreographyProgress() {
   }
 
   const screenId = useScreenId();
-  const { progress, activeSession, pendingTargetScreenId, completeTransition } =
-    ctx;
+  const {
+    progress,
+    progressOwnership,
+    activeSession,
+    pendingTargetScreenId,
+    completeTransition,
+    cancelTransition,
+  } = ctx;
   const isActive = activeSession !== null;
   const role = getScreenRole(activeSession, screenId);
   const phase = getSessionPhase(activeSession, pendingTargetScreenId, screenId);
@@ -75,13 +82,34 @@ export function useChoreographyProgress() {
 
   const settleTransition = useCallback(() => {
     const settledProgress = resolveSettledProgress(activeSession, screenId);
-    if (settledProgress === null) {
+    if (settledProgress === null || !activeSession) {
       return;
     }
 
-    progress.value = settledProgress;
-    completeTransition(activeSession!.id);
-  }, [activeSession, completeTransition, progress, screenId]);
+    const sessionId = activeSession.id;
+    const token = progressOwnership.claim(sessionId);
+    if (token === null) return;
+    setOwnedProgress(
+      progressOwnership,
+      token,
+      sessionId,
+      progress,
+      settledProgress,
+      (completedToken, completedId) => {
+        if (!progressOwnership.isCurrent(completedToken, completedId)) return;
+        if (role === 'source') cancelTransition(completedId);
+        else completeTransition(completedId);
+      }
+    );
+  }, [
+    activeSession,
+    cancelTransition,
+    completeTransition,
+    progress,
+    progressOwnership,
+    role,
+    screenId,
+  ]);
 
   return {
     progress,

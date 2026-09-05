@@ -1,13 +1,8 @@
-import { withSpring } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { animateOwnedProgress } from './ProgressOwnership';
 import type { ChoreographyContextType } from './ChoreographyContext';
 import { FAST_SPRING } from './constants';
 import type { SpringConfig } from '../types';
 import { debugLog } from '../debug/logger';
-
-function logSpringSettled(finished: boolean) {
-  debugLog(`[BackIntercept] spring callback fired finished=${finished}`);
-}
 
 export interface RunReverseTransitionArgs {
   ctx: ChoreographyContextType;
@@ -19,6 +14,8 @@ export interface RunReverseTransitionArgs {
   currentScreenId: string;
   /** Pop the route. Always invoked, even on failure, so the user is not stuck. */
   popAction: () => void;
+  isRouteRemoved?: () => boolean;
+  canContinue?: () => boolean;
   /** Spring config. Defaults to {@link FAST_SPRING}. */
   spring?: SpringConfig;
 }
@@ -32,10 +29,13 @@ export async function runReverseTransition(
     sourceScreenId,
     currentScreenId,
     popAction,
+    isRouteRemoved,
+    canContinue = () => true,
     spring = FAST_SPRING,
   } = args;
   const {
     progress,
+    progressOwnership,
     preMeasureGroup,
     startTransition,
     completeTransition,
@@ -43,9 +43,17 @@ export async function runReverseTransition(
     waitForOverlayReady,
   } = ctx;
   let reverseSessionId: string | null = null;
+  const preparationVersion = progressOwnership.version;
+  let animationToken: number | null = null;
   let navigationCommitted = false;
   const commitNavigation = () => {
-    if (navigationCommitted) {
+    if (
+      navigationCommitted ||
+      !canContinue() ||
+      (reverseSessionId
+        ? !progressOwnership.isSession(reverseSessionId)
+        : progressOwnership.version !== preparationVersion)
+    ) {
       return;
     }
     navigationCommitted = true;
@@ -55,6 +63,8 @@ export async function runReverseTransition(
   try {
     debugLog('[BackIntercept] preMeasureGroup start');
     await preMeasureGroup(groupId, currentScreenId);
+    if (!canContinue() || progressOwnership.version !== preparationVersion)
+      return;
     debugLog('[BackIntercept] preMeasureGroup done');
 
     const reverseSession = await startTransition({
@@ -75,6 +85,8 @@ export async function runReverseTransition(
       return;
     }
     reverseSessionId = reverseSession.id;
+    animationToken = progressOwnership.claim(reverseSessionId);
+    if (animationToken === null) return;
 
     // Wait for the overlay to actually paint and the native host to ack the
     // presentation BEFORE we pop the route. Without this:
@@ -85,22 +97,39 @@ export async function runReverseTransition(
     //     the user just sees the destination snap into place.
     // The provider has a 150ms safety net for slow Android frames.
     const overlayReady = await waitForOverlayReady(reverseSession.id);
-    if (!overlayReady) {
+    if (!progressOwnership.isCurrent(animationToken, reverseSession.id)) return;
+    if (!overlayReady || !canContinue()) {
       cancelTransition(reverseSession.id);
       return;
     }
     debugLog('[BackIntercept] overlay ready, calling popAction');
     commitNavigation();
+    if (isRouteRemoved) {
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve())
+      );
+      if (!progressOwnership.isCurrent(animationToken, reverseSession.id))
+        return;
+      if (!isRouteRemoved()) {
+        cancelTransition(reverseSession.id);
+        return;
+      }
+    }
     debugLog('[BackIntercept] popAction returned, scheduling spring');
 
     const sessionId = reverseSession.id;
-    progress.value = withSpring(0, spring, (finished) => {
-      'worklet';
-      scheduleOnRN(logSpringSettled, finished ?? false);
-      if (finished) {
-        progress.value = 0;
-        scheduleOnRN(completeTransition, sessionId);
-      }
+    animateOwnedProgress({
+      ownership: progressOwnership,
+      token: animationToken,
+      sessionId,
+      progress,
+      target: 0,
+      spring,
+      onComplete: (token, completedSessionId) => {
+        if (progressOwnership.isCurrent(token, completedSessionId)) {
+          completeTransition(completedSessionId);
+        }
+      },
     });
   } catch (error) {
     debugLog(
@@ -108,8 +137,14 @@ export async function runReverseTransition(
         error instanceof Error ? error.message : String(error)
       }`
     );
-    if (reverseSessionId) {
+    if (
+      reverseSessionId &&
+      (animationToken === null ||
+        progressOwnership.isCurrent(animationToken, reverseSessionId))
+    ) {
+      commitNavigation();
       cancelTransition(reverseSessionId);
+      return;
     }
     commitNavigation();
   }

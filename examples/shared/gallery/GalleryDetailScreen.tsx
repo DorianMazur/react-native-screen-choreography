@@ -9,7 +9,6 @@ import {
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
-  ChoreographyScreen,
   SharedElement,
   useChoreographyProgress,
   useExampleNavigation,
@@ -36,7 +35,7 @@ export function GalleryDetailScreen({
   photoId?: string;
 }) {
   const photo = PHOTOS.find((p) => p.id === photoId) ?? PHOTOS[0]!;
-  const { goBack } = useExampleNavigation('GalleryDetail');
+  const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyProgress();
   const showSections = useLatchedReveal({ resetKey: photo.id });
   const { getItemStyle } = useStaggeredReveal(3, { stagger: 0.06 });
@@ -45,7 +44,7 @@ export function GalleryDetailScreen({
   const actionsStyle = getItemStyle(2);
 
   return (
-    <ChoreographyScreen screenId="GalleryDetail">
+    <>
       <SafeAreaView style={styles.container} edges={['bottom']}>
         <ScrollView
           onScrollBeginDrag={settleTransition}
@@ -143,7 +142,7 @@ export function GalleryDetailScreen({
           ) : null}
         </ScrollView>
       </SafeAreaView>
-    </ChoreographyScreen>
+    </>
   );
 }
 

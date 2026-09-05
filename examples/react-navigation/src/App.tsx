@@ -1,10 +1,12 @@
 import React from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
-import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import {
+  createNativeStackNavigator,
+  type NativeStackScreenProps,
+} from '@react-navigation/native-stack';
 import { ChoreographyProvider } from 'react-native-screen-choreography';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import '../../shared/runtime';
-import './exampleRuntime';
+import { withExampleScreen, type ExampleStackParams } from './ExampleScreen';
 import { LandingScreen } from '../../shared/LandingScreen';
 import { GalleryListScreen } from '../../shared/gallery/GalleryListScreen';
 import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
@@ -16,7 +18,19 @@ import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
 
-const Stack = createNativeStackNavigator();
+const Stack = createNativeStackNavigator<ExampleStackParams>();
+const LandingRoute = withExampleScreen('Landing', LandingScreen);
+const GalleryListRoute = withExampleScreen('GalleryList', GalleryListScreen);
+const MusicListRoute = withExampleScreen('MusicList', MusicListScreen);
+const TokenListRoute = withExampleScreen('TokenList', TokenListScreen);
+const LivePlayerListRoute = withExampleScreen(
+  'LivePlayerList',
+  LivePlayerListScreen
+);
+const LivePlayerDetailRoute = withExampleScreen(
+  'LivePlayerDetail',
+  LivePlayerDetailScreen
+);
 
 const navTheme = {
   ...DefaultTheme,
@@ -34,19 +48,35 @@ const navTheme = {
 const detailOptions = {
   presentation: 'containedTransparentModal' as const,
   contentStyle: { backgroundColor: 'transparent' },
+  gestureEnabled: false,
 };
 
-function GalleryDetailRoute({ route }: { route: any }) {
-  return <GalleryDetailScreen photoId={route.params?.photoId} />;
-}
+const GalleryDetailRoute = withExampleScreen(
+  'GalleryDetail',
+  function GalleryDetailRoute({
+    route,
+  }: NativeStackScreenProps<ExampleStackParams, 'GalleryDetail'>) {
+    return <GalleryDetailScreen photoId={route.params?.photoId} />;
+  }
+);
 
-function NowPlayingRoute({ route }: { route: any }) {
-  return <NowPlayingScreen trackId={route.params?.trackId} />;
-}
+const NowPlayingRoute = withExampleScreen(
+  'NowPlaying',
+  function NowPlayingRoute({
+    route,
+  }: NativeStackScreenProps<ExampleStackParams, 'NowPlaying'>) {
+    return <NowPlayingScreen trackId={route.params?.trackId} />;
+  }
+);
 
-function TokenDetailRoute({ route }: { route: any }) {
-  return <TokenDetailScreen tokenId={route.params?.tokenId} />;
-}
+const TokenDetailRoute = withExampleScreen(
+  'TokenDetail',
+  function TokenDetailRoute({
+    route,
+  }: NativeStackScreenProps<ExampleStackParams, 'TokenDetail'>) {
+    return <TokenDetailScreen tokenId={route.params?.tokenId} />;
+  }
+);
 
 export default function App() {
   return (
@@ -60,23 +90,23 @@ export default function App() {
               contentStyle: { backgroundColor: palette.bg },
             }}
           >
-            <Stack.Screen name="Landing" component={LandingScreen} />
+            <Stack.Screen name="Landing" component={LandingRoute} />
 
-            <Stack.Screen name="GalleryList" component={GalleryListScreen} />
+            <Stack.Screen name="GalleryList" component={GalleryListRoute} />
             <Stack.Screen
               name="GalleryDetail"
               component={GalleryDetailRoute}
               options={detailOptions}
             />
 
-            <Stack.Screen name="MusicList" component={MusicListScreen} />
+            <Stack.Screen name="MusicList" component={MusicListRoute} />
             <Stack.Screen
               name="NowPlaying"
               component={NowPlayingRoute}
               options={detailOptions}
             />
 
-            <Stack.Screen name="TokenList" component={TokenListScreen} />
+            <Stack.Screen name="TokenList" component={TokenListRoute} />
             <Stack.Screen
               name="TokenDetail"
               component={TokenDetailRoute}
@@ -85,11 +115,11 @@ export default function App() {
 
             <Stack.Screen
               name="LivePlayerList"
-              component={LivePlayerListScreen}
+              component={LivePlayerListRoute}
             />
             <Stack.Screen
               name="LivePlayerDetail"
-              component={LivePlayerDetailScreen}
+              component={LivePlayerDetailRoute}
               options={detailOptions}
             />
           </Stack.Navigator>

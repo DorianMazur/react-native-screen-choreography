@@ -1,4 +1,5 @@
 import { createContext } from 'react';
+import type { ProgressOwnership } from './ProgressOwnership';
 import type { SharedValue } from 'react-native-reanimated';
 import type {
   ChoreographyDebugConfig,
@@ -53,6 +54,7 @@ export interface ChoreographyContextType {
     screenId: string
   ) => ChoreographyNavigationLineage | null;
   progress: SharedValue<number>;
+  progressOwnership: ProgressOwnership;
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;

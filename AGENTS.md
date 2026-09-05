@@ -22,7 +22,7 @@ Use these files as the source of truth:
 
 ## Repository Layout
 
-- `src/`: public API (`index.tsx`, `types.ts`)
+- `src/`: public entries (`index.ts`, `core-entry.ts`, `expo-router.ts`) and types (`types.ts`)
 - `src/components/`: `ChoreographyProvider`, `ChoreographyScreen`, `SharedElement`
 - `src/core/`: registry, coordinator, overlay, measurement, constants, contexts, visibility
 - `src/native/`: Fabric component spec and native host bridge
@@ -37,7 +37,7 @@ Use these files as the source of truth:
 
 ## Public API Surface
 
-Check `src/index.tsx` before documenting or changing exports.
+Check `src/index.ts`, `src/core-entry.ts`, and `src/expo-router.ts` before documenting or changing exports.
 
 Current important exports include:
 
@@ -76,7 +76,7 @@ Current important exports include:
 
 ## Working Conventions
 
-- keep docs aligned with the actual exported API in `src/index.tsx`
+- keep docs aligned with the actual exported API in `src/index.ts`, `src/core-entry.ts`, and `src/expo-router.ts`
 - prefer library-level abstractions for transition lifecycle behavior instead of example-only screen code
 - when moving behavior out of the example app, expose a focused reusable API rather than copying helper logic into another file
 - document current behavior, not abandoned plans or speculative architecture

@@ -10,7 +10,6 @@ import Animated, {
   interpolate,
 } from 'react-native-reanimated';
 import {
-  ChoreographyScreen,
   SafeAreaView,
   SharedElement,
   useChoreographyProgress,
@@ -33,7 +32,7 @@ export function NowPlayingScreen({
   trackId?: string;
 }) {
   const track = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0]!;
-  const { goBack } = useExampleNavigation('NowPlaying');
+  const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyProgress();
   const groupId = `track.${track.id}`;
 
@@ -51,7 +50,7 @@ export function NowPlayingScreen({
   }, [playhead, track.id]);
 
   return (
-    <ChoreographyScreen screenId="NowPlaying">
+    <>
       <View style={styles.root} onTouchStart={settleTransition}>
         <SharedElement
           id="background"
@@ -111,7 +110,7 @@ export function NowPlayingScreen({
           </SharedElement>
         </SafeAreaView>
       </View>
-    </ChoreographyScreen>
+    </>
   );
 }
 

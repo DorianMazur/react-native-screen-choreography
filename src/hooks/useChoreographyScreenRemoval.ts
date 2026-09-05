@@ -19,19 +19,32 @@ export function useChoreographyScreenRemoval({
   const choreography = useContext(ChoreographyContext);
   const contextRef = useRef<ChoreographyContextType | null>(choreography);
   const reversePendingRef = useRef(false);
+  const mountedRef = useRef(true);
+
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+    };
+  }, []);
 
   useEffect(() => {
     contextRef.current = choreography;
   }, [choreography]);
 
-  return useCallback(
-    (popAction: () => void): boolean => {
+  const interceptRemoval = useCallback(
+    (
+      popAction: () => void,
+      canAnimate = true,
+      isRouteRemoved?: () => boolean
+    ): boolean => {
+      if (!canAnimate) return false;
       if (reversePendingRef.current) {
         return true;
       }
 
       const context = contextRef.current;
-      if (!context || context.activeSession) {
+      if (!context || context.activeSession || !mountedRef.current) {
         return false;
       }
 
@@ -50,6 +63,8 @@ export function useChoreographyScreenRemoval({
         sourceScreenId,
         currentScreenId: screenId,
         popAction,
+        isRouteRemoved,
+        canContinue: () => mountedRef.current,
       })
         .catch(() => {
           // runReverseTransition falls back to popAction on failure.
@@ -62,4 +77,15 @@ export function useChoreographyScreenRemoval({
     },
     [legacyGroupId, legacySourceScreenId, screenId]
   );
+
+  const lineage = choreography?.getNavigationLineage(screenId);
+  const sourceScreenId = lineage?.sourceScreenId ?? legacySourceScreenId;
+  return {
+    interceptRemoval,
+    sourceScreenId,
+    sourceRouteKey: lineage?.sourceRouteKey,
+    preventRemove: Boolean(
+      choreography && (lineage?.groupId ?? legacyGroupId) && sourceScreenId
+    ),
+  };
 }

@@ -26,6 +26,8 @@ interface PrepareForwardTransitionArgs {
     direction: 'forward';
   }) => Promise<TransitionSessionData | null>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;
+  isPreparationCurrent?: () => boolean;
+  isSessionCurrent?: (sessionId: string) => boolean;
 }
 
 /**
@@ -109,13 +111,17 @@ export class NavigationSessionController {
     waitForNextFrame,
     startTransition,
     waitForOverlayReady,
+    isPreparationCurrent = () => true,
+    isSessionCurrent = () => true,
   }: PrepareForwardTransitionArgs): Promise<TransitionSessionData | null> {
     try {
       await preMeasureGroup(groupId, sourceScreenId);
+      if (!isPreparationCurrent()) return null;
       setPendingTargetScreen(targetScreenId);
       dispatchNavigation();
 
       const screenReady = await waitForScreenReady(targetScreenId);
+      if (!isPreparationCurrent()) return null;
       if (!screenReady) {
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
@@ -124,6 +130,7 @@ export class NavigationSessionController {
 
       if (isAndroid) {
         await waitForNextFrame();
+        if (!isPreparationCurrent()) return null;
       }
 
       const session = await startTransition({
@@ -134,12 +141,14 @@ export class NavigationSessionController {
       });
 
       if (!session) {
+        if (!isPreparationCurrent()) return null;
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
         return null;
       }
 
       const overlayReady = await waitForOverlayReady(session.id);
+      if (!isSessionCurrent(session.id)) return null;
       if (!overlayReady) {
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
@@ -148,6 +157,7 @@ export class NavigationSessionController {
       setPendingTargetScreen(null);
       return session;
     } catch (error) {
+      if (!isPreparationCurrent()) return null;
       this.releaseNavigationLock();
       setPendingTargetScreen(null);
       throw error;

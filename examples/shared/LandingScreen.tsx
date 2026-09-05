@@ -40,7 +40,7 @@ function DemoTile({
 }
 
 export function LandingScreen() {
-  const { open } = useExampleNavigation('Landing');
+  const { open } = useExampleNavigation();
 
   return (
     <View style={styles.root}>

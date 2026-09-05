@@ -1,11 +1,6 @@
 import React from 'react';
 import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
-import {
-  ChoreographyScreen,
-  SharedElement,
-  SafeAreaView,
-  useExampleNavigation,
-} from '../runtime';
+import { SharedElement, SafeAreaView, useExampleNavigation } from '../runtime';
 import { theme } from '../theme';
 import { TRACKS, type Track } from './data';
 import {
@@ -16,10 +11,10 @@ import {
 import { TrackItem } from './TrackItem';
 
 export function MusicListScreen() {
-  const { goBack, navigate } = useExampleNavigation('MusicList');
+  const { goBack, navigate } = useExampleNavigation();
 
   return (
-    <ChoreographyScreen screenId="MusicList">
+    <>
       <SafeAreaView style={styles.container}>
         <View style={styles.header}>
           <Pressable onPress={() => goBack()} hitSlop={12}>
@@ -52,7 +47,7 @@ export function MusicListScreen() {
           )}
         />
       </SafeAreaView>
-    </ChoreographyScreen>
+    </>
   );
 }
 

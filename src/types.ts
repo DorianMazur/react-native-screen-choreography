@@ -117,6 +117,7 @@ export interface ChoreographyNavigationLineage {
   groupId: string;
   sourceScreenId: string;
   targetScreenId: string;
+  sourceRouteKey?: string;
 }
 
 export interface InteractiveBackOptions {
