@@ -8,12 +8,27 @@ async function generateIcons() {
   await mkdir(destination, { recursive: true });
 
   for (const name of [
-    'arrow-left', 'arrow-up-right', 'arrow-right', 'eye', 'eye-off',
-    'play', 'pause', 'skip-back', 'skip-forward', 'x', 'maximize-2',
-    'share-2', 'headphones', 'camera', 'wallet',
+    'arrow-left',
+    'arrow-up-right',
+    'arrow-right',
+    'eye',
+    'eye-off',
+    'play',
+    'pause',
+    'skip-back',
+    'skip-forward',
+    'x',
+    'maximize-2',
+    'share-2',
+    'headphones',
+    'camera',
+    'wallet',
   ]) {
     const svg = await readFile(join(source, 'icons', `${name}.svg`));
-    await sharp(svg).resize(72, 72).png().toFile(join(destination, `${name}.png`));
+    await sharp(svg)
+      .resize(72, 72)
+      .png()
+      .toFile(join(destination, `${name}.png`));
   }
 }
 

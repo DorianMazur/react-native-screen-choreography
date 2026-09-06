@@ -15,4 +15,6 @@ const config = withMetroConfig(getDefaultConfig(__dirname), {
   dirname: __dirname,
 });
 
+config.transformer.publicPath = '/assets/?unstable_path=.';
+
 module.exports = config;
