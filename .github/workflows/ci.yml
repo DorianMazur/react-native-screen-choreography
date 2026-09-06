@@ -64,10 +64,10 @@ jobs:
       matrix:
         example:
           - name: React Navigation
-            workspace: react-native-screen-choreography-example
+            path: examples/react-navigation
             gradle-wrapper: examples/react-navigation/android/gradle/wrapper/gradle-wrapper.properties
           - name: Expo Router
-            workspace: screen-choreography-expo-router-example
+            path: examples/expo-router
             gradle-wrapper: examples/expo-router/android/gradle/wrapper/gradle-wrapper.properties
 
     steps:
@@ -98,9 +98,10 @@ jobs:
             ${{ runner.os }}-gradle-
 
       - name: Build ${{ matrix.example.name }} example for Android
+        working-directory: ${{ matrix.example.path }}
         env:
           JAVA_OPTS: '-XX:MaxHeapSize=6g'
-        run: yarn workspace ${{ matrix.example.workspace }} build:android
+        run: yarn build:android
 
   build-ios:
     runs-on: macos-latest
@@ -110,10 +111,8 @@ jobs:
         example:
           - name: React Navigation
             path: examples/react-navigation
-            workspace: react-native-screen-choreography-example
           - name: Expo Router
             path: examples/expo-router
-            workspace: screen-choreography-expo-router-example
 
     env:
       XCODE_VERSION: 26
@@ -143,4 +142,5 @@ jobs:
           fi
 
       - name: Build ${{ matrix.example.name }} example for iOS
-        run: yarn workspace ${{ matrix.example.workspace }} build:ios
+        working-directory: ${{ matrix.example.path }}
+        run: yarn build:ios
