@@ -28,6 +28,7 @@ Use these files as the source of truth:
 - `src/native/`: Fabric component spec and native host bridge
 - `src/hooks/`: public progress and navigation hooks
 - `src/standin/`: stand-in primitives
+- `src/transitions/`: reusable surface, stretch, and plain-text transition recipes
 - `src/debug/`: logger
 - `examples/react-navigation/`: bare React Native example app
 - `examples/expo-router/`: Expo Router development-build example app
@@ -49,7 +50,8 @@ Current important exports include:
 - `useChoreographyProgress`
 - `useLatchedReveal`
 - `useStaggeredReveal`
-- stand-in primitives: `StandInContainer`, `StandInElement`, `StandInCrossfade`, `resolveSurfaceStyle`
+- transition recipes: `makeSurfaceTransition`, `makeStretchTransition`, `textMorphTransition`
+- stand-in primitives: `StandInContainer`, `StandInElement`, `resolveSurfaceStyle`;
 - debug helpers: `setDebugEnabled`
 - types: `ElementPresentation`, `ChoreographyDebugConfig`, `ChoreographyDebugLevel`, `ChoreographyDebugCategory`
 

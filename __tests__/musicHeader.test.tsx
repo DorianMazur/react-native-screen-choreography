@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { Image, StyleSheet } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ScreenHeader } from '../examples/shared/AppChrome';
 import { NowPlayingScreen } from '../examples/shared/music/NowPlayingScreen';
@@ -24,6 +24,32 @@ jest.mock('react-native-reanimated', () => ({
 }));
 
 describe('Now Playing header transition', () => {
+  test('bounds the artwork inside a centered frame instead of sizing the image from the asset', async () => {
+    let tree!: ReactTestRenderer;
+    await act(async () => {
+      tree = create(<NowPlayingScreen />);
+    });
+    try {
+      const frame = tree.root.findByProps({ testID: 'now-playing-artwork' });
+      const frameStyle = StyleSheet.flatten(frame.props.style);
+      expect(frameStyle).toMatchObject({
+        width: '100%',
+        aspectRatio: 1.6,
+        alignSelf: 'center',
+        overflow: 'hidden',
+      });
+      const image = frame.findByType(Image);
+      expect(StyleSheet.flatten(image.props.style)).toEqual({
+        ...StyleSheet.absoluteFillObject,
+        width: '100%',
+        height: '100%',
+      });
+      expect(image.props.resizeMode).toBe('cover');
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
   test('registers the header on both screens without removing its layout slot', async () => {
     let tree!: ReactTestRenderer;
     await act(async () => {
@@ -52,7 +78,7 @@ describe('Now Playing header transition', () => {
   });
 
   test.each(['forward', 'backward'] as const)(
-    '%s fades at fixed detail coordinates above the background',
+    '%s carries the header inside the expanding frame without a delayed fade',
     async (direction) => {
       const Renderer = musicHeaderTransition.renderer!;
       const expanded = {
@@ -82,18 +108,24 @@ describe('Now Playing header transition', () => {
         try {
           const layer = tree.toJSON() as {
             props: { style: object };
-            children: unknown;
+            children: { props: { style: object }; children: unknown }[];
           };
           const style = StyleSheet.flatten(layer.props.style);
-          expect(style).toMatchObject({
-            left: 0,
-            top: 62,
+          expect(style.left).toBeCloseTo(16 * (1 - value));
+          expect(style.top).toBeCloseTo(360 + (62 - 360) * value);
+          expect(style.width).toBeCloseTo(361 + 32 * value);
+          expect(style.height).toBeCloseTo(1 + 55 * value);
+          expect(style.zIndex).toBe(3);
+          expect(style.overflow).toBe('hidden');
+          expect(style.opacity).toBeUndefined();
+          expect(layer.children).toHaveLength(1);
+          expect(
+            StyleSheet.flatten(layer.children[0]!.props.style)
+          ).toMatchObject({
             width: 393,
             height: 56,
-            zIndex: 3,
           });
-          expect(style.opacity).toBeCloseTo(Math.max(0, (value - 0.6) / 0.4));
-          expect(layer.children).toEqual(['Now playing']);
+          expect(layer.children[0]!.children).toEqual(['Now playing']);
         } finally {
           await act(async () => tree.unmount());
         }

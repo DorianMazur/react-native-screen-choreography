@@ -404,13 +404,54 @@ if (session) {
 | `useLatchedReveal(config?)`             | Boolean gate that opens at a progress threshold and stays visible once revealed                                                                       |
 | `useStaggeredReveal(count, config?)`    | `getItemStyle(index)` for staged reveal sections                                                                                                      |
 
+### Transition Recipes
+
+Use these ready-made `SharedElementTransition` objects instead of writing an overlay renderer for each element. They are exported from the package root, `/core`, and `/expo-router`.
+
+| Recipe | Purpose |
+| --- | --- |
+| `makeSurfaceTransition(collapsedFallback?, expandedFallback?)` | Moves and resizes a surface, interpolating its background color and corner radius |
+| `makeStretchTransition(options?)` | Carries one expanded-side rendering and scales it into the interpolated frame, without crossfading |
+| `textMorphTransition` | Moves one plain text element while interpolating its actual font size, optional line height, and numeric top margin |
+
+```tsx
+import { Text } from 'react-native';
+import {
+  SharedElement,
+  makeSurfaceTransition,
+  makeStretchTransition,
+  textMorphTransition,
+} from 'react-native-screen-choreography';
+
+const cardTransition = makeSurfaceTransition(
+  { backgroundColor: '#202522', borderRadius: 8 },
+  { backgroundColor: '#101412', borderRadius: 0 }
+);
+const iconTransition = makeStretchTransition();
+
+function LocationLabel({ location, expanded }: { location: string; expanded: boolean }) {
+  return (
+    <SharedElement id="location" groupId="photo" transition={textMorphTransition}>
+      <Text style={{ fontSize: expanded ? 15 : 11, marginTop: expanded ? 4 : 2 }}>
+        {location}
+      </Text>
+    </SharedElement>
+  );
+}
+```
+
+Define recipe objects outside render and reuse them on both screens. Assign `cardTransition` and `iconTransition` to the corresponding surface and icon shared elements. Surface styles are read from the frozen shared-element wrapper styles; fallbacks apply only when those styles omit a value. Fallback order always means collapsed then expanded, even on Back.
+
+`makeStretchTransition` accepts `sourceBorderRadius`, `targetBorderRadius`, and `zIndex`. Radius options mean collapsed and expanded defaults respectively; numeric wrapper radii take precedence. It scales width and height independently, so use it for compatible representations such as the same icon at two sizes. For photographs with changing aspect ratios, use `StandInElement` with a single `Image` child and `resizeMode="cover"` to resize the crop without stretching it.
+
+`textMorphTransition` requires a direct `Text` or `Animated.Text` child containing identical plain text on both sides. Keep the font family, weight, style, letter spacing, color, other layout styles, and font-scaling settings the same; give `lineHeight` on both sides or neither. Unsupported child types, different text, and incompatible checked typography produce an explanatory error. Rich text, font-family changes, different content, and custom layout require a custom renderer. Text is laid out at its animated font size and width, so multiline text can change line breaks; use compatible single-line layouts when continuous glyph placement is essential.
+
 ### Stand-in primitives
 
 | Primitive                    | Purpose                                                                           |
 | ---------------------------- | --------------------------------------------------------------------------------- |
-| `StandInContainer`           | Animates the surface (position, size, corner radius, shadow) on the overlay       |
-| `StandInElement`             | Animates a single anchor (e.g. a logo or label) between source and target metrics |
-| `StandInCrossfade`           | Crossfades two stand-in renderings of the same role                               |
+| `StandInContainer`           | Interpolates surface bounds, background color, and radius; applies a static expanded-side shadow with reversible opacity |
+| `StandInElement`             | Resizes and positions one `children` subtree; does not scale or crossfade its content |
 | `resolveSurfaceStyle(style)` | Extracts surface-level styling from a `ViewStyle` for use inside a stand-in       |
 
 ### Spring & easing presets
@@ -434,7 +475,7 @@ The renderer receives:
 - `source` and `target` objects with `screenId`, measured bounds, flattened style, and rendered content
 - `zIndex` so related transitions can layer predictably
 
-The low-level `StandInContainer`, `StandInElement`, `StandInCrossfade`, and `resolveSurfaceStyle` exports remain available for custom visual recipes.
+The low-level `StandInContainer`, `StandInElement`, and `resolveSurfaceStyle` exports remain available for custom visual recipes. `StandInContainer` defaults to a transparent background and zero radius; supply styles when a visible surface is required. Shadow parameters stay static to avoid recreating Android drawables per frame.
 
 ### Core Transition Config
 

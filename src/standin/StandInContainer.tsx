@@ -4,6 +4,7 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
   interpolate,
+  interpolateColor,
   type SharedValue,
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
@@ -17,12 +18,13 @@ interface StandInContainerProps {
   sourceStyle?: SurfaceTransitionStyle;
   targetStyle?: SurfaceTransitionStyle;
   children?: React.ReactNode;
+  zIndex?: number;
 }
 
 /**
  * Stand-in for container/card elements during a transition.
  *
- * Shadow strategy: apply the TARGET boxShadow statically and only animate
+ * Shadow strategy: apply the expanded-side boxShadow statically and only animate
  * `opacity` (GPU-composited on Android via View.setAlpha). Animating
  * boxShadow per-frame causes OutsetBoxShadowDrawable re-creation on every
  * call, which flickers. Opacity fades to 0 near the transition endpoints
@@ -36,14 +38,15 @@ export function StandInContainer({
   sourceStyle = {},
   targetStyle = {},
   children,
+  zIndex = 0,
 }: StandInContainerProps) {
-  const sourceRadius = sourceStyle.borderRadius ?? 12;
-  const targetRadius = targetStyle.borderRadius ?? 24;
-
-  const bgColor =
-    targetStyle.backgroundColor ?? sourceStyle.backgroundColor ?? 'white';
-
-  const targetBoxShadow = targetStyle.boxShadow;
+  const sourceRadius = sourceStyle.borderRadius ?? 0;
+  const targetRadius = targetStyle.borderRadius ?? 0;
+  const sourceColor = sourceStyle.backgroundColor ?? 'transparent';
+  const targetColor = targetStyle.backgroundColor ?? 'transparent';
+  const expandedStyle = direction === 'backward' ? sourceStyle : targetStyle;
+  const expandedBoxShadow = expandedStyle.boxShadow;
+  const shadowColor = expandedStyle.backgroundColor ?? 'transparent';
 
   const t = useDerivedValue(() => {
     return direction === 'backward' ? 1 - progress.value : progress.value;
@@ -84,14 +87,22 @@ export function StandInContainer({
       'clamp'
     ),
     opacity: interpolate(
-      t.value,
-      [0, 0.03, 0.1, 0.92, 1.0],
-      [0, 0, 1, 1, 0],
+      progress.value,
+      [0, 0.08, 0.92, 1],
+      [0, 1, 1, 0],
       'clamp'
     ),
   }));
 
   const contentShapeStyle = useAnimatedStyle(() => ({
+    backgroundColor:
+      sourceColor === targetColor
+        ? sourceColor
+        : interpolateColor(
+            Math.max(0, Math.min(1, t.value)),
+            [0, 1],
+            [sourceColor, targetColor]
+          ),
     borderRadius: interpolate(
       t.value,
       [0, 1],
@@ -101,23 +112,20 @@ export function StandInContainer({
   }));
 
   return (
-    <Animated.View style={[frameStyle, styles.wrapper]}>
-      {targetBoxShadow && (
+    <Animated.View
+      style={[frameStyle, styles.wrapper, { zIndex }]}
+      pointerEvents="none"
+    >
+      {expandedBoxShadow && (
         <Animated.View
           style={[
             styles.shadowLayer,
             shadowStyle,
-            { backgroundColor: bgColor, boxShadow: targetBoxShadow } as any,
+            { backgroundColor: shadowColor, boxShadow: expandedBoxShadow },
           ]}
         />
       )}
-      <Animated.View
-        style={[
-          styles.contentHost,
-          contentShapeStyle,
-          { backgroundColor: bgColor },
-        ]}
-      >
+      <Animated.View style={[styles.contentHost, contentShapeStyle]}>
         {children}
       </Animated.View>
     </Animated.View>

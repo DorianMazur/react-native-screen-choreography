@@ -1,5 +1,4 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
@@ -13,15 +12,12 @@ interface StandInElementProps {
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
   children?: React.ReactNode;
-  sourceContent?: React.ReactNode;
-  targetContent?: React.ReactNode;
   direction?: 'forward' | 'backward';
   /** Custom z-index for layering */
   zIndex?: number;
   /** Optional border radius interpolation */
   sourceBorderRadius?: number;
   targetBorderRadius?: number;
-  fadeRange?: [number, number];
 }
 
 export function StandInElement({
@@ -29,13 +25,10 @@ export function StandInElement({
   sourceMetrics,
   targetMetrics,
   children,
-  sourceContent,
-  targetContent,
   direction = 'forward',
   zIndex = 1,
   sourceBorderRadius,
   targetBorderRadius,
-  fadeRange = [0.15, 0.55],
 }: StandInElementProps) {
   const hasRadius =
     sourceBorderRadius !== undefined || targetBorderRadius !== undefined;
@@ -89,33 +82,9 @@ export function StandInElement({
       : {}),
   }));
 
-  const sourceContentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(t.value, fadeRange, [1, 0], 'clamp'),
-  }));
-
-  const targetContentStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(t.value, fadeRange, [0, 1], 'clamp'),
-  }));
-
   return (
-    <Animated.View style={[baseStyle, animatedStyle]}>
+    <Animated.View style={[baseStyle, animatedStyle]} pointerEvents="none">
       {children}
-      {!children && sourceContent ? (
-        <Animated.View style={[styles.content, sourceContentStyle]}>
-          {sourceContent}
-        </Animated.View>
-      ) : null}
-      {!children && targetContent ? (
-        <Animated.View style={[styles.content, targetContentStyle]}>
-          {targetContent}
-        </Animated.View>
-      ) : null}
     </Animated.View>
   );
 }
-
-const styles = StyleSheet.create({
-  content: {
-    ...StyleSheet.absoluteFill,
-  },
-});

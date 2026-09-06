@@ -152,40 +152,9 @@ export const musicContentTransition: SharedElementTransition = {
   renderer: AnchoredContent,
 };
 
-function FadingHeader({
-  progress,
-  direction,
-  source,
-  target,
-  zIndex,
-}: SharedElementTransitionRendererProps) {
-  const expandedSide = direction === 'backward' ? source : target;
-  const animatedStyle = useAnimatedStyle(() => ({
-    opacity: interpolate(progress.value, [0.6, 1], [0, 1], 'clamp'),
-  }));
-
-  return (
-    <Animated.View
-      style={[
-        styles.layer,
-        {
-          zIndex,
-          left: expandedSide.metrics.pageX,
-          top: expandedSide.metrics.pageY,
-          width: expandedSide.metrics.width,
-          height: expandedSide.metrics.height,
-        },
-        animatedStyle,
-      ]}
-    >
-      {expandedSide.content}
-    </Animated.View>
-  );
-}
-
 export const musicHeaderTransition: SharedElementTransition = {
   zIndex: 3,
-  renderer: FadingHeader,
+  renderer: AnchoredContent,
 };
 
 const styles = StyleSheet.create({

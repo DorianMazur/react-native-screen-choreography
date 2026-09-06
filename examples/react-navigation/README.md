@@ -7,7 +7,7 @@ This example app exposes the shared gallery, music, wallet, and live-player tran
 - explicit per-element transition objects reused across list and detail screens
 - surface interpolation for the row-to-detail card container
 - icon handoff with shared bounds interpolation
-- text and value handoffs rendered through explicit crossfade transitions
+- built-in surface, stretch, and native font-size recipes, alongside custom wallet value motion
 - early settle handling when detail interaction starts mid-transition
 - staged reveal of detail content
 - fast push-pop-push interruption handling

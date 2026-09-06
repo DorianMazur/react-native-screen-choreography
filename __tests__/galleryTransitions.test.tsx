@@ -23,9 +23,15 @@ jest.mock('../examples/shared/runtime', () => ({
   StandInElement: jest.requireActual<
     typeof import('../src/standin/StandInElement')
   >('../src/standin/StandInElement').StandInElement,
-  StandInCrossfade: jest.requireActual<
-    typeof import('../src/standin/StandInCrossfade')
-  >('../src/standin/StandInCrossfade').StandInCrossfade,
+  ...jest.requireActual<
+    typeof import('../src/transitions/makeSurfaceTransition')
+  >('../src/transitions/makeSurfaceTransition'),
+  ...jest.requireActual<
+    typeof import('../src/transitions/makeStretchTransition')
+  >('../src/transitions/makeStretchTransition'),
+  ...jest.requireActual<
+    typeof import('../src/transitions/textMorphTransition')
+  >('../src/transitions/textMorphTransition'),
 }));
 
 const photo = (
@@ -158,7 +164,7 @@ describe('Gallery photo crop continuity', () => {
           expect(style.borderRadius).toBeCloseTo(theme.radius.lg * (1 - value));
           expect(style.overflow).toBe('hidden');
           expect(style.transform).toBeUndefined();
-          expect(frame.props.children).toContain(photo);
+          expect(frame.props.children).toBe(photo);
           expect(tree!.root.findAllByType(Image)).toHaveLength(1);
         } finally {
           await act(async () => tree!.unmount());

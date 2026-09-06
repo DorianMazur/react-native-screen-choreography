@@ -12,7 +12,15 @@ export {
 } from './components/createSharedElementComponent';
 export { StandInContainer } from './standin/StandInContainer';
 export { StandInElement } from './standin/StandInElement';
-export { StandInCrossfade } from './standin/StandInCrossfade';
+export {
+  makeSurfaceTransition,
+  type SurfaceTransitionFallback,
+} from './transitions/makeSurfaceTransition';
+export {
+  makeStretchTransition,
+  type StretchTransitionOptions,
+} from './transitions/makeStretchTransition';
+export { textMorphTransition } from './transitions/textMorphTransition';
 export {
   resolveSurfaceStyle,
   type BoxShadowEntry,

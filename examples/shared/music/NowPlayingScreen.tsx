@@ -141,12 +141,14 @@ export function NowPlayingScreen({
               showsVerticalScrollIndicator={false}
             >
               <View style={styles.content}>
-                <Image
-                  source={track.artwork}
-                  resizeMode="cover"
-                  style={styles.cover}
-                  accessibilityLabel={`${track.album} artwork`}
-                />
+                <View testID="now-playing-artwork" style={styles.cover}>
+                  <Image
+                    source={track.artwork}
+                    resizeMode="cover"
+                    style={styles.coverImage}
+                    accessibilityLabel={`${track.album} artwork`}
+                  />
+                </View>
                 <Text style={styles.eyebrow}>DEMO SESSION</Text>
                 <Text style={styles.album}>{track.album}</Text>
                 <Waveform accent={theme.accent} playhead={playhead} />
@@ -293,8 +295,15 @@ const styles = StyleSheet.create({
     width: '100%',
     aspectRatio: 1.6,
     maxHeight: 260,
+    alignSelf: 'center',
+    overflow: 'hidden',
     borderRadius: 8,
     marginBottom: 24,
+  },
+  coverImage: {
+    ...StyleSheet.absoluteFillObject,
+    width: '100%',
+    height: '100%',
   },
   eyebrow: {
     fontFamily: theme.font,

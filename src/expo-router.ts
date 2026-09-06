@@ -31,7 +31,15 @@ export {
 } from './hooks/useChoreographyProgress';
 export { Springs, Easings } from './core/constants';
 export { StandInContainer } from './standin/StandInContainer';
-export { StandInCrossfade } from './standin/StandInCrossfade';
+export {
+  makeSurfaceTransition,
+  type SurfaceTransitionFallback,
+} from './transitions/makeSurfaceTransition';
+export {
+  makeStretchTransition,
+  type StretchTransitionOptions,
+} from './transitions/makeStretchTransition';
+export { textMorphTransition } from './transitions/textMorphTransition';
 export { StandInElement } from './standin/StandInElement';
 export { resolveSurfaceStyle } from './standin/resolveSurfaceStyle';
 export type {
