@@ -70,12 +70,6 @@ export function LandingScreen() {
             screen-choreography
           </Text>
         </View>
-        <View style={styles.sectionHeader}>
-          <Text accessibilityRole="header" style={styles.sectionTitle}>
-            Explore
-          </Text>
-          <Text style={styles.eyebrow}>COLLECTION</Text>
-        </View>
         {demos.map((demo, index) => (
           <Pressable
             key={demo.route}
