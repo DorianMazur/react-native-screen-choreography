@@ -5,11 +5,11 @@ Choreographed shared element transitions for React Native with multi-element coo
 > **Status:** pre-1.0. The public API is converging but minor versions can still introduce breaking changes.
 
 <p align="center">
-  <img src="docs/demo_1.gif" alt="Wallet portfolio: token row morphs into detail card" width="240" />
+  <img src="docs/Gallery.gif" width="240" />
   &nbsp;
-  <img src="docs/demo_2.gif" alt="Music library: track artwork expands into now-playing screen" width="240" />
+  <img src="docs/Music.gif" width="240" />
   &nbsp;
-  <img src="docs/demo_3.gif" alt="Photo gallery: tile morphs into full-bleed hero" width="240" />
+  <img src="docs/Wallet.gif" width="240" />
 </p>
 
 ## Overview
