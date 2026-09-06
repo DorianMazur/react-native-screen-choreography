@@ -88,36 +88,57 @@ export async function runReverseTransition(
     animationToken = progressOwnership.claim(reverseSessionId);
     if (animationToken === null) return;
 
-    // Wait for the overlay to actually paint and the native host to ack the
-    // presentation BEFORE we pop the route. Without this:
-    //   * overlay → handleOverlayReady → syncHiddenElements never runs in
-    //     time, so the real source/target elements stay visible alongside
-    //     the overlay,
-    //   * popping the route unmounts the source screen during the gap and
-    //     the user just sees the destination snap into place.
-    // The provider has a 150ms safety net for slow Android frames.
     const overlayReady = await waitForOverlayReady(reverseSession.id);
     if (!progressOwnership.isCurrent(animationToken, reverseSession.id)) return;
     if (!overlayReady || !canContinue()) {
       cancelTransition(reverseSession.id);
       return;
     }
-    debugLog('[BackIntercept] overlay ready, calling popAction');
-    commitNavigation();
-    if (isRouteRemoved) {
-      await new Promise<void>((resolve) =>
-        requestAnimationFrame(() => resolve())
-      );
-      if (!progressOwnership.isCurrent(animationToken, reverseSession.id))
-        return;
-      if (!isRouteRemoved()) {
-        cancelTransition(reverseSession.id);
-        return;
-      }
-    }
-    debugLog('[BackIntercept] popAction returned, scheduling spring');
+    debugLog('[BackIntercept] overlay ready, scheduling spring before pop');
 
     const sessionId = reverseSession.id;
+    let completionHandled = false;
+    const finishNavigation = async (
+      token: number,
+      completedSessionId: string
+    ) => {
+      if (
+        completionHandled ||
+        !progressOwnership.isCurrent(token, completedSessionId)
+      ) {
+        return;
+      }
+      completionHandled = true;
+      try {
+        if (!canContinue()) {
+          cancelTransition(completedSessionId);
+          return;
+        }
+        commitNavigation();
+        if (isRouteRemoved) {
+          await new Promise<void>((resolve) =>
+            requestAnimationFrame(() => resolve())
+          );
+          if (!progressOwnership.isCurrent(token, completedSessionId)) return;
+          if (!isRouteRemoved()) {
+            cancelTransition(completedSessionId);
+            return;
+          }
+        }
+        if (progressOwnership.isCurrent(token, completedSessionId)) {
+          completeTransition(completedSessionId);
+        }
+      } catch (error) {
+        debugLog(
+          `[BackIntercept] navigation commit failed: ${
+            error instanceof Error ? error.message : String(error)
+          }`
+        );
+        if (progressOwnership.isCurrent(token, completedSessionId)) {
+          cancelTransition(completedSessionId);
+        }
+      }
+    };
     animateOwnedProgress({
       ownership: progressOwnership,
       token: animationToken,
@@ -126,9 +147,7 @@ export async function runReverseTransition(
       target: 0,
       spring,
       onComplete: (token, completedSessionId) => {
-        if (progressOwnership.isCurrent(token, completedSessionId)) {
-          completeTransition(completedSessionId);
-        }
+        void finishNavigation(token, completedSessionId);
       },
     });
   } catch (error) {

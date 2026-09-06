@@ -4,108 +4,123 @@ import {
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
-  Dimensions,
+  Linking,
+  Alert,
 } from 'react-native';
-import Animated from 'react-native-reanimated';
 import {
   SafeAreaView,
   SharedElement,
   useChoreographyProgress,
   useExampleNavigation,
-  useLatchedReveal,
-  useStaggeredReveal,
 } from '../runtime';
 import { TOKENS } from './data';
-import { theme } from '../theme';
+import { formatMoney, walletTheme as theme } from './walletTheme';
 import { TokenLogo } from './TokenLogo';
+import { WalletIconButton } from './WalletIcon';
+import { WalletSection } from './WalletSection';
+import { PriceHistory } from './PriceHistory';
 import {
-  tokenCardTransition,
   tokenIconTransition,
   tokenTextTransition,
   tokenValueTransition,
 } from './walletTransitions';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
+const websites: Record<string, string> = {
+  polygon: 'https://polygon.technology',
+  ethereum: 'https://ethereum.org',
+  bitcoin: 'https://bitcoin.org',
+  solana: 'https://solana.com',
+  avalanche: 'https://avax.network',
+  chainlink: 'https://chain.link',
+};
+const portfolioValue = TOKENS.reduce((total, token) => total + token.value, 0);
 
 export function TokenDetailScreen({
   tokenId = 'polygon',
 }: {
   tokenId?: string;
 }) {
-  const token = TOKENS.find((t) => t.id === tokenId) ?? TOKENS[0]!;
+  const token = TOKENS.find((item) => item.id === tokenId) ?? TOKENS[0]!;
   const isPositiveChange = token.change24h >= 0;
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyProgress();
-  const shouldShowDetailSections = useLatchedReveal({ resetKey: token.id });
-  const { getItemStyle } = useStaggeredReveal(5, { stagger: 0.04 });
-  const balanceSectionStyle = getItemStyle(0);
-  const aboutSectionStyle = getItemStyle(1);
-  const statsSectionStyle = getItemStyle(2);
-  const activitySectionStyle = getItemStyle(3);
-  const actionRowStyle = getItemStyle(4);
+  const allocation = (token.value / portfolioValue) * 100;
+
+  const openWebsite = () => {
+    settleTransition();
+    const url = websites[token.id];
+    if (url) {
+      Linking.openURL(url).catch(() => {
+        Alert.alert('Unable to open website', 'Please try again later.');
+      });
+    }
+  };
 
   return (
-    <>
-      <SafeAreaView style={styles.container}>
-        <ScrollView
-          onScrollBeginDrag={settleTransition}
-          style={styles.scrollView}
-          contentContainerStyle={styles.scrollContent}
-          showsVerticalScrollIndicator={false}
-        >
-          <Pressable onPress={() => goBack()} style={styles.backButton}>
-            <Text style={styles.backText}>← Back</Text>
-          </Pressable>
+    <SafeAreaView style={styles.container}>
+      <View style={styles.toolbar}>
+        <WalletIconButton
+          icon="back"
+          label="Back to wallet"
+          onPress={() => goBack()}
+        />
+        <Text style={styles.toolbarTitle}>Asset overview</Text>
+        <WalletIconButton
+          icon="external"
+          label={`Open ${token.name} website`}
+          onPress={openWebsite}
+        />
+      </View>
+      <ScrollView
+        onScrollBeginDrag={settleTransition}
+        style={styles.scrollView}
+        contentContainerStyle={styles.scrollContent}
+        showsVerticalScrollIndicator={false}
+      >
+        <View style={styles.detailCard}>
+          <View style={styles.cardContent}>
+            <View style={styles.headerRow}>
+              <SharedElement
+                id={`token.${token.id}.icon`}
+                groupId={`token.${token.id}`}
+                transition={tokenIconTransition}
+              >
+                <TokenLogo token={token} size={48} />
+              </SharedElement>
 
-          <SharedElement
-            id={`token.${token.id}.card`}
-            groupId={`token.${token.id}`}
-            transition={tokenCardTransition}
-            style={styles.detailCard}
-          >
-            <View style={styles.cardContent}>
-              <View style={styles.headerRow}>
+              <View style={styles.headerInfo}>
                 <SharedElement
-                  id={`token.${token.id}.icon`}
+                  id={`token.${token.id}.name`}
                   groupId={`token.${token.id}`}
-                  transition={tokenIconTransition}
+                  transition={tokenTextTransition}
                 >
-                  <TokenLogo token={token} size={56} />
+                  <Text style={styles.detailName}>{token.name}</Text>
                 </SharedElement>
-
-                <View style={styles.headerInfo}>
-                  <SharedElement
-                    id={`token.${token.id}.name`}
-                    groupId={`token.${token.id}`}
-                    transition={tokenTextTransition}
-                  >
-                    <Text style={styles.detailName}>{token.name}</Text>
-                  </SharedElement>
-                  <SharedElement
-                    id={`token.${token.id}.symbol`}
-                    groupId={`token.${token.id}`}
-                    transition={tokenTextTransition}
-                  >
-                    <Text style={styles.detailSymbol}>{token.symbol}</Text>
-                  </SharedElement>
-                </View>
+                <SharedElement
+                  id={`token.${token.id}.symbol`}
+                  groupId={`token.${token.id}`}
+                  transition={tokenTextTransition}
+                >
+                  <Text style={styles.detailSymbol}>{token.symbol}</Text>
+                </SharedElement>
               </View>
+            </View>
 
-              <View style={styles.valueSection}>
-                <SharedElement
-                  id={`token.${token.id}.value`}
-                  groupId={`token.${token.id}`}
-                  transition={tokenValueTransition}
+            <View style={styles.valueSection}>
+              <SharedElement
+                id={`token.${token.id}.value`}
+                groupId={`token.${token.id}`}
+                transition={tokenValueTransition}
+              >
+                <Text
+                  style={styles.detailPrice}
+                  numberOfLines={1}
+                  adjustsFontSizeToFit
                 >
-                  <Text style={styles.detailPrice}>
-                    $
-                    {token.price.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                    })}
-                  </Text>
-                </SharedElement>
-
+                  {formatMoney(token.price)}
+                </Text>
+              </SharedElement>
+              <View style={styles.changeRow}>
                 <SharedElement
                   id={`token.${token.id}.change`}
                   groupId={`token.${token.id}`}
@@ -123,307 +138,170 @@ export function TokenDetailScreen({
                     {token.change24h.toFixed(2)}%
                   </Text>
                 </SharedElement>
+                <WalletSection start={0.8} distance={0}>
+                  <Text style={styles.periodLabel}>past 24h</Text>
+                </WalletSection>
               </View>
             </View>
-          </SharedElement>
+          </View>
+        </View>
 
-          {shouldShowDetailSections ? (
-            <>
-              <Animated.View style={[styles.section, balanceSectionStyle]}>
-                <Text style={styles.sectionTitle}>Your Balance</Text>
-                <View style={styles.balanceRow}>
-                  <Text style={styles.balanceAmount}>
-                    {token.balance.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                    })}{' '}
-                    {token.symbol}
-                  </Text>
-                  <Text style={styles.balanceValue}>
-                    $
-                    {token.value.toLocaleString('en-US', {
-                      minimumFractionDigits: 2,
-                    })}
-                  </Text>
-                </View>
-              </Animated.View>
-
-              <Animated.View style={[styles.section, aboutSectionStyle]}>
-                <Text style={styles.sectionTitle}>About {token.name}</Text>
-                <Text style={styles.description}>{token.description}</Text>
-              </Animated.View>
-
-              <Animated.View style={[styles.section, statsSectionStyle]}>
-                <Text style={styles.sectionTitle}>Market Stats</Text>
-                <View style={styles.statsGrid}>
-                  <StatItem label="Market Cap" value="$8.2B" />
-                  <StatItem label="Volume (24h)" value="$423M" />
-                  <StatItem label="Circulating" value="9.3B" />
-                  <StatItem label="Max Supply" value="10B" />
-                </View>
-              </Animated.View>
-
-              <Animated.View style={[styles.section, activitySectionStyle]}>
-                <Text style={styles.sectionTitle}>Recent Activity</Text>
-                <ActivityItem
-                  type="Received"
-                  amount={`+50 ${token.symbol}`}
-                  date="2 hours ago"
-                />
-                <ActivityItem
-                  type="Sent"
-                  amount={`-12.5 ${token.symbol}`}
-                  date="Yesterday"
-                />
-                <ActivityItem
-                  type="Swapped"
-                  amount={`+125 ${token.symbol}`}
-                  date="3 days ago"
-                />
-              </Animated.View>
-
-              <Animated.View style={[styles.actionRow, actionRowStyle]}>
-                <Pressable
-                  style={[
-                    styles.actionButton,
-                    { backgroundColor: token.color },
-                  ]}
-                >
-                  <Text style={styles.actionButtonText}>Swap</Text>
-                </Pressable>
-                <Pressable style={[styles.actionButton, styles.sendButton]}>
-                  <Text
-                    style={[styles.actionButtonText, styles.sendButtonText]}
-                  >
-                    Send
-                  </Text>
-                </Pressable>
-              </Animated.View>
-            </>
-          ) : null}
-        </ScrollView>
-      </SafeAreaView>
-    </>
-  );
-}
-
-function StatItem({ label, value }: { label: string; value: string }) {
-  return (
-    <View style={styles.statItem}>
-      <Text style={styles.statLabel}>{label}</Text>
-      <Text style={styles.statValue}>{value}</Text>
-    </View>
-  );
-}
-
-function ActivityItem({
-  type,
-  amount,
-  date,
-}: {
-  type: string;
-  amount: string;
-  date: string;
-}) {
-  return (
-    <View style={styles.activityItem}>
-      <View style={styles.activityDot} />
-      <View style={styles.activityInfo}>
-        <Text style={styles.activityType}>{type}</Text>
-        <Text style={styles.activityDate}>{date}</Text>
-      </View>
-      <Text style={styles.activityAmount}>{amount}</Text>
-    </View>
+        <WalletSection start={0.4} distance={0}>
+          <PriceHistory
+            key={token.id}
+            token={token}
+            onInteract={settleTransition}
+          />
+        </WalletSection>
+        <WalletSection start={0.72}>
+          <View style={styles.section}>
+            <View style={styles.sectionHeading}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>
+                Your position
+              </Text>
+              <Text style={styles.demoLabel}>DEMO</Text>
+            </View>
+            <Text style={styles.balanceValue}>{formatMoney(token.value)}</Text>
+            <Text style={styles.balanceAmount}>
+              {token.balance.toLocaleString('en-US', {
+                maximumFractionDigits: 6,
+              })}{' '}
+              {token.symbol}
+            </Text>
+            <View style={styles.positionTrack}>
+              <View
+                style={[
+                  styles.positionFill,
+                  { width: `${allocation}%`, backgroundColor: token.color },
+                ]}
+              />
+            </View>
+            <View style={styles.positionCaption}>
+              <Text style={styles.periodLabel}>Portfolio weight</Text>
+              <Text style={styles.positionPercent}>
+                {allocation.toFixed(1)}%
+              </Text>
+            </View>
+          </View>
+          <View style={styles.section}>
+            <Text accessibilityRole="header" style={styles.sectionTitle}>
+              About {token.name}
+            </Text>
+            <Text style={styles.description}>{token.description}</Text>
+          </View>
+        </WalletSection>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    backgroundColor: theme.bg,
-  },
-  scrollView: {
-    flex: 1,
-  },
-  scrollContent: {
-    paddingBottom: 40,
-  },
-  backButton: {
-    paddingHorizontal: 20,
-    paddingVertical: 12,
-  },
-  backText: {
-    color: theme.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
-    marginBottom: 12,
-  },
-  detailCard: {
-    marginHorizontal: 16,
-    borderRadius: theme.radius.xl,
-    backgroundColor: theme.surface,
-  },
-  cardContent: {
-    padding: 24,
-  },
-  headerRow: {
+  container: { flex: 1, backgroundColor: theme.background },
+  toolbar: {
     flexDirection: 'row',
     alignItems: 'center',
+    paddingHorizontal: 14,
+    paddingVertical: 6,
   },
-  iconContainer: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconText: {
-    fontSize: 26,
-    color: 'white',
-  },
-  headerInfo: {
-    marginLeft: 16,
+  toolbarTitle: {
     flex: 1,
+    textAlign: 'center',
+    fontFamily: theme.font,
+    fontSize: 14,
+    color: theme.secondary,
   },
+  scrollView: { flex: 1 },
+  scrollContent: { paddingBottom: 32 },
+  detailCard: {
+    marginHorizontal: 24,
+    borderRadius: 0,
+    backgroundColor: theme.background,
+  },
+  cardContent: { paddingVertical: 24 },
+  headerRow: { flexDirection: 'row', alignItems: 'center' },
+  headerInfo: { marginLeft: 14, flex: 1, alignItems: 'flex-start', gap: 2 },
   detailName: {
-    fontSize: 24,
-    fontWeight: '700',
+    fontFamily: theme.font,
+    fontSize: 22,
+    lineHeight: 30.8,
+    fontWeight: '600',
     color: theme.text,
   },
   detailSymbol: {
-    fontSize: 15,
-    color: theme.textMuted,
-    marginTop: 2,
+    fontFamily: theme.font,
+    fontSize: 13,
+    lineHeight: 18,
+    color: theme.secondary,
   },
-  valueSection: {
-    marginTop: 20,
-  },
+  valueSection: { marginTop: 24, alignItems: 'flex-start' },
   detailPrice: {
-    fontSize: 34,
-    fontWeight: '700',
+    fontFamily: theme.numbers,
+    fontSize: 36,
+    lineHeight: 50.4,
     color: theme.text,
-    letterSpacing: -0.4,
   },
-  detailChange: {
-    fontSize: 17,
-    fontWeight: '600',
-    marginTop: 4,
+  changeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    marginTop: 8,
   },
-  detailChangePositive: {
-    color: theme.success,
-  },
-  detailChangeNegative: {
-    color: theme.danger,
-  },
-  section: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius.lg,
-    padding: 20,
+  detailChange: { fontFamily: theme.numbers, fontSize: 13, lineHeight: 18 },
+  detailChangePositive: { color: theme.positive },
+  detailChangeNegative: { color: theme.negative },
+  periodLabel: { fontFamily: theme.font, fontSize: 12, color: theme.secondary },
+  section: { padding: 24, borderTopWidth: 1, borderTopColor: theme.border },
+  sectionHeading: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
   },
   sectionTitle: {
-    fontSize: 16,
+    fontFamily: theme.font,
+    fontSize: 18,
     fontWeight: '600',
     color: theme.text,
-    marginBottom: 12,
   },
-  balanceRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
+  demoLabel: {
+    fontFamily: theme.numbers,
+    fontSize: 10,
+    color: theme.secondary,
   },
   balanceAmount: {
-    fontSize: 20,
-    fontWeight: '600',
-    color: theme.text,
+    fontFamily: theme.numbers,
+    fontSize: 13,
+    color: theme.secondary,
+    marginTop: 6,
   },
   balanceValue: {
-    fontSize: 16,
-    color: theme.textMuted,
+    fontFamily: theme.numbers,
+    fontSize: 26,
+    color: theme.text,
+    marginTop: 18,
+  },
+  positionTrack: {
+    height: 4,
+    backgroundColor: theme.border,
+    borderRadius: 2,
+    marginTop: 22,
+    overflow: 'hidden',
+  },
+  positionFill: { height: '100%' },
+  positionCaption: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    marginTop: 10,
+  },
+  positionPercent: {
+    fontFamily: theme.numbers,
+    fontSize: 12,
+    color: theme.text,
   },
   description: {
-    fontSize: 15,
-    lineHeight: 22,
-    color: theme.textSecondary,
-  },
-  statsGrid: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    gap: 10,
-  },
-  statItem: {
-    width: (SCREEN_WIDTH - 74) / 2,
-    backgroundColor: theme.surfaceMuted,
-    borderRadius: theme.radius.md,
-    padding: 14,
-  },
-  statLabel: {
-    fontSize: 11,
-    color: theme.textMuted,
-    fontWeight: '600',
-    letterSpacing: 0.5,
-    textTransform: 'uppercase',
-  },
-  statValue: {
-    fontSize: 17,
-    fontWeight: '600',
-    color: theme.text,
-    marginTop: 4,
-  },
-  activityItem: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    paddingVertical: 10,
-    borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: theme.border,
-  },
-  activityDot: {
-    width: 8,
-    height: 8,
-    borderRadius: 4,
-    backgroundColor: theme.accent,
-    marginRight: 12,
-  },
-  activityInfo: {
-    flex: 1,
-  },
-  activityType: {
-    fontSize: 15,
-    fontWeight: '500',
-    color: theme.text,
-  },
-  activityDate: {
-    fontSize: 13,
-    color: theme.textMuted,
-    marginTop: 2,
-  },
-  activityAmount: {
-    fontSize: 15,
-    fontWeight: '600',
-    color: theme.text,
-  },
-  actionRow: {
-    flexDirection: 'row',
-    paddingHorizontal: 16,
-    marginTop: 16,
-    gap: 10,
-  },
-  actionButton: {
-    flex: 1,
-    height: 52,
-    borderRadius: theme.radius.pill,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  actionButtonText: {
-    fontSize: 16,
-    fontWeight: '700',
-    color: '#FFFFFF',
-  },
-  sendButton: {
-    backgroundColor: theme.surfaceMuted,
-  },
-  sendButtonText: {
-    color: theme.text,
+    fontFamily: theme.font,
+    fontSize: 14,
+    lineHeight: 23,
+    color: theme.secondary,
+    marginTop: 12,
   },
 });

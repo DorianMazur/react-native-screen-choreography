@@ -1,10 +1,9 @@
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { SharedElement } from '../runtime';
 import type { Token } from './data';
-import { theme } from '../theme';
+import { formatMoney, walletTheme as theme } from './walletTheme';
 import { TokenLogo } from './TokenLogo';
 import {
-  tokenCardTransition,
   tokenIconTransition,
   tokenTextTransition,
   tokenValueTransition,
@@ -19,13 +18,13 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
   const isPositiveChange = token.change24h >= 0;
 
   return (
-    <Pressable onPress={onPress} style={styles.pressable}>
-      <SharedElement
-        id={`token.${token.id}.card`}
-        groupId={`token.${token.id}`}
-        transition={tokenCardTransition}
-        style={styles.rowContainer}
-      >
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Open ${token.name}`}
+      onPress={onPress}
+      style={({ pressed }) => [styles.pressable, pressed && styles.pressed]}
+    >
+      <View style={styles.rowContainer}>
         <View style={styles.row}>
           <SharedElement
             id={`token.${token.id}.icon`}
@@ -59,12 +58,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
               groupId={`token.${token.id}`}
               transition={tokenValueTransition}
             >
-              <Text style={styles.value}>
-                $
-                {token.price.toLocaleString('en-US', {
-                  minimumFractionDigits: 2,
-                })}
-              </Text>
+              <Text style={styles.value}>{formatMoney(token.price)}</Text>
             </SharedElement>
 
             <SharedElement
@@ -86,67 +80,68 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             </SharedElement>
           </View>
         </View>
-      </SharedElement>
+      </View>
     </Pressable>
   );
 }
 
 const styles = StyleSheet.create({
   pressable: {
-    marginHorizontal: 16,
-    marginVertical: 6,
+    marginHorizontal: 24,
+    borderBottomWidth: StyleSheet.hairlineWidth,
+    borderBottomColor: theme.border,
+  },
+  pressed: {
+    opacity: 0.65,
   },
   rowContainer: {
-    borderRadius: theme.radius.md,
-    backgroundColor: theme.surface,
+    borderRadius: 0,
+    backgroundColor: theme.background,
   },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    padding: 16,
-  },
-  iconContainer: {
-    width: 44,
-    height: 44,
-    borderRadius: 22,
-    justifyContent: 'center',
-    alignItems: 'center',
-  },
-  iconText: {
-    fontSize: 20,
-    color: 'white',
+    paddingVertical: 18,
+    minHeight: 84,
   },
   info: {
     flex: 1,
-    marginLeft: 12,
+    marginHorizontal: 12,
+    alignItems: 'flex-start',
+    gap: 4,
   },
   name: {
     fontSize: 16,
-    fontWeight: '700',
+    lineHeight: 22.4,
+    fontFamily: theme.font,
+    fontWeight: '600',
     color: theme.text,
   },
   symbol: {
     fontSize: 13,
-    color: theme.textMuted,
-    marginTop: 2,
+    lineHeight: 18,
+    color: theme.secondary,
+    fontFamily: theme.font,
   },
   valueContainer: {
     alignItems: 'flex-end',
+    gap: 6,
   },
   value: {
-    fontSize: 16,
-    fontWeight: '700',
+    fontSize: 15,
+    lineHeight: 21,
+    fontFamily: theme.numbers,
     color: theme.text,
   },
   change: {
     fontSize: 13,
-    fontWeight: '600',
-    marginTop: 2,
+    lineHeight: 18,
+    fontFamily: theme.numbers,
   },
   changePositive: {
-    color: theme.success,
+    color: theme.positive,
   },
   changeNegative: {
-    color: theme.danger,
+    color: theme.negative,
   },
 });

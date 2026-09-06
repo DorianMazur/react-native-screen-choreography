@@ -1,5 +1,12 @@
-import React from 'react';
-import { View, Text, StyleSheet, Pressable } from 'react-native';
+import React, { useEffect, useState } from 'react';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Image,
+  ScrollView,
+  StatusBar,
+} from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
@@ -8,6 +15,7 @@ import Animated, {
   Easing,
   useSharedValue,
   interpolate,
+  cancelAnimation,
 } from 'react-native-reanimated';
 import {
   SafeAreaView,
@@ -20,25 +28,48 @@ import { TRACKS } from './data';
 import {
   musicBackgroundTransition,
   musicContentTransition,
+  musicHeaderTransition,
   musicItemTransition,
 } from './musicTransitions';
 import { TrackItem } from './TrackItem';
+import { IconButton, ScreenHeader } from '../AppChrome';
 
 const WAVE_BARS = 32;
+const waveHeights = Array.from({ length: WAVE_BARS }, (_, index) =>
+  Math.max(
+    0.18,
+    Math.min(
+      1,
+      0.55 +
+        Math.sin(index * 0.6) * 0.4 +
+        Math.cos(index * 0.31) * 0.3 +
+        Math.sin(index * 1.13) * 0.18
+    )
+  )
+);
+const formatTime = (seconds: number) =>
+  `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
 
 export function NowPlayingScreen({
   trackId = TRACKS[0]!.id,
 }: {
   trackId?: string;
 }) {
-  const track = TRACKS.find((t) => t.id === trackId) ?? TRACKS[0]!;
+  const track = TRACKS.find((item) => item.id === trackId) ?? TRACKS[0]!;
+  const [playing, setPlaying] = useState(false);
+  const [elapsed, setElapsed] = useState(0);
+  const [minutes = 0, seconds = 0] = track.duration.split(':').map(Number);
+  const duration = minutes * 60 + seconds;
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyProgress();
   const groupId = `track.${track.id}`;
 
   const playhead = useSharedValue(0);
-  React.useEffect(() => {
-    playhead.value = 0;
+  useEffect(() => {
+    if (!playing) {
+      cancelAnimation(playhead);
+      return;
+    }
     playhead.value = withRepeat(
       withTiming(1, {
         duration: 4500,
@@ -47,11 +78,26 @@ export function NowPlayingScreen({
       -1,
       true
     );
-  }, [playhead, track.id]);
+    return () => cancelAnimation(playhead);
+  }, [playhead, playing]);
+
+  useEffect(() => {
+    if (!playing) return;
+    const interval = setInterval(
+      () => setElapsed((value) => Math.min(duration, value + 1)),
+      1000
+    );
+    return () => clearInterval(interval);
+  }, [duration, playing]);
+
+  useEffect(() => {
+    if (elapsed === duration) setPlaying(false);
+  }, [elapsed, duration]);
 
   return (
     <>
       <View style={styles.root} onTouchStart={settleTransition}>
+        <StatusBar barStyle="light-content" />
         <SharedElement
           id="background"
           groupId={groupId}
@@ -62,6 +108,17 @@ export function NowPlayingScreen({
         </SharedElement>
 
         <SafeAreaView style={styles.foreground} pointerEvents="box-none">
+          <SharedElement
+            id="header"
+            groupId={groupId}
+            transition={musicHeaderTransition}
+          >
+            <ScreenHeader
+              title="Now playing"
+              onBack={() => goBack()}
+              backLabel="Back to music"
+            />
+          </SharedElement>
           <View style={styles.selectedItemSlot}>
             <SharedElement
               id="item"
@@ -79,21 +136,48 @@ export function NowPlayingScreen({
             transition={musicContentTransition}
             style={styles.revealContent}
           >
-            <View style={styles.revealContentInner}>
+            <ScrollView
+              contentContainerStyle={styles.revealContentInner}
+              showsVerticalScrollIndicator={false}
+            >
               <View style={styles.content}>
-                <Text style={styles.eyebrow}>Now playing</Text>
+                <Image
+                  source={track.artwork}
+                  resizeMode="cover"
+                  style={styles.cover}
+                  accessibilityLabel={`${track.album} artwork`}
+                />
+                <Text style={styles.eyebrow}>DEMO SESSION</Text>
                 <Text style={styles.album}>{track.album}</Text>
-                <Waveform accent={track.accent} playhead={playhead} />
+                <Waveform accent={theme.accent} playhead={playhead} />
                 <View style={styles.timeRow}>
-                  <Text style={styles.timeText}>1:42</Text>
+                  <Text style={styles.timeText}>{formatTime(elapsed)}</Text>
                   <Text style={styles.timeText}>{track.duration}</Text>
                 </View>
               </View>
 
               <View style={styles.controls}>
-                <ControlButton glyph="⤆" />
-                <PlayButton accent={track.accent} />
-                <ControlButton glyph="⤻" />
+                <IconButton
+                  icon="previous"
+                  label="Rewind 15 seconds"
+                  onPress={() => setElapsed((value) => Math.max(0, value - 15))}
+                />
+                <IconButton
+                  primary
+                  icon={playing ? 'pause' : 'play'}
+                  label={playing ? 'Pause preview' : 'Play preview'}
+                  onPress={() => {
+                    if (elapsed === duration) setElapsed(0);
+                    setPlaying((value) => !value);
+                  }}
+                />
+                <IconButton
+                  icon="next"
+                  label="Forward 15 seconds"
+                  onPress={() =>
+                    setElapsed((value) => Math.min(duration, value + 15))
+                  }
+                />
               </View>
 
               <View style={styles.footer}>
@@ -102,11 +186,8 @@ export function NowPlayingScreen({
                   <MetaPill label="Year" value={String(track.releaseYear)} />
                   <MetaPill label="Quality" value="Lossless" />
                 </View>
-                <Pressable style={styles.closeButton} onPress={() => goBack()}>
-                  <Text style={styles.closeLabel}>Close player</Text>
-                </Pressable>
               </View>
-            </View>
+            </ScrollView>
           </SharedElement>
         </SafeAreaView>
       </View>
@@ -121,24 +202,14 @@ function Waveform({
   accent: string;
   playhead: { value: number };
 }) {
-  const heights = React.useMemo(
-    () =>
-      Array.from({ length: WAVE_BARS }, (_, i) => {
-        const a = Math.sin(i * 0.6) * 0.4;
-        const b = Math.cos(i * 0.31) * 0.3;
-        const c = Math.sin(i * 1.13) * 0.18;
-        return Math.max(0.18, Math.min(1, 0.55 + a + b + c));
-      }),
-    []
-  );
   return (
     <View style={styles.wave}>
-      {heights.map((h, i) => (
+      {waveHeights.map((height, index) => (
         <Bar
-          key={i}
-          index={i}
+          key={index}
+          index={index}
           totalBars={WAVE_BARS}
-          h={h}
+          height={height}
           accent={accent}
           playhead={playhead}
         />
@@ -150,44 +221,28 @@ function Waveform({
 function Bar({
   index,
   totalBars,
-  h,
+  height,
   accent,
   playhead,
 }: {
   index: number;
   totalBars: number;
-  h: number;
+  height: number;
   accent: string;
   playhead: { value: number };
 }) {
-  const t = useDerivedValue(() => playhead.value);
+  const waveProgress = useDerivedValue(() => playhead.value);
   const animated = useAnimatedStyle(() => {
     const phase = (index / totalBars) * 2 - 1;
-    const wobble = 0.85 + 0.15 * Math.sin(phase * 6 + t.value * 8);
-    const passed = index / totalBars <= t.value;
-    const heightPx = interpolate(wobble, [0.7, 1], [h * 36, h * 56]);
+    const wobble = 0.85 + 0.15 * Math.sin(phase * 6 + waveProgress.value * 8);
+    const passed = index / totalBars <= waveProgress.value;
+    const heightPx = interpolate(wobble, [0.7, 1], [height * 36, height * 56]);
     return {
       height: heightPx,
       backgroundColor: passed ? accent : 'rgba(255,255,255,0.18)',
     };
   });
   return <Animated.View style={[styles.waveBar, animated]} />;
-}
-
-function ControlButton({ glyph }: { glyph: string }) {
-  return (
-    <Pressable style={styles.controlButton}>
-      <Text style={styles.controlGlyph}>{glyph}</Text>
-    </Pressable>
-  );
-}
-
-function PlayButton({ accent }: { accent: string }) {
-  return (
-    <Pressable style={[styles.playButton, { backgroundColor: accent }]}>
-      <Text style={styles.playGlyph}>▶</Text>
-    </Pressable>
-  );
 }
 
 function MetaPill({ label, value }: { label: string; value: string }) {
@@ -206,7 +261,7 @@ const styles = StyleSheet.create({
   },
   screenBackground: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: theme.surface,
+    backgroundColor: theme.bg,
     borderRadius: 0,
   },
   fill: {
@@ -227,24 +282,34 @@ const styles = StyleSheet.create({
     flex: 1,
   },
   revealContentInner: {
-    flex: 1,
+    flexGrow: 1,
+    paddingBottom: 24,
   },
   content: {
-    paddingHorizontal: 28,
-    paddingTop: 44,
+    paddingHorizontal: 24,
+    paddingTop: 20,
+  },
+  cover: {
+    width: '100%',
+    aspectRatio: 1.6,
+    maxHeight: 260,
+    borderRadius: 8,
+    marginBottom: 24,
   },
   eyebrow: {
+    fontFamily: theme.font,
     color: theme.music.accent,
-    fontSize: 12,
-    fontWeight: '700',
+    fontSize: 10,
+    fontWeight: '600',
     textTransform: 'uppercase',
   },
   album: {
+    fontFamily: theme.font,
     color: theme.text,
-    fontSize: 28,
-    fontWeight: '700',
+    fontSize: 26,
+    fontWeight: '600',
     marginTop: 6,
-    marginBottom: 28,
+    marginBottom: 18,
   },
   wave: {
     flexDirection: 'row',
@@ -262,7 +327,8 @@ const styles = StyleSheet.create({
     marginTop: 6,
   },
   timeText: {
-    color: theme.textMuted,
+    fontFamily: theme.numbers,
+    color: theme.textSecondary,
     fontSize: 12,
     fontVariant: ['tabular-nums'],
   },
@@ -271,74 +337,34 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     gap: 28,
-    paddingTop: 28,
-  },
-  controlButton: {
-    width: 56,
-    height: 56,
-    borderRadius: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: 'rgba(255,255,255,0.08)',
-  },
-  controlGlyph: {
-    fontSize: 22,
-    color: theme.text,
-  },
-  playButton: {
-    width: 76,
-    height: 76,
-    borderRadius: 38,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  playGlyph: {
-    fontSize: 26,
-    color: '#0A0A0F',
-    fontWeight: '700',
-    marginLeft: 4,
+    paddingVertical: 24,
   },
   metaRow: {
     flexDirection: 'row',
     gap: 10,
   },
   footer: {
-    marginTop: 'auto',
-    paddingHorizontal: 28,
-    paddingBottom: 8,
-    gap: 16,
+    marginHorizontal: 24,
+    paddingTop: 20,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
   },
   metaPill: {
     flex: 1,
-    backgroundColor: 'rgba(255,255,255,0.06)',
-    borderRadius: theme.radius.md,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingBottom: 12,
   },
   metaLabel: {
-    color: theme.textMuted,
-    fontSize: 11,
+    fontFamily: theme.font,
+    color: theme.textSecondary,
+    fontSize: 10,
     fontWeight: '500',
-    letterSpacing: 0.6,
+    letterSpacing: 0,
     textTransform: 'uppercase',
   },
   metaValue: {
+    fontFamily: theme.numbers,
     color: theme.text,
-    fontSize: 16,
-    fontWeight: '600',
+    fontSize: 14,
     marginTop: 4,
-  },
-  closeButton: {
-    height: 48,
-    alignItems: 'center',
-    justifyContent: 'center',
-    borderWidth: 1,
-    borderColor: theme.borderStrong,
-    borderRadius: theme.radius.md,
-  },
-  closeLabel: {
-    color: theme.textSecondary,
-    fontSize: 15,
-    fontWeight: '600',
   },
 });

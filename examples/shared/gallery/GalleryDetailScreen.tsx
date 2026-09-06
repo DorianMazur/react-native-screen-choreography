@@ -1,11 +1,14 @@
-import React from 'react';
+import React, { useState } from 'react';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
   Pressable,
-  Dimensions,
+  Image,
+  Modal,
+  Share,
+  StatusBar,
 } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
@@ -16,7 +19,7 @@ import {
   useStaggeredReveal,
 } from '../runtime';
 import { SafeAreaView } from '../runtime';
-import { GradientBlock } from '../GradientBlock';
+import { AppIcon, IconButton, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS } from './data';
 import {
@@ -27,14 +30,13 @@ import {
   galleryGlyphTransition,
 } from './galleryTransitions';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
-
 export function GalleryDetailScreen({
   photoId = 'aurora',
 }: {
   photoId?: string;
 }) {
-  const photo = PHOTOS.find((p) => p.id === photoId) ?? PHOTOS[0]!;
+  const photo = PHOTOS.find((item) => item.id === photoId) ?? PHOTOS[0]!;
+  const [lightboxVisible, setLightboxVisible] = useState(false);
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyProgress();
   const showSections = useLatchedReveal({ resetKey: photo.id });
@@ -45,7 +47,13 @@ export function GalleryDetailScreen({
 
   return (
     <>
-      <SafeAreaView style={styles.container} edges={['bottom']}>
+      <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <ScreenHeader
+          title="Field notes"
+          onBack={() => goBack()}
+          backLabel="Back to gallery"
+        />
         <ScrollView
           onScrollBeginDrag={settleTransition}
           contentContainerStyle={styles.scroll}
@@ -64,9 +72,9 @@ export function GalleryDetailScreen({
                 transition={galleryPhotoTransition}
                 style={StyleSheet.absoluteFill}
               >
-                <GradientBlock
-                  from={photo.gradientFrom}
-                  to={photo.gradientTo}
+                <Image
+                  source={photo.image}
+                  resizeMode="cover"
                   style={styles.heroPhoto}
                 />
                 <View style={styles.heroScrim} pointerEvents="none" />
@@ -80,18 +88,10 @@ export function GalleryDetailScreen({
                   style={styles.heroGlyphBox}
                 >
                   <View style={styles.glyphCenter}>
-                    <Text style={styles.heroGlyph}>{photo.glyph}</Text>
+                    <AppIcon name="camera" size={21} />
                   </View>
                 </SharedElement>
               </View>
-
-              <Pressable
-                onPress={() => goBack()}
-                style={styles.closeButton}
-                hitSlop={12}
-              >
-                <Text style={styles.closeText}>×</Text>
-              </Pressable>
 
               <View style={styles.heroMeta}>
                 <SharedElement
@@ -131,16 +131,47 @@ export function GalleryDetailScreen({
               <Animated.View
                 style={[styles.section, styles.actionRow, actionsStyle]}
               >
-                <Pressable style={styles.primaryAction}>
-                  <Text style={styles.primaryActionText}>Open in Lightbox</Text>
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel="View full photo"
+                  onPress={() => setLightboxVisible(true)}
+                  style={styles.primaryAction}
+                >
+                  <AppIcon name="expand" size={18} color={theme.ink} />
+                  <Text style={styles.primaryActionText}>View photo</Text>
                 </Pressable>
-                <Pressable style={styles.secondaryAction}>
-                  <Text style={styles.secondaryActionText}>Share</Text>
-                </Pressable>
+                <IconButton
+                  icon="share"
+                  label="Share photo notes"
+                  onPress={() => {
+                    void Share.share({
+                      message: `${photo.title} - ${photo.location}\n\n${photo.description}`,
+                    }).catch(() => {});
+                  }}
+                />
               </Animated.View>
             </>
           ) : null}
         </ScrollView>
+        <Modal
+          visible={lightboxVisible}
+          animationType="fade"
+          onRequestClose={() => setLightboxVisible(false)}
+        >
+          <SafeAreaView style={styles.container}>
+            <ScreenHeader
+              title={photo.title}
+              onBack={() => setLightboxVisible(false)}
+              backLabel="Close full photo"
+            />
+            <Image
+              source={photo.image}
+              accessibilityLabel={photo.title}
+              resizeMode="contain"
+              style={styles.lightbox}
+            />
+          </SafeAreaView>
+        </Modal>
       </SafeAreaView>
     </>
   );
@@ -164,8 +195,8 @@ const styles = StyleSheet.create({
     paddingBottom: 40,
   },
   frame: {
-    width: SCREEN_WIDTH,
-    height: SCREEN_WIDTH * 1.2,
+    width: '100%',
+    aspectRatio: 1,
     overflow: 'hidden',
   },
   frameInner: {
@@ -174,35 +205,24 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   heroPhoto: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   heroGlyphWrap: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute',
+    top: 18,
+    right: 18,
   },
-  // Square box so the source/target SharedElement aspect ratios match and
-  // the stretch renderer scales the glyph uniformly. Sized to match the
-  // 120pt glyph's natural footprint.
   heroGlyphBox: {
-    width: 160,
-    height: 160,
+    width: 42,
+    height: 42,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // The overlay re-renders SharedElement children without the wrapping
-  // box's flex layout, so we recentre the glyph inside its own bounds.
   glyphCenter: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  heroGlyph: {
-    fontSize: 120,
-    color: 'rgba(255,255,255,0.75)',
-    fontWeight: '200',
-    textAlign: 'center',
-    includeFontPadding: false,
   },
   heroScrim: {
     position: 'absolute',
@@ -213,23 +233,7 @@ const styles = StyleSheet.create({
     experimental_backgroundImage:
       'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.65) 100%)',
   },
-  closeButton: {
-    position: 'absolute',
-    top: 56,
-    right: 16,
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: 'rgba(0,0,0,0.4)',
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  closeText: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: '300',
-    marginTop: -2,
-  },
+  lightbox: { flex: 1, width: '100%' },
   heroMeta: {
     position: 'absolute',
     left: 24,
@@ -237,29 +241,32 @@ const styles = StyleSheet.create({
     bottom: 24,
   },
   heroTitle: {
+    fontFamily: theme.font,
     color: theme.text,
     fontSize: 32,
-    fontWeight: '700',
+    fontWeight: '600',
   },
   heroLocation: {
+    fontFamily: theme.font,
     color: theme.text,
     fontSize: 15,
     marginTop: 4,
   },
   section: {
-    marginHorizontal: 16,
-    marginTop: 16,
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius.lg,
-    padding: 20,
+    marginHorizontal: 24,
+    paddingVertical: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
   sectionTitle: {
+    fontFamily: theme.font,
     color: theme.text,
     fontSize: 16,
     fontWeight: '600',
     marginBottom: 8,
   },
   body: {
+    fontFamily: theme.font,
     color: theme.textSecondary,
     fontSize: 15,
     lineHeight: 22,
@@ -270,19 +277,18 @@ const styles = StyleSheet.create({
   },
   exifChip: {
     flex: 1,
-    backgroundColor: theme.surfaceMuted,
-    borderRadius: theme.radius.md,
-    paddingVertical: 12,
-    paddingHorizontal: 14,
+    paddingTop: 12,
   },
   exifLabel: {
-    color: theme.textMuted,
-    fontSize: 11,
+    fontFamily: theme.font,
+    color: theme.textSecondary,
+    fontSize: 10,
     fontWeight: '500',
-    letterSpacing: 0.5,
+    letterSpacing: 0,
     textTransform: 'uppercase',
   },
   exifValue: {
+    fontFamily: theme.numbers,
     color: theme.text,
     fontSize: 16,
     fontWeight: '600',
@@ -290,29 +296,22 @@ const styles = StyleSheet.create({
   },
   actionRow: {
     flexDirection: 'row',
+    alignItems: 'center',
     gap: 10,
   },
   primaryAction: {
     flex: 1,
-    backgroundColor: theme.gallery.accent,
-    borderRadius: theme.radius.pill,
+    flexDirection: 'row',
+    justifyContent: 'center',
+    gap: 10,
+    backgroundColor: theme.accent,
+    borderRadius: theme.radius.sm,
     paddingVertical: 14,
     alignItems: 'center',
   },
   primaryActionText: {
-    color: '#1A0A0F',
-    fontWeight: '700',
-    fontSize: 15,
-  },
-  secondaryAction: {
-    flex: 1,
-    backgroundColor: theme.surfaceMuted,
-    borderRadius: theme.radius.pill,
-    paddingVertical: 14,
-    alignItems: 'center',
-  },
-  secondaryActionText: {
-    color: theme.text,
+    fontFamily: theme.font,
+    color: theme.ink,
     fontWeight: '600',
     fontSize: 15,
   },

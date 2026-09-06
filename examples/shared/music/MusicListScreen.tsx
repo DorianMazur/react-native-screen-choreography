@@ -1,11 +1,20 @@
 import React from 'react';
-import { View, Text, StyleSheet, FlatList, Pressable } from 'react-native';
+import {
+  View,
+  Text,
+  StyleSheet,
+  FlatList,
+  Pressable,
+  StatusBar,
+} from 'react-native';
+import { ScreenHeader } from '../AppChrome';
 import { SharedElement, SafeAreaView, useExampleNavigation } from '../runtime';
 import { theme } from '../theme';
 import { TRACKS, type Track } from './data';
 import {
   musicBackgroundTransition,
   musicContentTransition,
+  musicHeaderTransition,
   musicItemTransition,
 } from './musicTransitions';
 import { TrackItem } from './TrackItem';
@@ -16,17 +25,30 @@ export function MusicListScreen() {
   return (
     <>
       <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <ScreenHeader title="Music" onBack={() => goBack()} />
         <View style={styles.header}>
-          <Pressable onPress={() => goBack()} hitSlop={12}>
-            <Text style={styles.back}>← Back</Text>
-          </Pressable>
-          <Text style={styles.title}>For You</Text>
-          <Text style={styles.subtitle}>Quiet picks for late evening</Text>
+          <Text style={styles.eyebrow}>YOUR DAILY ROTATION</Text>
+          <Text accessibilityRole="header" style={styles.title}>
+            On repeat
+          </Text>
+          <View style={styles.summary}>
+            <Text style={styles.subtitle}>Quiet picks for late evening</Text>
+            <Text style={styles.count}>{TRACKS.length} TRACKS</Text>
+          </View>
         </View>
 
         <FlatList
           data={TRACKS}
-          keyExtractor={(t) => t.id}
+          keyExtractor={(track) => track.id}
+          ListHeaderComponent={
+            <View style={styles.sectionHeader}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>
+                Library
+              </Text>
+              <Text style={styles.eyebrow}>DURATION</Text>
+            </View>
+          }
           contentContainerStyle={styles.list}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
@@ -55,7 +77,15 @@ function Row({ track, onPress }: { track: Track; onPress: () => void }) {
   const groupId = `track.${track.id}`;
 
   return (
-    <Pressable onPress={onPress} style={styles.rowPressable}>
+    <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`Play ${track.title} by ${track.artist}`}
+      onPress={onPress}
+      style={({ pressed }) => [
+        styles.rowPressable,
+        pressed && { opacity: 0.7 },
+      ]}
+    >
       <View style={styles.row}>
         <SharedElement
           id="background"
@@ -64,6 +94,15 @@ function Row({ track, onPress }: { track: Track; onPress: () => void }) {
           style={styles.rowBackground}
         >
           <View style={styles.fill} />
+        </SharedElement>
+
+        <SharedElement
+          id="header"
+          groupId={groupId}
+          transition={musicHeaderTransition}
+          style={styles.headerAnchor}
+        >
+          <View />
         </SharedElement>
 
         <SharedElement
@@ -94,34 +133,60 @@ const styles = StyleSheet.create({
     backgroundColor: theme.bg,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
-  back: {
+  eyebrow: {
+    fontFamily: theme.font,
+    fontSize: 10,
+    fontWeight: '600',
     color: theme.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
-    marginBottom: 12,
+  },
+  summary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  count: { fontFamily: theme.numbers, fontSize: 10, color: theme.music.accent },
+  sectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    paddingTop: 24,
+    paddingBottom: 12,
+    paddingHorizontal: 8,
+  },
+  sectionTitle: {
+    fontFamily: theme.font,
+    fontSize: 21,
+    fontWeight: '600',
+    color: theme.text,
   },
   title: {
+    fontFamily: theme.font,
     color: theme.text,
-    fontSize: 32,
-    fontWeight: '700',
-    letterSpacing: -0.4,
+    fontSize: 30,
+    fontWeight: '600',
+    marginTop: 10,
   },
   subtitle: {
-    color: theme.textMuted,
-    fontSize: 14,
-    marginTop: 4,
+    fontFamily: theme.font,
+    color: theme.textSecondary,
+    fontSize: 12,
   },
   list: {
-    paddingHorizontal: 12,
-    paddingBottom: 40,
-    gap: 6,
+    paddingHorizontal: 16,
+    paddingBottom: 32,
   },
   rowPressable: {
-    paddingHorizontal: 4,
+    paddingVertical: 8,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
   row: {
     height: 76,
@@ -129,12 +194,19 @@ const styles = StyleSheet.create({
   },
   rowBackground: {
     ...StyleSheet.absoluteFill,
-    backgroundColor: theme.surface,
+    backgroundColor: theme.surfaceMuted,
     borderRadius: theme.radius.md,
     overflow: 'hidden',
   },
   itemLayer: {
     ...StyleSheet.absoluteFill,
+  },
+  headerAnchor: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 1,
   },
   contentAnchor: {
     position: 'absolute',

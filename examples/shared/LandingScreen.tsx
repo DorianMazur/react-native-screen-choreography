@@ -1,207 +1,200 @@
 import React from 'react';
-import { View, Text, StyleSheet, Pressable, ScrollView } from 'react-native';
-import { GradientBlock } from './GradientBlock';
+import {
+  View,
+  Text,
+  StyleSheet,
+  Pressable,
+  ScrollView,
+  StatusBar,
+} from 'react-native';
+import { AppIcon } from './AppChrome';
 import { SafeAreaView, useExampleNavigation } from './runtime';
 import { theme } from './theme';
 
-interface DemoTileProps {
-  label: string;
-  title: string;
-  subtitle: string;
-  from: string;
-  to: string;
-  onPress: () => void;
-}
-
-function DemoTile({
-  label,
-  title,
-  subtitle,
-  from,
-  to,
-  onPress,
-}: DemoTileProps) {
-  return (
-    <Pressable style={styles.tile} onPress={onPress}>
-      <GradientBlock from={from} to={to} style={styles.tileBg}>
-        <View style={styles.tileContent}>
-          <View style={styles.tileTop}>
-            <Text style={styles.tileLabel}>{label}</Text>
-          </View>
-          <View>
-            <Text style={styles.tileTitle}>{title}</Text>
-            <Text style={styles.tileSubtitle}>{subtitle}</Text>
-          </View>
-        </View>
-        <View style={styles.tileShade} pointerEvents="none" />
-      </GradientBlock>
-    </Pressable>
-  );
-}
+const demos = [
+  {
+    route: 'GalleryList',
+    title: 'Gallery',
+    subtitle: 'A field journal',
+    icon: 'camera',
+    color: theme.gallery.accent,
+  },
+  {
+    route: 'MusicList',
+    title: 'Music',
+    subtitle: 'Your daily rotation',
+    icon: 'headphones',
+    color: theme.music.accent,
+  },
+  {
+    route: 'TokenList',
+    title: 'Wallet',
+    subtitle: 'Demo portfolio',
+    icon: 'wallet',
+    color: theme.wallet.accent,
+  },
+  {
+    route: 'LivePlayerList',
+    title: 'Live player',
+    subtitle: 'The listening room',
+    icon: 'play',
+    color: theme.warn,
+  },
+] as const;
 
 export function LandingScreen() {
   const { open } = useExampleNavigation();
 
   return (
-    <View style={styles.root}>
-      <SafeAreaView style={styles.safe}>
-        <ScrollView
-          contentContainerStyle={styles.scroll}
-          showsVerticalScrollIndicator={false}
+    <SafeAreaView style={styles.screen}>
+      <StatusBar barStyle="light-content" />
+      <ScrollView
+        contentContainerStyle={styles.scroll}
+        showsVerticalScrollIndicator={false}
+      >
+        <View
+          accessible
+          accessibilityRole="header"
+          accessibilityLabel="react-native-screen-choreography"
+          style={styles.header}
         >
-          <View style={styles.header}>
-            <Text style={styles.eyebrow}>react-native-screen-choreography</Text>
-            <Text style={styles.title}>Choreographed{'\n'}transitions.</Text>
-            <Text style={styles.lede}>
-              Multi-element shared transitions for React Native, with
-              progress-driven companion motion and a native overlay above the
-              navigation stack.
+          <Text accessible={false} style={styles.packagePrefix}>
+            react-native
+          </Text>
+          <Text
+            accessible={false}
+            style={styles.title}
+            numberOfLines={1}
+            adjustsFontSizeToFit
+          >
+            screen-choreography
+          </Text>
+        </View>
+        <View style={styles.sectionHeader}>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>
+            Explore
+          </Text>
+          <Text style={styles.eyebrow}>COLLECTION</Text>
+        </View>
+        {demos.map((demo, index) => (
+          <Pressable
+            key={demo.route}
+            accessibilityRole="button"
+            accessibilityLabel={demo.title}
+            onPress={() => open(demo.route)}
+            style={({ pressed }) => [styles.row, pressed && styles.pressed]}
+          >
+            <View style={styles.icon}>
+              <AppIcon name={demo.icon} color={demo.color} size={28} />
+            </View>
+            <View style={styles.rowContent}>
+              <Text style={styles.rowTitle}>{demo.title}</Text>
+              <Text style={styles.secondary}>{demo.subtitle}</Text>
+            </View>
+            <Text style={styles.index}>
+              {String(index + 1).padStart(2, '0')}
             </Text>
-          </View>
-
-          <View style={styles.tiles}>
-            <DemoTile
-              label="01 · Gallery"
-              title="Photo grid → hero"
-              subtitle="Aspect-preserved morph, layered reveal."
-              from="#3A1052"
-              to="#FF8FB1"
-              onPress={() => open('GalleryList')}
-            />
-            <DemoTile
-              label="02 · Music"
-              title="Track row → Now Playing"
-              subtitle="Artwork, title, ambient backdrop, waveform."
-              from="#0F2B5B"
-              to="#3DDC97"
-              onPress={() => open('MusicList')}
-            />
-            <DemoTile
-              label="03 · Wallet"
-              title="Token list → detail"
-              subtitle="Card morph, cross-fading text, staggered sections."
-              from="#1B1B3A"
-              to="#7C5CFF"
-              onPress={() => open('TokenList')}
-            />
-            <DemoTile
-              label="04 · Live player"
-              title="One player, two screens"
-              subtitle="Playback state survives native reparenting."
-              from="#17201C"
-              to="#D8E6A3"
-              onPress={() => open('LivePlayerList')}
-            />
-          </View>
-
-          <View style={styles.footer}>
-            <Text style={styles.footerText}>
-              Each demo uses one ChoreographyProvider, one progress value, and a
-              different visual recipe.
-            </Text>
-          </View>
-        </ScrollView>
-      </SafeAreaView>
-    </View>
+            <AppIcon name="arrow" size={18} color={theme.textSecondary} />
+          </Pressable>
+        ))}
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  root: {
-    flex: 1,
-    backgroundColor: theme.bg,
-  },
-  safe: {
-    flex: 1,
-  },
-  scroll: {
-    paddingBottom: 40,
-  },
+  screen: { flex: 1, backgroundColor: theme.bg },
+  scroll: { paddingBottom: 32 },
   header: {
     paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 28,
     paddingBottom: 28,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
   eyebrow: {
-    color: theme.textMuted,
-    fontSize: 11,
+    fontFamily: theme.font,
+    fontSize: 10,
     fontWeight: '600',
-    letterSpacing: 1.4,
-    textTransform: 'uppercase',
-  },
-  title: {
-    color: theme.text,
-    fontSize: 44,
-    fontWeight: '700',
-    letterSpacing: -0.8,
-    lineHeight: 48,
-    marginTop: 10,
-  },
-  lede: {
     color: theme.textSecondary,
-    fontSize: 15,
-    lineHeight: 22,
-    marginTop: 14,
-    maxWidth: 380,
+    letterSpacing: 0,
   },
-  tiles: {
-    paddingHorizontal: 16,
-    gap: 14,
-  },
-  tile: {
-    height: 160,
-    borderRadius: theme.radius.xl,
-    overflow: 'hidden',
-  },
-  tileBg: {
-    flex: 1,
-    borderRadius: theme.radius.xl,
-  },
-  tileContent: {
-    flex: 1,
-    padding: 22,
-    justifyContent: 'space-between',
-  },
-  tileTop: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'flex-start',
-  },
-  tileLabel: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 11,
-    fontWeight: '600',
-    letterSpacing: 1.2,
-    textTransform: 'uppercase',
-  },
-  tileGlyph: {
-    color: 'rgba(255,255,255,0.85)',
-    fontSize: 28,
-    fontWeight: '300',
-  },
-  tileTitle: {
-    color: 'white',
-    fontSize: 22,
-    fontWeight: '700',
-    letterSpacing: -0.3,
-  },
-  tileSubtitle: {
-    color: 'rgba(255,255,255,0.78)',
-    fontSize: 13,
-    marginTop: 4,
-  },
-  tileShade: {
-    ...StyleSheet.absoluteFill,
-    backgroundColor: 'rgba(0,0,0,0.10)',
-    borderRadius: theme.radius.xl,
-  },
-  footer: {
-    paddingHorizontal: 28,
-    paddingTop: 32,
-  },
-  footerText: {
-    color: theme.textMuted,
+  packagePrefix: {
+    fontFamily: theme.numbers,
     fontSize: 13,
     lineHeight: 20,
+    color: theme.textSecondary,
   },
+  title: {
+    fontFamily: theme.font,
+    fontSize: 28,
+    lineHeight: 36,
+    fontWeight: '600',
+    color: theme.text,
+    marginTop: 6,
+  },
+  summary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginTop: 18,
+    gap: 12,
+    flexWrap: 'wrap',
+  },
+  secondary: {
+    fontFamily: theme.font,
+    fontSize: 12,
+    color: theme.textSecondary,
+  },
+  count: { fontFamily: theme.numbers, fontSize: 10, color: theme.accent },
+  spectrum: {
+    flexDirection: 'row',
+    gap: 3,
+    height: 5,
+    marginTop: 28,
+    borderRadius: 2,
+    overflow: 'hidden',
+  },
+  segment: { flex: 1 },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 12,
+  },
+  sectionTitle: {
+    fontFamily: theme.font,
+    fontSize: 21,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  row: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    minHeight: 104,
+    marginHorizontal: 24,
+    paddingVertical: 18,
+    gap: 14,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  icon: {
+    width: 52,
+    height: 52,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: theme.surface,
+  },
+  rowContent: { flex: 1, gap: 6 },
+  rowTitle: {
+    fontFamily: theme.font,
+    fontSize: 18,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  index: { fontFamily: theme.numbers, fontSize: 10, color: theme.textMuted },
+  pressed: { opacity: 0.55 },
 });

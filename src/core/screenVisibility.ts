@@ -74,13 +74,10 @@ export function deriveScreenOpacity(
     }
     return 1;
   }
-  const t = direction === 'forward' ? progressValue : 1 - progressValue;
-  if (role === 'target') {
-    return t > 0.001 ? 1 : 0;
-  }
-  if (t <= 0) return 1;
-  if (t >= 0.4) return 0;
-  return 1 - t / 0.4;
+  const isExpandedScreen =
+    direction === 'forward' ? role === 'target' : role === 'source';
+  const expandedOpacity = Math.max(0, Math.min(1, progressValue / 0.4));
+  return isExpandedScreen ? expandedOpacity : 1 - expandedOpacity;
 }
 
 export function shouldBlockInteraction(

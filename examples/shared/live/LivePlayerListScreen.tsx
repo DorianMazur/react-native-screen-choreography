@@ -1,5 +1,14 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  Pressable,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { AppIcon, ScreenHeader } from '../AppChrome';
 import { SafeAreaView, SharedElement, useExampleNavigation } from '../runtime';
 import { theme } from '../theme';
 import {
@@ -14,38 +23,70 @@ export function LivePlayerListScreen() {
   return (
     <>
       <SafeAreaView style={styles.safe}>
-        <View style={styles.header}>
-          <Pressable onPress={() => goBack()} hitSlop={12}>
-            <Text style={styles.back}>← Back</Text>
-          </Pressable>
-          <Text style={styles.kicker}>Persistent playback</Text>
-          <Text style={styles.title}>Listening room</Text>
-        </View>
+        <StatusBar barStyle="light-content" />
+        <ScreenHeader title="Live player" onBack={() => goBack()} />
+        <ScrollView
+          contentContainerStyle={styles.scroll}
+          showsVerticalScrollIndicator={false}
+        >
+          <View style={styles.header}>
+            <Text style={styles.kicker}>THE LIVE SESSIONS</Text>
+            <Text accessibilityRole="header" style={styles.title}>
+              Listening room
+            </Text>
+            <Text style={styles.subtitle}>A little space to slow down</Text>
+          </View>
 
-        <View style={styles.content}>
-          <SharedElement.Live
-            id="player"
-            groupId={LIVE_PLAYER_GROUP}
-            style={styles.player}
-          >
-            <LivePlayerSurface />
-          </SharedElement.Live>
+          <View style={styles.content}>
+            <View style={styles.sectionHeader}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>
+                In session
+              </Text>
+              <Text style={styles.sessionLabel}>DEMO / 01</Text>
+            </View>
+            <SharedElement.Live
+              id="player"
+              groupId={LIVE_PLAYER_GROUP}
+              style={styles.player}
+            >
+              <LivePlayerSurface />
+            </SharedElement.Live>
 
-          <Pressable
-            style={styles.openButton}
-            onPress={() =>
-              navigate(
-                { screen: 'LivePlayerDetail' },
-                {
-                  transitionConfig: { group: LIVE_PLAYER_GROUP },
-                  spring: LIVE_PLAYER_SPRING,
-                }
-              )
-            }
-          >
-            <Text style={styles.openLabel}>Open player</Text>
-          </Pressable>
-        </View>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel="Open player"
+              style={styles.openButton}
+              onPress={() =>
+                navigate(
+                  { screen: 'LivePlayerDetail' },
+                  {
+                    transitionConfig: { group: LIVE_PLAYER_GROUP },
+                    spring: LIVE_PLAYER_SPRING,
+                  }
+                )
+              }
+            >
+              <AppIcon name="expand" color={theme.ink} size={18} />
+              <Text style={styles.openLabel}>Open player</Text>
+            </Pressable>
+            <View style={styles.queue}>
+              <Text accessibilityRole="header" style={styles.sectionTitle}>
+                Up next
+              </Text>
+              <View style={styles.queueRow}>
+                <Image
+                  source={require('../assets/photos/coast.jpg')}
+                  style={styles.queueArt}
+                />
+                <View style={styles.queueCopy}>
+                  <Text style={styles.trackTitle}>Glass Signals</Text>
+                  <Text style={styles.subtitle}>Mara Ell</Text>
+                </View>
+                <Text style={styles.duration}>4:08</Text>
+              </View>
+            </View>
+          </View>
+        </ScrollView>
       </SafeAreaView>
     </>
   );
@@ -54,51 +95,103 @@ export function LivePlayerListScreen() {
 const styles = StyleSheet.create({
   safe: {
     flex: 1,
-    backgroundColor: '#0B100E',
+    backgroundColor: theme.bg,
   },
+  scroll: { paddingBottom: 32 },
   header: {
-    paddingHorizontal: 22,
-    paddingTop: 8,
-  },
-  back: {
-    color: theme.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
-    marginBottom: 28,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
   kicker: {
-    color: '#9BC7AE',
-    fontSize: 11,
-    fontWeight: '700',
+    fontFamily: theme.font,
+    color: theme.textSecondary,
+    fontSize: 10,
+    fontWeight: '600',
     textTransform: 'uppercase',
   },
   title: {
+    fontFamily: theme.font,
     color: theme.text,
-    fontSize: 36,
-    fontWeight: '700',
-    marginTop: 6,
+    fontSize: 30,
+    fontWeight: '600',
+    marginTop: 10,
+  },
+  subtitle: {
+    fontFamily: theme.font,
+    fontSize: 12,
+    color: theme.textSecondary,
+    marginTop: 8,
+  },
+  sectionHeader: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    alignItems: 'center',
+    marginBottom: 18,
+    gap: 8,
+    flexWrap: 'wrap',
+  },
+  sectionTitle: {
+    fontFamily: theme.font,
+    fontSize: 21,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  sessionLabel: {
+    fontFamily: theme.numbers,
+    fontSize: 10,
+    color: theme.accent,
   },
   content: {
-    flex: 1,
-    justifyContent: 'center',
-    paddingHorizontal: 18,
-    paddingBottom: 64,
+    paddingHorizontal: 24,
+    paddingTop: 24,
   },
   player: {
-    height: 132,
+    height: 160,
   },
   openButton: {
-    height: 48,
+    minHeight: 48,
+    flexDirection: 'row',
+    gap: 10,
     alignItems: 'center',
     justifyContent: 'center',
     marginTop: 16,
     borderRadius: theme.radius.sm,
-    borderWidth: 1,
-    borderColor: 'rgba(216,230,163,0.36)',
+    backgroundColor: theme.accent,
   },
   openLabel: {
-    color: '#D8E6A3',
+    fontFamily: theme.font,
+    color: theme.ink,
     fontSize: 14,
-    fontWeight: '700',
+    fontWeight: '600',
+  },
+  queue: {
+    marginTop: 32,
+    paddingTop: 24,
+    borderTopWidth: 1,
+    borderTopColor: theme.border,
+  },
+  queueRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'center',
+    paddingVertical: 20,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
+  },
+  queueArt: { width: 48, height: 48, borderRadius: 8 },
+  queueCopy: { flex: 1 },
+  trackTitle: {
+    fontFamily: theme.font,
+    fontSize: 16,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  duration: {
+    fontFamily: theme.numbers,
+    fontSize: 11,
+    color: theme.textSecondary,
   },
 });

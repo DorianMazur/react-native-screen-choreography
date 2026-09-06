@@ -1,6 +1,9 @@
+import type { ImageSourcePropType } from 'react-native';
+
 export interface Photo {
   id: string;
   title: string;
+  image: ImageSourcePropType;
   location: string;
   glyph: string;
   gradientFrom: string;
@@ -14,6 +17,7 @@ export interface Photo {
 export const PHOTOS: Photo[] = [
   {
     id: 'aurora',
+    image: require('../assets/photos/aurora.jpg'),
     title: 'Aurora',
     location: 'Tromsø, Norway',
     glyph: '✦',
@@ -27,6 +31,7 @@ export const PHOTOS: Photo[] = [
   },
   {
     id: 'dunes',
+    image: require('../assets/photos/dunes.jpg'),
     title: 'Dunes',
     location: 'Erg Chebbi, Morocco',
     glyph: '◐',
@@ -40,6 +45,7 @@ export const PHOTOS: Photo[] = [
   },
   {
     id: 'coast',
+    image: require('../assets/photos/coast.jpg'),
     title: 'Coast',
     location: 'Big Sur, California',
     glyph: '≋',
@@ -53,6 +59,7 @@ export const PHOTOS: Photo[] = [
   },
   {
     id: 'midnight',
+    image: require('../assets/photos/midnight.jpg'),
     title: 'Midnight',
     location: 'Reykjavík, Iceland',
     glyph: '◯',
@@ -66,6 +73,7 @@ export const PHOTOS: Photo[] = [
   },
   {
     id: 'forest',
+    image: require('../assets/photos/forest.jpg'),
     title: 'Forest',
     location: 'Olympic NP, USA',
     glyph: '∆',
@@ -79,6 +87,7 @@ export const PHOTOS: Photo[] = [
   },
   {
     id: 'rooftops',
+    image: require('../assets/photos/rooftops.jpg'),
     title: 'Rooftops',
     location: 'Tokyo, Japan',
     glyph: '◧',

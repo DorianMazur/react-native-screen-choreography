@@ -4,14 +4,13 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
   useDerivedValue,
+  useReducedMotion,
 } from 'react-native-reanimated';
-import { StandInContainer, resolveSurfaceStyle } from '../runtime';
 import type {
   ElementMetrics,
   SharedElementTransition,
   SharedElementTransitionRendererProps,
 } from 'react-native-screen-choreography';
-import { theme } from '../theme';
 
 interface MorphContentStandInProps {
   progress: SharedElementTransitionRendererProps['progress'];
@@ -115,30 +114,6 @@ function MorphContentStandIn({
   );
 }
 
-function TokenCardTransitionRenderer({
-  progress,
-  direction,
-  source,
-  target,
-}: SharedElementTransitionRendererProps) {
-  return (
-    <StandInContainer
-      progress={progress}
-      direction={direction}
-      sourceMetrics={source.metrics}
-      targetMetrics={target.metrics}
-      sourceStyle={resolveSurfaceStyle(source.style, {
-        backgroundColor: theme.surface,
-        borderRadius: 16,
-      })}
-      targetStyle={resolveSurfaceStyle(target.style, {
-        backgroundColor: theme.surface,
-        borderRadius: 24,
-      })}
-    />
-  );
-}
-
 function TokenIconTransitionRenderer({
   progress,
   direction,
@@ -166,26 +141,49 @@ function TokenTextTransitionRenderer({
   source,
   target,
   zIndex,
-}: SharedElementTransitionRendererProps) {
-  const sourceX = source.metrics.pageX;
-  const sourceY = source.metrics.pageY;
-  const sourceHeight = source.metrics.height;
-  const targetX = target.metrics.pageX;
-  const targetY = target.metrics.pageY;
-  const targetWidth = target.metrics.width;
-  const targetHeight = target.metrics.height;
-  const targetContent = target.content;
-  const scaleFromHeight = targetHeight > 0 ? sourceHeight / targetHeight : 1;
-  const t = useDerivedValue(() =>
-    direction === 'backward' ? 1 - progress.value : progress.value
-  );
+  arc = false,
+}: SharedElementTransitionRendererProps & { arc?: boolean }) {
+  const reduceMotion = useReducedMotion();
+  const list = direction === 'forward' ? source : target;
+  const detail = direction === 'forward' ? target : source;
+  const listX = list.metrics.pageX;
+  const listY = list.metrics.pageY;
+  const listHeight = list.metrics.height;
+  const detailX = detail.metrics.pageX;
+  const detailY = detail.metrics.pageY;
+  const detailWidth = detail.metrics.width;
+  const detailHeight = detail.metrics.height;
+  const detailContent = detail.content;
+  const scaleFromHeight = detailHeight > 0 ? listHeight / detailHeight : 1;
   const animatedStyle = useAnimatedStyle(() => {
+    const expansion = Math.max(0, Math.min(1, progress.value));
+    const travel =
+      arc && !reduceMotion
+        ? expansion * expansion * (3 - 2 * expansion)
+        : expansion;
+    const lift =
+      arc && !reduceMotion
+        ? 4 *
+          travel *
+          (1 - travel) *
+          Math.min(28, Math.abs(detailY - listY) * 0.15)
+        : 0;
     return {
-      left: interpolate(t.value, [0, 1], [sourceX, targetX], 'clamp'),
-      top: interpolate(t.value, [0, 1], [sourceY, targetY], 'clamp'),
       transform: [
         {
-          scale: interpolate(t.value, [0, 1], [scaleFromHeight, 1], 'clamp'),
+          translateX: interpolate(
+            travel,
+            [0, 1],
+            [0, detailX - listX],
+            'clamp'
+          ),
+        },
+        {
+          translateY:
+            interpolate(travel, [0, 1], [0, detailY - listY], 'clamp') - lift,
+        },
+        {
+          scale: interpolate(travel, [0, 1], [scaleFromHeight, 1], 'clamp'),
         },
       ],
     };
@@ -196,22 +194,25 @@ function TokenTextTransitionRenderer({
       style={[
         styles.textCarry,
         {
-          width: targetWidth,
-          height: targetHeight,
+          left: listX,
+          top: listY,
+          width: detailWidth,
+          height: detailHeight,
           zIndex,
         },
         animatedStyle,
       ]}
     >
-      {targetContent}
+      {detailContent}
     </Animated.View>
   );
 }
 
-export const tokenCardTransition: SharedElementTransition = {
-  renderer: TokenCardTransitionRenderer,
-  zIndex: 0,
-};
+function TokenValueTransitionRenderer(
+  props: SharedElementTransitionRendererProps
+) {
+  return <TokenTextTransitionRenderer {...props} arc />;
+}
 
 export const tokenIconTransition: SharedElementTransition = {
   renderer: TokenIconTransitionRenderer,
@@ -224,7 +225,7 @@ export const tokenTextTransition: SharedElementTransition = {
 };
 
 export const tokenValueTransition: SharedElementTransition = {
-  renderer: TokenTextTransitionRenderer,
+  renderer: TokenValueTransitionRenderer,
   zIndex: 1,
 };
 

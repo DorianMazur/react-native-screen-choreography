@@ -1,6 +1,9 @@
+import type { ImageSourcePropType } from 'react-native';
+
 export interface Track {
   id: string;
   title: string;
+  artwork: ImageSourcePropType;
   artist: string;
   album: string;
   duration: string;
@@ -15,6 +18,7 @@ export interface Track {
 export const TRACKS: Track[] = [
   {
     id: 'gravity',
+    artwork: require('../assets/photos/midnight.jpg'),
     title: 'Gravity Well',
     artist: 'NAVA',
     album: 'Empty Maps',
@@ -28,6 +32,7 @@ export const TRACKS: Track[] = [
   },
   {
     id: 'lowtide',
+    artwork: require('../assets/photos/coast.jpg'),
     title: 'Low Tide',
     artist: 'Marisol Vega',
     album: 'Coast Sessions',
@@ -41,6 +46,7 @@ export const TRACKS: Track[] = [
   },
   {
     id: 'neon',
+    artwork: require('../assets/photos/rooftops.jpg'),
     title: 'Neon Garden',
     artist: 'Yume',
     album: 'After Hours',
@@ -54,6 +60,7 @@ export const TRACKS: Track[] = [
   },
   {
     id: 'plates',
+    artwork: require('../assets/photos/dunes.jpg'),
     title: 'Tectonic',
     artist: 'Rama Asri',
     album: 'Plates',
@@ -67,6 +74,7 @@ export const TRACKS: Track[] = [
   },
   {
     id: 'spire',
+    artwork: require('../assets/photos/forest.jpg'),
     title: 'Spire',
     artist: 'Caelum',
     album: 'North',
@@ -80,6 +88,7 @@ export const TRACKS: Track[] = [
   },
   {
     id: 'midnight',
+    artwork: require('../assets/photos/aurora.jpg'),
     title: 'Midnight Air',
     artist: 'Lyra Faye',
     album: 'Long Exposure',

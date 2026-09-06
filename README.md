@@ -320,6 +320,8 @@ function TokenListScreen({ navigation }) {
 
 `useChoreographyProgress` exposes the shared progress value and common derived behaviors such as backdrop dim and early settle handling when the user starts interacting before the transition is fully settled. Combine it with `useLatchedReveal` and `useStaggeredReveal` to drive companion content.
 
+Progress always runs from `0` (list) to `1` (detail), including when Back drives it toward `0`. The screen crossfade occupies `0–0.4`, and the default companion reveal occupies `0.7–1`. Opening reveals the detail background before its companion content; closing fades the content before the background. Custom content timings that overlap the screen crossfade also inherit its opacity. Forward and reverse use different default springs, so this ordering is reversible without requiring equal duration.
+
 ```tsx
 import Animated from 'react-native-reanimated';
 import {
@@ -369,7 +371,7 @@ if (session) {
 ## Mental Model
 
 - `ChoreographyProvider` owns the registry, transition coordinator, overlay, and active session state.
-- `ChoreographyScreen` manages visibility for both roles: the source screen's non-shared content fades out as the forward animation begins, while the destination screen is revealed from the first spring frame with only the shared elements hidden individually (the overlay stand-ins own those positions).
+- `ChoreographyScreen` crossfades the collapsed and expanded screens over expansion progress `0–0.4` in both directions, leaving the detail background opaque during the later companion-content reveal. Shared elements are hidden individually while the overlay owns their positions.
 - `SharedElement` tags matching source and target elements.
 - `useChoreographyNavigation` starts and reverses time-driven sessions.
 - `useInteractiveTransition` prepares and controls custom gesture-driven back sessions.
@@ -383,7 +385,7 @@ if (session) {
 | Component                           | Purpose                                                                                                                                                                                                                                                                                 |
 | ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `ChoreographyProvider`              | Hosts the registry, coordinator, overlay, and native transition host; accepts `debug`, `onTransitionStart`, and `onTransitionEnd`                                                                                                                                                       |
-| `ChoreographyScreen`                | Provides a stable `screenId` for registration, readiness tracking, and progress-driven visibility orchestration — source screens fade out during forward transitions and destination screens are revealed from the first spring frame with only the shared elements individually hidden |
+| `ChoreographyScreen`                | Provides a stable `screenId` for registration, readiness tracking, and reversible screen crossfade, with shared elements individually hidden while the overlay owns them |
 | `SharedElement`                     | Registers one shared element by compound `(screenId, groupId, id)` identity and requires the renderer that defines its overlay behavior                                                                                                                                                 |
 | `SharedElement.Target`              | Measures a nested visual child while the outer shared element retains layout and visibility ownership                                                                                                                                                                                   |
 | `SharedElement.Live` / `LiveTarget` | Reparents one live native subtree through the overlay into a destination host without remounting it                                                                                                                                                                                     |

@@ -1,40 +1,45 @@
+import { Platform } from 'react-native';
+
 export const theme = {
-  bg: '#08080C',
-  bgElevated: '#101018',
-  surface: '#16161F',
-  surfaceElevated: '#1E1E2A',
-  surfaceMuted: '#0F0F17',
-  border: 'rgba(255,255,255,0.06)',
-  borderStrong: 'rgba(255,255,255,0.12)',
+  bg: '#101211',
+  bgElevated: '#151816',
+  surface: '#191C1A',
+  surfaceElevated: '#242A26',
+  surfaceMuted: '#131614',
+  border: '#2C312E',
+  borderStrong: '#465149',
 
-  text: '#F4F4F8',
-  textSecondary: '#A0A0B0',
-  textMuted: '#6B6B7B',
+  text: '#F4F6F2',
+  textSecondary: '#A2ADA5',
+  textMuted: '#76827A',
+  font: Platform.select({ ios: 'Avenir Next', default: 'sans-serif-medium' }),
+  numbers: Platform.select({ ios: 'Menlo', default: 'monospace' }),
+  ink: '#17220E',
 
-  accent: '#7C5CFF',
-  success: '#3DDC97',
-  warn: '#FFB347',
-  danger: '#FF5470',
+  accent: '#D4F77D',
+  success: '#A8DDB5',
+  warn: '#F1CA81',
+  danger: '#F3A49D',
 
   // Per-demo accent palettes
   wallet: {
-    accent: '#7C5CFF',
-    glow: 'rgba(124, 92, 255, 0.35)',
+    accent: '#D4F77D',
+    glow: 'rgba(212, 247, 125, 0.12)',
   },
   gallery: {
-    accent: '#FF8FB1',
-    glow: 'rgba(255, 143, 177, 0.35)',
+    accent: '#E6B9AB',
+    glow: 'rgba(230, 185, 171, 0.12)',
   },
   music: {
-    accent: '#3DDC97',
-    glow: 'rgba(61, 220, 151, 0.35)',
+    accent: '#A8DDB5',
+    glow: 'rgba(168, 221, 181, 0.12)',
   },
 
   radius: {
     sm: 8,
-    md: 14,
-    lg: 20,
-    xl: 28,
+    md: 8,
+    lg: 8,
+    xl: 8,
     pill: 999,
   },
 

@@ -5,11 +5,13 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Dimensions,
+  Image,
+  StatusBar,
+  useWindowDimensions,
 } from 'react-native';
 import { SharedElement, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
-import { GradientBlock } from '../GradientBlock';
+import { AppIcon, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS, type Photo } from './data';
 import {
@@ -20,34 +22,38 @@ import {
   galleryGlyphTransition,
 } from './galleryTransitions';
 
-const { width: SCREEN_WIDTH } = Dimensions.get('window');
 const TILE_GAP = 12;
-const TILES_PER_ROW = 2;
-const TILE_W = (SCREEN_WIDTH - 32 - TILE_GAP) / TILES_PER_ROW;
 
 export function GalleryListScreen() {
   const { goBack, navigate } = useExampleNavigation();
+  const { width } = useWindowDimensions();
+  const tileWidth = (width - 48 - TILE_GAP) / 2;
 
   return (
     <>
       <SafeAreaView style={styles.container}>
+        <StatusBar barStyle="light-content" />
+        <ScreenHeader title="Gallery" onBack={() => goBack()} />
         <View style={styles.header}>
-          <Pressable onPress={() => goBack()} hitSlop={12}>
-            <Text style={styles.back}>← Back</Text>
-          </Pressable>
-          <Text style={styles.title}>Field Notes</Text>
-          <Text style={styles.subtitle}>Long-exposure work, 2023 – 2025</Text>
+          <Text style={styles.eyebrow}>THE FIELD JOURNAL</Text>
+          <Text accessibilityRole="header" style={styles.title}>
+            Field notes
+          </Text>
+          <View style={styles.summary}>
+            <Text style={styles.subtitle}>Places worth keeping</Text>
+            <Text style={styles.count}>{PHOTOS.length} PHOTOS</Text>
+          </View>
         </View>
 
         <ScrollView
           contentContainerStyle={styles.grid}
           showsVerticalScrollIndicator={false}
         >
-          {PHOTOS.map((photo, i) => (
+          {PHOTOS.map((photo) => (
             <Tile
               key={photo.id}
               photo={photo}
-              tall={i % 3 === 0}
+              width={tileWidth}
               onPress={() =>
                 navigate(
                   {
@@ -69,17 +75,23 @@ export function GalleryListScreen() {
 
 function Tile({
   photo,
-  tall,
+  width,
   onPress,
 }: {
   photo: Photo;
-  tall: boolean;
+  width: number;
   onPress: () => void;
 }) {
   return (
     <Pressable
+      accessibilityRole="button"
+      accessibilityLabel={`View ${photo.title}`}
       onPress={onPress}
-      style={[styles.tileWrapper, tall && styles.tileWrapperTall]}
+      style={({ pressed }) => [
+        styles.tileWrapper,
+        { width },
+        pressed && { opacity: 0.7 },
+      ]}
     >
       <SharedElement
         id={`photo.${photo.id}.frame`}
@@ -94,9 +106,9 @@ function Tile({
             transition={galleryPhotoTransition}
             style={StyleSheet.absoluteFill}
           >
-            <GradientBlock
-              from={photo.gradientFrom}
-              to={photo.gradientTo}
+            <Image
+              source={photo.image}
+              resizeMode="cover"
               style={styles.tilePhoto}
             />
             <View style={styles.tileScrim} pointerEvents="none" />
@@ -109,7 +121,7 @@ function Tile({
               style={styles.tileGlyphBox}
             >
               <View style={styles.glyphCenter}>
-                <Text style={styles.tileGlyph}>{photo.glyph}</Text>
+                <AppIcon name="camera" size={14} />
               </View>
             </SharedElement>
           </View>
@@ -141,40 +153,52 @@ const styles = StyleSheet.create({
     backgroundColor: theme.bg,
   },
   header: {
-    paddingHorizontal: 20,
-    paddingTop: 8,
-    paddingBottom: 16,
+    paddingHorizontal: 24,
+    paddingTop: 12,
+    paddingBottom: 24,
+    borderBottomWidth: 1,
+    borderBottomColor: theme.border,
   },
-  back: {
+  eyebrow: {
+    fontFamily: theme.font,
+    fontSize: 10,
+    fontWeight: '600',
     color: theme.textSecondary,
-    fontSize: 15,
-    fontWeight: '500',
-    marginBottom: 12,
+  },
+  summary: {
+    flexDirection: 'row',
+    justifyContent: 'space-between',
+    flexWrap: 'wrap',
+    gap: 8,
+    marginTop: 10,
+  },
+  count: {
+    fontFamily: theme.numbers,
+    fontSize: 10,
+    color: theme.gallery.accent,
   },
   title: {
+    fontFamily: theme.font,
     color: theme.text,
-    fontSize: 32,
-    fontWeight: '700',
-    letterSpacing: -0.4,
+    fontSize: 30,
+    fontWeight: '600',
+    marginTop: 10,
   },
   subtitle: {
-    color: theme.textMuted,
-    fontSize: 14,
-    marginTop: 4,
+    fontFamily: theme.font,
+    color: theme.textSecondary,
+    fontSize: 12,
   },
   grid: {
-    paddingHorizontal: 16,
-    paddingBottom: 40,
+    paddingHorizontal: 24,
+    paddingTop: 24,
+    paddingBottom: 32,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: TILE_GAP,
   },
   tileWrapper: {
-    width: TILE_W,
-    height: TILE_W * 1.2,
-  },
-  tileWrapperTall: {
-    height: TILE_W * 1.5,
+    aspectRatio: 0.72,
   },
   tileFrame: {
     flex: 1,
@@ -186,37 +210,24 @@ const styles = StyleSheet.create({
     position: 'relative',
   },
   tilePhoto: {
-    flex: 1,
+    width: '100%',
+    height: '100%',
   },
   tileGlyphWrap: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
+    position: 'absolute',
+    top: 10,
+    right: 10,
   },
-  // Sized so list:detail ratio (72/160) matches fontSize ratio (54/120),
-  // making the overlay's scaled-down detail glyph pixel-identical to the
-  // real list glyph at handoff — no pop at session start/end.
   tileGlyphBox: {
-    width: 72,
-    height: 72,
+    width: 28,
+    height: 28,
     alignItems: 'center',
     justifyContent: 'center',
   },
-  // Children of a SharedElement get re-rendered standalone inside the
-  // overlay (without the wrapping box's flex layout), so we centre the
-  // glyph here so both the live and the carried copies stay anchored to
-  // the same point.
   glyphCenter: {
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  tileGlyph: {
-    fontSize: 54,
-    color: 'rgba(255,255,255,0.75)',
-    fontWeight: '200',
-    textAlign: 'center',
-    includeFontPadding: false,
   },
   tileScrim: {
     position: 'absolute',
@@ -234,14 +245,15 @@ const styles = StyleSheet.create({
     bottom: 10,
   },
   tileTitle: {
+    fontFamily: theme.font,
     color: theme.text,
     fontSize: 16,
-    fontWeight: '700',
-    letterSpacing: -0.2,
+    fontWeight: '600',
   },
   tileLocation: {
+    fontFamily: theme.font,
     color: theme.text,
-    fontSize: 12,
+    fontSize: 11,
     marginTop: 2,
   },
 });

@@ -1,5 +1,13 @@
 import React from 'react';
-import { Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  ScrollView,
+  StatusBar,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
+import { ScreenHeader } from '../AppChrome';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -39,27 +47,39 @@ export function LivePlayerDetailScreen() {
       <InteractiveBackGesture>
         <View style={styles.root}>
           <SafeAreaView style={styles.safe}>
-            <Animated.View style={[styles.header, headerStyle]}>
-              <Text style={styles.eyebrow}>Now playing</Text>
-              <Pressable
-                onPress={() => goBack({ spring: LIVE_PLAYER_SPRING })}
-                hitSlop={12}
-              >
-                <Text style={styles.close}>Close</Text>
-              </Pressable>
+            <StatusBar barStyle="light-content" />
+            <Animated.View style={headerStyle}>
+              <ScreenHeader
+                title="Now playing"
+                backLabel="Close player"
+                onBack={() => goBack({ spring: LIVE_PLAYER_SPRING })}
+              />
             </Animated.View>
+            <ScrollView
+              contentContainerStyle={styles.scroll}
+              showsVerticalScrollIndicator={false}
+            >
+              <SharedElement.LiveTarget
+                id="player"
+                groupId={LIVE_PLAYER_GROUP}
+                style={styles.playerTarget}
+              />
 
-            <SharedElement.LiveTarget
-              id="player"
-              groupId={LIVE_PLAYER_GROUP}
-              style={styles.playerTarget}
-            />
-
-            <Animated.View style={[styles.queue, queueStyle]}>
-              <Text style={styles.queueLabel}>Up next</Text>
-              <Text style={styles.queueTitle}>Glass Signals</Text>
-              <Text style={styles.queueMeta}>Mara Ell · 4:08</Text>
-            </Animated.View>
+              <Animated.View style={[styles.queue, queueStyle]}>
+                <Text style={styles.queueLabel}>Up next</Text>
+                <View style={styles.queueRow}>
+                  <Image
+                    source={require('../assets/photos/coast.jpg')}
+                    style={styles.queueArt}
+                  />
+                  <View style={styles.queueCopy}>
+                    <Text style={styles.queueTitle}>Glass Signals</Text>
+                    <Text style={styles.queueMeta}>Mara Ell</Text>
+                  </View>
+                  <Text style={styles.duration}>4:08</Text>
+                </View>
+              </Animated.View>
+            </ScrollView>
           </SafeAreaView>
         </View>
       </InteractiveBackGesture>
@@ -70,32 +90,15 @@ export function LivePlayerDetailScreen() {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0B100E',
+    backgroundColor: theme.bg,
   },
   safe: {
     flex: 1,
   },
-  header: {
-    height: 58,
-    flexDirection: 'row',
-    alignItems: 'center',
-    justifyContent: 'space-between',
-    paddingHorizontal: 22,
-  },
-  eyebrow: {
-    color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
-  },
-  close: {
-    color: '#D8E6A3',
-    fontSize: 15,
-    fontWeight: '700',
-  },
+  scroll: { paddingBottom: 32 },
   playerTarget: {
-    height: 430,
-    marginHorizontal: 16,
+    height: 460,
+    marginHorizontal: 24,
     marginTop: 12,
   },
   queue: {
@@ -103,23 +106,37 @@ const styles = StyleSheet.create({
     marginTop: 28,
     paddingTop: 20,
     borderTopWidth: 1,
-    borderTopColor: theme.borderStrong,
+    borderTopColor: theme.border,
   },
   queueLabel: {
-    color: theme.textMuted,
-    fontSize: 11,
-    fontWeight: '700',
-    textTransform: 'uppercase',
+    fontFamily: theme.font,
+    color: theme.text,
+    fontSize: 21,
+    fontWeight: '600',
   },
   queueTitle: {
+    fontFamily: theme.font,
     color: theme.text,
     fontSize: 17,
-    fontWeight: '700',
-    marginTop: 8,
+    fontWeight: '600',
   },
   queueMeta: {
+    fontFamily: theme.font,
     color: theme.textSecondary,
     fontSize: 13,
     marginTop: 4,
+  },
+  queueRow: {
+    flexDirection: 'row',
+    gap: 14,
+    alignItems: 'center',
+    marginTop: 20,
+  },
+  queueArt: { width: 48, height: 48, borderRadius: 8 },
+  queueCopy: { flex: 1 },
+  duration: {
+    fontFamily: theme.numbers,
+    fontSize: 11,
+    color: theme.textSecondary,
   },
 });

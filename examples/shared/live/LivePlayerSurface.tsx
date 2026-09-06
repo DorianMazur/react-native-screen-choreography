@@ -1,6 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import {
   Pressable,
+  Image,
   StyleSheet,
   Text,
   View,
@@ -17,6 +18,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import { useChoreographyProgress } from '../runtime';
 import { theme } from '../theme';
+import { AppIcon } from '../AppChrome';
 
 export const LIVE_PLAYER_GROUP = 'live-player.demo';
 export const LIVE_PLAYER_SPRING = {
@@ -30,14 +32,14 @@ const TRACK_LENGTH = 214;
 const COMPACT = {
   padding: 12,
   artwork: 72,
-  artworkTop: 23,
+  artworkTop: 40,
   copyLeft: 98,
   copyRight: 12,
   copyTop: 16,
   radius: theme.radius.lg,
   titleSize: 18,
   titleLineHeight: 22,
-  buttonHeight: 28,
+  buttonHeight: 44,
 };
 const EXPANDED = {
   padding: 24,
@@ -45,9 +47,9 @@ const EXPANDED = {
   artworkHeight: 230,
   copyTop: 278,
   radius: theme.radius.xl,
-  titleSize: 30,
+  titleSize: 28,
   titleLineHeight: 36,
-  buttonHeight: 40,
+  buttonHeight: 48,
 };
 
 export function LivePlayerSurface() {
@@ -83,7 +85,7 @@ export function LivePlayerSurface() {
   const minutes = Math.floor(elapsed / 60);
   const seconds = String(elapsed % 60).padStart(2, '0');
   const playback = elapsed / TRACK_LENGTH;
-  const expandedArtworkWidth = windowWidth - 32 - EXPANDED.padding * 2;
+  const expandedArtworkWidth = windowWidth - 48 - EXPANDED.padding * 2;
 
   const surfaceStyle = useAnimatedStyle(() => ({
     borderRadius: interpolate(
@@ -106,7 +108,7 @@ export function LivePlayerSurface() {
       top: interpolate(t, [0, 1], [COMPACT.artworkTop, EXPANDED.artworkTop]),
       width: interpolate(t, [0, 1], [COMPACT.artwork, expandedArtworkWidth]),
       height: interpolate(t, [0, 1], [COMPACT.artwork, EXPANDED.artworkHeight]),
-      borderRadius: interpolate(t, [0, 1], [10, theme.radius.lg]),
+      borderRadius: theme.radius.sm,
     };
   });
 
@@ -153,7 +155,7 @@ export function LivePlayerSurface() {
       [0, 1],
       [COMPACT.buttonHeight, EXPANDED.buttonHeight]
     ),
-    minWidth: interpolate(progress.value, [0, 1], [58, 88]),
+    width: interpolate(progress.value, [0, 1], [44, 48]),
   }));
 
   const timelineStyle = useAnimatedStyle(() => ({
@@ -167,13 +169,20 @@ export function LivePlayerSurface() {
       <Animated.View style={[styles.artwork, artworkStyle]}>
         <Animated.View style={[styles.record, recordStyle]}>
           <View style={styles.recordRing} />
-          <View style={styles.recordLabel} />
+          <Image
+            source={require('../assets/photos/forest.jpg')}
+            style={styles.recordLabel}
+          />
         </Animated.View>
       </Animated.View>
 
       <Animated.View style={[styles.copy, copyStyle]}>
         <Text style={styles.eyebrow}>Live session</Text>
-        <Animated.Text style={[styles.title, titleStyle]}>
+        <Animated.Text
+          numberOfLines={1}
+          adjustsFontSizeToFit
+          style={[styles.title, titleStyle]}
+        >
           Continuum
         </Animated.Text>
         <Text style={styles.artist}>Nia Vale</Text>
@@ -193,7 +202,11 @@ export function LivePlayerSurface() {
             onPress={() => setPlaying((value) => !value)}
           >
             <Animated.View style={[styles.playButton, buttonStyle]}>
-              <Text style={styles.playLabel}>{playing ? 'Pause' : 'Play'}</Text>
+              <AppIcon
+                name={playing ? 'pause' : 'play'}
+                color={theme.ink}
+                size={20}
+              />
             </Animated.View>
           </Pressable>
           <Text style={[styles.time, styles.timeEnd]}>3:34</Text>
@@ -206,7 +219,7 @@ export function LivePlayerSurface() {
 const styles = StyleSheet.create({
   surface: {
     flex: 1,
-    backgroundColor: '#17201C',
+    backgroundColor: theme.surface,
     overflow: 'hidden',
   },
   artwork: {
@@ -214,7 +227,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     overflow: 'hidden',
-    backgroundColor: '#D8E6A3',
+    backgroundColor: theme.music.accent,
   },
   handle: {
     position: 'absolute',
@@ -225,7 +238,7 @@ const styles = StyleSheet.create({
     height: 5,
     marginLeft: -19,
     borderRadius: 3,
-    backgroundColor: 'rgba(216,230,163,0.55)',
+    backgroundColor: theme.borderStrong,
   },
   record: {
     width: '72%',
@@ -233,7 +246,7 @@ const styles = StyleSheet.create({
     borderRadius: 999,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#17201C',
+    backgroundColor: theme.bg,
   },
   recordRing: {
     position: 'absolute',
@@ -241,32 +254,34 @@ const styles = StyleSheet.create({
     height: '70%',
     borderRadius: 999,
     borderWidth: 1,
-    borderColor: 'rgba(216,230,163,0.28)',
+    borderColor: theme.borderStrong,
   },
   recordLabel: {
     width: '26%',
     height: '26%',
     borderRadius: 999,
-    backgroundColor: '#E46D4D',
   },
   copy: {
     position: 'absolute',
     minWidth: 0,
   },
   eyebrow: {
-    color: '#9BC7AE',
+    fontFamily: theme.font,
+    color: theme.music.accent,
     fontSize: 10,
-    fontWeight: '700',
+    fontWeight: '600',
     textTransform: 'uppercase',
   },
   title: {
+    fontFamily: theme.font,
     color: theme.text,
     fontSize: 30,
     lineHeight: 36,
-    fontWeight: '700',
+    fontWeight: '600',
     marginTop: 4,
   },
   artist: {
+    fontFamily: theme.font,
     color: theme.textSecondary,
     fontSize: 13,
     marginTop: 2,
@@ -279,7 +294,7 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(255,255,255,0.12)',
   },
   timelineFill: {
-    backgroundColor: '#D8E6A3',
+    backgroundColor: theme.accent,
   },
   controlRow: {
     flexDirection: 'row',
@@ -288,8 +303,9 @@ const styles = StyleSheet.create({
     marginTop: 8,
   },
   time: {
+    fontFamily: theme.numbers,
     width: 38,
-    color: theme.textMuted,
+    color: theme.textSecondary,
     fontSize: 10,
     fontVariant: ['tabular-nums'],
   },
@@ -300,11 +316,6 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
     borderRadius: theme.radius.pill,
-    backgroundColor: '#D8E6A3',
-  },
-  playLabel: {
-    color: '#17201C',
-    fontSize: 12,
-    fontWeight: '800',
+    backgroundColor: theme.accent,
   },
 });

@@ -80,13 +80,11 @@ The provider deliberately does **not** hide real elements when a session becomes
 - drives screen-level visibility through a single direction-agnostic model derived from `(direction, role, phase, progress)`. The pure helpers live in `src/core/screenVisibility.ts` and are unit-tested:
   - **`role`** is one of `source`, `target`, or `inactive` and comes from `getScreenRole(session, screenId)`
   - **`phase`** is one of `idle`, `preparing`, `active`, `completing`, `cancelling` and comes from `getSessionPhase(session, pendingTargetScreenId, screenId)` (treats `state: 'measuring'` and a matching `pendingTargetScreenId` as `preparing`)
-  - the worklet computes a normalized progress `t = direction === 'forward' ? progress : 1 - progress` and applies one rule set:
-    - target screen, preparing → `opacity: 0`
-    - target screen, active → `opacity: 1` once `t > 0.001`
-    - source screen, active → fade out over `t ∈ [0, 0.4]`
-    - everything else → `opacity: 1`
+  - progress always means `0 = collapsed/list`, `1 = expanded/detail`; direction and role identify which physical side a screen represents, not a separate animation clock
+  - during `active`, expanded-screen opacity is `clamp(progress / 0.4, 0, 1)` and collapsed-screen opacity is its complement. The expanded screen is the forward target or backward source.
+  - during `preparing`, the forward target is hidden; the backward target and both source roles remain visible. Inactive screens and terminal phases retain normal visibility.
   - participating screens block pointer events (`shouldBlockInteraction`) during `preparing` and `active`, and re-enable them during `completing` and `cancelling`
-- because the model is direction-agnostic, the backward path is symmetric: when popping a detail, the detail is the `source` and fades out over `progress ∈ [0.6, 1.0]` (i.e. `t ∈ [0, 0.4]`), and the list (the `target` of the backward session) is fully visible the entire time
+- the same physical screen has the same opacity at a given expansion progress in either direction. On Back, companion content fades out over `1` to `0.7` while the detail background stays opaque; screen crossfade follows over `0.4` to `0`. This avoids multiplying a late content fade by an early whole-screen fade.
 
 ### `SharedElement`
 
@@ -178,7 +176,7 @@ Three separate concepts control whether the user sees real screen content during
 
 - **`pendingTargetScreenId`**: marks the future target so its phase resolves to `preparing` before the session is `active`, which keeps real content at `opacity: 0` until the overlay has taken over
 - **Overlay readiness**: both the native host and overlay content must report ready before the pending state is cleared and the spring starts
-- **Symmetric visibility model**: once the session is `active`, real content is revealed/faded by `deriveScreenOpacity(direction, role, phase, progress)` on the UI thread. The same rule set runs in both directions — the only thing that flips is the normalized progress `t`. Per-element shared values still hide individual `SharedElement`s on top of the screen-level opacity rule.
+- **Reversible visibility model**: once the session is `active`, `deriveScreenOpacity(direction, role, phase, progress)` maps source/target roles to collapsed/expanded screens and evaluates the same expansion-progress curve in both directions on the UI thread. Per-element shared values still hide individual `SharedElement`s on top of the screen-level opacity rule.
 
 ## Measurement Model
 
@@ -200,6 +198,8 @@ The shared progress value is the contract between the transition runtime and com
 - the progress hook also exposes the current screen role, lifecycle phase, direction, group, and session identity
 - `useLatchedReveal()` keeps staged content visible once it has crossed its reveal threshold
 - `useStaggeredReveal()` creates per-item reveal styles from the same session progress
+- default screen crossfade occupies progress `0` to `0.4`, before the default companion reveal window of `0.7` to `1`. Custom reveal windows may overlap the screen fade; their visible opacity is multiplied by the parent screen opacity.
+- reversing or cancelling a gesture retraces the same active-state opacity curves. Equal progress produces equal visual state, but the default forward and reverse springs have different speeds.
 - `settleTransition()` lets a screen settle to its current endpoint as soon as the user starts scrolling or otherwise interacting
 - `useInteractiveTransition()` prepares a backward session and maps gesture-normalized progress (`0` detail, `1` back complete) onto the existing semantic progress value (`1` detail, `0` list)
 - interactive sessions can project normalized release velocity through `settle()` and preserve that velocity in the endpoint spring

@@ -56,9 +56,44 @@ function createContext(
 describe('runReverseTransition ownership', () => {
   beforeEach(() => {
     mockedWithSpring.mockReset();
+    mockedWithSpring.mockImplementation((_value, _config, callback) => {
+      callback(true);
+      return 0;
+    });
   });
 
-  test('does not animate or redispatch when another blocker keeps the route', async () => {
+  test('keeps the outgoing screen mounted until the reverse animation finishes', async () => {
+    let finishAnimation!: (finished?: boolean) => void;
+    let notifyAnimationStarted!: () => void;
+    const animationStarted = new Promise<void>((resolve) => {
+      notifyAnimationStarted = resolve;
+    });
+    mockedWithSpring.mockImplementation((_value, _config, callback) => {
+      finishAnimation = callback;
+      notifyAnimationStarted();
+      return 0;
+    });
+    const ctx = createContext();
+    const popAction = jest.fn();
+    const reverse = runReverseTransition({
+      ctx,
+      groupId: 'group',
+      sourceScreenId: 'list',
+      currentScreenId: 'detail',
+      popAction,
+    });
+
+    await animationStarted;
+    expect(popAction).not.toHaveBeenCalled();
+    expect(ctx.completeTransition).not.toHaveBeenCalled();
+
+    finishAnimation(true);
+    await reverse;
+    expect(popAction).toHaveBeenCalledTimes(1);
+    expect(ctx.completeTransition).toHaveBeenCalledWith('reverse-session');
+  });
+
+  test('restores the detail without redispatching when another blocker keeps the route', async () => {
     const frame = jest
       .spyOn(global, 'requestAnimationFrame')
       .mockImplementation((callback) => {
@@ -76,8 +111,9 @@ describe('runReverseTransition ownership', () => {
       isRouteRemoved: () => false,
     });
     expect(popAction).toHaveBeenCalledTimes(1);
-    expect(mockedWithSpring).not.toHaveBeenCalled();
+    expect(mockedWithSpring).toHaveBeenCalledTimes(1);
     expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
+    expect(ctx.completeTransition).not.toHaveBeenCalled();
     frame.mockRestore();
   });
 
@@ -150,7 +186,7 @@ describe('runReverseTransition ownership', () => {
     expect(ctx.cancelTransition).not.toHaveBeenCalled();
   });
 
-  test('does not pop twice and cancels its session when setup fails after pop', async () => {
+  test('falls back to one pop and cancels its session when animation setup fails', async () => {
     const popAction = jest.fn();
     mockedWithSpring.mockImplementation(() => {
       throw new Error('animation setup failed');
