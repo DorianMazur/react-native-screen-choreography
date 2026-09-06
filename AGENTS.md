@@ -15,8 +15,7 @@ This file describes the current repository expectations for coding agents workin
 Use these files as the source of truth:
 
 - `README.md`: public package documentation and integration steps
-- `docs/architecture-plan.md`: runtime architecture and contributor-level internals
-- `docs/limitations-and-next-steps.md`: support boundaries, workarounds, and roadmap priorities
+- `docs/architecture.md`: runtime architecture and contributor-level internals
 - `examples/react-navigation/README.md`: bare React Native example setup and manual exploration guide
 - `examples/expo-router/README.md`: Expo Router example setup and integration guide
 

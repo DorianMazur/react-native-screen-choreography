@@ -522,13 +522,9 @@ For app code, the cleanest pattern is:
 - Ordinary renderers receive frozen React content, style, and metrics rather than captured pixels. `SharedElement.Live` is the opt-in path for one stateful native subtree and requires its owner screen to remain mounted.
 - Elements use compound `(screenId, groupId, id)` identities; the same ID can safely appear in several groups.
 
-See [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for current constraints, workarounds, and roadmap priorities.
-
 ## Further Documentation
 
-- [docs/architecture-plan.md](docs/architecture-plan.md) for the runtime architecture and contributor-level internals
-- [docs/limitations-and-next-steps.md](docs/limitations-and-next-steps.md) for support boundaries and planned improvements
-- [docs/library-comparison.md](docs/library-comparison.md) for a comparison with other shared transition approaches
+- [docs/architecture.md](docs/architecture.md) for the runtime architecture and contributor-level internals
 - [examples/react-navigation/README.md](examples/react-navigation/README.md) for the bare React Native example
 - [examples/expo-router/README.md](examples/expo-router/README.md) for the Expo Router example
 
