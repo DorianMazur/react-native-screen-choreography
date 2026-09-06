@@ -5,11 +5,13 @@ Choreographed shared element transitions for React Native with multi-element coo
 > **Status:** pre-1.0. The public API is converging but minor versions can still introduce breaking changes.
 
 <p align="center">
-  <img src="docs/Gallery.gif" width="240" />
+  <img src="docs/Gallery.gif" width="200" />
   &nbsp;
-  <img src="docs/Music.gif" width="240" />
+  <img src="docs/Music.gif" width="200" />
   &nbsp;
-  <img src="docs/Wallet.gif" width="240" />
+  <img src="docs/Wallet.gif" width="200" />
+  &nbsp;
+  <img src="docs/Player.gif" width="200" />
 </p>
 
 ## Overview
