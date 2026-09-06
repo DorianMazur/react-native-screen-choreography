@@ -31,7 +31,6 @@ jobs:
       - name: Typecheck files
         run: yarn typecheck
 
-
   test:
     runs-on: ubuntu-latest
 
@@ -44,7 +43,6 @@ jobs:
 
       - name: Run unit tests
         run: yarn test --runInBand
-
 
   build-library:
     runs-on: ubuntu-latest
@@ -61,6 +59,16 @@ jobs:
 
   build-android:
     runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - name: React Navigation
+            workspace: react-native-screen-choreography-example
+            gradle-wrapper: examples/react-navigation/android/gradle/wrapper/gradle-wrapper.properties
+          - name: Expo Router
+            workspace: screen-choreography-expo-router-example
+            gradle-wrapper: examples/expo-router/android/gradle/wrapper/gradle-wrapper.properties
 
     steps:
       - name: Checkout
@@ -79,24 +87,33 @@ jobs:
         run: |
           /bin/bash -c "yes | $ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager --licenses > /dev/null"
 
-
       - name: Cache Gradle
         uses: actions/cache@5a3ec84eff668545956fd18022155c47e93e2684 # v4.2.3
         with:
           path: |
             ~/.gradle/wrapper
             ~/.gradle/caches
-          key: ${{ runner.os }}-gradle-${{ hashFiles('examples/react-navigation/android/gradle/wrapper/gradle-wrapper.properties') }}
+          key: ${{ runner.os }}-gradle-${{ hashFiles(matrix.example.gradle-wrapper) }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
-      - name: Build example for Android
+      - name: Build ${{ matrix.example.name }} example for Android
         env:
-          JAVA_OPTS: "-XX:MaxHeapSize=6g"
-        run: yarn workspace react-native-screen-choreography-example build:android
+          JAVA_OPTS: '-XX:MaxHeapSize=6g'
+        run: yarn workspace ${{ matrix.example.workspace }} build:android
 
   build-ios:
     runs-on: macos-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        example:
+          - name: React Navigation
+            path: examples/react-navigation
+            workspace: react-native-screen-choreography-example
+          - name: Expo Router
+            path: examples/expo-router
+            workspace: screen-choreography-expo-router-example
 
     env:
       XCODE_VERSION: 26
@@ -115,13 +132,15 @@ jobs:
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
 
-      - name: Install cocoapods
+      - name: Install CocoaPods for ${{ matrix.example.name }} example
+        working-directory: ${{ matrix.example.path }}
         run: |
-          cd examples/react-navigation
-          bundle install
-          bundle exec pod repo update --verbose
-          bundle exec pod install --project-directory=ios
+          if [[ -f Gemfile ]]; then
+            bundle install
+            bundle exec pod install --repo-update --project-directory=ios
+          else
+            pod install --repo-update --project-directory=ios
+          fi
 
-      - name: Build example for iOS
-        run: yarn workspace react-native-screen-choreography-example build:ios
-
+      - name: Build ${{ matrix.example.name }} example for iOS
+        run: yarn workspace ${{ matrix.example.workspace }} build:ios

@@ -31,6 +31,8 @@
     "start": "expo start --dev-client",
     "android": "expo run:android",
     "ios": "expo run:ios",
+    "build:android": "cd android && ./gradlew app:assembleDebug --no-daemon --console=plain -PreactNativeArchitectures=arm64-v8a",
+    "build:ios": "xcodebuild -workspace ios/ScreenChoreographyRouter.xcworkspace -scheme ScreenChoreographyRouter -configuration Debug -sdk iphonesimulator -destination 'generic/platform=iOS Simulator' CODE_SIGNING_ALLOWED=NO",
     "typecheck": "tsc --noEmit",
     "web": "expo start --web"
   },
