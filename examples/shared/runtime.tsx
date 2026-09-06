@@ -1,4 +1,10 @@
-import React, { createContext, useContext } from 'react';
+import React, {
+  createContext,
+  useContext,
+  useLayoutEffect,
+  useRef,
+  useState,
+} from 'react';
 import type {
   ChoreographyNavigationOptions,
   InteractiveBackOptions,
@@ -77,8 +83,18 @@ export function ExampleBindings({
   interactive: ExampleInteractiveTransition;
   children: React.ReactNode;
 }) {
+  const navigationRef = useRef(navigation);
+  useLayoutEffect(() => {
+    navigationRef.current = navigation;
+  }, [navigation]);
+  const [commands] = useState<ExampleNavigation>(() => ({
+    open: (...args) => navigationRef.current.open(...args),
+    navigate: (...args) => navigationRef.current.navigate(...args),
+    goBack: (...args) => navigationRef.current.goBack(...args),
+  }));
+
   return (
-    <NavigationContext.Provider value={navigation}>
+    <NavigationContext.Provider value={commands}>
       <InteractiveContext.Provider value={interactive}>
         {children}
       </InteractiveContext.Provider>
