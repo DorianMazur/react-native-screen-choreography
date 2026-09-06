@@ -226,6 +226,9 @@ When adding new behavior, keep these boundaries intact:
 Typical extension points:
 
 - add a new reusable `SharedElementTransition` renderer by composing the exported stand-in primitives or custom overlay content in app code
+- reusable surface, stretch, and plain-text recipes live in `src/transitions/` and are exported from the root, core, and Expo Router entries; examples import them instead of maintaining duplicate renderers
+- recipe renderers consume frozen presentations and extract scalar inputs before worklets; forward and backward should retrace the same appearance at equal expansion progress when their measured endpoints are unchanged
+- `StandInElement` owns single-content frame geometry; `StandInContainer` adds surface color, radius, and static expanded-side shadow presentation. Neither performs content crossfading.
 - add a new companion motion helper in `src/hooks/useChoreographyProgress.ts`
 - add more debug instrumentation in `src/debug/logger.ts` and the provider / navigation hooks
 
