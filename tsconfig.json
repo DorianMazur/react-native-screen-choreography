@@ -2,7 +2,11 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "react-native-screen-choreography": ["./src/index"],
+      "react-native-screen-choreography": ["./src/entries/index"],
+      "react-native-screen-choreography/core": ["./src/entries/core"],
+      "react-native-screen-choreography/expo-router": [
+        "./src/entries/expo-router"
+      ],
       "react-native-safe-area-context": [
         "./examples/react-navigation/node_modules/react-native-safe-area-context"
       ]

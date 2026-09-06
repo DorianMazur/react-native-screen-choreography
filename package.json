@@ -2,23 +2,23 @@
   "name": "react-native-screen-choreography",
   "version": "0.3.0",
   "description": "Choreographed shared element transitions for React Native — fluid, multi-element, native-feeling screen transitions",
-  "main": "./lib/module/index.js",
-  "types": "./lib/typescript/src/index.d.ts",
+  "main": "./lib/module/entries/index.js",
+  "types": "./lib/typescript/src/entries/index.d.ts",
   "exports": {
     ".": {
-      "source": "./src/index.ts",
-      "types": "./lib/typescript/src/index.d.ts",
-      "default": "./lib/module/index.js"
+      "source": "./src/entries/index.ts",
+      "types": "./lib/typescript/src/entries/index.d.ts",
+      "default": "./lib/module/entries/index.js"
     },
     "./expo-router": {
-      "source": "./src/expo-router.ts",
-      "types": "./lib/typescript/src/expo-router.d.ts",
-      "default": "./lib/module/expo-router.js"
+      "source": "./src/entries/expo-router.ts",
+      "types": "./lib/typescript/src/entries/expo-router.d.ts",
+      "default": "./lib/module/entries/expo-router.js"
     },
     "./core": {
-      "source": "./src/core-entry.ts",
-      "types": "./lib/typescript/src/core-entry.d.ts",
-      "default": "./lib/module/core-entry.js"
+      "source": "./src/entries/core.ts",
+      "types": "./lib/typescript/src/entries/core.d.ts",
+      "default": "./lib/module/entries/core.js"
     },
     "./package.json": "./package.json"
   },

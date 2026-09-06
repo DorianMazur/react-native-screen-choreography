@@ -22,8 +22,10 @@ Use these files as the source of truth:
 
 ## Repository Layout
 
-- `src/`: public entries (`index.ts`, `core-entry.ts`, `expo-router.ts`) and types (`types.ts`)
-- `src/components/`: `ChoreographyProvider`, `ChoreographyScreen`, `SharedElement`
+- `src/entries/`: export-only public entries (`index.ts`, `core.ts`, `expo-router.ts`); shared exports belong in `core.ts`
+- `src/adapters/`: React Navigation and Expo Router hooks and `ChoreographyScreen` wrappers
+- `src/types.ts`: shared runtime and public types
+- `src/components/`: navigator-independent `ChoreographyProvider`, `ChoreographyScreenBase`, `SharedElement`
 - `src/core/`: registry, coordinator, overlay, measurement, constants, contexts, visibility
 - `src/native/`: Fabric component spec and native host bridge
 - `src/hooks/`: public progress and navigation hooks
@@ -38,7 +40,7 @@ Use these files as the source of truth:
 
 ## Public API Surface
 
-Check `src/index.ts`, `src/core-entry.ts`, and `src/expo-router.ts` before documenting or changing exports.
+Check `src/entries/index.ts`, `src/entries/core.ts`, and `src/entries/expo-router.ts` before documenting or changing exports. Keep both integration entries re-exporting the shared API from `core.ts`; keep navigation dependencies confined to their adapters.
 
 Current important exports include:
 
@@ -78,7 +80,7 @@ Current important exports include:
 
 ## Working Conventions
 
-- keep docs aligned with the actual exported API in `src/index.ts`, `src/core-entry.ts`, and `src/expo-router.ts`
+- keep docs aligned with the actual exported API in `src/entries/index.ts`, `src/entries/core.ts`, and `src/entries/expo-router.ts`
 - prefer library-level abstractions for transition lifecycle behavior instead of example-only screen code
 - when moving behavior out of the example app, expose a focused reusable API rather than copying helper logic into another file
 - document current behavior, not abandoned plans or speculative architecture

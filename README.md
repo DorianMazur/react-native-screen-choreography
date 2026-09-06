@@ -63,6 +63,20 @@ For iOS, install pods after adding the dependency:
 cd ios && pod install
 ```
 
+## Choosing An Entry Point
+
+Choose the import path for your navigation setup. Each integration includes the same shared components, transition recipes, progress hooks, utilities, and types.
+
+| Import path | Use case | Navigation-specific exports |
+| --- | --- | --- |
+| `react-native-screen-choreography` | React Navigation apps | `ChoreographyScreen`, `useChoreographyNavigation`, `useInteractiveTransition` |
+| `react-native-screen-choreography/expo-router` | Expo Router apps | `ChoreographyScreen`, `useChoreographyRouter`, `useInteractiveTransition` |
+| `react-native-screen-choreography/core` | Shared components that should not select a navigation integration | None |
+
+Most apps only need one of the first two paths. Use `/core` for navigator-independent code, such as a shared component library used by both apps. It does not replace the navigation integration or expose the internal transition engine.
+
+Keep `ChoreographyScreen` and the navigation hooks on the path matching your app. The Expo entry uses Expo Router's public navigation APIs; the root entry uses `@react-navigation/native`.
+
 ## Recommended Navigator Setup
 
 The current implementation works best with these native-stack settings:

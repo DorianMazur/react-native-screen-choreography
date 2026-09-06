@@ -2,6 +2,24 @@
 
 Use this document when you are contributing to the library, debugging transition timing, or extending the runtime. If you are integrating the package into an app, start with [README.md](../README.md).
 
+## Source Organization And Entry Points
+
+Public entry modules live in `src/entries` and contain only exports. The package export map keeps the consumer-facing paths independent of their source locations:
+
+| Public import | Entry module | Navigation adapter |
+| --- | --- | --- |
+| `react-native-screen-choreography` | [src/entries/index.ts](../src/entries/index.ts) | [src/adapters/react-navigation.tsx](../src/adapters/react-navigation.tsx) |
+| `react-native-screen-choreography/expo-router` | [src/entries/expo-router.ts](../src/entries/expo-router.ts) | [src/adapters/expo-router.tsx](../src/adapters/expo-router.tsx) |
+| `react-native-screen-choreography/core` | [src/entries/core.ts](../src/entries/core.ts) | None |
+
+Both integration entries re-export the shared API from the core entry, then add their own navigation hooks and `ChoreographyScreen` wrapper. Add shared public exports to the core entry once; do not duplicate their lists in the integration entries.
+
+The adapters read navigator state and bind navigation commands and removal interception to the shared hooks. React Navigation imports stay in its adapter; Expo Router imports stay in the Expo adapter. Shared components, hooks, and runtime modules must not import either adapter or a public entry barrel.
+
+The `src/core` directory holds internal runtime machinery, not the public `/core` export surface. `src/components` contains navigator-independent components, including `ChoreographyScreenBase`; `src/hooks` contains shared lifecycle and progress hooks. Rendering recipes, stand-ins, native integration, and logging remain in their respective directories.
+
+[__tests__/entryPoints.test.ts](../__tests__/entryPoints.test.ts) checks that entries contain only exports, that shared value and type exports are identical across integrations, and that their transitive source imports preserve navigation dependency isolation.
+
 ## Supported Runtime Model
 
 The library currently works best with this setup:

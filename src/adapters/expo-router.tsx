@@ -1,53 +1,15 @@
 import React, { useCallback } from 'react';
 import { useIsFocused, useNavigation, useRoute } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
-import { isSingleRouteBack } from './core/removalAction';
 import {
   ChoreographyScreenBase,
   type ChoreographyScreenProps,
-} from './components/ChoreographyScreenBase';
-import { useChoreographyNavigator } from './hooks/useChoreographyNavigation';
-import { useChoreographyScreenRemoval } from './hooks/useChoreographyScreenRemoval';
-import { useInteractiveTransitionNavigator } from './hooks/useInteractiveTransition';
-import type { ChoreographyNavigationOptions } from './types';
-
-export { ChoreographyProvider } from './components/ChoreographyProvider';
-export {
-  SharedElement,
-  type LiveSharedElementProps,
-  type LiveSharedElementTargetProps,
-  type SharedElementProps,
-  type SharedElementTargetProps,
-} from './components/SharedElement';
-export {
-  createSharedElementComponent,
-  type SharedElementComponentProps,
-} from './components/createSharedElementComponent';
-export { useChoreographyBlocker } from './hooks/useChoreographyBlocker';
-export {
-  useChoreographyProgress,
-  useLatchedReveal,
-  useStaggeredReveal,
-} from './hooks/useChoreographyProgress';
-export { Springs, Easings } from './core/constants';
-export { StandInContainer } from './standin/StandInContainer';
-export {
-  makeSurfaceTransition,
-  type SurfaceTransitionFallback,
-} from './transitions/makeSurfaceTransition';
-export {
-  makeStretchTransition,
-  type StretchTransitionOptions,
-} from './transitions/makeStretchTransition';
-export { textMorphTransition } from './transitions/textMorphTransition';
-export { StandInElement } from './standin/StandInElement';
-export { resolveSurfaceStyle } from './standin/resolveSurfaceStyle';
-export type {
-  ChoreographyNavigationOptions,
-  SharedElementTransition,
-  SharedElementTransitionRendererProps,
-  SpringConfig,
-} from './types';
+} from '../components/ChoreographyScreenBase';
+import { isSingleRouteBack } from '../core/removalAction';
+import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
+import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
+import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
+import type { ChoreographyNavigationOptions } from '../types';
 
 export interface ExpoRouterLike<Href> {
   push: (href: Href) => unknown;
@@ -147,5 +109,5 @@ export function ChoreographyScreen(
     if (!interceptRemoval(resume, canAnimate, isRemoved)) resume();
   });
 
-  return React.createElement(ChoreographyScreenBase, props);
+  return <ChoreographyScreenBase {...props} />;
 }
