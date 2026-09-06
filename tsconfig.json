@@ -2,7 +2,10 @@
   "compilerOptions": {
     "rootDir": ".",
     "paths": {
-      "react-native-screen-choreography": ["./src/index"]
+      "react-native-screen-choreography": ["./src/index"],
+      "react-native-safe-area-context": [
+        "./examples/react-navigation/node_modules/react-native-safe-area-context"
+      ]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,
@@ -25,7 +28,8 @@
     "skipLibCheck": true,
     "strict": true,
     "target": "ESNext",
+    "types": ["jest", "node"],
     "verbatimModuleSyntax": true
   },
-  "exclude": ["__tests__", "__mocks__", "node_modules", "lib", "examples"]
+  "exclude": ["__mocks__", "node_modules", "lib", "examples"]
 }

@@ -1,6 +1,6 @@
-import React from 'react';
 import { Image, StyleSheet } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { makeMutable } from 'react-native-reanimated';
 import { ScreenHeader } from '../examples/shared/AppChrome';
 import { NowPlayingScreen } from '../examples/shared/music/NowPlayingScreen';
 import { MusicListScreen } from '../examples/shared/music/MusicListScreen';
@@ -82,11 +82,13 @@ describe('Now Playing header transition', () => {
     async (direction) => {
       const Renderer = musicHeaderTransition.renderer!;
       const expanded = {
+        screenId: 'NowPlaying',
         content: 'Now playing',
         style: {},
         metrics: { x: 0, y: 0, pageX: 0, pageY: 62, width: 393, height: 56 },
       };
       const collapsed = {
+        screenId: 'MusicList',
         content: null,
         style: {},
         metrics: { x: 0, y: 0, pageX: 16, pageY: 360, width: 361, height: 1 },
@@ -96,20 +98,20 @@ describe('Now Playing header transition', () => {
           id: 'header',
           groupId: 'track.test',
           direction,
-          progress: { value },
+          progress: makeMutable(value),
           source: direction === 'forward' ? collapsed : expanded,
           target: direction === 'forward' ? expanded : collapsed,
-          zIndex: musicHeaderTransition.zIndex,
-        } as SharedElementTransitionRendererProps;
+          zIndex: musicHeaderTransition.zIndex ?? 0,
+        } satisfies SharedElementTransitionRendererProps;
         let tree!: ReactTestRenderer;
         await act(async () => {
           tree = create(<Renderer {...props} />);
         });
         try {
-          const layer = tree.toJSON() as {
-            props: { style: object };
-            children: { props: { style: object }; children: unknown }[];
-          };
+          const layer = tree.toJSON();
+          if (layer === null || Array.isArray(layer)) {
+            throw new Error('Expected one rendered header layer');
+          }
           const style = StyleSheet.flatten(layer.props.style);
           expect(style.left).toBeCloseTo(16 * (1 - value));
           expect(style.top).toBeCloseTo(360 + (62 - 360) * value);
@@ -119,13 +121,15 @@ describe('Now Playing header transition', () => {
           expect(style.overflow).toBe('hidden');
           expect(style.opacity).toBeUndefined();
           expect(layer.children).toHaveLength(1);
-          expect(
-            StyleSheet.flatten(layer.children[0]!.props.style)
-          ).toMatchObject({
+          const content = layer.children?.[0];
+          if (content == null || typeof content === 'string') {
+            throw new Error('Expected a rendered header content layer');
+          }
+          expect(StyleSheet.flatten(content.props.style)).toMatchObject({
             width: 393,
             height: 56,
           });
-          expect(layer.children[0]!.children).toEqual(['Now playing']);
+          expect(content.children).toEqual(['Now playing']);
         } finally {
           await act(async () => tree.unmount());
         }

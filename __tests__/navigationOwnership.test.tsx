@@ -1,4 +1,3 @@
-import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { withSpring } from 'react-native-reanimated';
 import {
@@ -18,7 +17,7 @@ describe('Back preparation ownership', () => {
   test.each(['frame', 'measurement', 'final frame'])(
     'replacement at %s cannot schedule or complete stale work',
     async (boundary) => {
-      const frames: FrameRequestCallback[] = [];
+      const frames: Array<(timestamp: number) => void> = [];
       const raf = jest
         .spyOn(global, 'requestAnimationFrame')
         .mockImplementation((callback) => {

@@ -140,7 +140,7 @@ describe('NavigationSessionController', () => {
       waitForScreenReady: async () => false,
       waitForNextFrame: async () => {},
       startTransition,
-      waitForOverlayReady: async () => {},
+      waitForOverlayReady: async () => true,
     });
 
     expect(result).toBeNull();

@@ -1,5 +1,4 @@
 import React from 'react';
-import { describe, expect, jest, test } from '@jest/globals';
 import { StyleSheet, Text, View } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { makeMutable } from 'react-native-reanimated';
