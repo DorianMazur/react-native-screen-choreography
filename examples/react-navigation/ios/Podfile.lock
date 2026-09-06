@@ -2776,7 +2776,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - ScreenChoreography (0.2.0):
+  - ScreenChoreography (0.3.0):
     - boost
     - DoubleConversion
     - fast_float
@@ -2946,7 +2946,7 @@ DEPENDENCIES:
   - RNReanimated (from `../node_modules/react-native-reanimated`)
   - RNScreens (from `../node_modules/react-native-screens`)
   - RNWorklets (from `../node_modules/react-native-worklets`)
-  - ScreenChoreography (from `../..`)
+  - ScreenChoreography (from `../../..`)
   - SocketRocket (~> 0.7.1)
   - Teleport (from `../node_modules/react-native-teleport`)
   - Yoga (from `../node_modules/react-native/ReactCommon/yoga`)
@@ -3118,7 +3118,7 @@ EXTERNAL SOURCES:
   RNWorklets:
     :path: "../node_modules/react-native-worklets"
   ScreenChoreography:
-    :path: "../.."
+    :path: "../../.."
   Teleport:
     :path: "../node_modules/react-native-teleport"
   Yoga:
@@ -3205,7 +3205,7 @@ SPEC CHECKSUMS:
   RNReanimated: 4e6187f2ba1e30e6ddc7c8fc9f19b2dd2b6b2532
   RNScreens: 7f643ee0fd1407dc5085c7795460bd93da113b8f
   RNWorklets: 6daa3975bebe6047822c7485666d501a716674ca
-  ScreenChoreography: 2c326088c9216740b50f9aea58c91336ddaa1f9f
+  ScreenChoreography: b5ebb91a6b1f219250c041cfb1dc04ae0cdfa506
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Teleport: c92ee143c5c0af9a27e380a8ca39538f13fac4db
   Yoga: 6ca93c8c13f56baeec55eb608577619b17a4d64e
