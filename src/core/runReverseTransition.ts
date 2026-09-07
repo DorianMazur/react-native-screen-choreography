@@ -72,6 +72,10 @@ export async function runReverseTransition(
       sourceScreenId: currentScreenId,
       targetScreenId: sourceScreenId,
       direction: 'backward',
+      onUnavailable: (sessionId) => {
+        reverseSessionId = sessionId;
+        commitNavigation();
+      },
     });
     debugLog(
       `[BackIntercept] startTransition returned session=${reverseSession?.id ?? 'null'}`

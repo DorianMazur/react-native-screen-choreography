@@ -63,6 +63,7 @@ export interface ChoreographyContextType {
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward' | 'backward';
+    onUnavailable?: (sessionId: string) => void;
   }) => Promise<TransitionSessionData | null>;
   completeTransition: (sessionId?: string) => void;
   cancelTransition: (sessionId?: string) => void;

@@ -1,6 +1,8 @@
 import { withSpring } from 'react-native-reanimated';
+import { ElementRegistry } from '../src/core/ElementRegistry';
 import { ProgressOwnership } from '../src/core/ProgressOwnership';
 import { runReverseTransition } from '../src/core/runReverseTransition';
+import { TransitionCoordinator } from '../src/core/TransitionCoordinator';
 import type { ChoreographyContextType } from '../src/core/ChoreographyContext';
 import type { TransitionSessionData } from '../src/types';
 
@@ -51,6 +53,19 @@ function createContext(
     cancelTransition: jest.fn(),
     ...overrides,
   } as unknown as ChoreographyContextType;
+}
+
+function createCoordinatorContext() {
+  const ctx = createContext();
+  const coordinator = new TransitionCoordinator(
+    new ElementRegistry(),
+    ctx.progress
+  );
+  coordinator.setOnSessionChange((session) => {
+    ctx.progressOwnership.setSession(session?.id ?? null);
+  });
+  ctx.startTransition = (config) => coordinator.startTransition(config);
+  return { ctx, coordinator };
 }
 
 describe('runReverseTransition ownership', () => {
@@ -164,6 +179,112 @@ describe('runReverseTransition ownership', () => {
     expect(completeTransition).not.toHaveBeenCalled();
     expect(ctx.progress.value).toBe(0.7);
     expect(currentSessionId).toBe('replacement-session');
+  });
+
+  test('falls back to one pop when the real coordinator finds no reverse pairs', async () => {
+    jest.useFakeTimers();
+    const { ctx, coordinator } = createCoordinatorContext();
+    const popAction = jest.fn();
+
+    try {
+      const reverse = runReverseTransition({
+        ctx,
+        groupId: 'group',
+        sourceScreenId: 'list',
+        currentScreenId: 'detail',
+        popAction,
+      });
+      await jest.runAllTimersAsync();
+      await reverse;
+
+      expect(coordinator.getActiveSession()).toBeNull();
+      expect(ctx.progressOwnership.hasSession).toBe(false);
+      expect(popAction).toHaveBeenCalledTimes(1);
+      expect(mockedWithSpring).not.toHaveBeenCalled();
+    } finally {
+      coordinator.dispose();
+      jest.useRealTimers();
+    }
+  });
+
+  test.each(['cancel', 'replace'] as const)(
+    'does not pop when %s interrupts real reverse preparation',
+    async (interruption) => {
+      jest.useFakeTimers();
+      const { ctx, coordinator } = createCoordinatorContext();
+      const popAction = jest.fn();
+      let replacement:
+        | ReturnType<typeof coordinator.startTransition>
+        | undefined;
+
+      try {
+        const reverse = runReverseTransition({
+          ctx,
+          groupId: 'group',
+          sourceScreenId: 'list',
+          currentScreenId: 'detail',
+          popAction,
+        });
+        await Promise.resolve();
+        expect(coordinator.getActiveSession()?.state).toBe('measuring');
+
+        if (interruption === 'replace') {
+          replacement = coordinator.startTransition({
+            groupId: 'replacement',
+            sourceScreenId: 'list',
+            targetScreenId: 'other-detail',
+            direction: 'forward',
+          });
+        } else {
+          coordinator.cancelTransition();
+        }
+        const currentSession = coordinator.getActiveSession();
+        await reverse;
+
+        expect(popAction).not.toHaveBeenCalled();
+        expect(coordinator.getActiveSession()).toBe(currentSession);
+        expect(mockedWithSpring).not.toHaveBeenCalled();
+      } finally {
+        coordinator.dispose();
+        await replacement;
+        jest.useRealTimers();
+      }
+    }
+  );
+
+  test('no-pairs cleanup preserves a session started by fallback navigation', async () => {
+    jest.useFakeTimers();
+    const { ctx, coordinator } = createCoordinatorContext();
+    let replacement: ReturnType<typeof coordinator.startTransition> | undefined;
+    const popAction = jest.fn(() => {
+      replacement = coordinator.startTransition({
+        groupId: 'replacement',
+        sourceScreenId: 'list',
+        targetScreenId: 'other-detail',
+        direction: 'forward',
+      });
+    });
+
+    try {
+      const reverse = runReverseTransition({
+        ctx,
+        groupId: 'group',
+        sourceScreenId: 'list',
+        currentScreenId: 'detail',
+        popAction,
+      });
+      await jest.advanceTimersByTimeAsync(1100);
+      await reverse;
+
+      expect(popAction).toHaveBeenCalledTimes(1);
+      const session = coordinator.getActiveSession();
+      expect(session?.groupId).toBe('replacement');
+      expect(ctx.progressOwnership.isSession(session!.id)).toBe(true);
+    } finally {
+      coordinator.dispose();
+      await replacement;
+      jest.useRealTimers();
+    }
   });
 
   test('falls back to one pop when preparation fails before navigation', async () => {

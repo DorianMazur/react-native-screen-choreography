@@ -511,6 +511,7 @@ export class TransitionCoordinator {
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward' | 'backward';
+    onUnavailable?: (sessionId: string) => void;
   }): Promise<TransitionSessionData | null> {
     const transitionStartedAt = nowMs();
     const { groupId, sourceScreenId, targetScreenId, direction } = config;
@@ -665,15 +666,21 @@ export class TransitionCoordinator {
       });
     }
 
+    if (!ownsOperation()) {
+      return null;
+    }
+
     if (pairs.length === 0) {
       debugWarn(
         `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
       );
-      this.updateSession(null);
-      return null;
-    }
-
-    if (!ownsOperation()) {
+      try {
+        config.onUnavailable?.(sessionId);
+      } finally {
+        if (ownsOperation()) {
+          this.updateSession(null);
+        }
+      }
       return null;
     }
 

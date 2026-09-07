@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useEffect,
+  useLayoutEffect,
   useMemo,
   useRef,
   useState,
@@ -179,7 +180,14 @@ export function ChoreographyProvider({
       registryRef.current,
       progress
     );
-    coordinatorRef.current.setOnSessionChange((session) => {
+  }
+
+  useLayoutEffect(() => {
+    const coordinator = coordinatorRef.current!;
+    const screenReadiness = screenReadinessRef.current;
+    const hiddenMap = hiddenMapRef.current;
+    const navigationLineage = navigationLineageRef.current;
+    coordinator.setOnSessionChange((session) => {
       progressOwnership.setSession(session?.id ?? null);
       const previousSession = activeSessionRef.current;
       activeSessionRef.current = session;
@@ -211,23 +219,25 @@ export function ChoreographyProvider({
       // so reals are hidden the same frame the overlay first paints. Hiding
       // here would cause a one-frame blank flash at transition start.
     });
-  }
 
-  useEffect(
-    () => () => {
+    return () => {
       progressOwnership.setSession(null);
       progressOwnership.invalidate();
       cancelAllOverlayWaiters();
-      screenReadinessRef.current.dispose();
-      coordinatorRef.current?.dispose();
-      hiddenMapRef.current.forEach((hidden) => {
+      screenReadiness.dispose();
+      coordinator.dispose();
+      hiddenMap.forEach((hidden) => {
         hidden.value = 0;
       });
-      hiddenMapRef.current.clear();
-      navigationLineageRef.current.clear();
-    },
-    [cancelAllOverlayWaiters, progressOwnership]
-  );
+      hiddenMap.clear();
+      navigationLineage.clear();
+    };
+  }, [
+    cancelAllOverlayWaiters,
+    progressOwnership,
+    settleOverlayWaiters,
+    syncHiddenElements,
+  ]);
 
   useEffect(() => {
     const resolved = resolveDebugConfig(debug);
@@ -355,6 +365,7 @@ export function ChoreographyProvider({
       sourceScreenId: string;
       targetScreenId: string;
       direction: 'forward' | 'backward';
+      onUnavailable?: (sessionId: string) => void;
     }) => {
       return coordinatorRef.current!.startTransition(config);
     },
