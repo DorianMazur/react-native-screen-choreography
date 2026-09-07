@@ -77,6 +77,11 @@ jobs:
       - name: Setup
         uses: ./.github/actions/setup
 
+      - name: Generate Expo Router Android project
+        if: matrix.example.path == 'examples/expo-router'
+        working-directory: ${{ matrix.example.path }}
+        run: yarn exec expo prebuild --platform android --no-install
+
       - name: Install JDK
         uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
         with:
@@ -130,6 +135,11 @@ jobs:
         uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
         with:
           xcode-version: ${{ env.XCODE_VERSION }}
+
+      - name: Generate Expo Router iOS project
+        if: matrix.example.path == 'examples/expo-router'
+        working-directory: ${{ matrix.example.path }}
+        run: yarn exec expo prebuild --platform ios --no-install
 
       - name: Install CocoaPods for ${{ matrix.example.name }} example
         working-directory: ${{ matrix.example.path }}
