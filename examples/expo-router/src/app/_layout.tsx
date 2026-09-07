@@ -35,6 +35,14 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" />
           <Stack.Screen
+            name="wallet-setup/existing"
+            options={{
+              presentation: 'containedTransparentModal',
+              contentStyle: { backgroundColor: 'transparent' },
+              gestureEnabled: false,
+            }}
+          />
+          <Stack.Screen
             name="gallery/[photoId]"
             options={{
               presentation: 'containedTransparentModal',

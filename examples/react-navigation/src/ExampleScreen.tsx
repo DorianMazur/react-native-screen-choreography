@@ -16,6 +16,8 @@ export type ExampleStackParams = {
   NowPlaying: { trackId: string };
   TokenList: undefined;
   TokenDetail: { tokenId: string };
+  WalletSetup: undefined;
+  WalletExisting: undefined;
   LivePlayerList: undefined;
   LivePlayerDetail: undefined;
 };

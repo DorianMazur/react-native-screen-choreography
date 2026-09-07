@@ -18,6 +18,12 @@ const icons = {
   headphones: require('./assets/icons/headphones.png'),
   camera: require('./assets/icons/camera.png'),
   wallet: require('./assets/icons/wallet.png'),
+  plus: require('./assets/icons/plus.png'),
+  restore: require('./assets/icons/rotate-ccw.png'),
+  download: require('./assets/icons/download.png'),
+  cloud: require('./assets/icons/cloud.png'),
+  help: require('./assets/icons/circle-help.png'),
+  user: require('./assets/icons/user-round.png'),
 };
 
 export function AppIcon({

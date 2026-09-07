@@ -17,12 +17,21 @@ import { NowPlayingScreen } from '../../shared/music/NowPlayingScreen';
 import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
+import {
+  WalletSetupScreen,
+  WalletExistingScreen,
+} from '../../shared/wallet-setup/WalletSetupScreens';
 
 const Stack = createNativeStackNavigator<ExampleStackParams>();
 const LandingRoute = withExampleScreen('Landing', LandingScreen);
 const GalleryListRoute = withExampleScreen('GalleryList', GalleryListScreen);
 const MusicListRoute = withExampleScreen('MusicList', MusicListScreen);
 const TokenListRoute = withExampleScreen('TokenList', TokenListScreen);
+const WalletSetupRoute = withExampleScreen('WalletSetup', WalletSetupScreen);
+const WalletExistingRoute = withExampleScreen(
+  'WalletExisting',
+  WalletExistingScreen
+);
 const LivePlayerListRoute = withExampleScreen(
   'LivePlayerList',
   LivePlayerListScreen
@@ -116,6 +125,12 @@ export default function App() {
             <Stack.Screen
               name="LivePlayerList"
               component={LivePlayerListRoute}
+            />
+            <Stack.Screen name="WalletSetup" component={WalletSetupRoute} />
+            <Stack.Screen
+              name="WalletExisting"
+              component={WalletExistingRoute}
+              options={detailOptions}
             />
             <Stack.Screen
               name="LivePlayerDetail"

@@ -40,6 +40,13 @@ const demos = [
     icon: 'play',
     color: theme.warn,
   },
+  {
+    route: 'WalletSetup',
+    title: 'Wallet setup',
+    subtitle: 'Make yourself at home',
+    icon: 'wallet',
+    color: theme.success,
+  },
 ] as const;
 
 export function LandingScreen() {

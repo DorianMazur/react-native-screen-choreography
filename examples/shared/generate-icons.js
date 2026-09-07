@@ -23,6 +23,12 @@ async function generateIcons() {
     'headphones',
     'camera',
     'wallet',
+    'plus',
+    'rotate-ccw',
+    'download',
+    'cloud',
+    'circle-help',
+    'user-round',
   ]) {
     const svg = await readFile(join(source, 'icons', `${name}.svg`));
     await sharp(svg)

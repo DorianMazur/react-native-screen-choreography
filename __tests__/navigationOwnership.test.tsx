@@ -227,6 +227,7 @@ describe('Back preparation ownership', () => {
           sourceScreenId: 'List',
           targetScreenId: 'Detail',
         },
+        getNavigationLineage: jest.fn(),
         refreshActiveSessionMetrics: jest.fn(
           () =>
             new Promise<void>((resolve) => {

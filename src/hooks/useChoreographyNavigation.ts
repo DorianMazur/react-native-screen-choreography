@@ -61,6 +61,7 @@ export function useChoreographyNavigator({
     completeTransition,
     setPendingTargetScreen,
     setNavigationLineage,
+    getNavigationLineage,
     waitForOverlayReady,
     waitForScreenReady,
     refreshActiveSessionMetrics,
@@ -418,6 +419,7 @@ export function useChoreographyNavigator({
           sourceScreenId,
           targetScreenId: session.targetScreenId,
           sourceRouteKey: currentRouteKey,
+          spring: options?.spring ? { ...options.spring } : undefined,
         });
 
         logNavigation(
@@ -587,7 +589,14 @@ export function useChoreographyNavigator({
       }
 
       if (session) {
-        const springConfig = options?.spring ?? FAST_SPRING;
+        const detailScreenId =
+          session.direction === 'forward'
+            ? session.targetScreenId
+            : session.sourceScreenId;
+        const springConfig =
+          options?.spring ??
+          getNavigationLineage(detailScreenId)?.spring ??
+          FAST_SPRING;
         const sessionId = session.id;
         const animationToken = createProgressAnimationToken(sessionId);
         if (animationToken === null) return;
@@ -652,6 +661,7 @@ export function useChoreographyNavigator({
       createProgressAnimationToken,
       finishReverseTransition,
       finishSettledReverseTransition,
+      getNavigationLineage,
       logNavigation,
       navigateBack,
       progress,

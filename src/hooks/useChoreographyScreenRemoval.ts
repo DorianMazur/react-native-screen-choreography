@@ -73,6 +73,7 @@ export function useChoreographyScreenRemoval({
         currentScreenId: screenId,
         popAction,
         isRouteRemoved,
+        spring: lineage?.spring,
         canContinue: () => mountedRef.current,
       })
         .catch(() => {

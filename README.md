@@ -517,6 +517,7 @@ For app code, the cleanest pattern is:
 - use separate shared elements for independently moving layers such as a background surface, artwork, and labels
 - pass only `transitionConfig.group` during navigation in the common case
 - pass `spring` or `duration` as navigation options when you want to override the default transition animation
+- a custom opening `spring` is retained for Back, including native Back and interrupted returns; transitions without a custom spring keep the faster default return
 
 ## Known Limitations
 

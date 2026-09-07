@@ -118,6 +118,7 @@ export interface ChoreographyNavigationLineage {
   sourceScreenId: string;
   targetScreenId: string;
   sourceRouteKey?: string;
+  spring?: SpringConfig;
 }
 
 export interface InteractiveBackOptions {

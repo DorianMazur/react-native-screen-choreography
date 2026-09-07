@@ -16,6 +16,7 @@ const listRoutes = {
   GalleryList: '/gallery',
   MusicList: '/music',
   TokenList: '/wallet',
+  WalletSetup: '/wallet-setup',
   LivePlayerList: '/live-player',
 } satisfies Record<DemoListScreenId, Href>;
 
@@ -29,6 +30,8 @@ function detailRoute(destination: DemoDetailDestination): Href {
       return { pathname: '/wallet/[tokenId]', params: destination.params };
     case 'LivePlayerDetail':
       return '/live-player/detail';
+    case 'WalletExisting':
+      return '/wallet-setup/existing';
   }
 }
 

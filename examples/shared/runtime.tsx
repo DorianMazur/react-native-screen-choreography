@@ -35,12 +35,14 @@ export type DemoListScreenId =
   | 'GalleryList'
   | 'MusicList'
   | 'TokenList'
+  | 'WalletSetup'
   | 'LivePlayerList';
 
 export type DemoDetailDestination =
   | { screen: 'GalleryDetail'; params: { photoId: string } }
   | { screen: 'NowPlaying'; params: { trackId: string } }
   | { screen: 'TokenDetail'; params: { tokenId: string } }
+  | { screen: 'WalletExisting'; params?: undefined }
   | { screen: 'LivePlayerDetail'; params?: undefined };
 
 export interface ExampleNavigation {
