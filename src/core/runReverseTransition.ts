@@ -36,12 +36,15 @@ export async function runReverseTransition(
   const {
     progress,
     progressOwnership,
+    navigationController,
     preMeasureGroup,
     startTransition,
     completeTransition,
     cancelTransition,
     waitForOverlayReady,
   } = ctx;
+  if (!navigationController.acquireNavigationLock(currentScreenId)) return;
+  const navigationToken = navigationController.getNavigationLockToken();
   let reverseSessionId: string | null = null;
   const preparationVersion = progressOwnership.version;
   let animationToken: number | null = null;
@@ -170,5 +173,9 @@ export async function runReverseTransition(
       return;
     }
     commitNavigation();
+  } finally {
+    if (!reverseSessionId || !progressOwnership.isSession(reverseSessionId)) {
+      navigationController.releaseNavigationLock(navigationToken);
+    }
   }
 }

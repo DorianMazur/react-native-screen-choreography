@@ -92,7 +92,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 
 ### `ChoreographyScreen`
 
-- provides a stable `screenId`
+- keeps the supplied `screenId` as a logical name while adapters supply the navigator route key as its internal instance identity; registration, readiness, visibility, and lineage use that instance key
 - reads volatile transition state from `ChoreographyContext` and lifecycle callbacks (`setScreenReady`, `unregisterScreen`) from `ChoreographyActionsContext` so its registration effect depends only on stable identities and never re-runs on session changes
 - reports layout readiness via a double-RAF after each `onLayout`
 - drives screen-level visibility through a single direction-agnostic model derived from `(direction, role, phase, progress)`. The pure helpers live in `src/core/screenVisibility.ts` and are unit-tested:
@@ -127,7 +127,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 
 - pre-measures source elements before navigation
 - waits for target elements to register via registry subscription events (with a 500ms safety deadline) instead of a 16ms polling loop
-- validates cached target metrics from previous sessions with one batched measurement; only falls back to the multi-read stability loop when the cache is missing or stale
+- validates cached target metrics from previous sessions with one batched measurement; the cache is keyed by logical screen layout, group, and element so new route instances retain this optimization without sharing registrations
 - discovers expected IDs from the source screen's group, creates only matching source/target pairs, and freezes a `sourcePresentation` and `targetPresentation` onto each pair before promoting the session to `active`
 - can refresh source or target metrics for the active session in place
 - maintains the `hiddenElements` set; the provider mirrors it onto per-element shared values when the overlay paints
@@ -151,7 +151,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 1. A source screen calls `navigate()` from `useChoreographyNavigation`.
 2. Source elements are pre-measured while they are still mounted and visible.
 3. The target screen is marked as pending so its real content stays hidden.
-4. Navigation pushes the target route with stack animation disabled.
+4. Navigation pushes the target route with stack animation disabled. The adapter resolves its route key from navigation state before waiting for that instance's readiness. Until resolution, the logical pending-target gate applies only to the focused destination and excludes the source instance.
 5. Target `SharedElement`s register as the destination mounts.
 6. `TransitionCoordinator` waits for the structural target elements to exist and stabilize.
 7. The coordinator captures `getPresentation()` for every paired element and stores frozen `sourcePresentation`/`targetPresentation` on each pair, then promotes the session to `active`.
@@ -181,12 +181,9 @@ There are two main reverse paths today.
 
 ### Back-navigation interception
 
-Any back action on a screen that was entered through `useChoreographyNavigation.navigate()` plays the reverse animation, even if the app does not call `goBack()` through the hook. This is achieved by a `beforeRemove` listener installed inside `ChoreographyScreen`:
+Both adapters use `usePreventRemove` in `ChoreographyScreen` and look up provider-owned lineage by the current route key. A single-route Back can run a reverse transition when its previous route matches the recorded source route key. Multi-route removals and unrelated routes do not borrow that transition.
 
-- on every back attempt (header back, hardware back, programmatic `navigation.goBack()`, swipe-back), the listener inspects the current route's `_choreographyGroup` / `_choreographySourceScreen` params (set by the forward `navigate()`)
-- if those params are present and no session is already running, the listener calls `e.preventDefault()`, runs `runReverseTransition(...)`, and re-dispatches `e.data.action` once the choreography has handed off to the spring
-- if a session is already running (e.g. `useChoreographyNavigation.goBack()` initiated this back), the listener defers to the existing logic
-- `runReverseTransition` lives in `src/core/runReverseTransition.ts` and is shared by both the listener and the standalone-reverse path inside `useChoreographyNavigation.goBack`, so the two entry points produce identical behavior
+`runReverseTransition` acquires the provider's preparation lock, keeps the outgoing route mounted during the spring, then redispatches the original action. Unavailable pairing falls back to the original action while the preparation still owns its session. Explicit hook Back during an active forward transition retains the existing pop-first reuse path. Built-in native swipe progress is not connected to choreography progress.
 
 ## Visibility And Readiness Rules
 
@@ -202,7 +199,7 @@ The runtime measures live views but avoids timing-based polling where it can.
 
 - source elements are measured before navigation
 - target registration is awaited through registry subscription events
-- target metrics from previous sessions are cached per `(screenId, id)` and validated with one batched read on repeated opens; mismatches fall back to the stability loop
+- target metrics are cached per `(logical screen layout, groupId, id)` and validated against the actual destination instance with one batched read; mismatches fall back to the stability loop
 - startup waits are biased toward structural elements such as the container and icon
 - reused reverse paths can refresh active session metrics after the source screen becomes visible again
 
@@ -230,7 +227,9 @@ Normal pairs render frozen `ElementPresentation` values. `SharedElement.Live` is
 
 ## Navigation Session Controller
 
-`NavigationSessionController` owns navigation locking, last-request queueing, animation tokens, and active-session validation outside React. `useChoreographyNavigation` retains platform effects and Reanimated scheduling while delegating mutable session decisions to this directly testable controller.
+Each provider owns one `NavigationSessionController`. Forward navigation, intercepted Back, and interactive Back share its preparation lock. Lock releases can be qualified by a token so stale cleanup cannot unlock a newer request. Queued requests carry their source route key and can only replay on that instance; unregistering the source discards its queue and invalidates unfinished preparation. The provider updates the controller's active session synchronously with coordinator notifications.
+
+`useChoreographyNavigation` retains platform effects and Reanimated scheduling while delegating mutable session decisions to this directly testable controller. Live portal owners and hosts are also namespaced by route endpoints. Logical screen names are metadata used for destination hints and validated layout caching, not lifecycle identity.
 
 ## Extending The Library
 

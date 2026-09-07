@@ -39,6 +39,7 @@ import {
 import { getElementIdentityKey } from '../core/elementIdentity';
 import { ScreenReadinessRegistry } from '../core/ScreenReadinessRegistry';
 import { ProgressOwnership } from '../core/ProgressOwnership';
+import { NavigationSessionController } from '../core/NavigationSessionController';
 
 function TransitionHostPortal({
   active,
@@ -106,9 +107,15 @@ export function ChoreographyProvider({
   const [progressOwnership] = useState(
     () => new ProgressOwnership(progressOwner, progress)
   );
+  const [navigationController] = useState(
+    () => new NavigationSessionController()
+  );
   const [activeSession, setActiveSession] =
     useState<TransitionSessionData | null>(null);
   const [pendingTargetScreenId, setPendingTargetScreenId] = useState<
+    string | null
+  >(null);
+  const [pendingSourceScreenId, setPendingSourceScreenId] = useState<
     string | null
   >(null);
   const isOverlayActive =
@@ -166,6 +173,7 @@ export function ChoreographyProvider({
     [settleOverlayWaiters]
   );
   const screenReadinessRef = useRef(new ScreenReadinessRegistry());
+  const screenNamesRef = useRef(new Map<string, string>());
 
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
@@ -178,16 +186,19 @@ export function ChoreographyProvider({
   if (!coordinatorRef.current) {
     coordinatorRef.current = new TransitionCoordinator(
       registryRef.current,
-      progress
+      progress,
+      (screenId) => screenNamesRef.current.get(screenId) ?? screenId
     );
   }
 
   useLayoutEffect(() => {
     const coordinator = coordinatorRef.current!;
     const screenReadiness = screenReadinessRef.current;
+    const screenNames = screenNamesRef.current;
     const hiddenMap = hiddenMapRef.current;
     const navigationLineage = navigationLineageRef.current;
     coordinator.setOnSessionChange((session) => {
+      navigationController.setActiveSession(session);
       progressOwnership.setSession(session?.id ?? null);
       const previousSession = activeSessionRef.current;
       activeSessionRef.current = session;
@@ -199,10 +210,12 @@ export function ChoreographyProvider({
       overlayContentReadySessionIdRef.current = null;
 
       if (!session) {
+        navigationController.releaseNavigationLock();
         if (previousSession) {
           onTransitionEndRef.current?.(previousSession);
         }
         setPendingTargetScreenId(null);
+        setPendingSourceScreenId(null);
         syncHiddenElements();
         return;
       }
@@ -221,10 +234,14 @@ export function ChoreographyProvider({
     });
 
     return () => {
+      navigationController.setActiveSession(null);
+      navigationController.releaseNavigationLock();
+      navigationController.clearQueuedNavigation();
       progressOwnership.setSession(null);
       progressOwnership.invalidate();
       cancelAllOverlayWaiters();
       screenReadiness.dispose();
+      screenNames.clear();
       coordinator.dispose();
       hiddenMap.forEach((hidden) => {
         hidden.value = 0;
@@ -234,6 +251,7 @@ export function ChoreographyProvider({
     };
   }, [
     cancelAllOverlayWaiters,
+    navigationController,
     progressOwnership,
     settleOverlayWaiters,
     syncHiddenElements,
@@ -270,23 +288,65 @@ export function ChoreographyProvider({
     []
   );
 
-  const setScreenReady = useCallback((screenId: string, ready: boolean) => {
-    screenReadinessRef.current.setReady(screenId, ready);
+  const setScreenReady = useCallback(
+    (screenId: string, ready: boolean, screenName?: string) => {
+      if (screenName) screenNamesRef.current.set(screenId, screenName);
+      screenReadinessRef.current.setReady(screenId, ready);
 
-    debugTrace(
-      () =>
-        `[Provider] Screen ready=${ready} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
-    );
-  }, []);
+      debugTrace(
+        () =>
+          `[Provider] Screen ready=${ready} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
+      );
+    },
+    []
+  );
 
-  const unregisterScreen = useCallback((screenId: string) => {
-    screenReadinessRef.current.unregister(screenId);
+  const unregisterScreen = useCallback(
+    (screenId: string) => {
+      screenReadinessRef.current.unregister(screenId);
+      screenNamesRef.current.delete(screenId);
+      navigationLineageRef.current.delete(screenId);
+      if (
+        navigationController.peekQueuedNavigation()?.sourceScreenId === screenId
+      ) {
+        navigationController.clearQueuedNavigation();
+      }
+      if (
+        navigationController.getNavigationSourceScreenId() === screenId &&
+        coordinatorRef.current?.getActiveSession()?.state !== 'active'
+      ) {
+        progressOwnership.invalidate();
+        coordinatorRef.current?.cancelTransition();
+        navigationController.releaseNavigationLock();
+        setPendingTargetScreenId(null);
+        setPendingSourceScreenId(null);
+      }
 
-    debugTrace(
-      () =>
-        `[Provider] Screen unregistered screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
-    );
-  }, []);
+      debugTrace(
+        () =>
+          `[Provider] Screen unregistered screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
+      );
+    },
+    [navigationController, progressOwnership]
+  );
+
+  const resolveScreenId = useCallback(
+    (screenId: string, preferredInstanceId?: string) => {
+      const screenNames = screenNamesRef.current;
+      if (screenNames.has(screenId)) return screenId;
+      if (
+        preferredInstanceId &&
+        screenNames.get(preferredInstanceId) === screenId
+      ) {
+        return preferredInstanceId;
+      }
+      const candidates = [...screenNames].filter(
+        ([, name]) => name === screenId
+      );
+      return candidates.length === 1 ? candidates[0]![0] : null;
+    },
+    []
+  );
 
   const acquireScreenBlocker = useCallback((screenId: string) => {
     debugTrace(() => `[Provider] Screen blocker acquired screen="${screenId}"`);
@@ -445,9 +505,13 @@ export function ChoreographyProvider({
     coordinatorRef.current?.cancelTransition(sessionId);
   }, []);
 
-  const setPendingTargetScreen = useCallback((screenId: string | null) => {
-    setPendingTargetScreenId(screenId);
-  }, []);
+  const setPendingTargetScreen = useCallback(
+    (screenId: string | null, sourceScreenId?: string) => {
+      setPendingTargetScreenId(screenId);
+      setPendingSourceScreenId(screenId ? (sourceScreenId ?? null) : null);
+    },
+    []
+  );
 
   const handleOverlayReady = useCallback(
     (sessionId: string) => {
@@ -507,17 +571,20 @@ export function ChoreographyProvider({
       registerElement,
       unregisterElement,
       setScreenReady,
+      resolveScreenId,
       unregisterScreen,
       acquireScreenBlocker,
       waitForScreenReady,
       isElementHidden,
       activeSession,
       pendingTargetScreenId,
+      pendingSourceScreenId,
       setPendingTargetScreen,
       setNavigationLineage,
       getNavigationLineage,
       progress,
       progressOwnership,
+      navigationController,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
@@ -530,17 +597,20 @@ export function ChoreographyProvider({
       registerElement,
       unregisterElement,
       setScreenReady,
+      resolveScreenId,
       unregisterScreen,
       acquireScreenBlocker,
       waitForScreenReady,
       isElementHidden,
       activeSession,
       pendingTargetScreenId,
+      pendingSourceScreenId,
       setPendingTargetScreen,
       setNavigationLineage,
       getNavigationLineage,
       progress,
       progressOwnership,
+      navigationController,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,

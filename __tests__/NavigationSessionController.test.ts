@@ -15,6 +15,17 @@ function createSession(id: string): TransitionSessionData {
 }
 
 describe('NavigationSessionController', () => {
+  test('a stale release cannot unlock a replacement request', () => {
+    const controller = new NavigationSessionController();
+    controller.acquireNavigationLock('first');
+    const token = controller.getNavigationLockToken();
+    controller.releaseNavigationLock(token);
+    controller.acquireNavigationLock('second');
+    controller.releaseNavigationLock(token);
+    expect(controller.isNavigationLocked()).toBe(true);
+    expect(controller.getNavigationSourceScreenId()).toBe('second');
+  });
+
   test('acquires and releases the navigation lock atomically', () => {
     const controller = new NavigationSessionController();
 
@@ -119,6 +130,49 @@ describe('NavigationSessionController', () => {
       }
       expect(calls).toEqual(expectedCalls);
       expect(controller.isNavigationLocked()).toBe(true);
+    }
+  );
+
+  test.each(['detail-second', null])(
+    'resolves the target instance as %s before readiness',
+    async (targetInstanceId) => {
+      const controller = new NavigationSessionController();
+      controller.acquireNavigationLock();
+      const waitForScreenReady = jest.fn(async () => true);
+      const startTransition = jest.fn(async () => createSession('session'));
+      const setPendingTargetScreen = jest.fn();
+      await controller.prepareForwardTransition({
+        groupId: 'group',
+        sourceScreenId: 'detail-first',
+        targetScreenId: 'Detail',
+        isAndroid: false,
+        preMeasureGroup: async () => {},
+        setPendingTargetScreen,
+        dispatchNavigation: () => {},
+        resolveTargetScreenId: async () => targetInstanceId,
+        waitForScreenReady,
+        waitForNextFrame: async () => {},
+        startTransition,
+        waitForOverlayReady: async () => true,
+      });
+      expect(setPendingTargetScreen).toHaveBeenCalledWith(
+        'Detail',
+        'detail-first'
+      );
+      if (targetInstanceId) {
+        expect(waitForScreenReady).toHaveBeenCalledWith(targetInstanceId);
+        expect(startTransition).toHaveBeenCalledWith({
+          groupId: 'group',
+          sourceScreenId: 'detail-first',
+          targetScreenId: targetInstanceId,
+          direction: 'forward',
+        });
+      } else {
+        expect(waitForScreenReady).not.toHaveBeenCalled();
+        expect(startTransition).not.toHaveBeenCalled();
+        expect(setPendingTargetScreen).toHaveBeenLastCalledWith(null);
+        expect(controller.isNavigationLocked()).toBe(false);
+      }
     }
   );
 

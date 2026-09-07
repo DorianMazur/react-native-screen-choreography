@@ -21,10 +21,13 @@ export interface ChoreographyScreenProps {
 }
 
 export function ChoreographyScreenBase({
-  screenId,
+  screenId: screenName,
+  instanceId,
+  isFocused = true,
   children,
   ready = true,
-}: ChoreographyScreenProps) {
+}: ChoreographyScreenProps & { instanceId?: string; isFocused?: boolean }) {
+  const screenId = instanceId ?? screenName;
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
   const readinessTokenRef = useRef(0);
@@ -35,10 +38,18 @@ export function ChoreographyScreenBase({
   const session = choreography?.activeSession ?? null;
   const pendingTargetScreenId = choreography?.pendingTargetScreenId ?? null;
   const progress = choreography?.progress ?? null;
+  const isPendingTarget =
+    pendingTargetScreenId === screenId ||
+    (pendingTargetScreenId === screenName &&
+      choreography?.pendingSourceScreenId !== screenId &&
+      isFocused);
   const role = getScreenRole(session, screenId);
-  const phase = getSessionPhase(session, pendingTargetScreenId, screenId);
+  const phase = getSessionPhase(
+    session,
+    isPendingTarget ? screenId : null,
+    screenId
+  );
   const direction = session?.direction ?? 'forward';
-  const isPendingTarget = pendingTargetScreenId === screenId;
   const staticOpacity =
     isPendingTarget && direction === 'forward'
       ? 0
@@ -57,13 +68,13 @@ export function ChoreographyScreenBase({
   const unregisterScreen = actions?.unregisterScreen;
 
   useEffect(() => {
-    setScreenReady?.(screenId, false);
+    setScreenReady?.(screenId, false, screenName);
 
     return () => {
       readinessTokenRef.current += 1;
       unregisterScreen?.(screenId);
     };
-  }, [screenId, setScreenReady, unregisterScreen]);
+  }, [screenId, screenName, setScreenReady, unregisterScreen]);
 
   useEffect(() => {
     if (!ready) {

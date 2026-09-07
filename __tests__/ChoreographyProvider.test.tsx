@@ -1,6 +1,7 @@
 import React, { StrictMode, useContext } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ChoreographyProvider } from '../src/components/ChoreographyProvider';
+import { useChoreographyNavigator } from '../src/hooks/useChoreographyNavigation';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
@@ -30,6 +31,76 @@ jest.mock(
 );
 
 describe('ChoreographyProvider lifecycle', () => {
+  test('unregistering the preparation source invalidates its dispatch and queue', async () => {
+    let context!: ChoreographyContextType;
+    let navigation!: ReturnType<typeof useChoreographyNavigator>;
+    let tree!: ReactTestRenderer;
+    let measured!: (
+      pageX: number,
+      pageY: number,
+      width: number,
+      height: number
+    ) => void;
+    function Caller() {
+      context = useContext(ChoreographyContext)!;
+      navigation = useChoreographyNavigator({
+        currentScreenId: 'source-route',
+        isFocused: true,
+        goBack: jest.fn(),
+      });
+      return null;
+    }
+    const dispatchNavigation = jest.fn();
+    try {
+      await act(async () => {
+        tree = create(
+          <ChoreographyProvider>
+            <Caller />
+          </ChoreographyProvider>
+        );
+      });
+      context.registerElement({
+        id: 'card',
+        groupId: 'group',
+        screenId: 'source-route',
+        metrics: null,
+        ref: () => ({
+          measureInWindow: (callback: typeof measured) => {
+            measured = callback;
+          },
+        }),
+        getPresentation: () => ({
+          content: null,
+          transition: { renderer: () => null },
+        }),
+      });
+      let pending!: Promise<void>;
+      await act(async () => {
+        pending = navigation.navigate({
+          targetScreenId: 'Detail',
+          dispatchNavigation,
+          options: { transitionConfig: { group: 'group' } },
+        });
+      });
+      context.navigationController.queueNavigation({
+        sourceScreenId: 'source-route',
+        targetScreenId: 'Other',
+        dispatchNavigation,
+      });
+      await act(async () => context.unregisterScreen('source-route'));
+      await act(async () => {
+        measured(0, 0, 100, 100);
+        await pending;
+      });
+      expect(dispatchNavigation).not.toHaveBeenCalled();
+      expect(context.navigationController.isNavigationLocked()).toBe(false);
+      expect(context.navigationController.peekQueuedNavigation()).toBeNull();
+      expect(context.pendingTargetScreenId).toBeNull();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
+
   test.each([false, true])(
     'publishes and completes sessions with StrictMode=%s',
     async (strict) => {

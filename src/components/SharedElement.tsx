@@ -65,12 +65,21 @@ export interface LiveSharedElementTargetProps {
   style?: StyleProp<ViewStyle>;
 }
 
-function getLiveDestinationHostName(id: string, groupId?: string) {
-  return `screen-choreography:live:destination:${groupId ?? 'default'}:${id}`;
+function getLiveDestinationHostName(
+  screenId: string,
+  id: string,
+  groupId?: string
+) {
+  return `screen-choreography:live:destination:${JSON.stringify([screenId, groupId, id])}`;
 }
 
-function getLiveOverlayHostName(id: string, groupId: string) {
-  return `screen-choreography:live:overlay:${groupId}:${id}`;
+function getLiveOverlayHostName(
+  sourceScreenId: string,
+  targetScreenId: string,
+  id: string,
+  groupId: string
+) {
+  return `screen-choreography:live:overlay:${JSON.stringify([sourceScreenId, targetScreenId, groupId, id])}`;
 }
 
 function LiveSharedElementRenderer({
@@ -121,7 +130,12 @@ function LiveSharedElementRenderer({
   return (
     <Animated.View style={[styles.liveOverlayHost, { zIndex }, animatedStyle]}>
       <PortalHost
-        name={getLiveOverlayHostName(id, groupId)}
+        name={getLiveOverlayHostName(
+          source.screenId,
+          target.screenId,
+          id,
+          groupId
+        )}
         style={styles.liveHost}
       />
     </Animated.View>
@@ -288,7 +302,7 @@ function LiveSharedElement({
   const actions = useContext(ChoreographyActionsContext);
   const screenId = useScreenId();
   const wasParticipatingRef = useRef(false);
-  const settledAtTargetRef = useRef(false);
+  const settledTargetScreenIdRef = useRef<string | null>(null);
   const session = choreography?.activeSession ?? null;
   const participates = Boolean(
     session?.state === 'active' &&
@@ -306,14 +320,25 @@ function LiveSharedElement({
   let hostName: string | undefined;
   if (participates) {
     wasParticipatingRef.current = true;
-    hostName = getLiveOverlayHostName(id, groupId ?? 'default');
+    hostName = getLiveOverlayHostName(
+      session!.sourceScreenId,
+      session!.targetScreenId,
+      id,
+      groupId ?? 'default'
+    );
   } else {
     if (wasParticipatingRef.current) {
       wasParticipatingRef.current = false;
-      settledAtTargetRef.current = actions?.getSettledScreenId() !== screenId;
+      const settledScreenId = actions?.getSettledScreenId() ?? null;
+      settledTargetScreenIdRef.current =
+        settledScreenId !== screenId ? settledScreenId : null;
     }
-    hostName = settledAtTargetRef.current
-      ? getLiveDestinationHostName(id, groupId)
+    hostName = settledTargetScreenIdRef.current
+      ? getLiveDestinationHostName(
+          settledTargetScreenIdRef.current,
+          id,
+          groupId
+        )
       : undefined;
   }
 
@@ -326,7 +351,7 @@ function LiveSharedElement({
     >
       <Portal
         hostName={hostName}
-        name={`screen-choreography:live:${groupId ?? 'default'}:${id}`}
+        name={`screen-choreography:live:${JSON.stringify([screenId, groupId, id])}`}
         style={styles.livePortal}
       >
         {children}
@@ -340,6 +365,7 @@ function LiveSharedElementTarget({
   groupId,
   style,
 }: LiveSharedElementTargetProps) {
+  const screenId = useScreenId();
   return (
     <SharedElementRoot
       id={id}
@@ -348,7 +374,7 @@ function LiveSharedElementTarget({
       style={style}
     >
       <PortalHost
-        name={getLiveDestinationHostName(id, groupId)}
+        name={getLiveDestinationHostName(screenId, id, groupId)}
         style={styles.liveHost}
       />
     </SharedElementRoot>

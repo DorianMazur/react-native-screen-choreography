@@ -694,52 +694,73 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     expect(session?.pairs.map((pair) => pair.id)).toEqual(['card']);
   }, 5000);
 
-  test('repeated transitions validate cached target metrics with fewer reads', async () => {
-    const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
-    };
-    const target = countingRef({ pageX: 0, pageY: 0, width: 200, height: 200 });
-
-    const registerBoth = () => {
-      registry.register(
-        makeElement(
-          {
-            screenId: 'list',
-            metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
-          },
-          snap
-        )
+  test.each([false, true])(
+    'repeated transitions validate cached metrics with fewer reads (new instance: %s)',
+    async (newInstance) => {
+      coordinator = new TransitionCoordinator(
+        registry,
+        progress as any,
+        (screenId) => (screenId.startsWith('detail') ? 'detail' : screenId)
       );
-      registry.register(
-        makeElement({ screenId: 'detail', ref: target.ref }, snap)
-      );
-    };
+      const snap: { current: ElementPresentation } = {
+        current: { content: null, transition },
+      };
+      const target = countingRef({
+        pageX: 0,
+        pageY: 0,
+        width: 200,
+        height: 200,
+      });
 
-    registerBoth();
-    await coordinator.startTransition({
-      groupId: 'group',
-      sourceScreenId: 'list',
-      targetScreenId: 'detail',
-      direction: 'forward',
-    });
-    coordinator.completeTransition();
+      const registerBoth = () => {
+        registry.register(
+          makeElement(
+            {
+              screenId: 'list',
+              metrics: { pageX: 0, pageY: 0, width: 50, height: 50 },
+            },
+            snap
+          )
+        );
+        registry.register(
+          makeElement({ screenId: 'detail', ref: target.ref }, snap)
+        );
+      };
 
-    const firstRunReads = target.state.calls;
-    target.state.calls = 0;
+      registerBoth();
+      await coordinator.startTransition({
+        groupId: 'group',
+        sourceScreenId: 'list',
+        targetScreenId: 'detail',
+        direction: 'forward',
+      });
+      coordinator.completeTransition();
 
-    await coordinator.startTransition({
-      groupId: 'group',
-      sourceScreenId: 'list',
-      targetScreenId: 'detail',
-      direction: 'forward',
-    });
-    coordinator.completeTransition();
+      const firstRunReads = target.state.calls;
+      target.state.calls = 0;
 
-    // Hot path: one cache-validation read plus the pairing re-measure,
-    // instead of the multi-read stability loop.
-    expect(target.state.calls).toBeLessThan(firstRunReads);
-    expect(target.state.calls).toBeLessThanOrEqual(2);
-  }, 5000);
+      const nextTargetScreenId = newInstance ? 'detail-next' : 'detail';
+      if (newInstance) {
+        registry.unregister('card', 'detail', 'group');
+        registry.register(
+          makeElement({ screenId: nextTargetScreenId, ref: target.ref }, snap)
+        );
+      }
+      await coordinator.startTransition({
+        groupId: 'group',
+        sourceScreenId: 'list',
+        targetScreenId: nextTargetScreenId,
+        direction: 'forward',
+      });
+      coordinator.completeTransition();
+
+      // Hot path: one cache-validation read plus the pairing re-measure,
+      // instead of the multi-read stability loop.
+      expect(target.state.calls).toBeLessThan(firstRunReads);
+      expect(target.state.calls).toBeLessThanOrEqual(2);
+    },
+    5000
+  );
 
   test('stale cached target metrics fall back to fresh measurement', async () => {
     const snap: { current: ElementPresentation } = {

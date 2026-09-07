@@ -6,6 +6,7 @@ import {
   type ChoreographyScreenProps,
 } from '../components/ChoreographyScreenBase';
 import { isSingleRouteBack } from '../core/removalAction';
+import { waitForNavigationTarget } from '../core/navigationTarget';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
 import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
@@ -33,8 +34,9 @@ export function useChoreographyRouter<Href>(
 ) {
   const isFocused = useIsFocused();
   const route = useRoute();
+  const navigation = useNavigation();
   const choreography = useChoreographyNavigator({
-    currentScreenId,
+    currentScreenId: route.key ?? currentScreenId,
     currentRouteKey: route.key,
     isFocused,
     goBack: () => router.back(),
@@ -47,9 +49,11 @@ export function useChoreographyRouter<Href>(
         targetScreenId,
         options,
         dispatchNavigation: () => router.push(href),
+        resolveTargetScreenId: () =>
+          waitForNavigationTarget(navigation, route.key),
       });
     },
-    [choreography, router]
+    [choreography, navigation, route.key, router]
   );
 
   const navigate = useCallback(
@@ -59,9 +63,11 @@ export function useChoreographyRouter<Href>(
         targetScreenId,
         options,
         dispatchNavigation: () => router.navigate(href),
+        resolveTargetScreenId: () =>
+          waitForNavigationTarget(navigation, route.key),
       });
     },
-    [choreography, router]
+    [choreography, navigation, route.key, router]
   );
 
   return { push, navigate, back: choreography.goBack };
@@ -74,6 +80,7 @@ export function useInteractiveTransition() {
 
   return useInteractiveTransitionNavigator({
     navigateBack,
+    currentScreenId: route.key,
     routeParams: (route.params ?? {}) as Record<string, unknown>,
   });
 }
@@ -83,10 +90,11 @@ export function ChoreographyScreen(
 ): React.ReactElement {
   const navigation = useNavigation();
   const route = useRoute();
+  const isFocused = useIsFocused();
   const routeParams = (route.params ?? {}) as Record<string, unknown>;
   const { interceptRemoval, preventRemove, sourceScreenId, sourceRouteKey } =
     useChoreographyScreenRemoval({
-      screenId: props.screenId,
+      screenId: route.key,
       legacyGroupId: routeParams._choreographyGroup as string | undefined,
       legacySourceScreenId: routeParams._choreographySourceScreen as
         | string
@@ -109,5 +117,11 @@ export function ChoreographyScreen(
     if (!interceptRemoval(resume, canAnimate, isRemoved)) resume();
   });
 
-  return <ChoreographyScreenBase {...props} />;
+  return (
+    <ChoreographyScreenBase
+      {...props}
+      instanceId={route.key}
+      isFocused={isFocused}
+    />
+  );
 }

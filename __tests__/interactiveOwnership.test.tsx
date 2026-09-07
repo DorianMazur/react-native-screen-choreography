@@ -4,6 +4,7 @@ import {
   type ChoreographyContextType,
 } from '../src/core/ChoreographyContext';
 import { ProgressOwnership } from '../src/core/ProgressOwnership';
+import { NavigationSessionController } from '../src/core/NavigationSessionController';
 import { ScreenIdContext } from '../src/core/screenIdContext';
 import { useInteractiveTransitionNavigator } from '../src/hooks/useInteractiveTransition';
 
@@ -51,6 +52,7 @@ describe('interactive ownership', () => {
     ctx = {
       progress,
       progressOwnership,
+      navigationController: new NavigationSessionController(),
       activeSession: null,
       getNavigationLineage: () => ({
         groupId: 'group',
@@ -75,6 +77,13 @@ describe('interactive ownership', () => {
     await act(async () => tree.unmount());
     jest.restoreAllMocks();
     jest.useRealTimers();
+  });
+
+  test('does not start a gesture while another caller owns preparation', async () => {
+    ctx.navigationController.acquireNavigationLock('List');
+    expect(await interactive.beginBack()).toBeNull();
+    expect(ctx.preMeasureGroup).not.toHaveBeenCalled();
+    expect(ctx.navigationController.getNavigationSourceScreenId()).toBe('List');
   });
 
   test.each(['finish', 'cancel'] as const)(

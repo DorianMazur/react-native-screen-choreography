@@ -5,7 +5,9 @@ import type {
 
 export interface PendingNavigationRequest {
   targetScreenId: string;
+  sourceScreenId?: string;
   dispatchNavigation: () => void;
+  resolveTargetScreenId?: () => Promise<string | null>;
   options?: ChoreographyNavigationOptions;
 }
 
@@ -15,8 +17,12 @@ interface PrepareForwardTransitionArgs {
   targetScreenId: string;
   isAndroid: boolean;
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
-  setPendingTargetScreen: (screenId: string | null) => void;
+  setPendingTargetScreen: (
+    screenId: string | null,
+    sourceScreenId?: string
+  ) => void;
   dispatchNavigation: () => void;
+  resolveTargetScreenId?: () => Promise<string | null>;
   waitForScreenReady: (screenId: string) => Promise<boolean>;
   waitForNextFrame: () => Promise<void>;
   startTransition: (config: {
@@ -36,6 +42,8 @@ interface PrepareForwardTransitionArgs {
  */
 export class NavigationSessionController {
   private navigationLocked = false;
+  private navigationLockToken = 0;
+  private navigationSourceScreenId: string | null = null;
   private pendingRequest: PendingNavigationRequest | null = null;
   private animationToken = 0;
   private activeSession: TransitionSessionData | null = null;
@@ -48,16 +56,28 @@ export class NavigationSessionController {
     return this.activeSession;
   }
 
-  acquireNavigationLock(): boolean {
+  acquireNavigationLock(sourceScreenId?: string): boolean {
     if (this.navigationLocked) {
       return false;
     }
     this.navigationLocked = true;
+    this.navigationLockToken += 1;
+    this.navigationSourceScreenId = sourceScreenId ?? null;
     return true;
   }
 
-  releaseNavigationLock(): void {
+  releaseNavigationLock(token?: number): void {
+    if (token !== undefined && token !== this.navigationLockToken) return;
     this.navigationLocked = false;
+    this.navigationSourceScreenId = null;
+  }
+
+  getNavigationLockToken(): number {
+    return this.navigationLockToken;
+  }
+
+  getNavigationSourceScreenId(): string | null {
+    return this.navigationSourceScreenId;
   }
 
   isNavigationLocked(): boolean {
@@ -107,6 +127,7 @@ export class NavigationSessionController {
     preMeasureGroup,
     setPendingTargetScreen,
     dispatchNavigation,
+    resolveTargetScreenId,
     waitForScreenReady,
     waitForNextFrame,
     startTransition,
@@ -117,10 +138,22 @@ export class NavigationSessionController {
     try {
       await preMeasureGroup(groupId, sourceScreenId);
       if (!isPreparationCurrent()) return null;
-      setPendingTargetScreen(targetScreenId);
+      setPendingTargetScreen(targetScreenId, sourceScreenId);
       dispatchNavigation();
 
-      const screenReady = await waitForScreenReady(targetScreenId);
+      const targetInstanceId = resolveTargetScreenId
+        ? await resolveTargetScreenId()
+        : targetScreenId;
+      if (!isPreparationCurrent()) return null;
+      if (!targetInstanceId) {
+        this.releaseNavigationLock();
+        setPendingTargetScreen(null);
+        return null;
+      }
+      if (targetInstanceId !== targetScreenId) {
+        setPendingTargetScreen(targetInstanceId, sourceScreenId);
+      }
+      const screenReady = await waitForScreenReady(targetInstanceId);
       if (!isPreparationCurrent()) return null;
       if (!screenReady) {
         this.releaseNavigationLock();
@@ -136,7 +169,7 @@ export class NavigationSessionController {
       const session = await startTransition({
         groupId,
         sourceScreenId,
-        targetScreenId,
+        targetScreenId: targetInstanceId,
         direction: 'forward',
       });
 

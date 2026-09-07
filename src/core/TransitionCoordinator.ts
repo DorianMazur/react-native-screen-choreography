@@ -35,7 +35,7 @@ export class TransitionCoordinator {
     () => {};
   private hiddenElements = new Set<string>();
   /**
-   * Last known-good target metrics keyed by `${screenId}:${id}`. Lets
+   * Last known-good metrics keyed by layout identity, group, and element. Lets
    * repeated opens of the same target layout validate with one batched
    * measurement instead of running the stable-measurement loop.
    */
@@ -43,13 +43,19 @@ export class TransitionCoordinator {
     string,
     { pageX: number; pageY: number; width: number; height: number }
   >();
-  constructor(registry: ElementRegistry, progress: SharedValue<number>) {
+  constructor(
+    registry: ElementRegistry,
+    progress: SharedValue<number>,
+    private readonly resolveLayoutId: (screenId: string) => string = (
+      screenId
+    ) => screenId
+  ) {
     this.registry = registry;
     this.progress = progress;
   }
 
   private elementKey(screenId: string, groupId: string, id: string): string {
-    return getElementIdentityKey(screenId, groupId, id);
+    return getElementIdentityKey(this.resolveLayoutId(screenId), groupId, id);
   }
 
   private ownsOperation(generation: number, sessionId: string): boolean {

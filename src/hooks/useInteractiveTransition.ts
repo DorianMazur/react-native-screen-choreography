@@ -20,11 +20,13 @@ import type {
 
 interface InteractiveTransitionNavigatorOptions {
   navigateBack: () => void;
+  currentScreenId?: string;
   routeParams?: Record<string, unknown>;
 }
 
 export function useInteractiveTransitionNavigator({
   navigateBack,
+  currentScreenId,
   routeParams,
 }: InteractiveTransitionNavigatorOptions) {
   const choreography = useContext(ChoreographyContext);
@@ -34,17 +36,20 @@ export function useInteractiveTransitionNavigator({
     );
   }
 
-  const screenId = useScreenId();
+  const scopeScreenId = useScreenId();
+  const screenId = currentScreenId ?? scopeScreenId;
   const {
     activeSession,
     progress,
     progressOwnership,
+    navigationController,
     preMeasureGroup,
     startTransition,
     waitForOverlayReady,
     completeTransition,
     cancelTransition,
     getNavigationLineage,
+    resolveScreenId,
   } = choreography;
   const sessionIdRef = useRef<string | null>(null);
   const beginTokenRef = useRef(0);
@@ -114,15 +119,21 @@ export function useInteractiveTransitionNavigator({
         options.group ??
         lineage?.groupId ??
         (params._choreographyGroup as string | undefined);
-      const targetScreenId =
+      const targetScreenHint =
         options.targetScreenId ??
         lineage?.sourceScreenId ??
         (params._choreographySourceScreen as string | undefined);
+      const targetScreenId =
+        targetScreenHint && resolveScreenId
+          ? resolveScreenId(targetScreenHint, lineage?.sourceScreenId)
+          : targetScreenHint;
 
       if (!groupId || !targetScreenId) {
         return null;
       }
 
+      if (!navigationController.acquireNavigationLock(screenId)) return null;
+      const navigationToken = navigationController.getNavigationLockToken();
       preparingRef.current = true;
       beginTokenRef.current += 1;
       const beginToken = beginTokenRef.current;
@@ -175,6 +186,9 @@ export function useInteractiveTransitionNavigator({
         setIsActive(true);
         return { id: session.id, progress: gestureProgress };
       } finally {
+        if (!sessionIdRef.current) {
+          navigationController.releaseNavigationLock(navigationToken);
+        }
         if (beginTokenRef.current === beginToken) {
           preparingRef.current = false;
         }
@@ -183,11 +197,13 @@ export function useInteractiveTransitionNavigator({
     [
       cancelTransition,
       getNavigationLineage,
+      navigationController,
       gestureProgress,
       preMeasureGroup,
       progress,
       progressOwnership,
       routeParams,
+      resolveScreenId,
       screenId,
       startTransition,
       waitForOverlayReady,

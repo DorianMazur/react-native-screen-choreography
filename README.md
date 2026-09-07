@@ -213,7 +213,9 @@ You can also toggle the logger imperatively from anywhere via the exported `setD
 
 ### 1. Wrap each screen root
 
-`ChoreographyScreen` gives the library a stable screen identity for registration, readiness, and visibility handoff.
+`ChoreographyScreen` gives the library a screen scope for registration, readiness, and visibility handoff. Keep `screenId` as your logical screen name. Both navigation adapters use the navigator's unique route key internally, so multiple mounted instances of the same screen name remain independent.
+
+Session and renderer `sourceScreenId`, `targetScreenId`, and side `screenId` values identify route instances, not logical screen names. Continue using screen names in `navigate()` and Expo Router's `targetScreenId` option. Navigation preparation and request queueing are shared by all callers under one provider.
 
 ```tsx
 import { ChoreographyScreen } from 'react-native-screen-choreography';
@@ -522,7 +524,7 @@ For app code, the cleanest pattern is:
 - Custom back gestures can control progress with `useInteractiveTransition`; native-stack's built-in swipe progress is not connected automatically.
 - Transition startup still depends on live target measurement for structural elements, though repeated opens of the same target layout reuse cached metrics after one validation read.
 - Ordinary renderers receive frozen React content, style, and metrics rather than captured pixels. `SharedElement.Live` is the opt-in path for one stateful native subtree and requires its owner screen to remain mounted.
-- Elements use compound `(screenId, groupId, id)` identities; the same ID can safely appear in several groups.
+- Elements use compound `(route instance, groupId, id)` identities; the same ID can safely appear in several groups or repeated screen instances. Explicit interactive Back screen-name hints use the recorded source instance when available; ambiguous names without lineage do not start a choreography.
 
 ## Further Documentation
 

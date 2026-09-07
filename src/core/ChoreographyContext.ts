@@ -1,5 +1,6 @@
 import { createContext } from 'react';
 import type { ProgressOwnership } from './ProgressOwnership';
+import type { NavigationSessionController } from './NavigationSessionController';
 import type { SharedValue } from 'react-native-reanimated';
 import type {
   ChoreographyDebugConfig,
@@ -20,7 +21,11 @@ export interface ChoreographyActionsType {
     screenId: string,
     groupId?: string
   ) => SharedValue<number>;
-  setScreenReady: (screenId: string, ready: boolean) => void;
+  setScreenReady: (
+    screenId: string,
+    ready: boolean,
+    screenName?: string
+  ) => void;
   unregisterScreen: (screenId: string) => void;
   acquireScreenBlocker: (screenId: string) => () => void;
   getSettledScreenId: () => string | null;
@@ -37,7 +42,15 @@ export interface ChoreographyContextType {
     screenId: string,
     groupId: string | undefined
   ) => void;
-  setScreenReady: (screenId: string, ready: boolean) => void;
+  setScreenReady: (
+    screenId: string,
+    ready: boolean,
+    screenName?: string
+  ) => void;
+  resolveScreenId: (
+    screenId: string,
+    preferredInstanceId?: string
+  ) => string | null;
   unregisterScreen: (screenId: string) => void;
   acquireScreenBlocker: (screenId: string) => () => void;
   waitForScreenReady: (screenId: string) => Promise<boolean>;
@@ -48,13 +61,18 @@ export interface ChoreographyContextType {
   ) => SharedValue<number>;
   activeSession: TransitionSessionData | null;
   pendingTargetScreenId: string | null;
-  setPendingTargetScreen: (screenId: string | null) => void;
+  pendingSourceScreenId: string | null;
+  setPendingTargetScreen: (
+    screenId: string | null,
+    sourceScreenId?: string
+  ) => void;
   setNavigationLineage: (lineage: ChoreographyNavigationLineage) => void;
   getNavigationLineage: (
     screenId: string
   ) => ChoreographyNavigationLineage | null;
   progress: SharedValue<number>;
   progressOwnership: ProgressOwnership;
+  navigationController: NavigationSessionController;
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;

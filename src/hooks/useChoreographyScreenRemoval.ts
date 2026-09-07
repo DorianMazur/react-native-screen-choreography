@@ -44,13 +44,22 @@ export function useChoreographyScreenRemoval({
       }
 
       const context = contextRef.current;
-      if (!context || context.activeSession || !mountedRef.current) {
+      if (
+        !context ||
+        context.progressOwnership.hasSession ||
+        context.navigationController.isNavigationLocked() ||
+        !mountedRef.current
+      ) {
         return false;
       }
 
       const lineage = context.getNavigationLineage(screenId);
       const groupId = lineage?.groupId ?? legacyGroupId;
-      const sourceScreenId = lineage?.sourceScreenId ?? legacySourceScreenId;
+      const sourceScreenId =
+        lineage?.sourceScreenId ??
+        (legacySourceScreenId
+          ? context.resolveScreenId(legacySourceScreenId)
+          : undefined);
 
       if (!groupId || !sourceScreenId) {
         return false;
@@ -79,11 +88,15 @@ export function useChoreographyScreenRemoval({
   );
 
   const lineage = choreography?.getNavigationLineage(screenId);
-  const sourceScreenId = lineage?.sourceScreenId ?? legacySourceScreenId;
+  const sourceScreenId =
+    lineage?.sourceScreenId ??
+    (legacySourceScreenId
+      ? (choreography?.resolveScreenId(legacySourceScreenId) ?? undefined)
+      : undefined);
   return {
     interceptRemoval,
     sourceScreenId,
-    sourceRouteKey: lineage?.sourceRouteKey,
+    sourceRouteKey: lineage?.sourceRouteKey ?? sourceScreenId,
     preventRemove: Boolean(
       choreography && (lineage?.groupId ?? legacyGroupId) && sourceScreenId
     ),

@@ -1,6 +1,7 @@
 import { withSpring } from 'react-native-reanimated';
 import { ElementRegistry } from '../src/core/ElementRegistry';
 import { ProgressOwnership } from '../src/core/ProgressOwnership';
+import { NavigationSessionController } from '../src/core/NavigationSessionController';
 import { runReverseTransition } from '../src/core/runReverseTransition';
 import { TransitionCoordinator } from '../src/core/TransitionCoordinator';
 import type { ChoreographyContextType } from '../src/core/ChoreographyContext';
@@ -43,6 +44,7 @@ function createContext(
   return {
     progress,
     progressOwnership,
+    navigationController: new NavigationSessionController(),
     preMeasureGroup: jest.fn(async () => {}),
     startTransition: jest.fn(async () => {
       progressOwnership.setSession('reverse-session');
