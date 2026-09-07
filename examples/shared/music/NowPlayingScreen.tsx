@@ -29,13 +29,15 @@ export function NowPlayingScreen({
                 style={styles.screenBackground}
               >
                 <View style={styles.toolbar}>
-                  <View
-                    testID="music-player-handle"
-                    accessibilityLabel="Drag down to close player"
-                    style={styles.handleSlot}
-                    {...panHandlers}
-                  >
-                    <View style={styles.handle} />
+                  <View style={styles.handleCenter} pointerEvents="box-none">
+                    <View
+                      testID="music-player-handle"
+                      accessibilityLabel="Drag down to close player"
+                      style={styles.handleSlot}
+                      {...panHandlers}
+                    >
+                      <View style={styles.handle} />
+                    </View>
                   </View>
                   <IconButton
                     icon="close"
@@ -81,19 +83,20 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'flex-end',
-    paddingHorizontal: 14,
+  },
+  handleCenter: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
   handleSlot: {
-    position: 'absolute',
-    left: '50%',
-    marginLeft: -48,
-    width: 96,
+    width: 100,
     height: 56,
     alignItems: 'center',
     justifyContent: 'center',
   },
   handle: {
-    width: 38,
+    width: 50,
     height: 5,
     borderRadius: 3,
     backgroundColor: theme.borderStrong,
