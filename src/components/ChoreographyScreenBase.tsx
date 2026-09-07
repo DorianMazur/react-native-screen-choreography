@@ -2,6 +2,7 @@ import React, { useCallback, useContext, useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import { ScreenIdContext } from '../core/screenIdContext';
+import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
@@ -112,7 +113,9 @@ export function ChoreographyScreenBase({
         pointerEvents={blockInteraction ? 'none' : 'auto'}
       >
         <Animated.View style={[styles.container, revealStyle]}>
-          {children}
+          <ChoreographyProgressProvider>
+            {children}
+          </ChoreographyProgressProvider>
         </Animated.View>
       </View>
     </ScreenIdContext.Provider>

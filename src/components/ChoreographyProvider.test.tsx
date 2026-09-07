@@ -1,7 +1,10 @@
 import React, { StrictMode, useContext } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ChoreographyProvider } from './ChoreographyProvider';
+import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
+import { useChoreographyControls } from '../hooks/useChoreographyProgress';
+import { ScreenIdContext } from '../core/screenIdContext';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
@@ -109,6 +112,13 @@ describe('ChoreographyProvider lifecycle', () => {
       let tree: ReactTestRenderer | undefined;
       const onTransitionStart = jest.fn();
       const onTransitionEnd = jest.fn();
+      const controlRenders = jest.fn();
+      let settle!: () => void;
+      function Controls() {
+        settle = useChoreographyControls().settleTransition;
+        controlRenders();
+        return null;
+      }
       function Consumer() {
         context = useContext(ChoreographyContext)!;
         return null;
@@ -122,6 +132,9 @@ describe('ChoreographyProvider lifecycle', () => {
               onTransitionEnd={onTransitionEnd}
             >
               <Consumer />
+              <ScreenIdContext.Provider value="detail">
+                <Controls />
+              </ScreenIdContext.Provider>
             </ChoreographyProvider>
           );
           tree = create(
@@ -129,6 +142,8 @@ describe('ChoreographyProvider lifecycle', () => {
           );
         });
 
+        const initialSettle = settle;
+        controlRenders.mockClear();
         const metrics = { pageX: 10, pageY: 20, width: 100, height: 100 };
         for (const screenId of ['list', 'detail']) {
           context.registerElement({
@@ -153,6 +168,18 @@ describe('ChoreographyProvider lifecycle', () => {
           });
         }
         const hidden = context.isElementHidden('card', 'list', 'group');
+        const unrelated = context.isElementHidden('other', 'list', 'other');
+        const writes = [hidden, unrelated].map((sharedValue) => {
+          let value = 0;
+          const write = jest.fn((next: number) => {
+            value = next;
+          });
+          Object.defineProperty(sharedValue, 'value', {
+            get: () => value,
+            set: write,
+          });
+          return write;
+        });
         let session: ChoreographyContextType['activeSession'] = null;
         await act(async () => {
           const preparation = context.startTransition({
@@ -172,14 +199,28 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(onTransitionStart).toHaveBeenCalledTimes(1);
         expect(onTransitionStart).toHaveBeenCalledWith(session);
         expect(hidden.value).toBe(1);
+        expect(writes[0]).toHaveBeenCalledTimes(1);
+        expect(writes[1]).not.toHaveBeenCalled();
 
-        await act(async () => context.completeTransition(sessionId));
+        await act(async () => {
+          const host = tree!.root.findByType(NativeTransitionHost);
+          host.props.onPresentationReady();
+          host.props.onPresentationReady();
+        });
+        expect(writes[0]).toHaveBeenCalledTimes(1);
+        expect(writes[1]).not.toHaveBeenCalled();
+
+        expect(controlRenders).not.toHaveBeenCalled();
+        expect(settle).toBe(initialSettle);
+        await act(async () => initialSettle());
 
         expect(context.activeSession).toBeNull();
         expect(context.progressOwnership.hasSession).toBe(false);
         expect(onTransitionEnd).toHaveBeenCalledTimes(1);
         expect(onTransitionEnd).toHaveBeenCalledWith(session);
         expect(hidden.value).toBe(0);
+        expect(writes[0]).toHaveBeenCalledTimes(2);
+        expect(writes[1]).not.toHaveBeenCalled();
       } finally {
         await act(async () => tree?.unmount());
         jest.useRealTimers();

@@ -79,11 +79,13 @@ This gives the library a flexible public API while avoiding the most common z-or
 - fires `onTransitionStart` and `onTransitionEnd` lifecycle callbacks for active sessions
 - renders `TransitionOverlay` inside `FullWindowOverlay`
 - wraps the overlay in `NativeTransitionHost`
-- maintains a per-element `hiddenMap` of `SharedValue<number>` (1 = hidden, 0 = visible) that stand-ins and originals read on the UI thread
+- maintains an `ElementVisibilityRegistry` of per-element `SharedValue<number>` entries (1 = hidden, 0 = visible), with the last scheduled visibility tracked on JS
 - `unregisterElement` skips SV cleanup when the key is in the coordinator's active hidden set, preventing mid-transition remounts from flashing elements visible
-- exposes two React contexts so consumers can subscribe at the right granularity:
+- separates React subscriptions by responsibility:
   - **`ChoreographyActionsContext`** — stable callbacks (`registerElement`, `unregisterElement`, `setScreenReady`, `unregisterScreen`, `waitForScreenReady`, `isElementHidden`). Identity is preserved across all session changes, so subscribers in this context never re-render because of transition state.
   - **`ChoreographyContext`** — the volatile transition state (`activeSession`, `pendingTargetScreenId`, `progress`, lifecycle async helpers). Components that need to react to the current session subscribe here.
+  - **`ChoreographyControlsContext`** - stable progress and screen-qualified settle commands. `useChoreographyControls()` binds the command to the current screen; the provider resolves the latest active session and validates progress ownership when it is invoked.
+  - **`ChoreographyProgressContext`** - memoized screen-visible fields (`role`, `phase`, `direction`, `isActive`, group and session identity). `ChoreographyScreen` scopes this context to its route instance. Pair and measurement changes do not notify progress consumers unless one of these fields changes. The provider supplies a default scope for consumers outside a screen.
 - forwards a structured `debug` prop into the logger inside a `useEffect`, so toggling debug at runtime never re-creates registry / coordinator instances
 
 ### Hide / Reveal Handoff
@@ -91,6 +93,8 @@ This gives the library a flexible public API while avoiding the most common z-or
 The provider deliberately does **not** hide real elements when a session becomes `active`. Hiding is driven by the overlay's `useLayoutEffect` callback (`handleOverlayReady(sessionId)`) and the native host presentation ack (`handleHostPresentationReady`). Both call `syncHiddenElements()` only after their respective host has committed. This is what guarantees there is no blank frame at the start of the animation — the originals are hidden in the same React commit that paints the overlay for the first time. A 150ms safety-net inside `waitForOverlayReady` calls `syncHiddenElements()` if neither callback fired, so the spring never animates with the originals visible underneath.
 
 ### `ChoreographyScreen`
+
+`syncHiddenElements()` compares desired visibility against the registry's last scheduled values and sends only changed entries in one UI worklet. Repeated presentation acknowledgements with the same hidden set schedule no work. Comparisons do not read shared values on JS. Ordered hide/reveal batches preserve cancellation and replacement behavior; unregistering a hidden element retains its shared value, and cleanup reveals retained entries before releasing them. The presentation callbacks and 150ms safety net remain the only hide triggers.
 
 - keeps the supplied `screenId` as a logical name while adapters supply the navigator route key as its internal instance identity; registration, readiness, visibility, and lineage use that instance key
 - reads volatile transition state from `ChoreographyContext` and lifecycle callbacks (`setScreenReady`, `unregisterScreen`) from `ChoreographyActionsContext` so its registration effect depends only on stable identities and never re-runs on session changes

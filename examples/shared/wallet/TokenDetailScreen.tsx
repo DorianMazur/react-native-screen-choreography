@@ -10,7 +10,7 @@ import {
 import {
   SafeAreaView,
   SharedElement,
-  useChoreographyProgress,
+  useChoreographyControls,
   useExampleNavigation,
 } from '../runtime';
 import { TOKENS } from './data';
@@ -43,7 +43,7 @@ export function TokenDetailScreen({
   const token = TOKENS.find((item) => item.id === tokenId) ?? TOKENS[0]!;
   const isPositiveChange = token.change24h >= 0;
   const { goBack } = useExampleNavigation();
-  const { settleTransition } = useChoreographyProgress();
+  const { settleTransition } = useChoreographyControls();
   const allocation = (token.value / portfolioValue) * 100;
 
   const openWebsite = () => {

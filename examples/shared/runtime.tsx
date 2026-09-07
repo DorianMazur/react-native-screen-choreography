@@ -22,6 +22,7 @@ export {
   textMorphTransition,
   StandInElement,
   resolveSurfaceStyle,
+  useChoreographyControls,
   useChoreographyProgress,
   useLatchedReveal,
   useStaggeredReveal,

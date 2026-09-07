@@ -35,6 +35,14 @@ export interface ChoreographyActionsType {
 export const ChoreographyActionsContext =
   createContext<ChoreographyActionsType | null>(null);
 
+export interface ChoreographyControlsType {
+  progress: SharedValue<number>;
+  settleTransition: (screenId: string) => void;
+}
+
+export const ChoreographyControlsContext =
+  createContext<ChoreographyControlsType | null>(null);
+
 export interface ChoreographyContextType {
   registerElement: (element: RegisteredElement) => void;
   unregisterElement: (

@@ -7,11 +7,7 @@ import React, {
   useState,
 } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import {
-  useSharedValue,
-  makeMutable,
-  type SharedValue,
-} from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { FullWindowOverlay } from 'react-native-screens';
 import { PortalProvider } from 'react-native-teleport';
 import type {
@@ -21,12 +17,15 @@ import type {
   TransitionSessionData,
 } from '../types';
 import { ElementRegistry } from '../core/ElementRegistry';
+import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
+import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { TransitionCoordinator } from '../core/TransitionCoordinator';
 import { TransitionOverlay } from '../core/TransitionOverlay';
 import {
   ChoreographyContext,
   ChoreographyActionsContext,
+  ChoreographyControlsContext,
   type ChoreographyContextType,
   type ChoreographyActionsType,
 } from '../core/ChoreographyContext';
@@ -38,7 +37,8 @@ import {
 } from '../debug/logger';
 import { getElementIdentityKey } from '../core/elementIdentity';
 import { ScreenReadinessRegistry } from '../core/ScreenReadinessRegistry';
-import { ProgressOwnership } from '../core/ProgressOwnership';
+import { ProgressOwnership, setOwnedProgress } from '../core/ProgressOwnership';
+import { getScreenRole } from '../core/screenVisibility';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 
 function TransitionHostPortal({
@@ -137,9 +137,7 @@ export function ChoreographyProvider({
 
   const syncHiddenElements = useCallback(() => {
     const hidden = coordinatorRef.current!.getHiddenElements();
-    for (const [key, sv] of hiddenMapRef.current) {
-      sv.value = hidden.has(key) ? 1 : 0;
-    }
+    hiddenMapRef.current.sync(hidden);
   }, []);
   const settleOverlayWaiters = useCallback(
     (sessionId: string, ready: boolean) => {
@@ -178,7 +176,7 @@ export function ChoreographyProvider({
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
 
-  const hiddenMapRef = useRef<Map<string, SharedValue<number>>>(new Map());
+  const hiddenMapRef = useRef(new ElementVisibilityRegistry());
 
   if (!registryRef.current) {
     registryRef.current = new ElementRegistry();
@@ -243,9 +241,6 @@ export function ChoreographyProvider({
       screenReadiness.dispose();
       screenNames.clear();
       coordinator.dispose();
-      hiddenMap.forEach((hidden) => {
-        hidden.value = 0;
-      });
       hiddenMap.clear();
       navigationLineage.clear();
     };
@@ -274,16 +269,10 @@ export function ChoreographyProvider({
     (id: string, screenId: string, groupId: string | undefined) => {
       registryRef.current!.unregister(id, screenId, groupId);
       const key = getElementIdentityKey(screenId, groupId, id);
-      const sv = hiddenMapRef.current.get(key);
-      if (sv) {
-        if (coordinatorRef.current?.getHiddenElements().has(key)) {
-          // Element is hidden by an active transition; preserve the SV so a
-          // re-mounting element gets back the same value=1 and never flashes.
-          return;
-        }
-        sv.value = 0;
-        hiddenMapRef.current.delete(key);
+      if (coordinatorRef.current?.getHiddenElements().has(key)) {
+        return;
       }
+      hiddenMapRef.current.delete(key);
     },
     []
   );
@@ -406,15 +395,10 @@ export function ChoreographyProvider({
   const isElementHidden = useCallback(
     (id: string, screenId: string, groupId?: string): SharedValue<number> => {
       const key = getElementIdentityKey(screenId, groupId, id);
-      let sv = hiddenMapRef.current.get(key);
-      if (!sv) {
-        const isHidden = coordinatorRef.current?.getHiddenElements().has(key)
-          ? 1
-          : 0;
-        sv = makeMutable(isHidden) as SharedValue<number>;
-        hiddenMapRef.current.set(key, sv);
-      }
-      return sv;
+      return hiddenMapRef.current.get(
+        key,
+        coordinatorRef.current?.getHiddenElements().has(key) ?? false
+      );
     },
     []
   );
@@ -543,6 +527,36 @@ export function ChoreographyProvider({
     resolveOverlayWaitersIfReady(session.id);
   }, [resolveOverlayWaitersIfReady, syncHiddenElements]);
 
+  const settleTransition = useCallback(
+    (screenId: string) => {
+      const session = activeSessionRef.current;
+      const role = getScreenRole(session, screenId);
+      if (!session || role === 'inactive') return;
+      const sessionId = session.id;
+      const token = progressOwnership.claim(sessionId);
+      if (token === null) return;
+      const expanded =
+        session.direction === 'forward' ? role === 'target' : role === 'source';
+      setOwnedProgress(
+        progressOwnership,
+        token,
+        sessionId,
+        progress,
+        expanded ? 1 : 0,
+        (completedToken, completedId) => {
+          if (!progressOwnership.isCurrent(completedToken, completedId)) return;
+          if (role === 'source') cancelTransition(completedId);
+          else completeTransition(completedId);
+        }
+      );
+    },
+    [cancelTransition, completeTransition, progress, progressOwnership]
+  );
+  const controlsValue = useMemo(
+    () => ({ progress, settleTransition }),
+    [progress, settleTransition]
+  );
+
   const actionsValue = useMemo<ChoreographyActionsType>(
     () => ({
       registerElement,
@@ -624,23 +638,27 @@ export function ChoreographyProvider({
   return (
     <PortalProvider>
       <ChoreographyActionsContext.Provider value={actionsValue}>
-        <ChoreographyContext.Provider value={contextValue}>
-          {children}
-          <TransitionHostPortal
-            active={Boolean(isOverlayActive && activeSession)}
-          >
-            <NativeTransitionHost
-              active={Boolean(isOverlayActive && activeSession)}
-              onPresentationReady={handleHostPresentationReady}
-            >
-              <TransitionOverlay
-                session={activeSession}
-                progress={progress}
-                onReady={handleOverlayReady}
-              />
-            </NativeTransitionHost>
-          </TransitionHostPortal>
-        </ChoreographyContext.Provider>
+        <ChoreographyControlsContext.Provider value={controlsValue}>
+          <ChoreographyContext.Provider value={contextValue}>
+            <ChoreographyProgressProvider>
+              {children}
+              <TransitionHostPortal
+                active={Boolean(isOverlayActive && activeSession)}
+              >
+                <NativeTransitionHost
+                  active={Boolean(isOverlayActive && activeSession)}
+                  onPresentationReady={handleHostPresentationReady}
+                >
+                  <TransitionOverlay
+                    session={activeSession}
+                    progress={progress}
+                    onReady={handleOverlayReady}
+                  />
+                </NativeTransitionHost>
+              </TransitionHostPortal>
+            </ChoreographyProgressProvider>
+          </ChoreographyContext.Provider>
+        </ChoreographyControlsContext.Provider>
       </ChoreographyActionsContext.Provider>
     </PortalProvider>
   );

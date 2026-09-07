@@ -338,6 +338,14 @@ function TokenListScreen({ navigation }) {
 
 `useChoreographyProgress` exposes the shared progress value and common derived behaviors such as backdrop dim and early settle handling when the user starts interacting before the transition is fully settled. Combine it with `useLatchedReveal` and `useStaggeredReveal` to drive companion content.
 
+When a component only needs to settle a transition, use `useChoreographyControls()` instead. Its `settleTransition` callback stays stable for the current screen and acts on the latest session without subscribing the component to session changes. Keep `useChoreographyProgress()` in components that render phase-dependent UI or companion animations; it subscribes to screen-visible session fields, not pair or measurement updates.
+
+```tsx
+const { settleTransition } = useChoreographyControls();
+
+<ScrollView onScrollBeginDrag={settleTransition}>{children}</ScrollView>;
+```
+
 Progress always runs from `0` (list) to `1` (detail), including when Back drives it toward `0`. The screen crossfade occupies `0–0.4`, and the default companion reveal occupies `0.7–1`. Opening reveals the detail background before its companion content; closing fades the content before the background. Custom content timings that overlap the screen crossfade also inherit its opacity. Forward and reverse use different default springs, so this ordering is reversible without requiring equal duration.
 
 ```tsx
@@ -419,6 +427,7 @@ if (session) {
 | `useChoreographyBlocker()`              | Reference-counted `acquire()` function for delaying destination measurement until async preparation completes                                         |
 | `useInteractiveTransition()`            | `beginBack()`, worklet-compatible `setProgress()`, velocity-aware `settle()`, explicit `finish()` / `cancel()`, normalized `progress`, and `isActive` |
 | `useChoreographyProgress()`             | `progress`, `role`, `phase`, `direction`, session identity, `backdropStyle`, `isActive`, and `settleTransition()`                                     |
+| `useChoreographyControls()`             | Stable `settleTransition()` for the current screen, without subscribing to session changes |
 | `useLatchedReveal(config?)`             | Boolean gate that opens at a progress threshold and stays visible once revealed                                                                       |
 | `useStaggeredReveal(count, config?)`    | `getItemStyle(index)` for staged reveal sections                                                                                                      |
 

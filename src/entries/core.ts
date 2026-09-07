@@ -28,6 +28,7 @@ export {
 } from '../standin/resolveSurfaceStyle';
 export { useChoreographyBlocker } from '../hooks/useChoreographyBlocker';
 export {
+  useChoreographyControls,
   useChoreographyProgress,
   useLatchedReveal,
   useStaggeredReveal,

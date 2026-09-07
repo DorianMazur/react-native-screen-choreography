@@ -13,7 +13,7 @@ import {
 import Animated from 'react-native-reanimated';
 import {
   SharedElement,
-  useChoreographyProgress,
+  useChoreographyControls,
   useExampleNavigation,
   useLatchedReveal,
   useStaggeredReveal,
@@ -38,7 +38,7 @@ export function GalleryDetailScreen({
   const photo = PHOTOS.find((item) => item.id === photoId) ?? PHOTOS[0]!;
   const [lightboxVisible, setLightboxVisible] = useState(false);
   const { goBack } = useExampleNavigation();
-  const { settleTransition } = useChoreographyProgress();
+  const { settleTransition } = useChoreographyControls();
   const showSections = useLatchedReveal({ resetKey: photo.id });
   const { getItemStyle } = useStaggeredReveal(3, { stagger: 0.06 });
   const notesStyle = getItemStyle(0);

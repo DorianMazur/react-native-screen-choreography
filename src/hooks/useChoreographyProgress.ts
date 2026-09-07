@@ -5,32 +5,25 @@ import {
   useAnimatedReaction,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import { ChoreographyControlsContext } from '../core/ChoreographyContext';
+import { ChoreographyProgressContext } from '../core/ChoreographyProgressContext';
 import { useScreenId } from '../core/screenIdContext';
-import { getScreenRole, getSessionPhase } from '../core/screenVisibility';
 import { PROGRESS_RANGES, DEFAULT_BACKDROP_OPACITY } from '../core/constants';
-import { setOwnedProgress } from '../core/ProgressOwnership';
 
-function resolveSettledProgress(
-  activeSession: ChoreographyContextType['activeSession'],
-  screenId: string
-) {
-  if (!activeSession) {
-    return null;
+export function useChoreographyControls() {
+  const controls = useContext(ChoreographyControlsContext);
+  if (!controls) {
+    throw new Error(
+      'useChoreographyControls must be used within a <ChoreographyProvider>'
+    );
   }
-
-  if (screenId === activeSession.sourceScreenId) {
-    return activeSession.direction === 'forward' ? 0 : 1;
-  }
-
-  if (screenId === activeSession.targetScreenId) {
-    return activeSession.direction === 'forward' ? 1 : 0;
-  }
-
-  return null;
+  const screenId = useScreenId();
+  const settle = controls.settleTransition;
+  const settleTransition = useCallback(
+    () => settle(screenId),
+    [settle, screenId]
+  );
+  return { settleTransition };
 }
 
 /**
@@ -49,25 +42,16 @@ function resolveSettledProgress(
  * ```
  */
 export function useChoreographyProgress() {
-  const ctx = useContext(ChoreographyContext) as ChoreographyContextType;
-  if (!ctx) {
+  const controls = useContext(ChoreographyControlsContext);
+  const state = useContext(ChoreographyProgressContext);
+  if (!controls || !state) {
     throw new Error(
       'useChoreographyProgress must be used within a <ChoreographyProvider>'
     );
   }
 
-  const screenId = useScreenId();
-  const {
-    progress,
-    progressOwnership,
-    activeSession,
-    pendingTargetScreenId,
-    completeTransition,
-    cancelTransition,
-  } = ctx;
-  const isActive = activeSession !== null;
-  const role = getScreenRole(activeSession, screenId);
-  const phase = getSessionPhase(activeSession, pendingTargetScreenId, screenId);
+  const { progress } = controls;
+  const { settleTransition } = useChoreographyControls();
 
   const backdropStyle = useAnimatedStyle(() => {
     return {
@@ -80,46 +64,10 @@ export function useChoreographyProgress() {
     };
   });
 
-  const settleTransition = useCallback(() => {
-    const settledProgress = resolveSettledProgress(activeSession, screenId);
-    if (settledProgress === null || !activeSession) {
-      return;
-    }
-
-    const sessionId = activeSession.id;
-    const token = progressOwnership.claim(sessionId);
-    if (token === null) return;
-    setOwnedProgress(
-      progressOwnership,
-      token,
-      sessionId,
-      progress,
-      settledProgress,
-      (completedToken, completedId) => {
-        if (!progressOwnership.isCurrent(completedToken, completedId)) return;
-        if (role === 'source') cancelTransition(completedId);
-        else completeTransition(completedId);
-      }
-    );
-  }, [
-    activeSession,
-    cancelTransition,
-    completeTransition,
-    progress,
-    progressOwnership,
-    role,
-    screenId,
-  ]);
-
   return {
     progress,
     backdropStyle,
-    isActive,
-    role,
-    phase,
-    direction: activeSession?.direction ?? null,
-    groupId: activeSession?.groupId ?? null,
-    sessionId: activeSession?.id ?? null,
+    ...state,
     settleTransition,
   };
 }
@@ -136,8 +84,9 @@ export function useLatchedReveal(
     visibleWhenInactive?: boolean;
   } = {}
 ) {
-  const ctx = useContext(ChoreographyContext) as ChoreographyContextType;
-  if (!ctx) {
+  const controls = useContext(ChoreographyControlsContext);
+  const state = useContext(ChoreographyProgressContext);
+  if (!controls || !state) {
     throw new Error(
       'useLatchedReveal must be used within a <ChoreographyProvider>'
     );
@@ -149,8 +98,8 @@ export function useLatchedReveal(
     visibleWhenInactive = true,
   } = config;
 
-  const { progress, activeSession } = ctx;
-  const isActive = activeSession !== null;
+  const { progress } = controls;
+  const { isActive } = state;
 
   const computeVisible = useCallback(() => {
     return (
@@ -195,7 +144,7 @@ export function useStaggeredReveal(
     stagger?: number;
   } = {}
 ) {
-  const ctx = useContext(ChoreographyContext) as ChoreographyContextType;
+  const ctx = useContext(ChoreographyControlsContext);
   if (!ctx) {
     throw new Error(
       'useStaggeredReveal must be used within a <ChoreographyProvider>'
