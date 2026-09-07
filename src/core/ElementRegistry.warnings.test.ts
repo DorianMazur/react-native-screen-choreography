@@ -1,12 +1,12 @@
-import { ElementRegistry } from '../src/core/ElementRegistry';
+import { ElementRegistry } from './ElementRegistry';
 import {
   setDebugEnabled,
   setDebugLevel,
   setDebugCoalesce,
   getDebugLogs,
   clearDebugLogs,
-} from '../src/debug/logger';
-import type { ElementPresentation, RegisteredElement } from '../src/types';
+} from '../debug/logger';
+import type { ElementPresentation, RegisteredElement } from '../types';
 
 function makeElement(
   overrides: Partial<RegisteredElement> = {}

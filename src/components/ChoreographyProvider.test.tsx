@@ -1,16 +1,16 @@
 import React, { StrictMode, useContext } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { ChoreographyProvider } from '../src/components/ChoreographyProvider';
-import { useChoreographyNavigator } from '../src/hooks/useChoreographyNavigation';
+import { ChoreographyProvider } from './ChoreographyProvider';
+import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
-} from '../src/core/ChoreographyContext';
+} from '../core/ChoreographyContext';
 
 jest.mock('react-native-reanimated', () => {
   const { useRef } = jest.requireActual('react');
   return {
-    ...jest.requireActual('../__mocks__/react-native-reanimated'),
+    ...jest.requireActual('../../__mocks__/react-native-reanimated'),
     __esModule: true,
     useSharedValue: (value: number) => useRef({ value }).current,
     cancelAnimation: jest.fn(),
@@ -26,7 +26,7 @@ jest.mock('react-native-teleport', () => ({
 }));
 
 jest.mock(
-  '../src/native/ScreenChoreographyViewNativeComponent',
+  '../native/ScreenChoreographyViewNativeComponent',
   () => 'ScreenChoreographyView'
 );
 

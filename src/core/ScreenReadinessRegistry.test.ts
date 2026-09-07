@@ -1,4 +1,4 @@
-import { ScreenReadinessRegistry } from '../src/core/ScreenReadinessRegistry';
+import { ScreenReadinessRegistry } from './ScreenReadinessRegistry';
 
 describe('ScreenReadinessRegistry', () => {
   it('waits for layout readiness and all blockers', async () => {

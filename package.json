@@ -35,6 +35,7 @@
     "!android/gradlew",
     "!android/gradlew.bat",
     "!android/local.properties",
+    "!src/**/*.test.*",
     "!**/__tests__",
     "!**/__fixtures__",
     "!**/__mocks__",
@@ -148,6 +149,7 @@
   "react-native-builder-bob": {
     "source": "src",
     "output": "lib",
+    "exclude": "{**/{__tests__,__fixtures__,__mocks__}/**,**/*.test.*}",
     "targets": [
       [
         "module",

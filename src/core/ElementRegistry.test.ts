@@ -1,5 +1,5 @@
-import { ElementRegistry } from '../src/core/ElementRegistry';
-import type { RegisteredElement } from '../src/types';
+import { ElementRegistry } from './ElementRegistry';
+import type { RegisteredElement } from '../types';
 
 function createMockElement(
   overrides: Partial<RegisteredElement> = {}

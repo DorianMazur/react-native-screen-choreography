@@ -3,13 +3,13 @@ import { withSpring } from 'react-native-reanimated';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
-} from '../src/core/ChoreographyContext';
-import { ProgressOwnership } from '../src/core/ProgressOwnership';
-import { NavigationSessionController } from '../src/core/NavigationSessionController';
-import { useChoreographyNavigator } from '../src/hooks/useChoreographyNavigation';
+} from '../core/ChoreographyContext';
+import { ProgressOwnership } from '../core/ProgressOwnership';
+import { NavigationSessionController } from '../core/NavigationSessionController';
+import { useChoreographyNavigator } from './useChoreographyNavigation';
 
 jest.mock('react-native-reanimated', () => ({
-  ...jest.requireActual('../__mocks__/react-native-reanimated'),
+  ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   cancelAnimation: jest.fn(),
   withSpring: jest.fn(() => 0),
 }));

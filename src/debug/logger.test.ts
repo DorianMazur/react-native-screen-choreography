@@ -4,7 +4,7 @@ import {
   debugLog,
   getDebugLogs,
   clearDebugLogs,
-} from '../src/debug/logger';
+} from './logger';
 
 describe('Debug Logger', () => {
   afterEach(() => {

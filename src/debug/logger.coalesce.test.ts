@@ -7,7 +7,7 @@ import {
   debugWarn,
   getDebugLogs,
   clearDebugLogs,
-} from '../src/debug/logger';
+} from './logger';
 
 describe('Debug logger levels and coalescing', () => {
   beforeEach(() => {

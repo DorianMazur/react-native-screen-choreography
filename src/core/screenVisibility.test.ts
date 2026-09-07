@@ -3,8 +3,8 @@ import {
   getScreenRole,
   getSessionPhase,
   shouldBlockInteraction,
-} from '../src/core/screenVisibility';
-import type { TransitionSessionData } from '../src/types';
+} from './screenVisibility';
+import type { TransitionSessionData } from '../types';
 
 function makeSession(
   overrides: Partial<TransitionSessionData> = {}

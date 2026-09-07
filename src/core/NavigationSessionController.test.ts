@@ -1,5 +1,5 @@
-import { NavigationSessionController } from '../src/core/NavigationSessionController';
-import type { TransitionSessionData } from '../src/types';
+import { NavigationSessionController } from './NavigationSessionController';
+import type { TransitionSessionData } from '../types';
 
 function createSession(id: string): TransitionSessionData {
   return {

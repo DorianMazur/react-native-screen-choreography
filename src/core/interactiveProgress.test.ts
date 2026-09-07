@@ -1,7 +1,7 @@
 import {
   resolveInteractiveTransitionOutcome,
   toInteractiveSessionProgress,
-} from '../src/core/interactiveProgress';
+} from './interactiveProgress';
 
 describe('interactive progress', () => {
   it('clamps gesture progress and maps it to session progress', () => {

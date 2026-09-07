@@ -3,22 +3,30 @@ import { withSpring } from 'react-native-reanimated';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
-} from '../src/core/ChoreographyContext';
-import { FAST_SPRING } from '../src/core/constants';
-import { ProgressOwnership } from '../src/core/ProgressOwnership';
-import { NavigationSessionController } from '../src/core/NavigationSessionController';
-import { useChoreographyNavigator } from '../src/hooks/useChoreographyNavigation';
-import { useChoreographyScreenRemoval } from '../src/hooks/useChoreographyScreenRemoval';
-import { walletSetupSpring } from '../examples/shared/wallet-setup/setupTransitions';
-import type { ChoreographyNavigationLineage } from '../src/types';
+} from '../core/ChoreographyContext';
+import { FAST_SPRING } from '../core/constants';
+import { ProgressOwnership } from '../core/ProgressOwnership';
+import { NavigationSessionController } from '../core/NavigationSessionController';
+import { useChoreographyNavigator } from './useChoreographyNavigation';
+import { useChoreographyScreenRemoval } from './useChoreographyScreenRemoval';
+import type { ChoreographyNavigationLineage, SpringConfig } from '../types';
 
 jest.mock('react-native-reanimated', () => ({
-  ...jest.requireActual('../__mocks__/react-native-reanimated'),
+  ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   cancelAnimation: jest.fn(),
   withSpring: jest.fn((target) => target),
 }));
 
 const mockedWithSpring = jest.mocked(withSpring);
+
+const customSpring = {
+  damping: 28,
+  mass: 1,
+  stiffness: 180,
+  overshootClamping: true,
+  restDisplacementThreshold: 0.001,
+  restSpeedThreshold: 0.001,
+} satisfies SpringConfig;
 
 function createContext() {
   const progress = { value: 0 } as ChoreographyContextType['progress'];
@@ -100,7 +108,7 @@ afterEach(async () => {
 test('opening retains a copy of its custom spring on the resolved route instance', async () => {
   const context = createContext();
   const { navigation } = await mount(context, 'sheet-route');
-  const spring = { ...walletSetupSpring };
+  const spring = { ...customSpring };
   await act(async () => {
     await navigation.navigate({
       targetScreenId: 'WalletExisting',
@@ -113,7 +121,7 @@ test('opening retains a copy of its custom spring on the resolved route instance
   expect(lineage).toMatchObject({
     sourceScreenId: 'sheet-route',
     targetScreenId: 'detail-route',
-    spring: walletSetupSpring,
+    spring: customSpring,
   });
   expect(lineage?.spring).not.toBe(spring);
   expect(mockedWithSpring).toHaveBeenCalledWith(
@@ -123,7 +131,7 @@ test('opening retains a copy of its custom spring on the resolved route instance
   );
 });
 
-test.each([undefined, walletSetupSpring])(
+test.each([undefined, customSpring])(
   'native Back uses the recorded spring (%j) and pops only on completion',
   async (spring) => {
     const context = createContext();
@@ -165,7 +173,7 @@ describe.each(['forward', 'backward'] as const)(
           groupId: 'wallet-setup',
           sourceScreenId: 'sheet-route',
           targetScreenId: 'detail-route',
-          spring: walletSetupSpring,
+          spring: customSpring,
         });
         context.activeSession = {
           id: 'session',
@@ -185,7 +193,7 @@ describe.each(['forward', 'backward'] as const)(
         await act(async () => navigation.goBack({ spring: override }));
         expect(mockedWithSpring).toHaveBeenCalledWith(
           0,
-          override ?? walletSetupSpring,
+          override ?? customSpring,
           expect.any(Function)
         );
       }

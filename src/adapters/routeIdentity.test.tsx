@@ -1,21 +1,21 @@
 import React, { useContext, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { ChoreographyProvider } from '../src/components/ChoreographyProvider';
-import { SharedElement } from '../src/components/SharedElement';
+import { ChoreographyProvider } from '../components/ChoreographyProvider';
+import { SharedElement } from '../components/SharedElement';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
   type ChoreographyContextType,
-} from '../src/core/ChoreographyContext';
-import { ScreenIdContext, useScreenId } from '../src/core/screenIdContext';
-import { ChoreographyScreen as NavigationScreen } from '../src/adapters/react-navigation';
-import { ChoreographyScreen as RouterScreen } from '../src/adapters/expo-router';
+} from '../core/ChoreographyContext';
+import { ScreenIdContext, useScreenId } from '../core/screenIdContext';
+import { ChoreographyScreen as NavigationScreen } from './react-navigation';
+import { ChoreographyScreen as RouterScreen } from './expo-router';
 
 jest.mock('react-native-reanimated', () => {
   const { useRef } = jest.requireActual('react');
   return {
-    ...jest.requireActual('../__mocks__/react-native-reanimated'),
+    ...jest.requireActual('../../__mocks__/react-native-reanimated'),
     __esModule: true,
     useSharedValue: (value: number) => useRef({ value }).current,
     useAnimatedRef: () => useRef(() => {}).current,
@@ -31,7 +31,7 @@ jest.mock('react-native-teleport', () => ({
   PortalHost: 'PortalHost',
 }));
 jest.mock(
-  '../src/native/ScreenChoreographyViewNativeComponent',
+  '../native/ScreenChoreographyViewNativeComponent',
   () => 'ScreenChoreographyView'
 );
 jest.mock('@react-navigation/native', () => {

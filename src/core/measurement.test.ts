@@ -1,4 +1,4 @@
-import { measureElement } from '../src/core/measurement';
+import { measureElement } from './measurement';
 
 describe('measureElement', () => {
   test('returns null for null ref', async () => {

@@ -1,4 +1,4 @@
-import { waitForNavigationTarget } from '../src/core/navigationTarget';
+import { waitForNavigationTarget } from './navigationTarget';
 
 function createNavigation() {
   let listener = () => {};

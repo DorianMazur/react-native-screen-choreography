@@ -1,11 +1,11 @@
 import { withSpring } from 'react-native-reanimated';
-import { ElementRegistry } from '../src/core/ElementRegistry';
-import { ProgressOwnership } from '../src/core/ProgressOwnership';
-import { NavigationSessionController } from '../src/core/NavigationSessionController';
-import { runReverseTransition } from '../src/core/runReverseTransition';
-import { TransitionCoordinator } from '../src/core/TransitionCoordinator';
-import type { ChoreographyContextType } from '../src/core/ChoreographyContext';
-import type { TransitionSessionData } from '../src/types';
+import { ElementRegistry } from './ElementRegistry';
+import { ProgressOwnership } from './ProgressOwnership';
+import { NavigationSessionController } from './NavigationSessionController';
+import { runReverseTransition } from './runReverseTransition';
+import { TransitionCoordinator } from './TransitionCoordinator';
+import type { ChoreographyContextType } from './ChoreographyContext';
+import type { TransitionSessionData } from '../types';
 
 jest.mock('react-native-reanimated', () => ({
   cancelAnimation: jest.fn(),

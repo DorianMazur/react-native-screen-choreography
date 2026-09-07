@@ -1,8 +1,5 @@
 import { withSpring } from 'react-native-reanimated';
-import {
-  animateOwnedProgress,
-  ProgressOwnership,
-} from '../src/core/ProgressOwnership';
+import { animateOwnedProgress, ProgressOwnership } from './ProgressOwnership';
 
 jest.mock('react-native-reanimated', () => ({
   cancelAnimation: jest.fn(),

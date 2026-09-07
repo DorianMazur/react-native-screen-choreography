@@ -1,11 +1,11 @@
-import { TransitionCoordinator } from '../src/core/TransitionCoordinator';
-import { ElementRegistry } from '../src/core/ElementRegistry';
+import { TransitionCoordinator } from './TransitionCoordinator';
+import { ElementRegistry } from './ElementRegistry';
 import type {
   ElementPresentation,
   RegisteredElement,
   SharedElementTransition,
   TransitionSessionData,
-} from '../src/types';
+} from '../types';
 
 const transition: SharedElementTransition = { renderer: () => null };
 

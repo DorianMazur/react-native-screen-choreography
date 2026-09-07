@@ -3,7 +3,7 @@ const { transformFileSync, traverse } = require('@babel/core');
 
 test('the reverse worklet captures a session ID, not frozen React content', () => {
   const { ast } = transformFileSync(
-    path.resolve(__dirname, '../src/core/ProgressOwnership.ts'),
+    path.resolve(__dirname, 'ProgressOwnership.ts'),
     {
       configFile: false,
       babelrc: false,

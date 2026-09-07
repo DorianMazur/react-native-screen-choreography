@@ -2,14 +2,14 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
-} from '../src/core/ChoreographyContext';
-import { ProgressOwnership } from '../src/core/ProgressOwnership';
-import { NavigationSessionController } from '../src/core/NavigationSessionController';
-import { ScreenIdContext } from '../src/core/screenIdContext';
-import { useInteractiveTransitionNavigator } from '../src/hooks/useInteractiveTransition';
+} from '../core/ChoreographyContext';
+import { ProgressOwnership } from '../core/ProgressOwnership';
+import { NavigationSessionController } from '../core/NavigationSessionController';
+import { ScreenIdContext } from '../core/screenIdContext';
+import { useInteractiveTransitionNavigator } from './useInteractiveTransition';
 
 jest.mock('react-native-reanimated', () => ({
-  ...jest.requireActual('../__mocks__/react-native-reanimated'),
+  ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   cancelAnimation: jest.fn(),
   useDerivedValue: (compute: () => number) => ({
     get value() {

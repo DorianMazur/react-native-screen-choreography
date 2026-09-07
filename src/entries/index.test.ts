@@ -1,17 +1,17 @@
 import path from 'path';
 import ts from 'typescript';
-import packageJson from '../package.json';
+import packageJson from '../../package.json';
 
 const entries = {
-  core: path.resolve(__dirname, '..', packageJson.exports['./core'].source),
+  core: path.resolve(__dirname, '../..', packageJson.exports['./core'].source),
   reactNavigation: path.resolve(
     __dirname,
-    '..',
+    '../..',
     packageJson.exports['.'].source
   ),
   expoRouter: path.resolve(
     __dirname,
-    '..',
+    '../..',
     packageJson.exports['./expo-router'].source
   ),
 };

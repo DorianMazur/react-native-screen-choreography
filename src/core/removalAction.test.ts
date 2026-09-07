@@ -1,4 +1,4 @@
-import { isSingleRouteBack } from '../src/core/removalAction';
+import { isSingleRouteBack } from './removalAction';
 
 const state = {
   key: 'stack',
