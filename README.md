@@ -304,6 +304,8 @@ Use `SharedElement.Live` and `SharedElement.LiveTarget` when one stateful native
 
 The screen containing `SharedElement.Live` must stay mounted while the payload is hosted elsewhere. Use this for video, maps, camera previews, editors, or other stateful native views; use ordinary `SharedElement` renderers for normal static content.
 
+Ordinary stand-ins hand visibility back to the real elements on the UI thread at animation completion. Live content instead remains visible at its endpoint in the overlay until React reparents it into the destination host; delayed JS cleanup must not hide the only mounted instance.
+
 ### 3. Navigate through the choreography hook
 
 `useChoreographyNavigation` pre-measures the source, manages pending target visibility, creates the transition session, and coordinates reverse flows.

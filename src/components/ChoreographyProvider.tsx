@@ -104,8 +104,10 @@ export function ChoreographyProvider({
 }: ChoreographyProviderProps) {
   const progress = useSharedValue(0);
   const progressOwner = useSharedValue(0);
+  const [visibilityRegistry] = useState(() => new ElementVisibilityRegistry());
   const [progressOwnership] = useState(
-    () => new ProgressOwnership(progressOwner, progress)
+    () =>
+      new ProgressOwnership(progressOwner, progress, visibilityRegistry.handoff)
   );
   const [navigationController] = useState(
     () => new NavigationSessionController()
@@ -137,8 +139,12 @@ export function ChoreographyProvider({
 
   const syncHiddenElements = useCallback(() => {
     const hidden = coordinatorRef.current!.getHiddenElements();
-    hiddenMapRef.current.sync(hidden);
-  }, []);
+    const session = activeSessionRef.current;
+    visibilityRegistry.sync(
+      hidden,
+      session?.state === 'active' ? session.id : null
+    );
+  }, [visibilityRegistry]);
   const settleOverlayWaiters = useCallback(
     (sessionId: string, ready: boolean) => {
       const waiters = overlayWaitersRef.current.get(sessionId);
@@ -176,8 +182,6 @@ export function ChoreographyProvider({
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
 
-  const hiddenMapRef = useRef(new ElementVisibilityRegistry());
-
   if (!registryRef.current) {
     registryRef.current = new ElementRegistry();
   }
@@ -193,7 +197,7 @@ export function ChoreographyProvider({
     const coordinator = coordinatorRef.current!;
     const screenReadiness = screenReadinessRef.current;
     const screenNames = screenNamesRef.current;
-    const hiddenMap = hiddenMapRef.current;
+    const hiddenMap = visibilityRegistry;
     const navigationLineage = navigationLineageRef.current;
     coordinator.setOnSessionChange((session) => {
       navigationController.setActiveSession(session);
@@ -250,6 +254,7 @@ export function ChoreographyProvider({
     progressOwnership,
     settleOverlayWaiters,
     syncHiddenElements,
+    visibilityRegistry,
   ]);
 
   useEffect(() => {
@@ -272,9 +277,9 @@ export function ChoreographyProvider({
       if (coordinatorRef.current?.getHiddenElements().has(key)) {
         return;
       }
-      hiddenMapRef.current.delete(key);
+      visibilityRegistry.delete(key);
     },
-    []
+    [visibilityRegistry]
   );
 
   const setScreenReady = useCallback(
@@ -395,12 +400,12 @@ export function ChoreographyProvider({
   const isElementHidden = useCallback(
     (id: string, screenId: string, groupId?: string): SharedValue<number> => {
       const key = getElementIdentityKey(screenId, groupId, id);
-      return hiddenMapRef.current.get(
+      return visibilityRegistry.get(
         key,
         coordinatorRef.current?.getHiddenElements().has(key) ?? false
       );
     },
-    []
+    [visibilityRegistry]
   );
 
   const startTransition = useCallback(
@@ -652,6 +657,7 @@ export function ChoreographyProvider({
                   <TransitionOverlay
                     session={activeSession}
                     progress={progress}
+                    handoff={visibilityRegistry.handoff}
                     onReady={handleOverlayReady}
                   />
                 </NativeTransitionHost>

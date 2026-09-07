@@ -7,6 +7,11 @@ import {
 } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import type { SpringConfig } from '../types';
+import {
+  finishVisibilityHandoff,
+  resumeVisibilityHandoff,
+  type VisibilityHandoff,
+} from './ElementVisibilityRegistry';
 
 export class ProgressOwnership {
   private generation = 0;
@@ -14,7 +19,8 @@ export class ProgressOwnership {
 
   constructor(
     readonly owner: SharedValue<number>,
-    private readonly progress: SharedValue<number>
+    private readonly progress: SharedValue<number>,
+    readonly handoff?: SharedValue<VisibilityHandoff>
   ) {}
 
   get version(): number {
@@ -44,6 +50,14 @@ export class ProgressOwnership {
   claim(sessionId: string): number | null {
     if (this.sessionId !== sessionId) return null;
     this.invalidate();
+    const { owner, handoff } = this;
+    const token = this.generation;
+    if (handoff) {
+      scheduleOnUI(() => {
+        'worklet';
+        if (owner.value === token) resumeVisibilityHandoff(handoff, sessionId);
+      });
+    }
     return this.generation;
   }
 
@@ -65,12 +79,16 @@ export function setOwnedProgress(
   onComplete?: (token: number, sessionId: string) => void
 ): void {
   if (!ownership.isCurrent(token, sessionId)) return;
-  const { owner } = ownership;
+  const { owner, handoff } = ownership;
   scheduleOnUI(() => {
     'worklet';
     if (owner.value !== token) return;
     progress.value = value;
-    if (onComplete) scheduleOnRN(onComplete, token, sessionId);
+    if (onComplete) {
+      if (value === 0 || value === 1)
+        finishVisibilityHandoff(handoff, sessionId);
+      scheduleOnRN(onComplete, token, sessionId);
+    }
   });
 }
 
@@ -94,13 +112,16 @@ export function animateOwnedProgress({
   onComplete: (token: number, sessionId: string) => void;
 }): void {
   if (!ownership.isCurrent(token, sessionId)) return;
-  const { owner } = ownership;
+  const { owner, handoff } = ownership;
   scheduleOnUI(() => {
     'worklet';
     if (owner.value !== token) return;
     const complete = (finished?: boolean) => {
       'worklet';
       if (finished && owner.value === token) {
+        if (target === 0 || target === 1) {
+          finishVisibilityHandoff(handoff, sessionId);
+        }
         scheduleOnRN(onComplete, token, sessionId);
       }
     };

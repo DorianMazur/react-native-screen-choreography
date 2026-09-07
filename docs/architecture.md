@@ -90,11 +90,15 @@ This gives the library a flexible public API while avoiding the most common z-or
 
 ### Hide / Reveal Handoff
 
-The provider deliberately does **not** hide real elements when a session becomes `active`. Hiding is driven by the overlay's `useLayoutEffect` callback (`handleOverlayReady(sessionId)`) and the native host presentation ack (`handleHostPresentationReady`). Both call `syncHiddenElements()` only after their respective host has committed. This is what guarantees there is no blank frame at the start of the animation — the originals are hidden in the same React commit that paints the overlay for the first time. A 150ms safety-net inside `waitForOverlayReady` calls `syncHiddenElements()` if neither callback fired, so the spring never animates with the originals visible underneath.
-
-### `ChoreographyScreen`
+The provider deliberately does **not** hide real elements when a session becomes `active`. Hiding is driven by the overlay's `useLayoutEffect` callback (`handleOverlayReady(sessionId)`) and the native host presentation ack (`handleHostPresentationReady`). Both call `syncHiddenElements()` after their respective host has committed. The UI visibility batch hides the originals and enables the session's overlay gate together. A 150ms safety-net inside `waitForOverlayReady` calls `syncHiddenElements()` if neither callback fired.
 
 `syncHiddenElements()` compares desired visibility against the registry's last scheduled values and sends only changed entries in one UI worklet. Repeated presentation acknowledgements with the same hidden set schedule no work. Comparisons do not read shared values on JS. Ordered hide/reveal batches preserve cancellation and replacement behavior; unregistering a hidden element retains its shared value, and cleanup reveals retained entries before releasing them. The presentation callbacks and 150ms safety net remain the only hide triggers.
+
+At an owned animation's endpoint, the UI runtime reveals the ordinary shared elements and marks their stand-in layers invisible before scheduling JS completion. JS can then finish navigation and unmount the overlay without controlling that visual transfer. Session and animation ownership reject stale completion; reclaiming a visually completed session restores its hidden elements and stand-in layers.
+
+Live pairs are different: their only mounted native subtree is still inside an overlay portal until React reparents it. Their overlay layers remain visible at the endpoint until that commit. Completion visibility is therefore applied per pair, not to the whole overlay, so mixed sessions can release stand-ins without hiding live content prematurely. The session gate still hides stale overlay instances in both modes.
+
+### `ChoreographyScreen`
 
 - keeps the supplied `screenId` as a logical name while adapters supply the navigator route key as its internal instance identity; registration, readiness, visibility, and lineage use that instance key
 - reads volatile transition state from `ChoreographyContext` and lifecycle callbacks (`setScreenReady`, `unregisterScreen`) from `ChoreographyActionsContext` so its registration effect depends only on stable identities and never re-runs on session changes

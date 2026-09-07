@@ -1,5 +1,8 @@
 import { scheduleOnUI } from 'react-native-worklets';
-import { ElementVisibilityRegistry } from './ElementVisibilityRegistry';
+import {
+  ElementVisibilityRegistry,
+  finishVisibilityHandoff,
+} from './ElementVisibilityRegistry';
 
 jest.mock('react-native-worklets', () => ({ scheduleOnUI: jest.fn() }));
 
@@ -14,6 +17,21 @@ function flushUpdates() {
 }
 
 beforeEach(() => scheduled.mockClear());
+
+test('rehides carried elements when a completed session is replaced before JS cleanup', () => {
+  const visibility = new ElementVisibilityRegistry();
+  const value = visibility.get('card', false);
+  visibility.sync(new Set(['card']), 'first');
+  flushUpdates();
+  finishVisibilityHandoff(visibility.handoff, 'first');
+  expect(value.value).toBe(0);
+
+  visibility.sync(new Set(['card']), 'replacement');
+  flushUpdates();
+  expect(visibility.handoff.value.sessionId).toBe('replacement');
+  expect(visibility.handoff.value.completed).toBe(false);
+  expect(value.value).toBe(1);
+});
 
 test('batches only changed entries without reading shared values', () => {
   const visibility = new ElementVisibilityRegistry();
