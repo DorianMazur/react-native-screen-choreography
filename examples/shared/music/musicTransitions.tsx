@@ -38,6 +38,15 @@ function ExpandingBackground({
   const t = useDerivedValue(() =>
     direction === 'backward' ? 1 - progress.value : progress.value
   );
+  const expandedSide = direction === 'backward' ? source : target;
+  const toolbarStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      progress.value,
+      direction === 'backward' ? [0.12, 0.5] : [0.82, 1],
+      [0, 1],
+      'clamp'
+    ),
+  }));
   const animatedStyle = useAnimatedStyle(() => ({
     left: interpolate(t.value, [0, 1], [sourceX, targetX], 'clamp'),
     top: interpolate(t.value, [0, 1], [sourceY, targetY], 'clamp'),
@@ -59,80 +68,14 @@ function ExpandingBackground({
     ),
   }));
 
-  return <Animated.View style={[styles.layer, { zIndex }, animatedStyle]} />;
-}
-
-function AnchoredContent({
-  progress,
-  direction,
-  source,
-  target,
-  zIndex,
-}: SharedElementTransitionRendererProps) {
-  const sourceX = source.metrics.pageX;
-  const sourceY = source.metrics.pageY;
-  const sourceWidth = source.metrics.width;
-  const sourceHeight = source.metrics.height;
-  const targetX = target.metrics.pageX;
-  const targetY = target.metrics.pageY;
-  const targetWidth = target.metrics.width;
-  const targetHeight = target.metrics.height;
-  const t = useDerivedValue(() =>
-    direction === 'backward' ? 1 - progress.value : progress.value
-  );
-  const expandedSide = direction === 'backward' ? source : target;
-  const clipStyle = useAnimatedStyle(() => ({
-    left: interpolate(t.value, [0, 1], [sourceX, targetX], 'clamp'),
-    top: interpolate(t.value, [0, 1], [sourceY, targetY], 'clamp'),
-    width: interpolate(t.value, [0, 1], [sourceWidth, targetWidth], 'clamp'),
-    height: interpolate(t.value, [0, 1], [sourceHeight, targetHeight], 'clamp'),
-  }));
-
   return (
-    <Animated.View style={[styles.layer, { zIndex }, clipStyle]}>
-      <Animated.View
-        style={[
-          styles.fixedContent,
-          {
-            width: expandedSide.metrics.width,
-            height: expandedSide.metrics.height,
-          },
-        ]}
-      >
+    <Animated.View
+      pointerEvents="none"
+      style={[styles.layer, { zIndex }, animatedStyle]}
+    >
+      <Animated.View style={[StyleSheet.absoluteFill, toolbarStyle]}>
         {expandedSide.content}
       </Animated.View>
-    </Animated.View>
-  );
-}
-
-function MovingItem({
-  progress,
-  direction,
-  source,
-  target,
-  zIndex,
-}: SharedElementTransitionRendererProps) {
-  const sourceX = source.metrics.pageX;
-  const sourceY = source.metrics.pageY;
-  const sourceWidth = source.metrics.width;
-  const sourceHeight = source.metrics.height;
-  const targetX = target.metrics.pageX;
-  const targetY = target.metrics.pageY;
-  const targetWidth = target.metrics.width;
-  const targetHeight = target.metrics.height;
-  const t = useDerivedValue(() =>
-    direction === 'backward' ? 1 - progress.value : progress.value
-  );
-  const animatedStyle = useAnimatedStyle(() => ({
-    left: interpolate(t.value, [0, 1], [sourceX, targetX], 'clamp'),
-    top: interpolate(t.value, [0, 1], [sourceY, targetY], 'clamp'),
-    width: interpolate(t.value, [0, 1], [sourceWidth, targetWidth], 'clamp'),
-    height: interpolate(t.value, [0, 1], [sourceHeight, targetHeight], 'clamp'),
-  }));
-
-  return (
-    <Animated.View style={[styles.layer, { zIndex }, animatedStyle]}>
-      {source.content}
     </Animated.View>
   );
 }
@@ -142,27 +85,8 @@ export const musicBackgroundTransition: SharedElementTransition = {
   renderer: ExpandingBackground,
 };
 
-export const musicItemTransition: SharedElementTransition = {
-  zIndex: 2,
-  renderer: MovingItem,
-};
-
-export const musicContentTransition: SharedElementTransition = {
-  zIndex: 1,
-  renderer: AnchoredContent,
-};
-
-export const musicHeaderTransition: SharedElementTransition = {
-  zIndex: 3,
-  renderer: AnchoredContent,
-};
-
 const styles = StyleSheet.create({
   layer: {
     position: 'absolute',
-    overflow: 'hidden',
-  },
-  fixedContent: {
-    flex: 1,
   },
 });

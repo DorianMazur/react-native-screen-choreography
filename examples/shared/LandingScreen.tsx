@@ -34,13 +34,6 @@ const demos = [
     color: theme.wallet.accent,
   },
   {
-    route: 'LivePlayerList',
-    title: 'Live player',
-    subtitle: 'The listening room',
-    icon: 'play',
-    color: theme.warn,
-  },
-  {
     route: 'WalletSetup',
     title: 'Wallet setup',
     subtitle: 'Make yourself at home',

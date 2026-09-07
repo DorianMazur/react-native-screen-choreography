@@ -18,8 +18,6 @@ export type ExampleStackParams = {
   TokenDetail: { tokenId: string };
   WalletSetup: undefined;
   WalletExisting: undefined;
-  LivePlayerList: undefined;
-  LivePlayerDetail: undefined;
 };
 
 function Bindings({ children }: { children: React.ReactNode }) {

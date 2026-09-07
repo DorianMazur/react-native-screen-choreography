@@ -66,14 +66,6 @@ export default function RootLayout() {
               gestureEnabled: false,
             }}
           />
-          <Stack.Screen
-            name="live-player/detail"
-            options={{
-              presentation: 'containedTransparentModal',
-              contentStyle: { backgroundColor: 'transparent' },
-              gestureEnabled: false,
-            }}
-          />
         </Stack>
       </ThemeProvider>
     </ChoreographyProvider>

@@ -10,8 +10,6 @@ import { withExampleScreen, type ExampleStackParams } from './ExampleScreen';
 import { LandingScreen } from '../../shared/LandingScreen';
 import { GalleryListScreen } from '../../shared/gallery/GalleryListScreen';
 import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
-import { LivePlayerListScreen } from '../../shared/live/LivePlayerListScreen';
-import { LivePlayerDetailScreen } from '../../shared/live/LivePlayerDetailScreen';
 import { MusicListScreen } from '../../shared/music/MusicListScreen';
 import { NowPlayingScreen } from '../../shared/music/NowPlayingScreen';
 import { theme as palette } from '../../shared/theme';
@@ -31,14 +29,6 @@ const WalletSetupRoute = withExampleScreen('WalletSetup', WalletSetupScreen);
 const WalletExistingRoute = withExampleScreen(
   'WalletExisting',
   WalletExistingScreen
-);
-const LivePlayerListRoute = withExampleScreen(
-  'LivePlayerList',
-  LivePlayerListScreen
-);
-const LivePlayerDetailRoute = withExampleScreen(
-  'LivePlayerDetail',
-  LivePlayerDetailScreen
 );
 
 const navTheme = {
@@ -122,19 +112,10 @@ export default function App() {
               options={detailOptions}
             />
 
-            <Stack.Screen
-              name="LivePlayerList"
-              component={LivePlayerListRoute}
-            />
             <Stack.Screen name="WalletSetup" component={WalletSetupRoute} />
             <Stack.Screen
               name="WalletExisting"
               component={WalletExistingRoute}
-              options={detailOptions}
-            />
-            <Stack.Screen
-              name="LivePlayerDetail"
-              component={LivePlayerDetailRoute}
               options={detailOptions}
             />
           </Stack.Navigator>

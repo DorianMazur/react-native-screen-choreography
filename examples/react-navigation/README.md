@@ -1,6 +1,6 @@
 # Example App
 
-This example app exposes the shared gallery, music, wallet, and live-player transition recipes through React Navigation.
+This example app exposes the shared gallery, music, wallet, and wallet-setup demos through React Navigation.
 
 ## What It Demonstrates
 
@@ -11,7 +11,8 @@ This example app exposes the shared gallery, music, wallet, and live-player tran
 - early settle handling when detail interaction starts mid-transition
 - staged reveal of detail content
 - fast push-pop-push interruption handling
-- native view reparenting with one stateful player instance shared between compact and expanded hosts
+- native view reparenting in Music with one stateful player instance shared between compact and expanded hosts
+- a pull-down handle that supports completing or cancelling an interactive return to the music list
 
 ## Important Runtime Setup
 
@@ -56,13 +57,13 @@ yarn start
 ## Files Worth Inspecting
 
 - `src/App.tsx` for navigator configuration
-- `src/exampleRuntime.ts` for the React Navigation adapter used by shared screens
+- `src/ExampleScreen.tsx` for the React Navigation adapter used by shared screens
 - `../shared/wallet/TokenListScreen.tsx` for forward navigation and transition config
 - `../shared/wallet/TokenDetailScreen.tsx` for companion animations and reverse navigation
 - `../shared/wallet/TokenRow.tsx` for shared element structure on the list row
-- `../shared/live/LivePlayerListScreen.tsx` for the single live payload owner
-- `../shared/live/LivePlayerDetailScreen.tsx` for the destination-only `LiveTarget`
-- `../shared/live/LivePlayerSurface.tsx` for state that survives native reparenting
+- `../shared/music/MusicListScreen.tsx` for the `SharedElement.Live` owners
+- `../shared/music/NowPlayingScreen.tsx` for the destination-only `LiveTarget` and pull-down handle
+- `../shared/music/TrackItem.tsx` for the playback clock, waveform, and controls that survive teleporting
 
 The Expo Router app imports those same files. Only navigator setup, destination mapping, and dynamic route parameter extraction remain app-specific.
 
@@ -73,4 +74,8 @@ The Expo Router app imports those same files. Only navigator setup, destination 
 - start scrolling during an active detail transition and verify `settleTransition()` snaps cleanly to the detail endpoint
 - go back quickly and tap a different token once
 - repeat push-pop cycles to check for flashes, dropped reverses, or large startup delays
-- start the live player, open and close its detail route, and verify its elapsed time and play/pause state never reset
+- start a track from the Music list, open its artwork/title, and verify the elapsed time continues in Now Playing
+- pause, return to the list, and reopen the same track; its elapsed time and play/pause state should not reset
+- pull the music handle down a little and release to cancel, then pull farther to return to the list
+
+Music simulates playback with a clock and animated waveform; it does not play audio. Each track's live component owns its state while the Music list stays mounted.

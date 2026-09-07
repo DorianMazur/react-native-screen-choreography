@@ -1,21 +1,9 @@
-import {
-  View,
-  Text,
-  StyleSheet,
-  FlatList,
-  Pressable,
-  StatusBar,
-} from 'react-native';
+import { View, Text, StyleSheet, FlatList, StatusBar } from 'react-native';
 import { ScreenHeader } from '../AppChrome';
 import { SharedElement, SafeAreaView, useExampleNavigation } from '../runtime';
 import { theme } from '../theme';
 import { TRACKS, type Track } from './data';
-import {
-  musicBackgroundTransition,
-  musicContentTransition,
-  musicHeaderTransition,
-  musicItemTransition,
-} from './musicTransitions';
+import { musicBackgroundTransition } from './musicTransitions';
 import { TrackItem } from './TrackItem';
 
 export function MusicListScreen() {
@@ -49,6 +37,7 @@ export function MusicListScreen() {
             </View>
           }
           contentContainerStyle={styles.list}
+          removeClippedSubviews={false}
           showsVerticalScrollIndicator={false}
           renderItem={({ item }) => (
             <Row
@@ -76,15 +65,7 @@ function Row({ track, onPress }: { track: Track; onPress: () => void }) {
   const groupId = `track.${track.id}`;
 
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={`Play ${track.title} by ${track.artist}`}
-      onPress={onPress}
-      style={({ pressed }) => [
-        styles.rowPressable,
-        pressed && { opacity: 0.7 },
-      ]}
-    >
+    <View style={styles.rowPressable}>
       <View style={styles.row}>
         <SharedElement
           id="background"
@@ -95,34 +76,15 @@ function Row({ track, onPress }: { track: Track; onPress: () => void }) {
           <View style={styles.fill} />
         </SharedElement>
 
-        <SharedElement
-          id="header"
-          groupId={groupId}
-          transition={musicHeaderTransition}
-          style={styles.headerAnchor}
-        >
-          <View />
-        </SharedElement>
-
-        <SharedElement
+        <SharedElement.Live
           id="item"
           groupId={groupId}
-          transition={musicItemTransition}
           style={styles.itemLayer}
         >
-          <TrackItem track={track} />
-        </SharedElement>
-
-        <SharedElement
-          id="content"
-          groupId={groupId}
-          transition={musicContentTransition}
-          style={styles.contentAnchor}
-        >
-          <View />
-        </SharedElement>
+          <TrackItem track={track} onOpen={onPress} />
+        </SharedElement.Live>
       </View>
-    </Pressable>
+    </View>
   );
 }
 
@@ -199,20 +161,6 @@ const styles = StyleSheet.create({
   },
   itemLayer: {
     ...StyleSheet.absoluteFill,
-  },
-  headerAnchor: {
-    position: 'absolute',
-    top: 0,
-    left: 0,
-    right: 0,
-    height: 1,
-  },
-  contentAnchor: {
-    position: 'absolute',
-    top: 76,
-    left: 0,
-    right: 0,
-    height: 1,
   },
   fill: {
     flex: 1,

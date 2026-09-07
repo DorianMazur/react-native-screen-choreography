@@ -4,12 +4,13 @@ import {
   StyleSheet,
   View,
   useWindowDimensions,
+  type GestureResponderHandlers,
   type PanResponderGestureState,
 } from 'react-native';
-import { useInteractiveTransition, useSafeAreaInsets } from './runtime';
+import { useInteractiveTransition } from './runtime';
 
 interface InteractiveBackGestureProps {
-  children: React.ReactNode;
+  children: (panHandlers: GestureResponderHandlers) => React.ReactNode;
   threshold?: number;
 }
 
@@ -21,7 +22,6 @@ export function InteractiveBackGesture({
   threshold = 0.4,
 }: InteractiveBackGestureProps) {
   const { height } = useWindowDimensions();
-  const insets = useSafeAreaInsets();
   const { beginBack, setProgress, finish, cancel, isActive } =
     useInteractiveTransition();
   const transitionRef = useRef({
@@ -125,29 +125,11 @@ export function InteractiveBackGesture({
     });
   }, [height, threshold]);
 
-  return (
-    <View style={styles.fill}>
-      {children}
-      <View
-        accessible={false}
-        style={[styles.handleTouchTarget, { top: insets.top + 58 }]}
-        {...panResponder.panHandlers}
-      />
-    </View>
-  );
+  return <View style={styles.fill}>{children(panResponder.panHandlers)}</View>;
 }
 
 const styles = StyleSheet.create({
   fill: {
     flex: 1,
-  },
-  handleTouchTarget: {
-    position: 'absolute',
-    left: '50%',
-    width: 72,
-    height: 32,
-    marginLeft: -36,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
 });
