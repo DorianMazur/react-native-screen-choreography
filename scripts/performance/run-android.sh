@@ -25,8 +25,8 @@ output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(d
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Running %s iterations per startup/frame case and %s memory/input cycles per scenario.\n' "$iterations" "$cycles"
-echo 'Repeated app launches are expected during cold startup measurements and per-iteration setup.'
+printf 'Running %s iterations per frame case and %s memory/input cycles per scenario.\n' "$iterations" "$cycles"
+echo 'Each frame iteration starts a fresh Activity before measuring transitions.'
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"

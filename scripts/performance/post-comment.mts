@@ -10,8 +10,6 @@ export const COMMENT_MARKER = '<!-- choreography-performance -->';
 const ARTIFACTS = [
   'performance-summary-android-native-release',
   'performance-summary-android-react-profile',
-  'performance-summary-ios-native-release',
-  'performance-summary-ios-react-profile',
 ];
 
 const safe = (value: unknown) =>
@@ -43,7 +41,7 @@ export async function readArtifactSummary(
   if (!ARTIFACTS.includes(artifactName))
     throw new Error('Unexpected summary artifact name');
   const [, platform, mode] =
-    /^performance-summary-(android|ios)-(native-release|react-profile)$/.exec(
+    /^performance-summary-(android)-(native-release|react-profile)$/.exec(
       artifactName
     )!;
   try {
@@ -87,7 +85,7 @@ export function renderComment(
     '',
     `Run: **${safe(run.conclusion ?? 'unknown')}** · [reports and native traces](${run.html_url})`,
     '',
-    'Hosted emulator/simulator results are informational. Release measurements and React profiling builds are separate.',
+    'Android emulator results are informational; they do not measure iOS performance. Release measurements and React profiling builds are separate.',
     '',
   ];
   for (const artifactName of ARTIFACTS) {
@@ -125,7 +123,7 @@ export function renderComment(
       (report.metrics as Record<string, InputRecord>) ?? {}
     )
       .filter(([name]) =>
-        /requestToSessionActiveMs|requestToSessionEndMs|requestToProbeHandlerMs|touchToAcknowledgementMs|renderWorkPerUpdateMs|committedUpdatesPerRun|sampledPeakPssKb|retainedPssDeltaKb|timeToInitialDisplayMs|timeToFullDisplayMs|frameOverrunMs|deadlineOverrunPercent|^ios\./.test(
+        /requestToSessionActiveMs|requestToSessionEndMs|requestToProbeHandlerMs|touchToAcknowledgementMs|renderWorkPerUpdateMs|committedUpdatesPerRun|sampledPeakPssKb|retainedPssDeltaKb|frameOverrunMs|deadlineOverrunPercent/.test(
           name
         )
       )
@@ -153,7 +151,7 @@ export function renderComment(
     lines.push('');
   }
   lines.push(
-    'React timings measure render work, not native commit duration. Session-active timing is a JS preparation proxy, not first presented motion. Request-to-probe includes test waiting and is a successful-input upper bound. Full-display timing ends at app-defined readiness, not verified input. Native input acknowledgments include queue effects; memory peaks are sampled. P95 is omitted for small samples.',
+    'React timings measure render work, not native commit duration. Session-active timing is a JS preparation proxy, not first presented motion. Request-to-probe includes test waiting and is a successful-input upper bound. Native input acknowledgments include queue effects; memory peaks are sampled. P95 is omitted for small samples.',
     '',
     'The complete summaries, raw samples, and traces are attached to the run. This comment updates on subsequent runs for the current PR head.'
   );

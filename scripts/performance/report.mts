@@ -50,7 +50,7 @@ function readFixture(
   metrics: MetricSamples,
   platform: string
 ) {
-  if (report.schemaVersion !== 1 || report.fixtureVersion !== 1) {
+  if (report.schemaVersion !== 1 || report.fixtureVersion !== 2) {
     throw new Error('Unsupported fixture schema/version');
   }
   if (!SCENARIOS.includes(report.scenario))
@@ -497,21 +497,18 @@ export function summarize(
       errors.push(`Missing valid ${scenario} fixture run`);
     if (platform === 'android' && !memories.has(scenario))
       errors.push(`Missing ${scenario} memory measurements`);
-    if (platform === 'android') {
-      for (const kind of ['coldStartup', 'transitionFrames']) {
-        if (!nativeBenchmarks.has(`${kind}[${scenario}]`)) {
-          const label =
-            kind === 'transitionFrames' ? 'frame-overrun' : 'cold startup';
-          errors.push(
-            `Missing ${scenario} native ${label} measurements${kind === 'transitionFrames' ? ' (requires API 31+)' : ''}`
-          );
-        }
-      }
+    if (
+      platform === 'android' &&
+      !nativeBenchmarks.has(`transitionFrames[${scenario}]`)
+    ) {
+      errors.push(
+        `Missing ${scenario} native frame-overrun measurements (requires API 31+)`
+      );
     }
   }
   if (platform === 'ios' && mode === 'native-release') {
     for (const scenario of SCENARIOS) {
-      for (const kind of ['Launch', 'Clock', 'Memory']) {
+      for (const kind of ['Clock', 'Memory']) {
         if (!xctest?.coverage[`${scenario}${kind}`]) {
           errors.push(
             `Missing ${scenario} native XCTest ${kind.toLowerCase()} measurements`
@@ -525,7 +522,7 @@ export function summarize(
     measurementDefinitionVersion: 1,
     platform,
     mode,
-    fixtureVersion: 1,
+    fixtureVersion: 2,
     policy: 'informational-performance-fail-invalid-collection',
     metadata,
     valid: errors.length === 0,

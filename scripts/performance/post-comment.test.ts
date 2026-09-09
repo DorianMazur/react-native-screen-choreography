@@ -64,7 +64,8 @@ test('renders a compact update with explicit missing/failed collection and profi
   assert.ok(body.startsWith(COMMENT_MARKER));
   assert.match(body, /31\.457/);
   assert.match(body, /Collection failed/);
-  assert.match(body, /No validated summary/);
+  assert.doesNotMatch(body, /No validated summary/);
+  assert.doesNotMatch(body, /### ios-/);
   assert.match(body, /not native commit/);
   assert.equal(body.includes('@everyone'), false);
   assert.equal(body.includes('<script>'), false);
@@ -72,7 +73,7 @@ test('renders a compact update with explicit missing/failed collection and profi
 
 test('never presents mismatched or nonnumeric metric data as a valid timing', () => {
   const body = renderComment(run, {
-    'performance-summary-ios-native-release': {
+    'performance-summary-android-react-profile': {
       schemaVersion: 1,
       platform: 'android',
       mode: 'native-release',
@@ -93,17 +94,12 @@ test('never presents mismatched or nonnumeric metric data as a valid timing', ()
   assert.equal(body.includes('| fast |'), false);
 });
 
-test('a full Android comment retains both scenarios, input upper bounds, and full-display timing', () => {
+test('a full Android comment retains both scenarios, input upper bounds, and frame timing', () => {
   const metric = { count: 20, median: 12, p95: 16 };
   const reports: Record<string, InputRecord> = {};
   for (const mode of ['native-release', 'react-profile']) {
     const metrics: Record<string, InputRecord> = {};
     for (const scenario of ['ordinary', 'live']) {
-      for (const startup of ['coldStartup']) {
-        for (const name of ['timeToInitialDisplayMs', 'timeToFullDisplayMs']) {
-          metrics[`android.${startup}[${scenario}].${name}`] = metric;
-        }
-      }
       for (const name of ['frameOverrunMs', 'deadlineOverrunPercent']) {
         metrics[`android.transitionFrames[${scenario}].${name}`] = metric;
       }
@@ -150,14 +146,8 @@ test('a full Android comment retains both scenarios, input upper bounds, and ful
         body.includes(`| ${scenario}.${direction}.requestToProbeHandlerMs |`)
       );
     }
-    for (const startup of ['coldStartup']) {
-      assert.ok(
-        body.includes(`android.${startup}\\[${scenario}\\].timeToFullDisplayMs`)
-      );
-    }
   }
   assert.match(body, /successful-input upper bound/);
-  assert.match(body, /app-defined readiness/);
 });
 
 test('malformed, unavailable, or mismatched artifacts fail only their own lane', async () => {
@@ -187,11 +177,11 @@ test('malformed, unavailable, or mismatched artifacts fail only their own lane',
     assert.equal(failed.valid, false);
     assert.equal(failed.errors.length, 1);
     const successful = await readArtifactSummary(
-      'performance-summary-ios-native-release',
+      'performance-summary-android-react-profile',
       async () => ({
         schemaVersion: 1,
-        platform: 'ios',
-        mode: 'native-release',
+        platform: 'android',
+        mode: 'react-profile',
         valid: true,
         metrics: {
           'live.forward.requestToSessionActiveMs': {
@@ -206,7 +196,7 @@ test('malformed, unavailable, or mismatched artifacts fail only their own lane',
       { ...run, conclusion: 'failure' },
       {
         'performance-summary-android-native-release': failed,
-        'performance-summary-ios-native-release': successful,
+        'performance-summary-android-react-profile': successful,
       }
     );
     assert.match(body, /Run: \*\*failure\*\*/);
@@ -232,4 +222,10 @@ test('artifact failures remain bounded and escaped without accepting unknown lan
     readArtifactSummary('untrusted-file', async () => ({})),
     /Unexpected/
   );
+});
+
+test('reports missing Android artifacts without expecting iOS collection', () => {
+  const body = renderComment(run, {});
+  assert.equal(body.match(/No validated summary/g)?.length, 2);
+  assert.doesNotMatch(body, /### ios-/);
 });

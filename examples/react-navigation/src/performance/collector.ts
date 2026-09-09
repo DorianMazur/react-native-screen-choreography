@@ -41,7 +41,7 @@ interface ReactObservation {
 
 export interface BenchmarkReport {
   schemaVersion: 1;
-  fixtureVersion: 1;
+  fixtureVersion: 2;
   runId: string;
   scenario: PerformanceScenario;
   clock: 'js-performance-now';
@@ -308,7 +308,7 @@ export class BenchmarkCollector {
     }
     return {
       schemaVersion: 1,
-      fixtureVersion: 1,
+      fixtureVersion: 2,
       runId: this.runId,
       scenario: this.scenario,
       clock: 'js-performance-now',

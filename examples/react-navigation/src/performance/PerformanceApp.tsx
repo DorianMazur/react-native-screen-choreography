@@ -10,25 +10,41 @@ import React, {
   useState,
   type ProfilerOnRenderCallback,
 } from 'react';
-import { NativeModules, Pressable, StyleSheet, Text, View } from 'react-native';
-import { NavigationContainer } from '@react-navigation/native';
+import {
+  NativeModules,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+  ScrollView,
+  useWindowDimensions,
+} from 'react-native';
+import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import {
   createNativeStackNavigator,
-  type NativeStackScreenProps,
+  type NativeStackNavigationProp,
 } from '@react-navigation/native-stack';
 import {
   ChoreographyProvider,
   ChoreographyScreen,
   SharedElement,
+  StandInElement,
   makeLiveTransition,
   useChoreographyNavigation,
   useInteractiveTransition,
   type SharedElementTransitionRendererProps,
 } from 'react-native-screen-choreography';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
+import { GalleryImage } from '../../../shared/gallery/GalleryImage';
+import { PHOTOS } from '../../../shared/gallery/data';
+import { AppIcon } from '../../../shared/AppChrome';
+import {
+  galleryFrameTransition,
+  galleryPhotoTransition,
+  galleryTitleTransition,
+  galleryLocationTransition,
+  galleryGlyphTransition,
+} from '../../../shared/gallery/galleryTransitions';
+import { theme } from '../../../shared/theme';
 import {
   BenchmarkCollector,
   type JourneyDirection,
@@ -78,48 +94,43 @@ function useFixture() {
   return fixture;
 }
 
-/** Both modes animate the same bounds; ordinary mode mounts renderer content. */
-function BoundsMotion({
+/** Match the gallery photo recipe for the retained live owner. */
+function GalleryLiveMotion({
   progress,
   direction,
   source,
   target,
   children,
+  zIndex,
 }: SharedElementTransitionRendererProps & { children: React.ReactNode }) {
-  const style = useAnimatedStyle(() => {
-    const t = direction === 'backward' ? 1 - progress.value : progress.value;
-    return {
-      left: interpolate(
-        t,
-        [0, 1],
-        [source.metrics.pageX, target.metrics.pageX]
-      ),
-      top: interpolate(t, [0, 1], [source.metrics.pageY, target.metrics.pageY]),
-      width: interpolate(
-        t,
-        [0, 1],
-        [source.metrics.width, target.metrics.width]
-      ),
-      height: interpolate(
-        t,
-        [0, 1],
-        [source.metrics.height, target.metrics.height]
-      ),
-    };
-  });
+  const backward = direction === 'backward';
   return (
-    <Animated.View style={[styles.movingPayload, style]}>
+    <StandInElement
+      progress={progress}
+      direction={direction}
+      sourceMetrics={source.metrics}
+      targetMetrics={target.metrics}
+      sourceBorderRadius={backward ? 0 : theme.radius.lg}
+      targetBorderRadius={backward ? theme.radius.lg : 0}
+      zIndex={zIndex}
+    >
       {children}
-    </Animated.View>
+    </StandInElement>
   );
 }
-function OrdinaryMotion(props: SharedElementTransitionRendererProps) {
-  return <BoundsMotion {...props}>{props.source.content}</BoundsMotion>;
-}
-const ordinaryTransition = { renderer: OrdinaryMotion, zIndex: 100 };
-const liveTransition = makeLiveTransition({ renderer: BoundsMotion });
+const ordinaryTransition = galleryPhotoTransition;
+const liveTransition = makeLiveTransition({
+  renderer: GalleryLiveMotion,
+  zIndex: 2,
+});
 
-function Payload({ collector }: { collector: BenchmarkCollector }) {
+function Payload({
+  collector,
+  onLoad,
+}: {
+  collector: BenchmarkCollector;
+  onLoad: () => void;
+}) {
   const instanceId = useRef<number | null>(null);
   if (instanceId.current === null) {
     instanceId.current = collector.allocatePayloadInstance();
@@ -129,51 +140,57 @@ function Payload({ collector }: { collector: BenchmarkCollector }) {
     return () => collector.payloadLifecycle(instanceId.current!, false);
   }, [collector]);
 
+  const fixture = useFixture();
   return (
-    <View style={styles.payload}>
-      <View style={styles.artwork}>
-        {Array.from({ length: 24 }, (_, index) => (
-          <View
-            key={index}
-            style={[
-              styles.tile,
-              index % 3 === 0 ? styles.tileLight : styles.tileDark,
-            ]}
-          />
-        ))}
-      </View>
-      <Text style={styles.payloadTitle}>Deterministic shared panel</Text>
-      <View style={styles.bars}>
-        {Array.from({ length: 32 }, (_, index) => (
-          <View
-            key={index}
-            style={[styles.bar, { height: 8 + ((index * 17) % 29) }]}
-          />
-        ))}
-      </View>
-    </View>
+    <GalleryImage
+      photo={PHOTOS[0]!}
+      onLoad={onLoad}
+      onError={() => fixture.fail('gallery-image-load-failed')}
+    />
   );
 }
 
-function SharedPayload({ detail }: { detail: boolean }) {
+function useOpenPhoto() {
+  const fixture = useFixture();
+  const navigation = useNavigation<NativeStackNavigationProp<StackParams>>();
+  const choreography = useChoreographyNavigation(navigation);
+  return () => {
+    if (!fixture.request('forward')) return;
+    choreography
+      .navigate('BenchmarkDetail', undefined, {
+        transitionConfig: { group: GROUP },
+        duration: TRANSITION_MS,
+      })
+      .catch((error: unknown) => {
+        fixture.fail(`forward-transition-error:${String(error)}`);
+      });
+  };
+}
+
+function SharedPayload({
+  detail,
+  onLoad = () => {},
+}: {
+  detail: boolean;
+  onLoad?: () => void;
+}) {
   const { collector, scenario } = useFixture();
-  const style = detail ? styles.detailBounds : styles.listBounds;
   if (scenario === 'live') {
     return detail ? (
       <SharedElement.LiveTarget
         id="panel"
         groupId={GROUP}
-        style={style}
+        style={StyleSheet.absoluteFill}
         transition={liveTransition}
       />
     ) : (
       <SharedElement.Live
         id="panel"
         groupId={GROUP}
-        style={style}
+        style={StyleSheet.absoluteFill}
         transition={liveTransition}
       >
-        <Payload collector={collector} />
+        <Payload collector={collector} onLoad={onLoad} />
       </SharedElement.Live>
     );
   }
@@ -182,9 +199,66 @@ function SharedPayload({ detail }: { detail: boolean }) {
       id="panel"
       groupId={GROUP}
       transition={ordinaryTransition}
-      style={style}
+      style={StyleSheet.absoluteFill}
     >
-      <Payload collector={collector} />
+      <Payload collector={collector} onLoad={onLoad} />
+    </SharedElement>
+  );
+}
+
+function GalleryCard({
+  detail,
+  onLoad,
+}: {
+  detail: boolean;
+  onLoad?: () => void;
+}) {
+  const photo = PHOTOS[0]!;
+  return (
+    <SharedElement
+      id="frame"
+      groupId={GROUP}
+      transition={galleryFrameTransition}
+      style={[
+        StyleSheet.absoluteFill,
+        styles.cardBackground,
+        detail && styles.heroFrame,
+      ]}
+    >
+      <View style={styles.cardInner}>
+        <SharedPayload detail={detail} onLoad={onLoad} />
+        <View pointerEvents="none" style={styles.scrim} />
+        <View style={styles.glyphPosition}>
+          <SharedElement
+            id="glyph"
+            groupId={GROUP}
+            transition={galleryGlyphTransition}
+            style={detail ? styles.heroGlyph : styles.tileGlyph}
+          >
+            <View style={styles.glyphCenter}>
+              <AppIcon name="camera" size={detail ? 21 : 14} />
+            </View>
+          </SharedElement>
+        </View>
+        <View style={styles.photoMeta}>
+          <SharedElement
+            id="title"
+            groupId={GROUP}
+            transition={galleryTitleTransition}
+          >
+            <Text style={[styles.photoTitle, detail && styles.heroTitle]}>
+              {photo.title}
+            </Text>
+          </SharedElement>
+          <SharedElement
+            id="location"
+            groupId={GROUP}
+            transition={galleryLocationTransition}
+          >
+            <Text style={styles.caption}>{photo.location}</Text>
+          </SharedElement>
+        </View>
+      </View>
     </SharedElement>
   );
 }
@@ -222,12 +296,13 @@ function Marker({ id }: { id: string }) {
   );
 }
 
-function ListScreen({
-  navigation,
-}: NativeStackScreenProps<StackParams, 'BenchmarkList'>) {
+function ListScreen() {
   const fixture = useFixture();
-  const choreography = useChoreographyNavigation(navigation);
+  const open = useOpenPhoto();
+  const { width } = useWindowDimensions();
+  const tileWidth = (width - 44) / 2;
   const readySent = useRef(false);
+  const imageLoaded = useRef(false);
   const mounted = useRef(true);
   useEffect(
     () => () => {
@@ -236,7 +311,7 @@ function ListScreen({
     []
   );
   const layout = useCallback(() => {
-    if (readySent.current) return;
+    if (readySent.current || !imageLoaded.current) return;
     readySent.current = true;
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
@@ -247,27 +322,44 @@ function ListScreen({
   return (
     <ChoreographyScreen screenId="BenchmarkList">
       <View style={styles.screen} onLayout={layout}>
-        <Text style={styles.heading}>Transition benchmark</Text>
+        <Text style={styles.heading}>Field notes</Text>
         <Text style={styles.caption}>
-          Fixed assets · one pair · {TRANSITION_MS} ms
+          THE FIELD JOURNAL · {TRANSITION_MS} ms
         </Text>
-        <SharedPayload detail={false} />
+        <ScrollView contentContainerStyle={styles.grid}>
+          <Pressable
+            testID="benchmark-start"
+            accessibilityLabel="benchmark-start"
+            accessibilityRole="button"
+            onPress={open}
+            style={{ width: tileWidth, height: tileWidth / 0.72 }}
+          >
+            <GalleryCard
+              detail={false}
+              onLoad={() => {
+                imageLoaded.current = true;
+                layout();
+              }}
+            />
+          </Pressable>
+          {PHOTOS.slice(1).map((photo) => (
+            <View
+              key={photo.id}
+              style={[
+                styles.staticCard,
+                { width: tileWidth, height: tileWidth / 0.72 },
+              ]}
+            >
+              <GalleryImage photo={photo} />
+              <View style={styles.scrim} />
+              <View style={styles.photoMeta}>
+                <Text style={styles.photoTitle}>{photo.title}</Text>
+                <Text style={styles.caption}>{photo.location}</Text>
+              </View>
+            </View>
+          ))}
+        </ScrollView>
         <View style={styles.controls}>
-          <Control
-            id="benchmark-start"
-            label="Start transition"
-            onPress={() => {
-              if (!fixture.request('forward')) return;
-              choreography
-                .navigate('BenchmarkDetail', undefined, {
-                  transitionConfig: { group: GROUP },
-                  duration: TRANSITION_MS,
-                })
-                .catch((error: unknown) => {
-                  fixture.fail(`forward-transition-error:${String(error)}`);
-                });
-            }}
-          />
           <Control
             id="benchmark-list-probe"
             label="Probe list input"
@@ -285,8 +377,18 @@ function DetailScreen() {
   return (
     <ChoreographyScreen screenId="BenchmarkDetail">
       <View style={styles.screen}>
-        <Text style={styles.heading}>Shared panel detail</Text>
-        <SharedPayload detail />
+        <Text style={styles.heading}>Field notes</Text>
+        <ScrollView>
+          <View style={styles.heroBounds}>
+            <GalleryCard detail />
+          </View>
+          <Text style={styles.sectionTitle}>Notes</Text>
+          <Text style={styles.caption}>{PHOTOS[0]!.description}</Text>
+          <Text style={styles.sectionTitle}>Exposure</Text>
+          <Text style={styles.caption}>
+            {PHOTOS[0]!.iso} · {PHOTOS[0]!.shutter} · {PHOTOS[0]!.aperture}
+          </Text>
+        </ScrollView>
         <View style={styles.controls}>
           <Control
             id="benchmark-detail-probe"
@@ -481,7 +583,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
           animation: 'none',
           gestureEnabled: false,
           freezeOnBlur: false,
-          contentStyle: { backgroundColor: '#0F172A' },
+          contentStyle: { backgroundColor: theme.bg },
         }}
       >
         <Stack.Screen name="BenchmarkList" component={ListScreen} />
@@ -579,54 +681,71 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
 const styles = StyleSheet.create({
   root: {
     flex: 1,
-    backgroundColor: '#0F172A',
+    backgroundColor: theme.bg,
     paddingTop: 44,
     paddingBottom: 24,
   },
   navigation: { flex: 1 },
-  toolbar: { paddingHorizontal: 16, height: 152 },
+  toolbar: { paddingHorizontal: 16, paddingBottom: 12 },
   controls: { flexDirection: 'row', gap: 12 },
-  screen: { flex: 1, padding: 16, backgroundColor: '#0F172A' },
+  screen: { flex: 1, padding: 16, backgroundColor: theme.bg },
   heading: {
-    color: '#F8FAFC',
+    color: theme.text,
     fontSize: 22,
     fontWeight: '600',
     marginBottom: 8,
   },
-  caption: { color: '#CBD5E1', fontSize: 12, marginBottom: 8 },
-  marker: { color: '#93C5FD', fontSize: 10, lineHeight: 12, height: 12 },
+  caption: { color: theme.textSecondary, fontSize: 12, marginBottom: 8 },
+  marker: { color: theme.textMuted, fontSize: 10, lineHeight: 12, height: 12 },
   button: {
-    backgroundColor: '#1D4ED8',
+    backgroundColor: theme.surfaceElevated,
     paddingHorizontal: 16,
     paddingVertical: 12,
     marginTop: 10,
     borderRadius: 6,
     minHeight: 44,
   },
-  buttonText: { color: '#FFFFFF', fontSize: 14 },
+  buttonText: { color: theme.text, fontSize: 14 },
   disabled: { opacity: 0.4 },
-  listBounds: { width: 256, height: 156, marginBottom: 20 },
-  detailBounds: { width: 296, height: 224, marginBottom: 20 },
-  movingPayload: { position: 'absolute', overflow: 'hidden' },
-  payload: {
-    flex: 1,
-    width: '100%',
-    height: '100%',
-    padding: 12,
-    backgroundColor: '#172554',
+  heroFrame: { borderRadius: 0 },
+  heroBounds: { width: '100%', aspectRatio: 1 },
+  heroGlyph: { width: 42, height: 42 },
+  tileGlyph: { width: 28, height: 28 },
+  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 12 },
+  staticCard: { borderRadius: theme.radius.lg, overflow: 'hidden' },
+  cardBackground: {
+    backgroundColor: theme.surface,
+    borderRadius: theme.radius.lg,
     overflow: 'hidden',
   },
-  artwork: {
-    flexDirection: 'row',
-    flexWrap: 'wrap',
-    height: 60,
-    gap: 2,
-    overflow: 'hidden',
+  cardInner: { flex: 1 },
+  photoMeta: { position: 'absolute', left: 12, right: 12, bottom: 10 },
+  photoTitle: {
+    color: theme.text,
+    fontFamily: theme.font,
+    fontSize: 16,
+    fontWeight: '600',
   },
-  tile: { width: 24, height: 24 },
-  tileLight: { backgroundColor: '#93C5FD' },
-  tileDark: { backgroundColor: '#2563EB' },
-  payloadTitle: { color: '#FFFFFF', fontSize: 14, marginTop: 8 },
-  bars: { flexDirection: 'row', alignItems: 'flex-end', gap: 2, height: 40 },
-  bar: { width: 4, backgroundColor: '#60A5FA' },
+  heroTitle: { fontSize: 28 },
+  sectionTitle: {
+    color: theme.text,
+    fontSize: 18,
+    marginTop: 16,
+    marginBottom: 8,
+  },
+  glyphPosition: { position: 'absolute', right: 10, top: 10 },
+  glyphCenter: {
+    ...StyleSheet.absoluteFill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  scrim: {
+    position: 'absolute',
+    left: 0,
+    right: 0,
+    bottom: 0,
+    height: '55%',
+    experimental_backgroundImage:
+      'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.65) 100%)',
+  },
 });

@@ -7,8 +7,6 @@ import android.os.Bundle
 import android.os.SystemClock
 import androidx.benchmark.macro.CompilationMode
 import androidx.benchmark.macro.FrameTimingMetric
-import androidx.benchmark.macro.StartupMode
-import androidx.benchmark.macro.StartupTimingMetric
 import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
@@ -36,26 +34,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
   private val reactProfile = arguments.getString("performanceReactProfile", "false").toBoolean()
   private val iterations = arguments.getString("performanceIterations", "3").toInt().also {
     require(it in 1..100) { "performanceIterations must be between 1 and 100" }
-  }
-
-  @Test
-  fun coldStartup() {
-    benchmarkRule.measureRepeated(
-      packageName = APP_ID,
-      metrics = listOf(StartupTimingMetric()),
-      compilationMode = CompilationMode.None(),
-      iterations = iterations,
-      startupMode = StartupMode.COLD,
-      setupBlock = { pressHome() },
-    ) {
-      startActivityAndWait(launchIntent())
-      await("benchmark-ready")
-      // Keep the trace open through the scheduled fully-drawn draw/RenderThread
-      // work. This settling wait is not used as the startup metric endpoint.
-      device.waitForIdle()
-      // Startup has no navigation journey to export. Its platform launch and
-      // fully-drawn timestamps are retained in Macrobenchmark's own report.
-    }
   }
 
   @Test

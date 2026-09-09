@@ -6,7 +6,7 @@ import { distribution, summarize, markdown } from './report.mts';
 function fixture(scenario: string, profile = false): InputRecord {
   return {
     schemaVersion: 1,
-    fixtureVersion: 1,
+    fixtureVersion: 2,
     runId: `${scenario}-1`,
     scenario,
     clock: 'js-performance-now',
@@ -81,14 +81,6 @@ function documents(profile = false): MeasurementDocument[] {
       file: 'native-benchmarkData.json',
       data: {
         benchmarks: ['ordinary', 'live'].flatMap((scenario) => [
-          {
-            name: `coldStartup[${scenario}]`,
-            metrics: {
-              timeToInitialDisplayMs: { runs: [400, 420] },
-              timeToFullDisplayMs: { runs: [500, 540] },
-            },
-            sampledMetrics: {},
-          },
           {
             name: `transitionFrames[${scenario}]`,
             metrics: { frameCount: { runs: [3, 1] } },
@@ -189,7 +181,7 @@ test('rejects incomplete runs even if a producer incorrectly sets valid=true', (
 
 test('rejects absent frame collection, missing memory checkpoints and duplicate runs', () => {
   const input = documents();
-  input.at(-1)!.data.benchmarks[1].sampledMetrics = {};
+  input.at(-1)!.data.benchmarks[0].sampledMetrics = {};
   input[1].data.samples.pop();
   input.push(input[0]);
   const summary = summarize(input, options);
@@ -309,11 +301,9 @@ test('requires all memory phases once per contiguous iteration and requested cyc
   assert.equal(valid.valid, true, valid.errors.join('\n'));
 });
 
-test('requires cold startup and frame-overrun data for each scenario', () => {
+test('requires frame-overrun data for each scenario', () => {
   for (const missing of [
-    'coldStartup[ordinary]',
     'transitionFrames[ordinary]',
-    'coldStartup[live]',
     'transitionFrames[live]',
   ]) {
     const input = documents();
@@ -329,31 +319,19 @@ test('requires cold startup and frame-overrun data for each scenario', () => {
 test('validates pinned Macrobenchmark run arrays, counts, duplicate names and per-frame values', () => {
   for (const mutate of [
     (data: InputRecord) => {
-      data.benchmarks[0].metrics.timeToInitialDisplayMs.runs = [400];
+      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs = [[1], []];
     },
     (data: InputRecord) => {
-      data.benchmarks[0].metrics.timeToInitialDisplayMs.runs = [[400], [420]];
+      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs = [-1, 1];
     },
     (data: InputRecord) => {
-      data.benchmarks[0].metrics = {};
+      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs = [[-1]];
     },
     (data: InputRecord) => {
-      delete data.benchmarks[0].metrics.timeToFullDisplayMs;
+      data.benchmarks[0].sampledMetrics.frameDurationCpuMs.runs[0][0] = -1;
     },
     (data: InputRecord) => {
-      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs = [[1], []];
-    },
-    (data: InputRecord) => {
-      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs = [-1, 1];
-    },
-    (data: InputRecord) => {
-      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs = [[-1]];
-    },
-    (data: InputRecord) => {
-      data.benchmarks[1].sampledMetrics.frameDurationCpuMs.runs[0][0] = -1;
-    },
-    (data: InputRecord) => {
-      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs[0][0] =
+      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs[0][0] =
         Number.POSITIVE_INFINITY;
     },
     (data: InputRecord) => {
@@ -416,7 +394,7 @@ function iosDocuments(profile = false): MeasurementDocument[] {
     {
       file: 'xctest-metrics.json',
       data: ['Ordinary', 'Live'].flatMap((scenario) =>
-        ['Launch', 'RoundTrip'].map((kind) => ({
+        ['RoundTrip'].map((kind) => ({
           testIdentifier: `PerformanceTests/test${scenario}${kind}()`,
           testRuns: [
             {
@@ -425,30 +403,20 @@ function iosDocuments(profile = false): MeasurementDocument[] {
                 configurationId: '1',
                 configurationName: 'Performance',
               },
-              metrics:
-                kind === 'Launch'
-                  ? [
-                      metric(
-                        'ApplicationLaunch.duration',
-                        'Application Launch',
-                        's',
-                        [0.3, 0.4]
-                      ),
-                    ]
-                  : [
-                      metric(
-                        'Clock.time.monotonic',
-                        'Clock Monotonic Time',
-                        's',
-                        [1.2, 1.4]
-                      ),
-                      metric(
-                        'Memory.physical_peak',
-                        'Memory Peak Physical',
-                        'kB',
-                        [23000, 24000]
-                      ),
-                    ],
+              metrics: [
+                metric(
+                  'Clock.time.monotonic',
+                  'Clock Monotonic Time',
+                  's',
+                  [1.2, 1.4]
+                ),
+                metric(
+                  'Memory.physical_peak',
+                  'Memory Peak Physical',
+                  'kB',
+                  [23000, 24000]
+                ),
+              ],
             },
           ],
         }))
@@ -462,8 +430,8 @@ test('iOS reports XCTest measurements and requires both native scenarios', () =>
   const summary = summarize(iosDocuments(), iosOptions);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
   assert.equal(
-    summary.metrics['ios.ordinary.xctest.applicationLaunchSeconds']!.median,
-    0.35
+    summary.metrics['ios.ordinary.xctest.roundTripSeconds']!.median,
+    (1.2 + 1.4) / 2
   );
   assert.equal(
     summary.metrics['ios.live.xctest.memoryPeakPhysical_kB']!.median,
@@ -512,4 +480,11 @@ test('tail estimates require enough observations', () => {
     distribution(Array.from({ length: 20 }, (_, i) => i))!.p95,
     18.05
   );
+});
+
+test('rejects synthetic-panel fixtures from before the gallery workload', () => {
+  const input = documents();
+  input[0]!.data.fixtureVersion = 1;
+  const summary = summarize(input, options);
+  assert.equal(summary.valid, false);
 });

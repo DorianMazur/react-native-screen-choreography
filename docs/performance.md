@@ -1,14 +1,20 @@
 # Performance measurements
 
-The performance suite compares ordinary shared-element rendering with a single
-live payload in the React Navigation example. Both fixtures use the same panel,
-endpoint bounds, and transition motion. The ordinary fixture renders screen
-instances and an overlay representation; the live fixture moves its owner
-through `SharedElement.Live` and `LiveTarget`.
+The performance suite measures a gallery card-to-detail round trip using the
+example's bundled photos, shared `GalleryImage` component, theme, and gallery
+transition recipes. The selected card pairs its frame, photo, camera glyph,
+title, and location. The grid remains mounted behind the detail screen.
 
-This is a controlled comparison of those paths, not evidence that live mode is
-faster for every application. The fixture does not cover long virtualized lists,
-nested independent elements, video, text inputs, or every navigation lifecycle.
+Both variants use the same five pairs and assets. Ordinary mode renders photo
+content in the screens and overlay; live mode retains a single photo owner.
+The surrounding frame and text transitions are the same in both. The fixture
+waits for the selected image to load before declaring readiness.
+
+This is a controlled gallery workload, not a benchmark of every demo feature:
+there is no lightbox, sharing, scrolling gesture, or interactive cancellation in
+the measured journey. It does not establish video or text-input continuity.
+Gallery reports use fixture version 2. Version 1 synthetic-panel exports are
+rejected because their workload is not comparable.
 
 ## Run locally
 
@@ -41,7 +47,7 @@ Metro server; both build bundled JavaScript.
 
 | Mode             | Purpose                                                                                                            |
 | ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `native-release` | Normal production React renderer; native launch, frame or elapsed-time, memory, lifecycle, and input observations. |
+| `native-release` | Normal production React renderer; native frame or elapsed-time, memory, lifecycle, and input observations. |
 | `react-profile`  | Production profiling renderer with React `Profiler` observations enabled. Development mode remains disabled.       |
 
 Compare ordinary and live measurements within the same mode, device, runtime,
@@ -59,12 +65,12 @@ Use a device reserved for the run and keep animations enabled.
 
 | Variable                    | Default                                                | Meaning                                                                            |
 | --------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `PERFORMANCE_ITERATIONS`    | `3`                                                   | Startup and frame measurement iterations; integer from 1 to 100.                   |
+| `PERFORMANCE_ITERATIONS`    | `3`                                                   | Frame measurement iterations; integer from 1 to 100.                   |
 | `PERFORMANCE_MEMORY_CYCLES` | `3`                                                   | Repeated navigation cycles for memory and input collection; integer from 1 to 100. |
 | `PERFORMANCE_ABI`           | Connected device ABI                                   | ABI compiled for the run, such as `arm64-v8a` or `x86_64`.                         |
 | `PERFORMANCE_OUTPUT`        | A timestamped directory under `artifacts/performance/` | New output directory; it must not already exist.                                   |
 
-Local Android runs default to three repetitions per case; CI uses five. These
+Local Android runs and CI default to three repetitions per case. These
 short runs are useful for checking collection and spotting large changes. Use
 more repetitions for performance comparisons:
 
@@ -79,19 +85,13 @@ warning. Other benchmark validity checks remain enabled. It clears this
 example's old device benchmark exports and host-side additional-test outputs
 before collection so stale samples cannot make a failed run appear successful.
 
-Android runs six test cases: cold startup, transition frames, and repeated
-navigation memory/input for each of the two scenarios. Warm startup is omitted
-to keep this transition-focused suite short.
-
-Repeated app opens and closes are expected: cold startup tests measure
-launches for both ordinary and live scenarios. With the local defaults, that is
-6 measured startup launches, plus benchmark setup launches. Frame tests also
-start a fresh Activity before each measured transition round trip. The suite is
-already measuring during the launch tests, even though no transitions appear yet.
-Reducing repetitions shortens device testing; native compilation and installation
+Android runs four test cases: transition frames and repeated navigation
+memory/input for ordinary and live rendering. Startup measurements are omitted.
+Frame tests still start a fresh Activity before each measured round trip; launch
+and settling are outside the measured interval. Native compilation and installation
 still take their usual time, especially on the first run.
 
-### iOS requirements and options
+### Optional local iOS measurements
 
 Use macOS with Xcode 26, its command-line tools and an installed iPhone simulator
 runtime. Install Ruby and Bundler compatible with
@@ -160,10 +160,8 @@ which must be collected alongside the `.xcresult` bundle for a manual run.
 | Android `touchToAcknowledgementMs`                      | Native event time to the matching native acknowledgment called by the JavaScript probe. Includes event dispatch and JavaScript/native queue work.                                                                                                      |
 | React render work and committed updates                 | `Profiler` `actualDuration` observations and their count, from the profiling renderer. Render work is not native Fabric commit duration.                                                                                                               |
 | Payload mounts and unmounts                             | Instrumented React payload lifecycle. A live run requires one owner mount and no owner unmount during its journeys. This does not establish native video/focus continuity.                                                                             |
-| Android startup                                         | Macrobenchmark platform startup measurements under `StartupMode.COLD`, with `CompilationMode.None()`. Both initial-display and fully-drawn samples are required. Fully drawn is reported during a native draw after fixture readiness.      |
 | Android frame timing                                    | Macrobenchmark `FrameTimingMetric` samples and Perfetto traces from the scripted forward/back round trip, including probe and status updates. `frameOverrunMs` is time past a platform frame deadline; negative means it finished before the deadline. |
 | Android `deadlineOverrunPercent`                        | Percentage of captured frame samples with positive overrun. It is not a count of skipped display refreshes.                                                                                                                                            |
-| iOS `applicationLaunchSeconds`                          | XCTest launch to the first displayed frame and responsive main thread. React fixture readiness is checked separately. Relaunching does not guarantee cold OS caches.                                                                                   |
 | iOS `roundTripSeconds`                                  | XCTest clock time for opening, acknowledging a real detail tap, returning, and acknowledging a real list tap. Includes automation and observation overhead.                                                                                            |
 | iOS physical memory                                     | XCTest application peak physical memory and memory change during that round trip. The report preserves XCTest's declared memory units and allows negative changes.                                                                                     |
 | Android PSS/RSS                                         | Process memory checkpoints at baseline, detail, and after returning. The sampled maximum can miss a peak between checkpoints.                                                                                                                          |
@@ -200,7 +198,7 @@ making a product performance claim.
 Collection fails for missing required measurements, unsuccessful journeys,
 unacknowledged input, lost telemetry, duplicate run IDs, invalid units, or a
 profiling-mode mismatch. iOS native-release collection requires ordinary and live
-launch, round-trip clock, and peak-memory coverage. Numerical performance values
+round-trip clock and peak-memory coverage. Numerical performance values
 are informational: the suite does not impose an automatic percentage-regression
 threshold or compute a controlled comparison against the base branch.
 
@@ -210,8 +208,13 @@ or different build modes as library regressions.
 
 ## CI and pull-request comments
 
+Performance CI runs only on Android. The regular iOS build remains in the main
+CI workflow. Check iOS transitions locally after native iOS changes and before
+releases; Android measurements cannot detect iOS-specific rendering regressions.
+The optional `perf:ios` command remains available for local investigation.
+
 The [Performance workflow](../.github/workflows/performance.yml) runs collector
-tests and separate Android/iOS jobs for each build mode on pull requests to
+tests and Android jobs for each build mode on pull requests to
 `main`, pushes to `main`, and manual dispatch. Job summaries expose collection
 results. Compact summaries are retained for 30 days; raw artifacts and traces
 are retained for 7 days.
@@ -235,7 +238,7 @@ approval under the repository's Actions settings.
 
 ## Fixture implementation
 
-The fixture uses local View/Text artwork and 350 ms transitions. The source route
+The fixture uses bundled gallery images and five shared pairs with 350 ms transitions. The source route
 stays mounted and unfrozen. Forward navigation uses `useChoreographyNavigation`;
 back uses `useInteractiveTransition().beginBack()` and `finish({ duration: 350 })`.
 A ten-second timeout records failure. Native launch props select
@@ -247,9 +250,9 @@ All control names below are both `testID` and `accessibilityLabel` values. Probe
 controls are inside the real destination screen, outside the overlay. Tests must
 inject native touches; invoking their JS handlers directly is not a valid test.
 
-1. Wait for `benchmark-ready` after list layout and two JS animation frames.
+1. Wait for `benchmark-ready` after the selected image loads and two JS animation frames.
    On Android, this also waits for the native fully-drawn acknowledgment so the
-   startup trace cannot close before that measurement is emitted.
+   fixture is drawn before frame collection starts.
 2. Tap `benchmark-start`.
 3. Wait for `benchmark-detail-settled`, then tap `benchmark-detail-probe`.
 4. Wait for `benchmark-detail-probe-ack`.

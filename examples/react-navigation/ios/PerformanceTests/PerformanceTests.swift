@@ -14,16 +14,6 @@ final class PerformanceTests: XCTestCase {
     continueAfterFailure = false
   }
 
-  func testOrdinaryLaunch() throws {
-    try XCTSkipIf(reactProfile, "Native timing requires the normal Release renderer")
-    measureLaunch(scenario: "ordinary")
-  }
-
-  func testLiveLaunch() throws {
-    try XCTSkipIf(reactProfile, "Native timing requires the normal Release renderer")
-    measureLaunch(scenario: "live")
-  }
-
   func testOrdinaryRoundTrip() throws {
     try XCTSkipIf(reactProfile, "Native timing requires the normal Release renderer")
     measureRoundTrip(scenario: "ordinary")
@@ -115,21 +105,6 @@ final class PerformanceTests: XCTestCase {
     reset(in: app)
     completeRoundTrip(in: app)
     exportReport(in: app)
-    app.terminate()
-  }
-
-  private func measureLaunch(scenario: String) {
-    let app = application(scenario: scenario)
-    let options = XCTMeasureOptions()
-    options.iterationCount = 3
-    options.invocationOptions = [.manuallyStart, .manuallyStop]
-    measure(metrics: [XCTApplicationLaunchMetric(waitUntilResponsive: true)], options: options) {
-      app.terminate()
-      startMeasuring()
-      app.launch()
-      waitFor("benchmark-ready", in: app)
-      stopMeasuring()
-    }
     app.terminate()
   }
 
