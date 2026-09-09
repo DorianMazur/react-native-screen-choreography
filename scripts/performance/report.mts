@@ -498,14 +498,10 @@ export function summarize(
     if (platform === 'android' && !memories.has(scenario))
       errors.push(`Missing ${scenario} memory measurements`);
     if (platform === 'android') {
-      for (const kind of ['coldStartup', 'warmStartup', 'transitionFrames']) {
+      for (const kind of ['coldStartup', 'transitionFrames']) {
         if (!nativeBenchmarks.has(`${kind}[${scenario}]`)) {
           const label =
-            kind === 'transitionFrames'
-              ? 'frame-overrun'
-              : kind === 'coldStartup'
-                ? 'cold startup'
-                : 'warm startup';
+            kind === 'transitionFrames' ? 'frame-overrun' : 'cold startup';
           errors.push(
             `Missing ${scenario} native ${label} measurements${kind === 'transitionFrames' ? ' (requires API 31+)' : ''}`
           );

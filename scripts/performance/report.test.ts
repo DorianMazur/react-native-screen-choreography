@@ -81,14 +81,14 @@ function documents(profile = false): MeasurementDocument[] {
       file: 'native-benchmarkData.json',
       data: {
         benchmarks: ['ordinary', 'live'].flatMap((scenario) => [
-          ...['coldStartup', 'warmStartup'].map((kind) => ({
-            name: `${kind}[${scenario}]`,
+          {
+            name: `coldStartup[${scenario}]`,
             metrics: {
               timeToInitialDisplayMs: { runs: [400, 420] },
               timeToFullDisplayMs: { runs: [500, 540] },
             },
             sampledMetrics: {},
-          })),
+          },
           {
             name: `transitionFrames[${scenario}]`,
             metrics: { frameCount: { runs: [3, 1] } },
@@ -189,7 +189,7 @@ test('rejects incomplete runs even if a producer incorrectly sets valid=true', (
 
 test('rejects absent frame collection, missing memory checkpoints and duplicate runs', () => {
   const input = documents();
-  input.at(-1)!.data.benchmarks[2].sampledMetrics = {};
+  input.at(-1)!.data.benchmarks[1].sampledMetrics = {};
   input[1].data.samples.pop();
   input.push(input[0]);
   const summary = summarize(input, options);
@@ -309,13 +309,11 @@ test('requires all memory phases once per contiguous iteration and requested cyc
   assert.equal(valid.valid, true, valid.errors.join('\n'));
 });
 
-test('requires both startup modes and frame-overrun data for each scenario', () => {
+test('requires cold startup and frame-overrun data for each scenario', () => {
   for (const missing of [
     'coldStartup[ordinary]',
-    'warmStartup[ordinary]',
     'transitionFrames[ordinary]',
     'coldStartup[live]',
-    'warmStartup[live]',
     'transitionFrames[live]',
   ]) {
     const input = documents();
@@ -343,19 +341,19 @@ test('validates pinned Macrobenchmark run arrays, counts, duplicate names and pe
       delete data.benchmarks[0].metrics.timeToFullDisplayMs;
     },
     (data: InputRecord) => {
-      data.benchmarks[2].sampledMetrics.frameOverrunMs.runs = [[1], []];
+      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs = [[1], []];
     },
     (data: InputRecord) => {
-      data.benchmarks[2].sampledMetrics.frameOverrunMs.runs = [-1, 1];
+      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs = [-1, 1];
     },
     (data: InputRecord) => {
-      data.benchmarks[2].sampledMetrics.frameOverrunMs.runs = [[-1]];
+      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs = [[-1]];
     },
     (data: InputRecord) => {
-      data.benchmarks[2].sampledMetrics.frameDurationCpuMs.runs[0][0] = -1;
+      data.benchmarks[1].sampledMetrics.frameDurationCpuMs.runs[0][0] = -1;
     },
     (data: InputRecord) => {
-      data.benchmarks[2].sampledMetrics.frameOverrunMs.runs[0][0] =
+      data.benchmarks[1].sampledMetrics.frameOverrunMs.runs[0][0] =
         Number.POSITIVE_INFINITY;
     },
     (data: InputRecord) => {

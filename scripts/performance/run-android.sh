@@ -14,8 +14,8 @@ if [[ -n "${ANDROID_HOME:-}" ]]; then export PATH="$ANDROID_HOME/platform-tools:
 if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"; fi
 command -v adb >/dev/null || { echo 'Install Android SDK platform-tools and set ANDROID_HOME.' >&2; exit 2; }
 adb get-state >/dev/null
-iterations="${PERFORMANCE_ITERATIONS:-10}"
-cycles="${PERFORMANCE_MEMORY_CYCLES:-10}"
+iterations="${PERFORMANCE_ITERATIONS:-3}"
+cycles="${PERFORMANCE_MEMORY_CYCLES:-3}"
 [[ "$iterations" =~ ^[1-9][0-9]*$ && "$cycles" =~ ^[1-9][0-9]*$ ]] || { echo 'Iteration/cycle counts must be positive integers.' >&2; exit 2; }
 [[ "$iterations" -le 100 && "$cycles" -le 100 ]] || { echo 'Iteration/cycle counts must not exceed 100.' >&2; exit 2; }
 abi="${PERFORMANCE_ABI:-$(adb shell getprop ro.product.cpu.abi | tr -d '\r')}"
@@ -25,6 +25,8 @@ output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(d
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
+printf 'Running %s iterations per startup/frame case and %s memory/input cycles per scenario.\n' "$iterations" "$cycles"
+echo 'Repeated app launches are expected during cold startup measurements and per-iteration setup.'
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"

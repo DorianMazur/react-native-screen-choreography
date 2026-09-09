@@ -121,7 +121,7 @@ final class PerformanceTests: XCTestCase {
   private func measureLaunch(scenario: String) {
     let app = application(scenario: scenario)
     let options = XCTMeasureOptions()
-    options.iterationCount = 5
+    options.iterationCount = 3
     options.invocationOptions = [.manuallyStart, .manuallyStop]
     measure(metrics: [XCTApplicationLaunchMetric(waitUntilResponsive: true)], options: options) {
       app.terminate()
@@ -142,7 +142,7 @@ final class PerformanceTests: XCTestCase {
     completeRoundTrip(in: app)
 
     let options = XCTMeasureOptions()
-    options.iterationCount = 5
+    options.iterationCount = 3
     options.invocationOptions = [.manuallyStart, .manuallyStop]
     measure(metrics: [XCTClockMetric(), XCTMemoryMetric(application: app)], options: options) {
       reset(in: app)

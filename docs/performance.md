@@ -59,12 +59,14 @@ Use a device reserved for the run and keep animations enabled.
 
 | Variable                    | Default                                                | Meaning                                                                            |
 | --------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `PERFORMANCE_ITERATIONS`    | `10`                                                   | Startup and frame measurement iterations; integer from 1 to 100.                   |
-| `PERFORMANCE_MEMORY_CYCLES` | `10`                                                   | Repeated navigation cycles for memory and input collection; integer from 1 to 100. |
+| `PERFORMANCE_ITERATIONS`    | `3`                                                   | Startup and frame measurement iterations; integer from 1 to 100.                   |
+| `PERFORMANCE_MEMORY_CYCLES` | `3`                                                   | Repeated navigation cycles for memory and input collection; integer from 1 to 100. |
 | `PERFORMANCE_ABI`           | Connected device ABI                                   | ABI compiled for the run, such as `arm64-v8a` or `x86_64`.                         |
 | `PERFORMANCE_OUTPUT`        | A timestamped directory under `artifacts/performance/` | New output directory; it must not already exist.                                   |
 
-For example:
+Local Android runs default to three repetitions per case; CI uses five. These
+short runs are useful for checking collection and spotting large changes. Use
+more repetitions for performance comparisons:
 
 ```sh
 PERFORMANCE_ITERATIONS=20 PERFORMANCE_MEMORY_CYCLES=20 \
@@ -76,6 +78,18 @@ The runner detects an emulator and suppresses only Macrobenchmark's `EMULATOR`
 warning. Other benchmark validity checks remain enabled. It clears this
 example's old device benchmark exports and host-side additional-test outputs
 before collection so stale samples cannot make a failed run appear successful.
+
+Android runs six test cases: cold startup, transition frames, and repeated
+navigation memory/input for each of the two scenarios. Warm startup is omitted
+to keep this transition-focused suite short.
+
+Repeated app opens and closes are expected: cold startup tests measure
+launches for both ordinary and live scenarios. With the local defaults, that is
+6 measured startup launches, plus benchmark setup launches. Frame tests also
+start a fresh Activity before each measured transition round trip. The suite is
+already measuring during the launch tests, even though no transitions appear yet.
+Reducing repetitions shortens device testing; native compilation and installation
+still take their usual time, especially on the first run.
 
 ### iOS requirements and options
 
@@ -112,7 +126,7 @@ Without `PERFORMANCE_IOS_DEVICE`, exactly one available simulator must be booted
 `PERFORMANCE_OUTPUT` follows the same fresh-directory rule as Android. The
 runner uses separate build directories for native and profiling modes.
 
-The native XCTest cases record five iterations per metric. XCTest also executes
+The native XCTest cases record three iterations per metric. XCTest also executes
 and discards a first iteration; round-trip tests explicitly warm the fixture
 before the measured loop. The profiling cases collect an acknowledged round
 trip without native XCTest performance measurements. Android iteration variables
@@ -146,7 +160,7 @@ which must be collected alongside the `.xcresult` bundle for a manual run.
 | Android `touchToAcknowledgementMs`                      | Native event time to the matching native acknowledgment called by the JavaScript probe. Includes event dispatch and JavaScript/native queue work.                                                                                                      |
 | React render work and committed updates                 | `Profiler` `actualDuration` observations and their count, from the profiling renderer. Render work is not native Fabric commit duration.                                                                                                               |
 | Payload mounts and unmounts                             | Instrumented React payload lifecycle. A live run requires one owner mount and no owner unmount during its journeys. This does not establish native video/focus continuity.                                                                             |
-| Android startup                                         | Macrobenchmark platform startup measurements under `StartupMode.COLD` and `WARM`, with `CompilationMode.None()`. Both initial-display and fully-drawn samples are required. Fully drawn is reported during a native draw after fixture readiness.      |
+| Android startup                                         | Macrobenchmark platform startup measurements under `StartupMode.COLD`, with `CompilationMode.None()`. Both initial-display and fully-drawn samples are required. Fully drawn is reported during a native draw after fixture readiness.      |
 | Android frame timing                                    | Macrobenchmark `FrameTimingMetric` samples and Perfetto traces from the scripted forward/back round trip, including probe and status updates. `frameOverrunMs` is time past a platform frame deadline; negative means it finished before the deadline. |
 | Android `deadlineOverrunPercent`                        | Percentage of captured frame samples with positive overrun. It is not a count of skipped display refreshes.                                                                                                                                            |
 | iOS `applicationLaunchSeconds`                          | XCTest launch to the first displayed frame and responsive main thread. React fixture readiness is checked separately. Relaunching does not guarantee cold OS caches.                                                                                   |

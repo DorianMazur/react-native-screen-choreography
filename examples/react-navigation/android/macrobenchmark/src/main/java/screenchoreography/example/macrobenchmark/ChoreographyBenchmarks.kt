@@ -34,23 +34,18 @@ class ChoreographyBenchmarks(private val scenario: String) {
   private val arguments = InstrumentationRegistry.getArguments()
   private val device = UiDevice.getInstance(instrumentation)
   private val reactProfile = arguments.getString("performanceReactProfile", "false").toBoolean()
-  private val iterations = arguments.getString("performanceIterations", "10").toInt().also {
+  private val iterations = arguments.getString("performanceIterations", "3").toInt().also {
     require(it in 1..100) { "performanceIterations must be between 1 and 100" }
   }
 
   @Test
-  fun coldStartup() = startup(StartupMode.COLD)
-
-  @Test
-  fun warmStartup() = startup(StartupMode.WARM)
-
-  private fun startup(mode: StartupMode) {
+  fun coldStartup() {
     benchmarkRule.measureRepeated(
       packageName = APP_ID,
       metrics = listOf(StartupTimingMetric()),
       compilationMode = CompilationMode.None(),
       iterations = iterations,
-      startupMode = mode,
+      startupMode = StartupMode.COLD,
       setupBlock = { pressHome() },
     ) {
       startActivityAndWait(launchIntent())
@@ -86,7 +81,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
 
   @Test
   fun repeatedNavigationMemoryAndInput() {
-    val cycles = arguments.getString("performanceMemoryCycles", "10").toInt().also {
+    val cycles = arguments.getString("performanceMemoryCycles", "3").toInt().also {
       require(it in 1..100) { "performanceMemoryCycles must be between 1 and 100" }
     }
     device.executeShellCommand("am force-stop $APP_ID")

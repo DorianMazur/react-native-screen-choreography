@@ -99,7 +99,7 @@ test('a full Android comment retains both scenarios, input upper bounds, and ful
   for (const mode of ['native-release', 'react-profile']) {
     const metrics: Record<string, InputRecord> = {};
     for (const scenario of ['ordinary', 'live']) {
-      for (const startup of ['coldStartup', 'warmStartup']) {
+      for (const startup of ['coldStartup']) {
         for (const name of ['timeToInitialDisplayMs', 'timeToFullDisplayMs']) {
           metrics[`android.${startup}[${scenario}].${name}`] = metric;
         }
@@ -150,7 +150,7 @@ test('a full Android comment retains both scenarios, input upper bounds, and ful
         body.includes(`| ${scenario}.${direction}.requestToProbeHandlerMs |`)
       );
     }
-    for (const startup of ['coldStartup', 'warmStartup']) {
+    for (const startup of ['coldStartup']) {
       assert.ok(
         body.includes(`android.${startup}\\[${scenario}\\].timeToFullDisplayMs`)
       );
