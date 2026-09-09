@@ -18,7 +18,7 @@ The adapters read navigator state and bind navigation commands and removal inter
 
 The `src/core` directory holds internal runtime machinery, not the public `/core` export surface. `src/components` contains navigator-independent components, including `ChoreographyScreenBase`; `src/hooks` contains shared lifecycle and progress hooks. Rendering recipes, stand-ins, native integration, and logging remain in their respective directories.
 
-[__tests__/entryPoints.test.ts](../__tests__/entryPoints.test.ts) checks that entries contain only exports, that shared value and type exports are identical across integrations, and that their transitive source imports preserve navigation dependency isolation.
+[src/entries/index.test.ts](../src/entries/index.test.ts) checks that entries contain only exports, that shared value and type exports are identical across integrations, and that their transitive source imports preserve navigation dependency isolation.
 
 ## Supported Runtime Model
 
@@ -236,6 +236,24 @@ The shared progress value is the contract between the transition runtime and com
 `ScreenReadinessRegistry` combines screen layout readiness with reference-counted application blockers. `ChoreographyScreen ready={false}` and `useChoreographyBlocker().acquire()` both hold the existing pre-transition readiness wait; neither creates a separate transition lifecycle.
 
 Normal pairs render frozen `ElementPresentation` values. `SharedElement.Live` is a distinct opt-in path: `react-native-teleport` physically reparents one React-owned native subtree into a pair-specific overlay host during animation and into `SharedElement.LiveTarget` at the settled detail endpoint. The original owner must remain mounted, and ordinary shared elements remain preferable when live native state is unnecessary.
+
+`makeLiveTransition` adapts a custom live renderer to that same lifecycle. The
+adapter owns the screen-pair-scoped `PortalHost`, passes it as required children,
+and removes presentation content from the custom renderer's endpoint inputs.
+Its factory result is explicitly live and defaults to zIndex 100. Both endpoints
+accept that result; departing-endpoint transition selection remains unchanged,
+so callers reuse one object for forward and reverse motion. Factory calls belong
+outside render or in a configuration-dependent memo, preserving adapter identity.
+
+Live endpoint metadata is captured by reference with `ElementPresentation` and
+forwarded from the session's frozen presentations. Updating props does not
+re-register an element or alter an active session's captured reference. SharedValue
+objects contained in metadata remain live; there is no deep snapshot. The public
+ordinary `SharedElement` props do not expose the internal metadata plumbing.
+Endpoint wrapper style, live portal style, and receiving host style compose
+independently. Custom renderers are responsible for endpoint geometry continuity;
+host naming, settlement, overlay visibility handoff, and reverse commit timing
+retain the existing lifecycle.
 
 ## Navigation Session Controller
 

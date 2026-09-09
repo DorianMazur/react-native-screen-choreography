@@ -5,6 +5,13 @@ import { theme } from '../theme';
 import { TRACKS, type Track } from './data';
 import { musicBackgroundTransition } from './musicTransitions';
 import { TrackItem } from './TrackItem';
+import { LiveGeometryPanel } from './LiveGeometryPanel';
+import {
+  LIVE_GEOMETRY_HEIGHT,
+  LIVE_GEOMETRY_WIDTH,
+  liveGeometryMetadata,
+  liveGeometryTransition,
+} from './liveGeometryTransition';
 
 export function MusicListScreen() {
   const { goBack, navigate } = useExampleNavigation();
@@ -83,6 +90,17 @@ function Row({ track, onPress }: { track: Track; onPress: () => void }) {
         >
           <TrackItem track={track} onOpen={onPress} />
         </SharedElement.Live>
+
+        <SharedElement.Live
+          id="geometry-panel"
+          groupId={groupId}
+          transition={liveGeometryTransition}
+          metadata={liveGeometryMetadata}
+          style={styles.geometryBounds}
+          portalStyle={styles.geometryPortal}
+        >
+          <LiveGeometryPanel track={track} />
+        </SharedElement.Live>
       </View>
     </View>
   );
@@ -150,7 +168,7 @@ const styles = StyleSheet.create({
     borderBottomColor: theme.border,
   },
   row: {
-    height: 76,
+    height: 152,
     position: 'relative',
   },
   rowBackground: {
@@ -160,7 +178,23 @@ const styles = StyleSheet.create({
     overflow: 'hidden',
   },
   itemLayer: {
-    ...StyleSheet.absoluteFill,
+    position: 'absolute',
+    top: 0,
+    left: 0,
+    right: 0,
+    height: 76,
+  },
+  geometryBounds: {
+    position: 'absolute',
+    left: 12,
+    bottom: 6,
+    width: LIVE_GEOMETRY_WIDTH,
+    height: LIVE_GEOMETRY_HEIGHT,
+  },
+  geometryPortal: {
+    flex: 0,
+    width: LIVE_GEOMETRY_WIDTH,
+    height: LIVE_GEOMETRY_HEIGHT,
   },
   fill: {
     flex: 1,

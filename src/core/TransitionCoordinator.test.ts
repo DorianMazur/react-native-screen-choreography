@@ -58,11 +58,13 @@ describe('TransitionCoordinator presentation freezing', () => {
   });
 
   test('captures source/target presentations once at session start', async () => {
+    const liveValue = { value: 0 };
     const sourcePresentation: { current: ElementPresentation } = {
       current: {
         content: 'source-v1',
         style: { backgroundColor: 'red' },
         transition,
+        metadata: { revision: 1, liveValue },
       },
     };
     const targetPresentation: { current: ElementPresentation } = {
@@ -70,6 +72,7 @@ describe('TransitionCoordinator presentation freezing', () => {
         content: 'target-v1',
         style: { backgroundColor: 'blue' },
         transition,
+        metadata: { revision: 10 },
       },
     };
 
@@ -133,6 +136,11 @@ describe('TransitionCoordinator presentation freezing', () => {
     expect(pair.targetPresentation.content).toBe('target-v1');
     expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
     expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
+    expect(pair.sourcePresentation.metadata).toEqual({
+      revision: 1,
+      liveValue,
+    });
+    expect(pair.targetPresentation.metadata).toEqual({ revision: 10 });
 
     // Mutating the underlying SharedElement state AFTER the session started
     // must NOT affect what the overlay renders — the snapshot is frozen.
@@ -140,17 +148,31 @@ describe('TransitionCoordinator presentation freezing', () => {
       content: 'source-v2',
       style: { backgroundColor: 'green' },
       transition,
+      metadata: { revision: 2, liveValue: { value: 999 } },
     };
     targetPresentation.current = {
       content: 'target-v2',
       style: { backgroundColor: 'yellow' },
       transition,
+      metadata: { revision: 11 },
     };
 
     expect(pair.sourcePresentation.content).toBe('source-v1');
     expect(pair.targetPresentation.content).toBe('target-v1');
     expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
     expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
+    expect(pair.sourcePresentation.metadata).toEqual({
+      revision: 1,
+      liveValue,
+    });
+    expect(pair.targetPresentation.metadata).toEqual({ revision: 10 });
+
+    // Frozen metadata can deliberately retain a SharedValue-like live ref.
+    liveValue.value = 0.625;
+    expect(
+      (pair.sourcePresentation.metadata as { liveValue: { value: number } })
+        .liveValue.value
+    ).toBe(0.625);
   }, 5000);
 
   test('hidden elements are released after completeTransition', async () => {
@@ -206,6 +228,13 @@ describe('TransitionCoordinator presentation freezing', () => {
     const snap: { current: ElementPresentation } = {
       current: { content: null, transition: liveTransition },
     };
+    const targetTransition: SharedElementTransition = {
+      renderer: () => null,
+      mode: 'standin',
+    };
+    const targetSnap: { current: ElementPresentation } = {
+      current: { content: null, transition: targetTransition },
+    };
 
     registry.register(
       makeElement(
@@ -228,7 +257,7 @@ describe('TransitionCoordinator presentation freezing', () => {
           ref: refWithMetrics({ pageX: 0, pageY: 0, width: 100, height: 100 }),
           metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
         },
-        snap
+        targetSnap
       )
     );
 
@@ -240,8 +269,56 @@ describe('TransitionCoordinator presentation freezing', () => {
     });
 
     expect(session?.pairs).toHaveLength(1);
+    expect(session?.pairs[0]?.transition).toBe(liveTransition);
+    expect(session?.pairs[0]?.targetPresentation.transition).toBe(
+      targetTransition
+    );
     expect(coordinator.getHiddenElements().size).toBe(0);
   }, 5000);
+
+  test('backward pairing selects the departing detail transition', async () => {
+    const listTransition: SharedElementTransition = {
+      renderer: () => null,
+      mode: 'live',
+    };
+    const detailTransition: SharedElementTransition = {
+      renderer: () => null,
+      mode: 'live',
+    };
+    const register = (
+      screenId: string,
+      selectedTransition: SharedElementTransition
+    ) => {
+      const presentation = {
+        current: { content: null, transition: selectedTransition },
+      };
+      registry.register(
+        makeElement(
+          {
+            id: 'player',
+            groupId: 'group',
+            screenId,
+            metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+          },
+          presentation
+        )
+      );
+    };
+    register('list', listTransition);
+    register('detail', detailTransition);
+
+    const backward = await coordinator.startTransition({
+      groupId: 'group',
+      sourceScreenId: 'detail',
+      targetScreenId: 'list',
+      direction: 'backward',
+    });
+
+    expect(backward?.pairs[0]?.transition).toBe(detailTransition);
+    expect(backward?.pairs[0]?.source.screenId).toBe('detail');
+    expect(backward?.pairs[0]?.target.screenId).toBe('list');
+    expect(coordinator.getHiddenElements().size).toBe(0);
+  });
 
   test('cancelTransition also releases hidden elements', async () => {
     const snap: { current: ElementPresentation } = {

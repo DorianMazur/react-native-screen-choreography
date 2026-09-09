@@ -17,6 +17,7 @@ import type { SharedValue } from 'react-native-reanimated';
 export {
   SharedElement,
   StandInContainer,
+  makeLiveTransition,
   makeStretchTransition,
   makeSurfaceTransition,
   textMorphTransition,

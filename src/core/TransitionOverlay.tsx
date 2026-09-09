@@ -89,24 +89,28 @@ function StandInRenderer({
   const visibilityStyle = useAnimatedStyle(() => ({
     opacity: isLive || !handoff.value.completed ? 1 : 0,
   }));
+  const source = {
+    screenId: pair.source.screenId,
+    metrics: pair.sourceMetrics,
+    style: pair.sourcePresentation.style,
+    content: pair.sourcePresentation.content,
+    metadata: pair.sourcePresentation.metadata,
+  };
+  const target = {
+    screenId: pair.target.screenId,
+    metrics: pair.targetMetrics,
+    style: pair.targetPresentation.style,
+    content: pair.targetPresentation.content,
+    metadata: pair.targetPresentation.metadata,
+  };
   const rendererProps: SharedElementTransitionRendererProps = {
     id: pair.id,
     groupId: pair.source.groupId ?? pair.target.groupId ?? sessionGroupId,
     progress,
     direction,
     zIndex: getPairZIndex(pair),
-    source: {
-      screenId: pair.source.screenId,
-      metrics: pair.sourceMetrics,
-      style: pair.sourcePresentation.style,
-      content: pair.sourcePresentation.content,
-    },
-    target: {
-      screenId: pair.target.screenId,
-      metrics: pair.targetMetrics,
-      style: pair.targetPresentation.style,
-      content: pair.targetPresentation.content,
-    },
+    source,
+    target,
   };
 
   return (

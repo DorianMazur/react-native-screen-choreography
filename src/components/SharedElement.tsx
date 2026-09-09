@@ -1,4 +1,5 @@
 import React, {
+  type ReactNode,
   useRef,
   useEffect,
   useCallback,
@@ -7,23 +8,26 @@ import React, {
 } from 'react';
 import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
 import Animated, {
-  interpolate,
   useAnimatedRef,
   useAnimatedStyle,
-  useDerivedValue,
 } from 'react-native-reanimated';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
   ElementPresentation,
+  LiveTransition,
   SharedElementTransition,
-  SharedElementTransitionRendererProps,
 } from '../types';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
 } from '../core/ChoreographyContext';
-import { getExpansionProgress } from '../core/expansionProgress';
 import { useScreenId } from '../core/screenIdContext';
+import {
+  getLiveDestinationHostName,
+  getLiveOverlayHostName,
+  getLivePortalName,
+} from '../core/liveHostNames';
+import { defaultLiveTransition } from '../transitions/makeLiveTransition';
 
 interface SharedElementTargetContextValue {
   setTarget: (
@@ -54,99 +58,34 @@ export interface SharedElementProps {
   style?: StyleProp<ViewStyle>;
 }
 
-export interface LiveSharedElementProps extends Omit<
-  SharedElementProps,
-  'transition'
-> {}
+export interface LiveSharedElementProps {
+  id: string;
+  groupId?: string;
+  /** Reuse the same factory result on both live endpoints, including for back. */
+  transition?: LiveTransition;
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  /** Payload layout overrides, applied after the portal's fill defaults. */
+  portalStyle?: StyleProp<ViewStyle>;
+  /** Captured by reference at session start; narrow in the live renderer. */
+  metadata?: unknown;
+}
 
 export interface LiveSharedElementTargetProps {
   id: string;
   groupId?: string;
+  /** Reuse the owner's factory result for consistent forward and back motion. */
+  transition?: LiveTransition;
   style?: StyleProp<ViewStyle>;
+  /** Receiving host layout, independent of the measured wrapper's style. */
+  hostStyle?: StyleProp<ViewStyle>;
+  /** Captured by reference at session start; narrow in the live renderer. */
+  metadata?: unknown;
 }
 
-function getLiveDestinationHostName(
-  screenId: string,
-  id: string,
-  groupId?: string
-) {
-  return `screen-choreography:live:destination:${JSON.stringify([screenId, groupId, id])}`;
+interface SharedElementRegistrationProps extends SharedElementProps {
+  metadata?: unknown;
 }
-
-function getLiveOverlayHostName(
-  sourceScreenId: string,
-  targetScreenId: string,
-  id: string,
-  groupId: string
-) {
-  return `screen-choreography:live:overlay:${JSON.stringify([sourceScreenId, targetScreenId, groupId, id])}`;
-}
-
-function LiveSharedElementRenderer({
-  id,
-  groupId,
-  progress,
-  direction,
-  source,
-  target,
-  zIndex,
-}: SharedElementTransitionRendererProps) {
-  const sourceX = source.metrics.pageX;
-  const sourceY = source.metrics.pageY;
-  const sourceWidth = source.metrics.width;
-  const sourceHeight = source.metrics.height;
-  const targetX = target.metrics.pageX;
-  const targetY = target.metrics.pageY;
-  const targetWidth = target.metrics.width;
-  const targetHeight = target.metrics.height;
-  const timeline = useDerivedValue(() =>
-    direction === 'backward' ? 1 - progress.value : progress.value
-  );
-  const animatedStyle = useAnimatedStyle(() => {
-    const heightProgress = getExpansionProgress(
-      timeline.value,
-      sourceHeight,
-      targetHeight
-    );
-
-    return {
-      left: interpolate(timeline.value, [0, 1], [sourceX, targetX], 'clamp'),
-      top: interpolate(timeline.value, [0, 1], [sourceY, targetY], 'clamp'),
-      width: interpolate(
-        timeline.value,
-        [0, 1],
-        [sourceWidth, targetWidth],
-        'clamp'
-      ),
-      height: interpolate(
-        heightProgress,
-        [0, 1],
-        [sourceHeight, targetHeight],
-        'clamp'
-      ),
-    };
-  });
-
-  return (
-    <Animated.View style={[styles.liveOverlayHost, { zIndex }, animatedStyle]}>
-      <PortalHost
-        name={getLiveOverlayHostName(
-          source.screenId,
-          target.screenId,
-          id,
-          groupId
-        )}
-        style={styles.liveHost}
-      />
-    </Animated.View>
-  );
-}
-
-const liveSharedElementTransition: SharedElementTransition = {
-  zIndex: 100,
-  mode: 'live',
-  renderer: LiveSharedElementRenderer,
-};
 
 /**
  * Wraps content participating in a shared transition. Registration is
@@ -154,13 +93,14 @@ const liveSharedElementTransition: SharedElementTransition = {
  * `ElementPresentation` via `getPresentation()` at session start, so re-renders or
  * prop changes never affect an in-flight overlay.
  */
-function SharedElementRoot({
+function SharedElementRegistration({
   id,
   groupId,
   transition,
   children,
   style,
-}: SharedElementProps) {
+  metadata,
+}: SharedElementRegistrationProps) {
   const viewNodeRef = useRef<any>(null);
   const animatedRef = useAnimatedRef<any>();
   const targetNodeRef = useRef<any>(null);
@@ -188,11 +128,14 @@ function SharedElementRoot({
   transitionRef.current = transition;
   const styleRef = useRef<ViewStyle | undefined>(flattenedStyle);
   styleRef.current = flattenedStyle;
+  const metadataRef = useRef<unknown>(metadata);
+  metadataRef.current = metadata;
   const getPresentation = useCallback<() => ElementPresentation>(
     () => ({
       content: childrenRef.current,
       style: styleRef.current,
       transition: transitionRef.current,
+      metadata: metadataRef.current,
     }),
     []
   );
@@ -270,6 +213,10 @@ function SharedElementRoot({
   );
 }
 
+function SharedElementRoot(props: SharedElementProps) {
+  return <SharedElementRegistration {...props} />;
+}
+
 function SharedElementTarget({ children, style }: SharedElementTargetProps) {
   const target = useContext(SharedElementTargetContext);
   if (!target) {
@@ -297,6 +244,9 @@ function LiveSharedElement({
   groupId,
   children,
   style,
+  transition = defaultLiveTransition,
+  portalStyle,
+  metadata,
 }: LiveSharedElementProps) {
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
@@ -343,20 +293,21 @@ function LiveSharedElement({
   }
 
   return (
-    <SharedElementRoot
+    <SharedElementRegistration
       id={id}
       groupId={groupId}
-      transition={liveSharedElementTransition}
+      transition={transition}
       style={style}
+      metadata={metadata}
     >
       <Portal
         hostName={hostName}
-        name={`screen-choreography:live:${JSON.stringify([screenId, groupId, id])}`}
-        style={styles.livePortal}
+        name={getLivePortalName(screenId, id, groupId)}
+        style={[styles.livePortal, portalStyle]}
       >
         {children}
       </Portal>
-    </SharedElementRoot>
+    </SharedElementRegistration>
   );
 }
 
@@ -364,20 +315,24 @@ function LiveSharedElementTarget({
   id,
   groupId,
   style,
+  transition = defaultLiveTransition,
+  hostStyle,
+  metadata,
 }: LiveSharedElementTargetProps) {
   const screenId = useScreenId();
   return (
-    <SharedElementRoot
+    <SharedElementRegistration
       id={id}
       groupId={groupId}
-      transition={liveSharedElementTransition}
+      transition={transition}
       style={style}
+      metadata={metadata}
     >
       <PortalHost
         name={getLiveDestinationHostName(screenId, id, groupId)}
-        style={styles.liveHost}
+        style={[styles.liveHost, hostStyle]}
       />
-    </SharedElementRoot>
+    </SharedElementRegistration>
   );
 }
 
@@ -389,10 +344,6 @@ export const SharedElement = Object.assign(SharedElementRoot, {
 
 const styles = StyleSheet.create({
   wrapper: {},
-  liveOverlayHost: {
-    position: 'absolute',
-    overflow: 'hidden',
-  },
   liveHost: {
     ...StyleSheet.absoluteFill,
   },

@@ -5,6 +5,14 @@ import { TRACKS } from './data';
 import { musicBackgroundTransition } from './musicTransitions';
 import { IconButton } from '../AppChrome';
 import { InteractiveBackGesture } from '../InteractiveBackGesture';
+import {
+  LIVE_GEOMETRY_HEIGHT,
+  LIVE_GEOMETRY_TARGET_HEIGHT,
+  LIVE_GEOMETRY_TARGET_WIDTH,
+  LIVE_GEOMETRY_WIDTH,
+  liveGeometryMetadata,
+  liveGeometryTransition,
+} from './liveGeometryTransition';
 
 export function NowPlayingScreen({
   trackId = TRACKS[0]!.id,
@@ -51,6 +59,15 @@ export function NowPlayingScreen({
                 id="item"
                 groupId={groupId}
                 style={styles.player}
+              />
+
+              <SharedElement.LiveTarget
+                id="geometry-panel"
+                groupId={groupId}
+                transition={liveGeometryTransition}
+                metadata={liveGeometryMetadata}
+                style={styles.geometryTarget}
+                hostStyle={styles.geometryHost}
               />
             </View>
           </SafeAreaView>
@@ -103,4 +120,22 @@ const styles = StyleSheet.create({
   },
   card: { flex: 1, marginHorizontal: 16, marginTop: 56 },
   player: { flex: 1 },
+  geometryTarget: {
+    width: LIVE_GEOMETRY_TARGET_WIDTH,
+    height: LIVE_GEOMETRY_TARGET_HEIGHT,
+    alignSelf: 'center',
+    marginTop: 12,
+    marginBottom: 20,
+  },
+  geometryHost: {
+    right: 'auto',
+    bottom: 'auto',
+    width: LIVE_GEOMETRY_WIDTH,
+    height: LIVE_GEOMETRY_HEIGHT,
+    transformOrigin: 'top left',
+    transform: [
+      { scaleX: LIVE_GEOMETRY_TARGET_WIDTH / LIVE_GEOMETRY_WIDTH },
+      { scaleY: LIVE_GEOMETRY_TARGET_HEIGHT / LIVE_GEOMETRY_HEIGHT },
+    ],
+  },
 });

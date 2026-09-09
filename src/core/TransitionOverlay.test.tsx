@@ -18,6 +18,12 @@ import {
   resumeVisibilityHandoff,
 } from './ElementVisibilityRegistry';
 import { TransitionOverlay } from './TransitionOverlay';
+import { makeLiveTransition } from '../transitions/makeLiveTransition';
+import type { LiveTransitionRendererProps } from '../types';
+
+jest.mock('react-native-teleport', () => ({
+  PortalHost: 'PortalHost',
+}));
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -40,6 +46,105 @@ function visibleOpacity(node: ReactTestInstance): number {
   }
   return opacity;
 }
+
+test('renders frozen live metadata while preserving evolving shared refs', async () => {
+  const sourceLive = { value: 0 };
+  const targetLive = { value: 1 };
+  let received!: LiveTransitionRendererProps;
+  const transition = makeLiveTransition({
+    renderer: (props) => {
+      received = props;
+      return props.children;
+    },
+  });
+  const sourceMetrics = { pageX: 1, pageY: 2, width: 240, height: 160 };
+  const targetMetrics = { pageX: 3, pageY: 4, width: 280, height: 180 };
+  const unavailable = () => {
+    throw new Error('overlay must not recapture a presentation');
+  };
+  const source = {
+    id: 'player',
+    groupId: 'media',
+    screenId: 'list',
+    ref: () => null,
+    metrics: sourceMetrics,
+    getPresentation: unavailable,
+  };
+  const target = {
+    ...source,
+    screenId: 'detail',
+    metrics: targetMetrics,
+  };
+  const pair: ElementTransitionPair = {
+    id: 'player',
+    source,
+    target,
+    sourceMetrics,
+    targetMetrics,
+    sourcePresentation: {
+      content: 'must not leak',
+      transition,
+      metadata: { revision: 'source-captured', live: sourceLive },
+    },
+    targetPresentation: {
+      content: 'must not leak',
+      transition,
+      metadata: { revision: 'target-captured', live: targetLive },
+    },
+    transition,
+  };
+  const progress = { value: 0.4 } as TransitionSessionData['progress'];
+  const session: TransitionSessionData = {
+    id: 'live-session',
+    groupId: 'media',
+    sourceScreenId: 'list',
+    targetScreenId: 'detail',
+    state: 'active',
+    direction: 'backward',
+    progress,
+    pairs: [pair],
+  };
+  const handoff = {
+    value: { sessionId: session.id, completed: false },
+  };
+  let tree!: ReactTestRenderer;
+
+  try {
+    await act(async () => {
+      tree = create(
+        <TransitionOverlay
+          session={session}
+          progress={progress}
+          handoff={handoff as never}
+        />
+      );
+    });
+
+    expect(received.source).toMatchObject({
+      screenId: 'list',
+      metrics: sourceMetrics,
+      metadata: { revision: 'source-captured' },
+    });
+    expect(received.target).toMatchObject({
+      screenId: 'detail',
+      metrics: targetMetrics,
+      metadata: { revision: 'target-captured' },
+    });
+    expect(received.source).not.toHaveProperty('content');
+    expect(received.target).not.toHaveProperty('content');
+
+    sourceLive.value = 0.25;
+    targetLive.value = 0.75;
+    expect(
+      (received.source.metadata as { live: { value: number } }).live.value
+    ).toBe(0.25);
+    expect(
+      (received.target.metadata as { live: { value: number } }).live.value
+    ).toBe(0.75);
+  } finally {
+    await act(async () => tree?.unmount());
+  }
+});
 
 test.each(['forward', 'backward'] as const)(
   'keeps live content visible at %s completion until React reparents it',
