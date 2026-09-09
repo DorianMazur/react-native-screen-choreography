@@ -1,0 +1,159 @@
+name: Performance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  collectors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@49933ea5288caeca8642d1e84afbd3f7d6820020 # v4.4.0
+        with:
+          node-version-file: .nvmrc
+      - name: Test measurement and comment validation
+        run: node --experimental-transform-types --test scripts/performance/*.test.ts
+
+  android:
+    needs: collectors
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native-release, react-profile]
+    env:
+      PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/android-${{ matrix.mode }}
+      PERFORMANCE_ITERATIONS: '10'
+      PERFORMANCE_MEMORY_CYCLES: '10'
+      PERFORMANCE_ABI: x86_64
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-java@c5195efecf7bdfc987ee8bae7a71cb8b11521c00 # v4.7.1
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Collect native measurements and fixture reports
+        uses: reactivecircus/android-emulator-runner@9b78b339fcface67c267bcf3f3af3fd5430c6401 # v2.33.0
+        with:
+          api-level: 31
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 4096M
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/performance/run-android.sh ${{ matrix.mode }}
+      - name: Add timing summary
+        if: always()
+        run: |
+          if [[ -f "$PERFORMANCE_OUTPUT/report/summary.md" ]]; then
+            cat "$PERFORMANCE_OUTPUT/report/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Performance collection did not produce a report. See build/test logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload compact summary for PR comment
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-summary-android-${{ matrix.mode }}
+          path: ${{ env.PERFORMANCE_OUTPUT }}/report/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload raw measurements and Perfetto traces
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-android-${{ matrix.mode }}
+          path: ${{ env.PERFORMANCE_OUTPUT }}/
+          if-no-files-found: warn
+          retention-days: 7
+
+  ios:
+    needs: collectors
+    runs-on: macos-15
+    timeout-minutes: 90
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native-release, react-profile]
+    env:
+      PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-${{ matrix.mode }}
+      # Podfile.lock contains React Native source pods, not the optional prebuilts.
+      RCT_USE_RN_DEP: '0'
+      RCT_USE_PREBUILT_RNCORE: '0'
+    steps:
+      - uses: actions/checkout@08c6903cd8c0fde910a37f88322edcfb5dd907a8 # v5.0.0
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: maxim-lobanov/setup-xcode@60606e260d2fc5762a71e64e74b2174e8ea3c8bd # v1.6.0
+        with:
+          xcode-version: '26'
+      - name: Install the locked Ruby and Bundler toolchain
+        uses: ruby/setup-ruby@0481980f17b760ef6bca5e8c55809102a0af1e5a # v1.263.0
+        with:
+          ruby-version: '3.4.3'
+          bundler: '4.0.9'
+          working-directory: examples/react-navigation
+      - name: Install locked native dependencies
+        working-directory: examples/react-navigation
+        run: |
+          bundle install
+          bundle exec pod install --deployment --project-directory=ios
+      - name: Select and boot an available iPhone simulator
+        run: |
+          xcrun simctl list devices available --json > "$RUNNER_TEMP/performance-devices.json"
+          node --experimental-transform-types scripts/performance/select-ios-device.mts "$RUNNER_TEMP/performance-devices.json" >> "$GITHUB_ENV"
+          device=$(node --experimental-transform-types scripts/performance/select-ios-device.mts "$RUNNER_TEMP/performance-devices.json" --id-only)
+          xcrun simctl boot "$device" || xcrun simctl bootstatus "$device" -b
+          xcrun simctl bootstatus "$device" -b
+      - name: Collect XCTest and fixture measurements
+        run: bash scripts/performance/run-ios.sh ${{ matrix.mode }}
+      - name: Add timing summary
+        if: always()
+        run: |
+          if [[ -f "$PERFORMANCE_OUTPUT/report/summary.md" ]]; then
+            cat "$PERFORMANCE_OUTPUT/report/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Performance collection did not produce a report. See build/test logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload compact summary for PR comment
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-summary-ios-${{ matrix.mode }}
+          path: ${{ env.PERFORMANCE_OUTPUT }}/report/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload XCTest results and raw measurements
+        if: always()
+        uses: actions/upload-artifact@ea165f8d65b6e75b540449e92b4886f43607fa02 # v4.6.2
+        with:
+          name: performance-ios-${{ matrix.mode }}
+          path: ${{ env.PERFORMANCE_OUTPUT }}/
+          if-no-files-found: warn
+          retention-days: 7

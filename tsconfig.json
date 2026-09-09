@@ -35,5 +35,11 @@
     "types": ["jest", "node"],
     "verbatimModuleSyntax": true
   },
-  "exclude": ["__mocks__", "node_modules", "lib", "examples"]
+  "exclude": [
+    "__mocks__",
+    "node_modules",
+    "lib",
+    "examples",
+    "scripts/performance"
+  ]
 }

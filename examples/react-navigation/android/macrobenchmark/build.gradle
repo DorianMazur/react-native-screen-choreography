@@ -1,0 +1,36 @@
+plugins {
+    id 'com.android.test'
+    id 'org.jetbrains.kotlin.android'
+}
+
+android {
+    namespace 'screenchoreography.example.macrobenchmark'
+    compileSdk rootProject.ext.compileSdkVersion
+    targetProjectPath = ':app'
+    defaultConfig {
+        minSdk 29
+        targetSdk rootProject.ext.targetSdkVersion
+        testInstrumentationRunner 'androidx.test.runner.AndroidJUnitRunner'
+    }
+    buildTypes {
+        benchmark {
+            debuggable true
+            signingConfig signingConfigs.debug
+            matchingFallbacks = ['release']
+        }
+    }
+    experimentalProperties['android.experimental.self-instrumenting'] = true
+}
+
+androidComponents {
+    beforeVariants(selector().all()) { variant ->
+        variant.enable = variant.buildType == 'benchmark'
+    }
+}
+
+dependencies {
+    implementation 'androidx.benchmark:benchmark-macro-junit4:1.4.1'
+    implementation 'androidx.test:runner:1.6.2'
+    implementation 'androidx.test.ext:junit:1.2.1'
+    implementation 'androidx.test.uiautomator:uiautomator:2.3.0'
+}
