@@ -142,8 +142,11 @@ are retained for 7 days.
 
 The [comment workflow](../.github/workflows/performance-comment.yml) creates or
 updates one performance comment for the current open PR head after collection
-finishes. It shows selected measurements, flags failed or missing collection,
-and links to the run's complete artifacts. Results for an older PR head do not
+finishes, regardless of the size of the change.
+The visible comment shows collection status and the run link; release comparisons
+and React profiling tables are collapsed. It also posts when the baseline is
+unavailable or collection failed. Subsequent runs edit the existing bot comment;
+an identical body is left untouched. Results for an older PR head do not
 replace current-head results.
 
 **The comment workflow and its trusted `post-comment.mts` script must first be

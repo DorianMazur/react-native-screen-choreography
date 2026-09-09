@@ -75,6 +75,16 @@ export async function readArtifactSummary(
   }
 }
 
+function collectionStatus(report: InputRecord | undefined, mode: string) {
+  if (!report) return 'missing';
+  return report.schemaVersion === 1 &&
+    report.platform === 'android' &&
+    report.mode === mode &&
+    report.valid === true
+    ? 'passed'
+    : 'failed';
+}
+
 export function renderComment(
   run: InputRecord,
   reports: Record<string, InputRecord>,
@@ -83,22 +93,23 @@ export function renderComment(
   const lines = [
     COMMENT_MARKER,
     `<!-- choreography-run:${run.id}:${run.run_attempt ?? 1} -->`,
-    '## Choreography performance',
+    '**Android performance**',
     '',
     `Run: **${safe(run.conclusion ?? 'unknown')}** · [reports and native traces](${run.html_url})`,
     '',
-    'Android emulator results are informational; they do not measure iOS performance. Release measurements and React profiling builds are separate.',
+    `Release: **${collectionStatus(reports[ARTIFACTS[0]], 'native-release')}** · React profile: **${collectionStatus(reports[ARTIFACTS[1]], 'react-profile')}**`,
     '',
   ];
   for (const artifactName of ARTIFACTS) {
     const report = reports[artifactName];
     const label = artifactName.replace('performance-summary-', '');
-    if (label === 'android-react-profile')
-      lines.push('<details><summary>React profiling</summary>', '');
-    lines.push(`### ${label}`, '');
+    lines.push(
+      `<details><summary>${label === 'android-react-profile' ? 'React profiling' : 'Release measurements'} · base comparison</summary>`,
+      ''
+    );
     if (!report) {
       lines.push('No validated summary was produced. Check the run logs.', '');
-      if (label === 'android-react-profile') lines.push('</details>', '');
+      lines.push('</details>', '');
       continue;
     }
     if (
@@ -107,7 +118,7 @@ export function renderComment(
       !label.startsWith(`${report.platform}-`)
     ) {
       lines.push('Unsupported or mismatched report; measurements omitted.', '');
-      if (label === 'android-react-profile') lines.push('</details>', '');
+      lines.push('</details>', '');
       continue;
     }
     if (report.valid !== true) {
@@ -119,7 +130,7 @@ export function renderComment(
         lines.push(`- ${safe(error)}`);
       }
       lines.push('');
-      if (label === 'android-react-profile') lines.push('</details>', '');
+      lines.push('</details>', '');
       continue;
     }
     const base = baseline?.reports[artifactName];
@@ -130,12 +141,12 @@ export function renderComment(
       ''
     );
     lines.push(summaryTable(report, base), '');
-    if (label === 'android-react-profile') lines.push('</details>', '');
+    lines.push('</details>', '');
   }
   lines.push(
-    'Values are medians; changes are absolute (pp = percentage points). Three repetitions on hosted emulators are noisy, so changes are informational. Preparation ends at the JS session-active callback. Retained memory includes caches and is not proof of a leak. Input acknowledgments and lifecycle checks must pass.',
-    '',
-    'The complete summaries, raw samples, and traces are attached to the run. This comment updates on subsequent runs for the current PR head.'
+    'Informational emulator results · medians · absolute changes (pp = percentage points). [Full reports and traces](' +
+      run.html_url +
+      ').'
   );
   return lines.join('\n');
 }
@@ -312,6 +323,7 @@ async function main() {
       if (comments.length < 100) break;
     }
     if (previous) {
+      if (previous.body === body) continue;
       const priorRun = previous.body.match(
         /<!-- choreography-run:(\d+):(\d+) -->/
       );

@@ -66,7 +66,7 @@ test('renders a compact update with explicit missing/failed collection and profi
   assert.match(body, /Collection failed/);
   assert.doesNotMatch(body, /No validated summary/);
   assert.doesNotMatch(body, /### ios-/);
-  assert.match(body, /Input acknowledgments/);
+  assert.match(body, /Release: \*\*passed\*\* · React profile: \*\*failed\*\*/);
   assert.equal(body.includes('@everyone'), false);
   assert.equal(body.includes('<script>'), false);
 });
@@ -111,6 +111,11 @@ test('keeps the headline table small and profiling collapsed', () => {
     10
   );
   assert.doesNotMatch(body, /P95|requestToProbeHandlerMs/);
+  const visible = body.replace(/<details>[\s\S]*?<\/details>/g, '');
+  assert.doesNotMatch(visible, /\| Metric/);
+  assert.ok(visible.length < 650);
+  assert.equal((body.match(/<details>/g) ?? []).length, 2);
+  assert.equal((body.match(/<\/details>/g) ?? []).length, 2);
 });
 
 test('malformed, unavailable, or mismatched artifacts fail only their own lane', async () => {
