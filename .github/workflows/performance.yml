@@ -58,7 +58,9 @@ jobs:
       - name: Collect native measurements and fixture reports
         uses: reactivecircus/android-emulator-runner@9b78b339fcface67c267bcf3f3af3fd5430c6401 # v2.33.0
         with:
-          api-level: 31
+          # API 31's traced_probes crashes while decoding ftrace events on the
+          # hosted emulator. Use a current system image for Perfetto collection.
+          api-level: 35
           target: google_apis
           arch: x86_64
           profile: pixel_2

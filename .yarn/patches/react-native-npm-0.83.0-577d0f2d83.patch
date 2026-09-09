@@ -1,0 +1,12 @@
+diff --git a/sdks/hermes-engine/hermes-engine.podspec b/sdks/hermes-engine/hermes-engine.podspec
+--- a/sdks/hermes-engine/hermes-engine.podspec
++++ b/sdks/hermes-engine/hermes-engine.podspec
+@@ -76,7 +76,7 @@ Pod::Spec.new do |spec|
+       )
+ 
+       spec.user_target_xcconfig = {
+-        'HERMES_CLI_PATH' => "#{hermes_compiler_path}/hermesc/osx-bin/hermesc"
++        'HERMES_CLI_PATH' => '$(SRCROOT)/../node_modules/hermes-compiler/hermesc/osx-bin/hermesc'
+       }
+     end
+ 

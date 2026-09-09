@@ -200,5 +200,8 @@
       "eslint"
     ],
     "version": "0.60.0"
+  },
+  "resolutions": {
+    "react-native@npm:0.83.0": "patch:react-native@npm%3A0.83.0#~/.yarn/patches/react-native-npm-0.83.0-577d0f2d83.patch"
   }
 }

@@ -171,6 +171,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
 
   private fun launchIntent() = Intent(Intent.ACTION_MAIN).apply {
     component = ComponentName(APP_ID, "$APP_ID.MainActivity")
+    addCategory(Intent.CATEGORY_LAUNCHER)
     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
     putExtra("performanceScenario", scenario)
     putExtra("performanceReactProfile", reactProfile)
