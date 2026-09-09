@@ -111,8 +111,8 @@ test('aggregates valid native data without inventing unsupported profiling or me
     25
   );
   assert.equal(
-    summary.metrics['ordinary.native.touchToAcknowledgementMs']!.median,
-    8
+    summary.metrics['ordinary.native.touchToAcknowledgementMs'],
+    undefined
   );
   assert.equal(
     summary.metrics['ordinary.memory.retainedPssDeltaKb']!.median,
@@ -136,7 +136,7 @@ test('profiling data is required only for a separate profiling artifact', () => 
     mode: 'react-profile',
   });
   assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(summary.metrics['live.react.renderWorkPerUpdateMs']!.median, 2);
+  assert.equal(summary.metrics['live.react.renderWorkPerRunMs']!.median, 2);
   assert.equal(summarize(documents(true), options).valid, false);
   const missing = documents(true);
   missing[0].data.reactProfiling.observations = [];

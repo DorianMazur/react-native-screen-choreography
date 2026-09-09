@@ -1,3 +1,4 @@
+import { summaryTable } from './summary-table.mts';
 import type {
   InputRecord,
   MetricSamples,
@@ -92,13 +93,15 @@ function readFixture(
       'sessionActiveToEndMs',
       'requestToSessionEndMs',
     ]) {
-      add(metrics, `${prefix}.${key}`, finite(journey[key], key));
+      finite(journey[key], key);
+      if (key === 'requestToSessionActiveMs')
+        add(metrics, `${prefix}.${key}`, journey[key]);
     }
     for (const key of [
       'requestToProbeHandlerMs',
       'sessionEndToProbeHandlerMs',
     ]) {
-      add(metrics, `${prefix}.${key}`, finite(journey.probe[key], key));
+      finite(journey.probe[key], key);
     }
   }
   if (directions.size !== 2)
@@ -123,37 +126,24 @@ function readFixture(
     for (const observation of react.observations) {
       total += finite(observation.actualDurationMs, 'actualDurationMs');
       finite(observation.reactCommitTimeMs, 'React commit timestamp');
-      add(
-        metrics,
-        `${report.scenario}.react.renderWorkPerUpdateMs`,
-        observation.actualDurationMs
-      );
     }
     add(metrics, `${report.scenario}.react.renderWorkPerRunMs`, total);
-    add(
-      metrics,
-      `${report.scenario}.react.committedUpdatesPerRun`,
-      react.observations.length
-    );
   } else if (react.supported || react.observations.length) {
     throw new Error(
       'Native release artifact unexpectedly contains React profiling data'
     );
   }
-  add(
-    metrics,
-    `${report.scenario}.payloadMountsPerRun`,
-    finite(report.payloadMounts, 'payloadMounts')
-  );
-  add(
-    metrics,
-    `${report.scenario}.payloadUnmountsPerRun`,
-    finite(report.payloadUnmounts, 'payloadUnmounts')
-  );
-  readAndroidInput(report, metrics);
+  finite(report.payloadMounts, 'payloadMounts');
+  finite(report.payloadUnmounts, 'payloadUnmounts');
+  if (
+    report.scenario === 'live' &&
+    (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
+  )
+    throw new Error('Live photo owner must stay mounted');
+  readAndroidInput(report);
 }
 
-function readAndroidInput(report: InputRecord, metrics: MetricSamples) {
+function readAndroidInput(report: InputRecord) {
   const native = report.native;
   if (
     !native ||
@@ -223,7 +213,6 @@ function readAndroidInput(report: InputRecord, metrics: MetricSamples) {
     }
     usedTouches.add(touchIndex);
     previousAck = ackTime;
-    add(metrics, `${report.scenario}.native.touchToAcknowledgementMs`, latency);
   }
 }
 
@@ -254,7 +243,6 @@ function readMemory(
   if (!Array.isArray(report.samples) || !report.samples.length)
     throw new Error('Empty memory report');
   const iterations = new Map();
-  let peak = 0;
   for (const sample of report.samples) {
     if (!['baseline', 'detail', 'after-back'].includes(sample.phase))
       throw new Error('Unknown memory checkpoint');
@@ -270,15 +258,9 @@ function readMemory(
       throw new Error(
         'Zero process footprint indicates missing memory collection'
       );
-    peak = Math.max(peak, pss);
-    add(metrics, `${report.scenario}.memory.${sample.phase}.pssKb`, pss);
     // RSS availability differs by Android API. Missing is not zero.
     if (sample.totalRssKb !== null && sample.totalRssKb !== undefined) {
-      add(
-        metrics,
-        `${report.scenario}.memory.${sample.phase}.rssKb`,
-        finite(sample.totalRssKb, 'totalRssKb')
-      );
+      finite(sample.totalRssKb, 'totalRssKb');
     }
   }
   const count = expectedCycles ?? iterations.size;
@@ -295,7 +277,6 @@ function readMemory(
   }
   const baseline = iterations.get(0).get('baseline').totalPssKb;
   const afterBack = iterations.get(count - 1).get('after-back').totalPssKb;
-  add(metrics, `${report.scenario}.memory.sampledPeakPssKb`, peak);
   add(
     metrics,
     `${report.scenario}.memory.retainedPssDeltaKb`,
@@ -331,11 +312,7 @@ function readMacrobenchmark(
       }
       const samples = value.runs;
       for (const sample of samples) {
-        add(
-          metrics,
-          `android.${name}.${key}`,
-          finite(sample, `${name}.${key}`)
-        );
+        finite(sample, `${name}.${key}`);
       }
     }
     for (const [key, value] of Object.entries(
@@ -365,7 +342,6 @@ function readMacrobenchmark(
           (key !== 'frameOverrunMs' && sample < 0)
         )
           throw new Error(`Invalid ${key} sample`);
-        add(metrics, `android.${name}.${key}`, sample);
       }
       if (key === 'frameOverrunMs' && samples.length) {
         add(
@@ -471,7 +447,7 @@ export function summarize(
   }
   return {
     schemaVersion: 1,
-    measurementDefinitionVersion: 1,
+    measurementDefinitionVersion: 2,
     platform,
     mode,
     fixtureVersion: 2,
@@ -498,10 +474,6 @@ export function summarize(
 }
 
 export function markdown(summary: ReturnType<typeof summarize>) {
-  const format = (value: number | null | undefined) =>
-    value === null || value === undefined
-      ? '—'
-      : Number(value.toFixed(3)).toString();
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
@@ -511,12 +483,7 @@ export function markdown(summary: ReturnType<typeof summarize>) {
     '',
     ...summary.errors.map((error) => `- ${error.replaceAll('\n', ' ')}`),
     '',
-    '| Metric (units in name) | Samples | Median | P95 | Min | Max |',
-    '| --- | ---: | ---: | ---: | ---: | ---: |',
-    ...Object.entries(summary.metrics).map(
-      ([name, metric]) =>
-        `| ${name} | ${metric?.count ?? 0} | ${format(metric?.median)} | ${format(metric?.p95)} | ${format(metric?.min)} | ${format(metric?.max)} |`
-    ),
+    summaryTable(summary),
     '',
     ...summary.notes.map((note) => `- ${note}`),
     '',

@@ -66,7 +66,7 @@ test('renders a compact update with explicit missing/failed collection and profi
   assert.match(body, /Collection failed/);
   assert.doesNotMatch(body, /No validated summary/);
   assert.doesNotMatch(body, /### ios-/);
-  assert.match(body, /not native commit/);
+  assert.match(body, /Input acknowledgments/);
   assert.equal(body.includes('@everyone'), false);
   assert.equal(body.includes('<script>'), false);
 });
@@ -90,64 +90,27 @@ test('never presents mismatched or nonnumeric metric data as a valid timing', ()
     },
   });
   assert.match(body, /mismatched report/);
-  assert.match(body, /No recognized measurements/);
+  assert.match(body, /No compatible baseline/);
   assert.equal(body.includes('| fast |'), false);
 });
 
-test('a full Android comment retains both scenarios, input upper bounds, and frame timing', () => {
-  const metric = { count: 20, median: 12, p95: 16 };
+test('keeps the headline table small and profiling collapsed', () => {
   const reports: Record<string, InputRecord> = {};
-  for (const mode of ['native-release', 'react-profile']) {
-    const metrics: Record<string, InputRecord> = {};
-    for (const scenario of ['ordinary', 'live']) {
-      for (const name of ['frameOverrunMs', 'deadlineOverrunPercent']) {
-        metrics[`android.transitionFrames[${scenario}].${name}`] = metric;
-      }
-      for (const direction of ['forward', 'backward']) {
-        for (const name of [
-          'requestToSessionActiveMs',
-          'requestToSessionEndMs',
-          'requestToProbeHandlerMs',
-        ]) {
-          metrics[`${scenario}.${direction}.${name}`] = metric;
-        }
-      }
-      for (const name of ['sampledPeakPssKb', 'retainedPssDeltaKb']) {
-        metrics[`${scenario}.memory.${name}`] = metric;
-      }
-      metrics[`${scenario}.native.touchToAcknowledgementMs`] = metric;
-      if (mode === 'react-profile') {
-        for (const name of [
-          'renderWorkPerUpdateMs',
-          'committedUpdatesPerRun',
-        ]) {
-          metrics[`${scenario}.react.${name}`] = metric;
-        }
-      }
-    }
+  for (const mode of ['native-release', 'react-profile'])
     reports[`performance-summary-android-${mode}`] = {
       schemaVersion: 1,
       platform: 'android',
       mode,
       valid: true,
-      // Real summaries sort keys, placing ordinary React measurements last.
-      metrics: Object.fromEntries(
-        Object.entries(metrics).sort(([a], [b]) => a.localeCompare(b))
-      ),
+      metrics: { 'live.react.renderWorkPerRunMs': { count: 3, median: 12 } },
     };
-  }
   const body = renderComment(run, reports);
-  for (const scenario of ['ordinary', 'live']) {
-    for (const name of ['renderWorkPerUpdateMs', 'committedUpdatesPerRun']) {
-      assert.ok(body.includes(`| ${scenario}.react.${name} |`));
-    }
-    for (const direction of ['forward', 'backward']) {
-      assert.ok(
-        body.includes(`| ${scenario}.${direction}.requestToProbeHandlerMs |`)
-      );
-    }
-  }
-  assert.match(body, /successful-input upper bound/);
+  assert.match(body, /<details><summary>React profiling/);
+  assert.equal(
+    body.split('\n').filter((line) => /^\| (ordinary|live)/.test(line)).length,
+    10
+  );
+  assert.doesNotMatch(body, /P95|requestToProbeHandlerMs/);
 });
 
 test('malformed, unavailable, or mismatched artifacts fail only their own lane', async () => {
@@ -184,7 +147,7 @@ test('malformed, unavailable, or mismatched artifacts fail only their own lane',
         mode: 'react-profile',
         valid: true,
         metrics: {
-          'live.forward.requestToSessionActiveMs': {
+          'live.react.renderWorkPerRunMs': {
             count: 10,
             median: 42,
             p95: null,
@@ -201,7 +164,7 @@ test('malformed, unavailable, or mismatched artifacts fail only their own lane',
     );
     assert.match(body, /Run: \*\*failure\*\*/);
     assert.match(body, /Collection failed/);
-    assert.match(body, /live.forward.requestToSessionActiveMs \| 10 \| 42/);
+    assert.match(body, /live · React render work \(ms\/run\) \| — \| 42/);
   }
 });
 

@@ -39,6 +39,10 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   osVersion: process.env.PERFORMANCE_OS_VERSION,
   apiLevel: Number(process.env.PERFORMANCE_API_LEVEL),
   emulator: process.env.PERFORMANCE_IS_EMULATOR === '1',
+  nodeVersion: process.version,
+  runnerImage: process.env.ImageVersion ?? 'local',
+  reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
+  reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], iterations: Number(process.argv[4]), memoryCycles: Number(process.argv[5]),
 }, null, 2));
 NODE

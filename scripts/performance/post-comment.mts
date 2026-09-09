@@ -1,3 +1,4 @@
+import { compatible, summaryTable } from './summary-table.mts';
 import type { InputRecord } from './types.ts';
 import { Buffer } from 'node:buffer';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
@@ -76,7 +77,8 @@ export async function readArtifactSummary(
 
 export function renderComment(
   run: InputRecord,
-  reports: Record<string, InputRecord>
+  reports: Record<string, InputRecord>,
+  baseline?: { run: InputRecord; reports: Record<string, InputRecord> }
 ) {
   const lines = [
     COMMENT_MARKER,
@@ -91,9 +93,12 @@ export function renderComment(
   for (const artifactName of ARTIFACTS) {
     const report = reports[artifactName];
     const label = artifactName.replace('performance-summary-', '');
+    if (label === 'android-react-profile')
+      lines.push('<details><summary>React profiling</summary>', '');
     lines.push(`### ${label}`, '');
     if (!report) {
       lines.push('No validated summary was produced. Check the run logs.', '');
+      if (label === 'android-react-profile') lines.push('</details>', '');
       continue;
     }
     if (
@@ -102,6 +107,7 @@ export function renderComment(
       !label.startsWith(`${report.platform}-`)
     ) {
       lines.push('Unsupported or mismatched report; measurements omitted.', '');
+      if (label === 'android-react-profile') lines.push('</details>', '');
       continue;
     }
     if (report.valid !== true) {
@@ -113,49 +119,44 @@ export function renderComment(
         lines.push(`- ${safe(error)}`);
       }
       lines.push('');
+      if (label === 'android-react-profile') lines.push('</details>', '');
       continue;
     }
+    const base = baseline?.reports[artifactName];
     lines.push(
-      '| Metric (units in name) | Samples | Median | P95 |',
-      '| --- | ---: | ---: | ---: |'
+      compatible(report, base)
+        ? `Base: [${safe(baseline!.run.head_branch)} · ${safe(baseline!.run.head_sha.slice(0, 7))}](https://github.com/${safe(baseline!.run.repository.full_name)}/actions/runs/${baseline!.run.id}).`
+        : 'No compatible baseline available for the PR base commit.',
+      ''
     );
-    const selected = Object.entries(
-      (report.metrics as Record<string, InputRecord>) ?? {}
-    )
-      .filter(([name]) =>
-        /requestToSessionActiveMs|requestToSessionEndMs|requestToProbeHandlerMs|touchToAcknowledgementMs|renderWorkPerUpdateMs|committedUpdatesPerRun|sampledPeakPssKb|retainedPssDeltaKb|frameOverrunMs|deadlineOverrunPercent/.test(
-          name
-        )
-      )
-      .slice(0, 40);
-    let shown = 0;
-    for (const [name, metric] of selected) {
-      if (
-        !metric ||
-        !Number.isInteger(metric.count) ||
-        metric.count <= 0 ||
-        typeof metric.median !== 'number' ||
-        !Number.isFinite(metric.median) ||
-        (metric.p95 !== null &&
-          (typeof metric.p95 !== 'number' || !Number.isFinite(metric.p95)))
-      )
-        continue;
-      const formatted = (number: number) =>
-        Number(number.toFixed(3)).toString();
-      lines.push(
-        `| ${safe(name)} | ${metric.count} | ${formatted(metric.median)} | ${metric.p95 === null ? '—' : formatted(metric.p95)} |`
-      );
-      shown++;
-    }
-    if (!shown) lines.push('| No recognized measurements | — | — | — |');
-    lines.push('');
+    lines.push(summaryTable(report, base), '');
+    if (label === 'android-react-profile') lines.push('</details>', '');
   }
   lines.push(
-    'React timings measure render work, not native commit duration. Session-active timing is a JS preparation proxy, not first presented motion. Request-to-probe includes test waiting and is a successful-input upper bound. Native input acknowledgments include queue effects; memory peaks are sampled. P95 is omitted for small samples.',
+    'Values are medians; changes are absolute (pp = percentage points). Three repetitions on hosted emulators are noisy, so changes are informational. Preparation ends at the JS session-active callback. Retained memory includes caches and is not proof of a leak. Input acknowledgments and lifecycle checks must pass.',
     '',
     'The complete summaries, raw samples, and traces are attached to the run. This comment updates on subsequent runs for the current PR head.'
   );
   return lines.join('\n');
+}
+
+export function selectBaselineRun(
+  runs: InputRecord[],
+  pr: InputRecord,
+  repository: string
+) {
+  return runs
+    .filter(
+      (candidate) =>
+        candidate.event === 'push' &&
+        candidate.status === 'completed' &&
+        candidate.conclusion === 'success' &&
+        candidate.head_sha === pr.base?.sha &&
+        candidate.head_branch === pr.base?.ref &&
+        candidate.repository?.full_name === repository &&
+        Number.isSafeInteger(candidate.id)
+    )
+    .sort((a, b) => b.id - a.id)[0];
 }
 
 async function main() {
@@ -214,60 +215,89 @@ async function main() {
   }
   if (!current.length) return; // Never overwrite the current head with stale measurements.
 
-  const { artifacts } = await (
-    await api(`/actions/runs/${run.id}/artifacts?per_page=100`)
-  ).json();
-  const reports: Record<string, InputRecord> = {};
-  const directory = await mkdtemp(path.join(tmpdir(), 'choreography-comment-'));
-  try {
-    for (const artifact of artifacts) {
-      if (!ARTIFACTS.includes(artifact.name) || artifact.expired) continue;
-      reports[artifact.name] = await readArtifactSummary(
-        artifact.name,
-        async () => {
-          if (artifact.size_in_bytes > 2 * 1024 * 1024)
-            throw new Error('Summary artifact exceeds size limit');
-          const response = await api(`/actions/artifacts/${artifact.id}/zip`);
-          const zip = path.join(directory, `${artifact.id}.zip`);
-          const bytes = Buffer.from(await response.arrayBuffer());
-          if (bytes.length > 2 * 1024 * 1024)
-            throw new Error('Summary download exceeds size limit');
-          await writeFile(zip, bytes);
-          const entries = execFileSync('unzip', ['-Z1', zip], {
-            encoding: 'utf8',
-            maxBuffer: 128 * 1024,
-          })
-            .trim()
-            .split('\n');
-          const allowed = entries.filter(
-            (entry) =>
-              entry === 'summary.json' || entry === 'report/summary.json'
-          );
-          if (allowed.length !== 1)
-            throw new Error(
-              'Artifact must contain exactly one recognized summary.json'
+  const loadReports = async (runId: number) => {
+    const { artifacts } = await (
+      await api(`/actions/runs/${runId}/artifacts?per_page=100`)
+    ).json();
+    const reports: Record<string, InputRecord> = {};
+    const directory = await mkdtemp(
+      path.join(tmpdir(), 'choreography-comment-')
+    );
+    try {
+      for (const artifact of artifacts) {
+        if (!ARTIFACTS.includes(artifact.name) || artifact.expired) continue;
+        reports[artifact.name] = await readArtifactSummary(
+          artifact.name,
+          async () => {
+            if (artifact.size_in_bytes > 2 * 1024 * 1024)
+              throw new Error('Summary artifact exceeds size limit');
+            const response = await api(`/actions/artifacts/${artifact.id}/zip`);
+            const zip = path.join(directory, `${artifact.id}.zip`);
+            const bytes = Buffer.from(await response.arrayBuffer());
+            if (bytes.length > 2 * 1024 * 1024)
+              throw new Error('Summary download exceeds size limit');
+            await writeFile(zip, bytes);
+            const entries = execFileSync('unzip', ['-Z1', zip], {
+              encoding: 'utf8',
+              maxBuffer: 128 * 1024,
+            })
+              .trim()
+              .split('\n');
+            const allowed = entries.filter(
+              (entry) =>
+                entry === 'summary.json' || entry === 'report/summary.json'
             );
-          // Read one bounded JSON member directly. Never extract or execute PR artifact files.
-          const text = execFileSync('unzip', ['-p', zip, allowed[0]], {
-            encoding: 'utf8',
-            maxBuffer: 2 * 1024 * 1024,
-          });
-          return JSON.parse(text);
-        }
+            if (allowed.length !== 1)
+              throw new Error(
+                'Artifact must contain exactly one recognized summary.json'
+              );
+            // Read one bounded JSON member directly. Never extract or execute PR artifact files.
+            const text = execFileSync('unzip', ['-p', zip, allowed[0]], {
+              encoding: 'utf8',
+              maxBuffer: 2 * 1024 * 1024,
+            });
+            return JSON.parse(text);
+          }
+        );
+      }
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+    return reports;
+  };
+  const reports = await loadReports(run.id);
+  for (const pr of current) {
+    let baseline;
+    try {
+      const query = new URLSearchParams({
+        event: 'push',
+        status: 'success',
+        branch: pr.base.ref,
+        head_sha: pr.base.sha,
+        per_page: '100',
+      });
+      const response = await (
+        await api(`/actions/workflows/${run.workflow_id}/runs?${query}`)
+      ).json();
+      const baseRun = selectBaselineRun(
+        response.workflow_runs ?? [],
+        pr,
+        repository
+      );
+      if (baseRun)
+        baseline = { run: baseRun, reports: await loadReports(baseRun.id) };
+    } catch (error) {
+      console.warn(
+        `Baseline unavailable: ${error instanceof Error ? error.message : String(error)}`
       );
     }
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-  const body = renderComment(run, reports);
-  for (const pr of current) {
-    // Recheck after downloads: a new commit may have arrived during collection.
+    const body = renderComment(run, reports, baseline);
+    // Both heads must still match after fetching artifacts.
+    const latest = await (await api(`/pulls/${pr.number}`)).json();
     if (
-      !isCurrentPullRequest(
-        await (await api(`/pulls/${pr.number}`)).json(),
-        run,
-        repository
-      )
+      !isCurrentPullRequest(latest, run, repository) ||
+      latest.base?.sha !== pr.base.sha ||
+      latest.base?.ref !== pr.base.ref
     )
       continue;
     let previous;

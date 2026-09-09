@@ -88,56 +88,45 @@ Frame tests still start a fresh Activity before each measured round trip; launch
 and settling are outside the measured interval. Native compilation and installation
 still take their usual time, especially on the first run.
 
-## What the measurements mean
+## Measurements and comparisons
 
-| Measurement                                             | Definition and limitation                                                                                                                                                                                                                              |
-| ------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------ |
-| `requestToSessionActiveMs`                              | JavaScript request to the provider's session-active callback. A preparation proxy; not the first presented moving frame.                                                                                                                               |
-| `sessionActiveToEndMs`, `requestToSessionEndMs`         | Intervals between JavaScript lifecycle observations. Scheduling and callback delays are included.                                                                                                                                                      |
-| `requestToProbeHandlerMs`, `sessionEndToProbeHandlerMs` | A real native test tap reaching the destination's JavaScript handler. Tests wait before tapping, so these are observed upper bounds on usable input, not the earliest possible readiness time.                                                         |
-| Android `touchToAcknowledgementMs`                      | Native event time to the matching native acknowledgment called by the JavaScript probe. Includes event dispatch and JavaScript/native queue work.                                                                                                      |
-| React render work and committed updates                 | `Profiler` `actualDuration` observations and their count, from the profiling renderer. Render work is not native Fabric commit duration.                                                                                                               |
-| Payload mounts and unmounts                             | Instrumented React payload lifecycle. A live run requires one owner mount and no owner unmount during its journeys. This does not establish native video/focus continuity.                                                                             |
-| Android frame timing                                    | Macrobenchmark `FrameTimingMetric` samples and Perfetto traces from the scripted forward/back round trip, including probe and status updates. `frameOverrunMs` is time past a platform frame deadline; negative means it finished before the deadline. |
-| Android `deadlineOverrunPercent`                        | Percentage of captured frame samples with positive overrun. It is not a count of skipped display refreshes.                                                                                                                                            |
-| Android PSS/RSS                                         | Process memory checkpoints at baseline, detail, and after returning. The sampled maximum can miss a peak between checkpoints.                                                                                                                          |
+The main summary has eight rows: four measurements for ordinary and live rendering.
 
-On Android, JavaScript lifecycle and probe telemetry is collected separately
-from the native frame window through the repeated memory/input fixture. Do not
-treat its probe timestamps as frame-by-frame observations of the Macrobenchmark
-trace. Report serialization and file export happen outside measured transition
-windows.
+| Measurement | Meaning |
+| --- | --- |
+| Frames over deadline (%) | Fraction of captured frames that miss their platform deadline during the round trip. |
+| Open preparation (ms) | Request until the forward session becomes active in JavaScript; not first visible motion. |
+| Return preparation (ms) | The same preparation interval for the backward journey. |
+| Retained memory (MiB) | Final after-back process PSS minus the first baseline. Includes caches; a positive value does not prove a leak. |
 
-This suite does not measure native Fabric commit duration or precise
-first-motion presentation latency.
-Those need additional native instrumentation.
+React profiling has a separate, collapsed table showing render work per fixture
+run. It is not native commit time and must not be compared with release timings.
+Input acknowledgments, complete forward/back journeys, and payload lifecycle
+remain validity checks. Redundant duration, probe-latency, per-checkpoint memory,
+frame-duration, and mount-count distributions are no longer generated. Raw
+fixture exports, memory dumps, and Perfetto traces remain available for debugging.
 
-Memory after returning includes caches and retained application state. A positive
-delta does not prove a leak; a flat sampled delta does not prove that transient
-allocations were cheap. Idle reclamation, longer navigation histories, and native
-resource lifetimes require separate investigation.
+Each run saves `report/summary.md`, `report/summary.json`, raw data, and logs.
+The PR comment shows **Base | PR / current | Change**. Changes are absolute:
+percentage points for frames, milliseconds for preparation, and MiB for memory.
+This handles zero baselines and negative memory retention without misleading
+percentage changes. Values are medians; fewer frames over deadline and lower
+preparation times are preferable, but memory deltas require interpretation.
 
-## Reports and comparisons
+The publisher looks for a successful push run of the Performance workflow on
+the PR's actual base branch (`main` or `master`) at the exact base commit. It
+compares only matching fixture/measurement versions, build modes, device/API/ABI,
+iteration and memory-cycle counts, React Native/Reanimated/Node versions, and
+runner image versions. Missing, expired, invalid, or incompatible base artifacts
+produce “No compatible baseline”; they never become zeros. Local reports have
+no baseline lookup. Existing reports lack the new comparison metadata, so the
+first usable baseline requires a new base-branch run after these changes land.
 
-Each run writes `report/summary.md`, `report/summary.json`, raw measurements,
-device metadata, and build/test logs under its output directory. Android retains
-Macrobenchmark results, Perfetto traces, and memory dumps.
-
-Summaries show sample count, median, minimum, maximum, and P95 only when at least
-20 samples are available. Frame samples within a transition are correlated;
-many frame samples do not replace repeated independent runs. Inspect raw traces
-when a distribution changes, and repeat on the same physical device before
-making a product performance claim.
-
-Collection fails for missing required measurements, unsuccessful journeys,
-unacknowledged input, lost telemetry, duplicate run IDs, invalid units, or a
-profiling-mode mismatch. Numerical performance values
-are informational: the suite does not impose an automatic percentage-regression
-threshold or compute a controlled comparison against the base branch.
-
-Hosted emulator results are diagnostics. Keep them separate from
-physical-device measurements and avoid treating cross-run host load, OS changes,
-or different build modes as library regressions.
+Three repetitions on hosted emulators give noisy diagnostics, not a performance
+guarantee. No automatic regression threshold is applied. Repeat on a physical
+device before making performance claims. Collection still fails for missing
+measurements, failed journeys, unacknowledged input, lost samples, invalid units,
+or a profiling-mode mismatch.
 
 ## CI and pull-request comments
 
