@@ -1,4 +1,4 @@
-import type { ComponentType, ReactNode } from 'react';
+import type { ComponentType, ReactElement, ReactNode } from 'react';
 import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
 
@@ -46,6 +46,31 @@ export interface SharedElementTransition {
   mode?: 'standin' | 'live';
 }
 
+declare const liveTransitionBrand: unique symbol;
+
+/** A live transition created by `makeLiveTransition`. */
+export interface LiveTransition extends SharedElementTransition {
+  readonly [liveTransitionBrand]: true;
+  mode: 'live';
+}
+
+export interface LiveTransitionSide extends Omit<
+  SharedElementTransitionSide,
+  'content'
+> {
+  metadata?: unknown;
+}
+
+export interface LiveTransitionRendererProps extends Omit<
+  SharedElementTransitionRendererProps,
+  'source' | 'target'
+> {
+  source: LiveTransitionSide;
+  target: LiveTransitionSide;
+  /** The library-owned live portal host. Render it exactly once. */
+  children: ReactElement;
+}
+
 export type NodeHandleRef = React.RefObject<any> | (() => any);
 
 /** Frozen renderer input captured at session start. */
@@ -53,6 +78,7 @@ export interface ElementPresentation {
   content: ReactNode;
   style?: ViewStyle;
   transition: SharedElementTransition;
+  metadata?: unknown;
 }
 
 export interface RegisteredElement {

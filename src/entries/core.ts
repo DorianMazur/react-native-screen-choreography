@@ -22,6 +22,10 @@ export {
 } from '../transitions/makeStretchTransition';
 export { textMorphTransition } from '../transitions/textMorphTransition';
 export {
+  makeLiveTransition,
+  type MakeLiveTransitionOptions,
+} from '../transitions/makeLiveTransition';
+export {
   resolveSurfaceStyle,
   type BoxShadowEntry,
   type SurfaceTransitionStyle,
@@ -48,6 +52,9 @@ export type {
   SharedElementTransitionRenderer,
   SharedElementTransitionRendererProps,
   SharedElementTransitionSide,
+  LiveTransition,
+  LiveTransitionRendererProps,
+  LiveTransitionSide,
   TransitionConfig,
   ChoreographyNavigationOptions,
   ChoreographyNavigationLineage,

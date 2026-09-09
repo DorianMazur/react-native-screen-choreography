@@ -306,6 +306,92 @@ The screen containing `SharedElement.Live` must stay mounted while the payload i
 
 Ordinary stand-ins hand visibility back to the real elements on the UI thread at animation completion. Live content instead remains visible at its endpoint in the overlay until React reparents it into the destination host; delayed JS cleanup must not hide the only mounted instance.
 
+#### Custom live motion and layout
+
+Use `makeLiveTransition` when the same mounted content needs custom motion. Its
+renderer receives a required `children` value containing the library-owned live
+host. Render those children **exactly once, continuously throughout the
+transition**. Do not replace them with a copy of the payload. Live renderer sides
+expose metrics, style, screen identity, and metadata, but no React `content`.
+TypeScript requires the host input; it cannot prove that your renderer displays it.
+
+```tsx
+import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
+import {
+  makeLiveTransition,
+  SharedElement,
+  type LiveTransitionRendererProps,
+} from 'react-native-screen-choreography';
+
+function PanelMotion({
+  children, source, target, progress, direction, zIndex,
+}: LiveTransitionRendererProps) {
+  const motion = useAnimatedStyle(() => {
+    const t = direction === 'backward' ? 1 - progress.value : progress.value;
+    return {
+      left: interpolate(t, [0, 1], [source.metrics.pageX, target.metrics.pageX]),
+      top: interpolate(t, [0, 1], [source.metrics.pageY, target.metrics.pageY]),
+      transform: [{ scale: interpolate(t, [0, 1], [
+        source.metrics.width / 240, target.metrics.width / 240,
+      ]) }],
+    };
+  });
+  return (
+    <Animated.View style={[
+      { position: 'absolute', width: 240, height: 160,
+        transformOrigin: 'top left', zIndex },
+      motion,
+    ]}>
+      {children}
+    </Animated.View>
+  );
+}
+
+// Create once, outside render, and reuse on BOTH endpoints.
+const panelMotion = makeLiveTransition({ renderer: PanelMotion });
+
+// Owner: measured endpoint and payload both start at 240 × 160.
+<SharedElement.Live
+  id="panel" groupId="demo" transition={panelMotion}
+  style={{ width: 240, height: 160 }}
+  portalStyle={{ flex: 0, width: 240, height: 160 }}
+>
+  <StatefulPanel />
+</SharedElement.Live>
+
+// Destination: measure 120 × 80, retain 240 × 160 content layout, scale to fit.
+<SharedElement.LiveTarget
+  id="panel" groupId="demo" transition={panelMotion}
+  style={{ width: 120, height: 80 }}
+  hostStyle={{
+    right: undefined, bottom: undefined, width: 240, height: 160,
+    transformOrigin: 'top left', transform: [{ scale: 0.5 }],
+  }}
+/>
+```
+
+The coordinator uses the departing endpoint's transition, including on back
+navigation. Reuse the same transition object at both endpoints for consistent
+motion. If configuration depends on props, memoize the factory result with
+`useMemo`; recreating a renderer identity during a transition can remount its
+host. Custom transitions default to `zIndex: 100`, matching built-in live motion;
+an explicit `zIndex`, including zero, overrides it.
+
+`style` controls the measured endpoint wrapper. `portalStyle` on `Live` overrides
+the portal's default `flex: 1`, `width: '100%'`, and `height: '100%'` layout.
+`hostStyle` on `LiveTarget` overrides its absolute-fill receiving host separately.
+Your renderer's resting geometry must match these endpoints to avoid a jump at
+handoff. This also supports an offscreen one-pixel endpoint with a full-height
+payload and receiving host. Omitting all options keeps built-in live behavior.
+
+Both live endpoints accept `metadata?: unknown`, exposed as `source.metadata`
+and `target.metadata`. Narrow it before use. The library captures each metadata
+reference at session start; replacing it affects the next session. It does not
+deep-clone or freeze application objects. SharedValue references inside metadata
+can continue changing on the UI thread, allowing motion to follow an ongoing
+gesture without inspecting private child props. The same API is exported from
+`/core` and `/expo-router`.
+
 ### 3. Navigate through the choreography hook
 
 `useChoreographyNavigation` pre-measures the source, manages pending target visibility, creates the transition session, and coordinates reverse flows.

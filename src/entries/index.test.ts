@@ -83,6 +83,24 @@ function getNavigationDependencies(filePath: string) {
 }
 
 describe('Public entry points', () => {
+  test.each(['core', 'reactNavigation', 'expoRouter'] as const)(
+    '%s exports the complete live transition API',
+    (entry) => {
+      expect([...getExports(entries[entry]).keys()]).toEqual(
+        expect.arrayContaining([
+          'LiveSharedElementProps',
+          'LiveSharedElementTargetProps',
+          'LiveTransition',
+          'LiveTransitionRendererProps',
+          'LiveTransitionSide',
+          'MakeLiveTransitionOptions',
+          'SharedElement',
+          'makeLiveTransition',
+        ])
+      );
+    }
+  );
+
   test.each(Object.entries(entries))(
     '%s contains only exports',
     (_entry, filePath) => {
