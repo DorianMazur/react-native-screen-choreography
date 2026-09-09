@@ -36,9 +36,18 @@ private class ChoreographyBenchmarkModule(context: ReactApplicationContext) : Re
   }
 
   @ReactMethod
-  fun reportFullyDrawn() {
-    (reactApplicationContext.currentActivity as? MainActivity)?.let { activity ->
-      activity.runOnUiThread { activity.reportBenchmarkFullyDrawn() }
+  fun reportFullyDrawn(promise: Promise) {
+    val activity = reactApplicationContext.currentActivity as? MainActivity
+    if (activity == null) {
+      promise.reject("BENCHMARK_ACTIVITY_UNAVAILABLE", "No Activity for fully-drawn reporting")
+      return
+    }
+    activity.runOnUiThread {
+      if (activity.isFinishing || activity.isDestroyed) {
+        promise.reject("BENCHMARK_ACTIVITY_UNAVAILABLE", "Activity closed before fully-drawn reporting")
+      } else {
+        activity.reportBenchmarkFullyDrawn { promise.resolve(null) }
+      }
     }
   }
 

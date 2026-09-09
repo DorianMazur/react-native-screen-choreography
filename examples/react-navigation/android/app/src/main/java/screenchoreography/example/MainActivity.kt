@@ -11,10 +11,15 @@ import com.facebook.react.defaults.DefaultReactActivityDelegate
 class MainActivity : ReactActivity() {
   private var benchmarkFullyDrawnPending = false
   private var benchmarkFullyDrawnReported = false
+  private val benchmarkFullyDrawnCallbacks = mutableListOf<() -> Unit>()
 
-  fun reportBenchmarkFullyDrawn() {
-    if (!BuildConfig.PERFORMANCE_BENCHMARK || benchmarkFullyDrawnPending ||
-      benchmarkFullyDrawnReported || isFinishing || isDestroyed) return
+  fun reportBenchmarkFullyDrawn(onReported: () -> Unit) {
+    if (benchmarkFullyDrawnReported) {
+      onReported()
+      return
+    }
+    benchmarkFullyDrawnCallbacks.add(onReported)
+    if (benchmarkFullyDrawnPending) return
     benchmarkFullyDrawnPending = true
     val decor = window.decorView
     val observer = decor.viewTreeObserver
@@ -30,6 +35,9 @@ class MainActivity : ReactActivity() {
         // Android prohibits removing an OnDrawListener during draw dispatch.
         decor.post {
           if (observer.isAlive) observer.removeOnDrawListener(this)
+          val callbacks = benchmarkFullyDrawnCallbacks.toList()
+          benchmarkFullyDrawnCallbacks.clear()
+          callbacks.forEach { it() }
         }
       }
     }

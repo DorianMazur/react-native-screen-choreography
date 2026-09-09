@@ -54,7 +54,7 @@ interface BenchmarkNativeModule {
   finishRun?: (json: string) => Promise<string>;
   recordSample?: (json: string) => void;
   acknowledgeInput?: (screen: ProbeScreen) => void;
-  reportFullyDrawn?: () => void;
+  reportFullyDrawn?: () => Promise<void>;
 }
 
 function nativeBenchmark(): BenchmarkNativeModule | undefined {
@@ -370,8 +370,20 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         collector.note('fixture-ready', {
           meaning: 'list-layout-plus-two-JS-animation-frames',
         });
-        setStatus('ready');
-        nativeBenchmark()?.reportFullyDrawn?.();
+        // Keep startup tracing open until Android has reported fully drawn.
+        // Publishing the marker first can race the native module/UI queues.
+        const fullyDrawn = nativeBenchmark()?.reportFullyDrawn?.();
+        if (fullyDrawn) {
+          fullyDrawn.then(
+            () => setStatus('ready'),
+            () => {
+              collector.fail('native-fully-drawn-report-failed');
+              setStatus('failed');
+            }
+          );
+        } else {
+          setStatus('ready');
+        }
       },
       request: (direction) => {
         if (!collector.request(direction)) return false;

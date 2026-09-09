@@ -234,6 +234,8 @@ controls are inside the real destination screen, outside the overlay. Tests must
 inject native touches; invoking their JS handlers directly is not a valid test.
 
 1. Wait for `benchmark-ready` after list layout and two JS animation frames.
+   On Android, this also waits for the native fully-drawn acknowledgment so the
+   startup trace cannot close before that measurement is emitted.
 2. Tap `benchmark-start`.
 3. Wait for `benchmark-detail-settled`, then tap `benchmark-detail-probe`.
 4. Wait for `benchmark-detail-probe-ack`.
@@ -262,8 +264,10 @@ collector intact and exposes `benchmark-failed`.
 - `acknowledgeInput(screen: "detail" | "list"): void`: invoked immediately inside
   the actual probe handler. Any native touch/receipt timestamps remain in their
   own clock domain.
-- `reportFullyDrawn(): void`: invoked when each fresh list fixture becomes ready.
-  Android can use it for app-defined TTFD and ignore repeat calls per Activity.
+- `reportFullyDrawn(): Promise<void>`: Android reports app-defined TTFD during a
+  native draw and resolves after draw dispatch. The fixture publishes readiness
+  only after resolution. Repeat calls resolve without reporting again for the
+  same Activity.
 
 The fixture buffers bounded samples in memory during navigation and exports them
 afterward, keeping bridge export traffic outside measured transitions.
