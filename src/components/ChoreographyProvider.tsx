@@ -40,6 +40,8 @@ import { ScreenReadinessRegistry } from '../core/ScreenReadinessRegistry';
 import { ProgressOwnership, setOwnedProgress } from '../core/ProgressOwnership';
 import { getScreenRole } from '../core/screenVisibility';
 import { NavigationSessionController } from '../core/NavigationSessionController';
+import { useReverseTransitionCommit } from '../hooks/useReverseTransitionCommit';
+import { scheduleOnUI } from 'react-native-worklets';
 
 function TransitionHostPortal({
   active,
@@ -104,6 +106,7 @@ export function ChoreographyProvider({
 }: ChoreographyProviderProps) {
   const progress = useSharedValue(0);
   const progressOwner = useSharedValue(0);
+  const interactionOwner = useSharedValue<string | null>(null);
   const [visibilityRegistry] = useState(() => new ElementVisibilityRegistry());
   const [progressOwnership] = useState(
     () =>
@@ -202,6 +205,12 @@ export function ChoreographyProvider({
     coordinator.setOnSessionChange((session) => {
       navigationController.setActiveSession(session);
       progressOwnership.setSession(session?.id ?? null);
+      if (session && activeSessionRef.current?.id !== session.id) {
+        scheduleOnUI(() => {
+          'worklet';
+          interactionOwner.value = null;
+        });
+      }
       const previousSession = activeSessionRef.current;
       activeSessionRef.current = session;
       setActiveSession(session);
@@ -255,6 +264,7 @@ export function ChoreographyProvider({
     settleOverlayWaiters,
     syncHiddenElements,
     visibilityRegistry,
+    interactionOwner,
   ]);
 
   useEffect(() => {
@@ -494,6 +504,22 @@ export function ChoreographyProvider({
     coordinatorRef.current?.cancelTransition(sessionId);
   }, []);
 
+  const getActiveSession = useCallback(() => activeSessionRef.current, []);
+  const {
+    reverseController,
+    commitReverseTransition,
+    registerScreenPresentation,
+    retainedPresentation,
+  } = useReverseTransitionCommit({
+    progress,
+    progressOwnership,
+    navigationController,
+    interactionOwner,
+    getSession: getActiveSession,
+    completeTransition,
+    cancelTransition,
+  });
+
   const setPendingTargetScreen = useCallback(
     (screenId: string | null, sourceScreenId?: string) => {
       setPendingTargetScreenId(screenId);
@@ -537,6 +563,7 @@ export function ChoreographyProvider({
       const session = activeSessionRef.current;
       const role = getScreenRole(session, screenId);
       if (!session || role === 'inactive') return;
+      if (reverseController.owns(session.id)) return;
       const sessionId = session.id;
       const token = progressOwnership.claim(sessionId);
       if (token === null) return;
@@ -555,7 +582,13 @@ export function ChoreographyProvider({
         }
       );
     },
-    [cancelTransition, completeTransition, progress, progressOwnership]
+    [
+      cancelTransition,
+      completeTransition,
+      progress,
+      progressOwnership,
+      reverseController,
+    ]
   );
   const controlsValue = useMemo(
     () => ({ progress, settleTransition }),
@@ -572,6 +605,7 @@ export function ChoreographyProvider({
       acquireScreenBlocker,
       getSettledScreenId,
       waitForScreenReady,
+      registerScreenPresentation,
     }),
     [
       registerElement,
@@ -582,6 +616,7 @@ export function ChoreographyProvider({
       acquireScreenBlocker,
       getSettledScreenId,
       waitForScreenReady,
+      registerScreenPresentation,
     ]
   );
 
@@ -604,6 +639,9 @@ export function ChoreographyProvider({
       progress,
       progressOwnership,
       navigationController,
+      reverseController,
+      commitReverseTransition,
+      interactionOwner,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
@@ -630,6 +668,9 @@ export function ChoreographyProvider({
       progress,
       progressOwnership,
       navigationController,
+      reverseController,
+      commitReverseTransition,
+      interactionOwner,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
@@ -654,6 +695,7 @@ export function ChoreographyProvider({
                   active={Boolean(isOverlayActive && activeSession)}
                   onPresentationReady={handleHostPresentationReady}
                 >
+                  {retainedPresentation}
                   <TransitionOverlay
                     session={activeSession}
                     progress={progress}

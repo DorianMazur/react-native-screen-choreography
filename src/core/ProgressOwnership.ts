@@ -100,6 +100,8 @@ export function animateOwnedProgress({
   target,
   spring,
   duration,
+  handoffOnComplete = true,
+  onCompleteUI,
   onComplete,
 }: {
   ownership: ProgressOwnership;
@@ -109,6 +111,10 @@ export function animateOwnedProgress({
   target: number;
   spring: SpringConfig;
   duration?: number;
+  /** Navigation-owned reverse commits hand off only after native presentation. */
+  handoffOnComplete?: boolean;
+  /** Runs on the UI runtime before the RN completion is scheduled. */
+  onCompleteUI?: () => void;
   onComplete: (token: number, sessionId: string) => void;
 }): void {
   if (!ownership.isCurrent(token, sessionId)) return;
@@ -119,9 +125,10 @@ export function animateOwnedProgress({
     const complete = (finished?: boolean) => {
       'worklet';
       if (finished && owner.value === token) {
-        if (target === 0 || target === 1) {
+        if (handoffOnComplete && (target === 0 || target === 1)) {
           finishVisibilityHandoff(handoff, sessionId);
         }
+        onCompleteUI?.();
         scheduleOnRN(onComplete, token, sessionId);
       }
     };

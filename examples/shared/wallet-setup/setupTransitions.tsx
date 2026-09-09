@@ -4,19 +4,7 @@ import Animated, {
   interpolate,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import type {
-  SharedElementTransition,
-  SpringConfig,
-} from 'react-native-screen-choreography/core';
-
-export const walletSetupSpring: SpringConfig = {
-  damping: 28,
-  mass: 1,
-  stiffness: 180,
-  overshootClamping: true,
-  restDisplacementThreshold: 0.001,
-  restSpeedThreshold: 0.001,
-};
+import type { SharedElementTransition } from 'react-native-screen-choreography/core';
 
 export const setupOptionTransition: SharedElementTransition = {
   zIndex: 2,

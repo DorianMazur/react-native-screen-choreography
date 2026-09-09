@@ -5,6 +5,8 @@ import {
   setOwnedProgress,
 } from '../core/ProgressOwnership';
 import { ChoreographyContext } from '../core/ChoreographyContext';
+import type { CommitBackNavigation } from '../core/navigationCommit';
+import { debugLog } from '../debug/logger';
 import { FAST_SPRING } from '../core/constants';
 import {
   resolveInteractiveTransitionOutcome,
@@ -19,7 +21,7 @@ import type {
 } from '../types';
 
 interface InteractiveTransitionNavigatorOptions {
-  navigateBack: () => void;
+  navigateBack: CommitBackNavigation;
   currentScreenId?: string;
   routeParams?: Record<string, unknown>;
 }
@@ -43,10 +45,11 @@ export function useInteractiveTransitionNavigator({
     progress,
     progressOwnership,
     navigationController,
+    reverseController,
+    commitReverseTransition,
     preMeasureGroup,
     startTransition,
     waitForOverlayReady,
-    completeTransition,
     cancelTransition,
     getNavigationLineage,
     resolveScreenId,
@@ -73,11 +76,11 @@ export function useInteractiveTransitionNavigator({
       preparingRef.current = false;
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
-      if (sessionId) {
+      if (sessionId && !reverseController.owns(sessionId)) {
         cancelTransition(sessionId);
       }
     },
-    [cancelTransition, clearSettlementTimer]
+    [cancelTransition, clearSettlementTimer, reverseController]
   );
 
   useEffect(() => {
@@ -210,27 +213,6 @@ export function useInteractiveTransitionNavigator({
     ]
   );
 
-  const finishOnRN = useCallback(
-    (token: number, sessionId: string) => {
-      if (
-        sessionIdRef.current !== sessionId ||
-        !progressOwnership.isCurrent(token, sessionId)
-      ) {
-        return;
-      }
-      clearSettlementTimer();
-      sessionIdRef.current = null;
-      setGestureToken(0);
-      setIsActive(false);
-      navigateBack();
-      requestAnimationFrame(() => {
-        if (progressOwnership.isCurrent(token, sessionId))
-          completeTransition(sessionId);
-      });
-    },
-    [clearSettlementTimer, completeTransition, navigateBack, progressOwnership]
-  );
-
   const cancelOnRN = useCallback(
     (token: number, sessionId: string) => {
       if (
@@ -251,11 +233,25 @@ export function useInteractiveTransitionNavigator({
   const animateSettlement = useCallback(
     (target: 0 | 1, options: InteractiveTransitionSettleOptions) => {
       const sessionId = sessionIdRef.current;
-      if (!sessionId) return;
+      if (!sessionId || reverseController.owns(sessionId)) return;
       const token = progressOwnership.claim(sessionId);
       if (token === null) return;
       clearSettlementTimer();
-      const onComplete = target === 0 ? finishOnRN : cancelOnRN;
+      if (target === 0) {
+        // The provider retains the source and owns completion across route unmount.
+        setGestureToken(0);
+        setIsActive(false);
+        commitReverseTransition({
+          sessionId,
+          token,
+          navigateBack,
+          options,
+        }).catch((error: unknown) => {
+          debugLog(`[Interactive] reverse commit failed: ${String(error)}`);
+        });
+        return;
+      }
+      const onComplete = cancelOnRN;
       animateOwnedProgress({
         ownership: progressOwnership,
         token,
@@ -285,7 +281,15 @@ export function useInteractiveTransitionNavigator({
         }, options.duration + 50);
       }
     },
-    [cancelOnRN, clearSettlementTimer, finishOnRN, progress, progressOwnership]
+    [
+      cancelOnRN,
+      clearSettlementTimer,
+      commitReverseTransition,
+      navigateBack,
+      progress,
+      progressOwnership,
+      reverseController,
+    ]
   );
 
   const finish = useCallback(

@@ -267,7 +267,7 @@ import { cardTransition, nameTransition } from './tokenTransitions';
 </SharedElement>;
 ```
 
-Each transition renderer receives frozen React content, flattened style, and measured source/target bounds. The library does not capture native images or choose how a pair moves, resizes, fades, or hands off.
+Each transition renderer receives frozen React content, flattened style, and measured source/target bounds. The library does not choose how a pair moves, resizes, or fades. During an accepted back transition it can retain a temporary native image of the ordinary outgoing screen content while the paired renderers continue animating independently.
 
 Use `SharedElement.Target` when the shared wrapper owns interaction or layout but a nested child owns the visual bounds:
 
@@ -395,6 +395,13 @@ if (session) {
 ```
 
 `setProgress` is a worklet-compatible callback for per-frame gesture updates. `settle()` projects normalized release velocity and carries it into the endpoint spring; `finish()` and `cancel()` remain available for explicit decisions. This controlled API does not automatically receive native-stack's built-in swipe progress yet.
+
+When a back gesture is accepted, the provider retains a native image of the outgoing screen's ordinary content and starts navigation alongside the finishing animation. Shared-element renderers keep animating in the overlay. The outgoing route can unmount before `onTransitionEnd`; keep transition cleanup in the provider callback rather than relying on the route to remain mounted. The retained ordinary content is frozen at release and follows the screen crossfade until the handoff.
+
+The destination accepts touches when the finishing animation is complete and navigation confirms the outgoing route was removed. It does not wait for native-stack's later `transitionEnd` event; keep the navigator's `animation: 'none'` configuration so native navigation does not add its own animation or input blocking. Cancelling a gesture keeps the route. Sessions containing `SharedElement.Live`, missing screen refs, or failed/unsupported native captures keep the outgoing route until the animation ends; they still use the coordinated navigation completion path. Android secure windows and external video surfaces use this fallback. If navigation state events are unavailable, a bounded fallback checks whether the route was actually removed.
+
+This lifecycle uses the `ScreenChoreographySnapshotView` Fabric component. Rebuild the native app after updating the library; a JavaScript-only update cannot add that component.
+
 
 ## Mental Model
 

@@ -2,6 +2,7 @@
 module.exports = {
   useSharedValue: (initial) => ({ value: initial }),
   useAnimatedStyle: (fn) => fn(),
+  useAnimatedProps: (fn) => fn(),
   makeMutable: (initial) => ({ value: initial }),
   withSpring: (toValue) => toValue,
   withTiming: (toValue) => toValue,

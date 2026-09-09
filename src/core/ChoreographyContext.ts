@@ -2,6 +2,9 @@ import { createContext } from 'react';
 import type { ProgressOwnership } from './ProgressOwnership';
 import type { NavigationSessionController } from './NavigationSessionController';
 import type { SharedValue } from 'react-native-reanimated';
+import type { View } from 'react-native';
+import type { ReverseTransitionController } from './ReverseTransitionController';
+import type { ReverseCommitRequest } from '../hooks/useReverseTransitionCommit';
 import type {
   ChoreographyDebugConfig,
   ChoreographyNavigationLineage,
@@ -30,6 +33,10 @@ export interface ChoreographyActionsType {
   acquireScreenBlocker: (screenId: string) => () => void;
   getSettledScreenId: () => string | null;
   waitForScreenReady: (screenId: string) => Promise<boolean>;
+  registerScreenPresentation: (
+    screenId: string,
+    ref: React.RefObject<React.ComponentRef<typeof View> | null>
+  ) => () => void;
 }
 
 export const ChoreographyActionsContext =
@@ -81,6 +88,9 @@ export interface ChoreographyContextType {
   progress: SharedValue<number>;
   progressOwnership: ProgressOwnership;
   navigationController: NavigationSessionController;
+  reverseController: ReverseTransitionController;
+  commitReverseTransition: (request: ReverseCommitRequest) => Promise<void>;
+  interactionOwner: SharedValue<string | null>;
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;

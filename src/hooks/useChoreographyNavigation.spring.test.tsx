@@ -39,6 +39,8 @@ function createContext() {
     progress,
     progressOwnership,
     navigationController: new NavigationSessionController(),
+    reverseController: { owns: () => false },
+    commitReverseTransition: jest.fn(async () => {}),
     activeSession: null,
     pendingTargetScreenId: null,
     preMeasureGroup: jest.fn(async () => {}),
@@ -132,7 +134,7 @@ test('opening retains a copy of its custom spring on the resolved route instance
 });
 
 test.each([undefined, customSpring])(
-  'native Back uses the recorded spring (%j) and pops only on completion',
+  'native Back delegates the recorded spring (%j) and navigation to the provider',
   async (spring) => {
     const context = createContext();
     context.setNavigationLineage({
@@ -147,18 +149,22 @@ test.each([undefined, customSpring])(
       expect(removal.interceptRemoval(pop)).toBe(true);
     });
     expect(context.getNavigationLineage).toHaveBeenCalledWith('detail-route');
-    expect(mockedWithSpring).toHaveBeenCalledWith(
-      0,
-      spring ?? FAST_SPRING,
-      expect.any(Function)
-    );
+    expect(context.commitReverseTransition).toHaveBeenCalledWith({
+      sessionId: 'session',
+      token: expect.any(Number),
+      options: { spring: spring ?? FAST_SPRING },
+      navigateBack: expect.any(Function),
+    });
     expect(pop).not.toHaveBeenCalled();
     expect(context.completeTransition).not.toHaveBeenCalled();
+    const request = jest.mocked(context.commitReverseTransition).mock
+      .calls[0]![0];
     await act(async () => {
-      mockedWithSpring.mock.calls[0]![2]!(true);
+      await request.navigateBack();
     });
     expect(pop).toHaveBeenCalledTimes(1);
-    expect(context.completeTransition).toHaveBeenCalledWith('session');
+    expect(context.completeTransition).not.toHaveBeenCalled();
+    expect(mockedWithSpring).not.toHaveBeenCalled();
   }
 );
 
@@ -191,11 +197,21 @@ describe.each(['forward', 'backward'] as const)(
         context.progress.value = 0.6;
         const { navigation } = await mount(context, 'detail-route');
         await act(async () => navigation.goBack({ spring: override }));
-        expect(mockedWithSpring).toHaveBeenCalledWith(
-          0,
-          override ?? customSpring,
-          expect.any(Function)
-        );
+        if (direction === 'forward') {
+          expect(mockedWithSpring).toHaveBeenCalledWith(
+            0,
+            override ?? customSpring,
+            expect.any(Function)
+          );
+        } else {
+          expect(context.commitReverseTransition).toHaveBeenCalledWith({
+            sessionId: 'session',
+            token: expect.any(Number),
+            navigateBack: expect.any(Function),
+            options: { spring: override ?? customSpring, duration: undefined },
+          });
+          expect(mockedWithSpring).not.toHaveBeenCalled();
+        }
       }
     );
   }

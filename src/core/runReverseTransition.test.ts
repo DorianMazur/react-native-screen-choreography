@@ -6,6 +6,7 @@ import { runReverseTransition } from './runReverseTransition';
 import { TransitionCoordinator } from './TransitionCoordinator';
 import type { ChoreographyContextType } from './ChoreographyContext';
 import type { TransitionSessionData } from '../types';
+import { FAST_SPRING } from './constants';
 
 jest.mock('react-native-reanimated', () => ({
   cancelAnimation: jest.fn(),
@@ -51,6 +52,7 @@ function createContext(
       return createSession('reverse-session');
     }),
     waitForOverlayReady: jest.fn(async () => true),
+    commitReverseTransition: jest.fn(async () => {}),
     completeTransition: jest.fn(),
     cancelTransition: jest.fn(),
     ...overrides,
@@ -79,20 +81,10 @@ describe('runReverseTransition ownership', () => {
     });
   });
 
-  test('keeps the outgoing screen mounted until the reverse animation finishes', async () => {
-    let finishAnimation!: (finished?: boolean) => void;
-    let notifyAnimationStarted!: () => void;
-    const animationStarted = new Promise<void>((resolve) => {
-      notifyAnimationStarted = resolve;
-    });
-    mockedWithSpring.mockImplementation((_value, _config, callback) => {
-      finishAnimation = callback;
-      notifyAnimationStarted();
-      return 0;
-    });
+  test('delegates a prepared reverse to the provider without local animation or navigation', async () => {
     const ctx = createContext();
     const popAction = jest.fn();
-    const reverse = runReverseTransition({
+    await runReverseTransition({
       ctx,
       groupId: 'group',
       sourceScreenId: 'list',
@@ -100,23 +92,33 @@ describe('runReverseTransition ownership', () => {
       popAction,
     });
 
-    await animationStarted;
     expect(popAction).not.toHaveBeenCalled();
     expect(ctx.completeTransition).not.toHaveBeenCalled();
-
-    finishAnimation(true);
-    await reverse;
+    expect(mockedWithSpring).not.toHaveBeenCalled();
+    expect(ctx.commitReverseTransition).toHaveBeenCalledTimes(1);
+    const request = jest.mocked(ctx.commitReverseTransition).mock.calls[0]![0];
+    expect(request).toEqual({
+      sessionId: 'reverse-session',
+      token: expect.any(Number),
+      options: { spring: FAST_SPRING },
+      navigateBack: expect.any(Function),
+    });
+    expect(
+      ctx.progressOwnership.isCurrent(request.token, request.sessionId)
+    ).toBe(true);
+    await expect(request.navigateBack()).resolves.toEqual({
+      removed: true,
+      presented: false,
+    });
+    await expect(request.navigateBack()).resolves.toEqual({
+      removed: false,
+      presented: false,
+    });
     expect(popAction).toHaveBeenCalledTimes(1);
-    expect(ctx.completeTransition).toHaveBeenCalledWith('reverse-session');
+    expect(ctx.completeTransition).not.toHaveBeenCalled();
   });
 
-  test('restores the detail without redispatching when another blocker keeps the route', async () => {
-    const frame = jest
-      .spyOn(global, 'requestAnimationFrame')
-      .mockImplementation((callback) => {
-        callback(0);
-        return 1;
-      });
+  test('reports a rejected legacy removal to the provider without redispatching', async () => {
     const ctx = createContext();
     const popAction = jest.fn();
     await runReverseTransition({
@@ -127,11 +129,15 @@ describe('runReverseTransition ownership', () => {
       popAction,
       isRouteRemoved: () => false,
     });
+    const request = jest.mocked(ctx.commitReverseTransition).mock.calls[0]![0];
+    await expect(request.navigateBack()).resolves.toEqual({
+      removed: false,
+      presented: false,
+    });
+    await request.navigateBack();
     expect(popAction).toHaveBeenCalledTimes(1);
-    expect(mockedWithSpring).toHaveBeenCalledTimes(1);
-    expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
     expect(ctx.completeTransition).not.toHaveBeenCalled();
-    frame.mockRestore();
   });
 
   test('a removed screen cannot dispatch after premeasurement', async () => {
@@ -149,38 +155,30 @@ describe('runReverseTransition ownership', () => {
     expect(popAction).not.toHaveBeenCalled();
   });
 
-  test('qualifies a late spring completion with its original session', async () => {
-    let springCallback: ((finished?: boolean) => void) | undefined;
-    let currentSessionId: string | null = 'reverse-session';
-    const completeTransition = jest.fn((sessionId?: string) => {
-      if (sessionId === currentSessionId) {
-        currentSessionId = null;
-      }
-    });
-    mockedWithSpring.mockImplementation(
-      (_value, _config, callback: (finished?: boolean) => void) => {
-        springCallback = callback;
-        return 0;
-      }
-    );
-    const ctx = createContext({ completeTransition });
+  test('a replaced session cannot dispatch through a previously delegated callback', async () => {
+    const ctx = createContext();
+    const popAction = jest.fn();
 
     await runReverseTransition({
       ctx,
       groupId: 'group',
       sourceScreenId: 'list',
       currentScreenId: 'detail',
-      popAction: jest.fn(),
+      popAction,
     });
 
-    currentSessionId = 'replacement-session';
-    ctx.progressOwnership.setSession(currentSessionId);
+    const request = jest.mocked(ctx.commitReverseTransition).mock.calls[0]![0];
+    ctx.progressOwnership.setSession('replacement-session');
     ctx.progress.value = 0.7;
-    springCallback?.(true);
+    await expect(request.navigateBack()).resolves.toEqual({
+      removed: false,
+      presented: false,
+    });
 
-    expect(completeTransition).not.toHaveBeenCalled();
+    expect(popAction).not.toHaveBeenCalled();
+    expect(ctx.completeTransition).not.toHaveBeenCalled();
     expect(ctx.progress.value).toBe(0.7);
-    expect(currentSessionId).toBe('replacement-session');
+    expect(ctx.progressOwnership.isSession('replacement-session')).toBe(true);
   });
 
   test('falls back to one pop when the real coordinator finds no reverse pairs', async () => {
@@ -309,12 +307,13 @@ describe('runReverseTransition ownership', () => {
     expect(ctx.cancelTransition).not.toHaveBeenCalled();
   });
 
-  test('falls back to one pop and cancels its session when animation setup fails', async () => {
+  test('falls back to one pop and cancels its session when provider setup fails', async () => {
     const popAction = jest.fn();
-    mockedWithSpring.mockImplementation(() => {
-      throw new Error('animation setup failed');
+    const ctx = createContext({
+      commitReverseTransition: jest.fn(async () => {
+        throw new Error('provider setup failed');
+      }),
     });
-    const ctx = createContext();
 
     await runReverseTransition({
       ctx,
@@ -332,7 +331,11 @@ describe('runReverseTransition ownership', () => {
     const popAction = jest.fn(() => {
       throw new Error('dispatch failed');
     });
-    const ctx = createContext();
+    const ctx = createContext({
+      commitReverseTransition: jest.fn(async (request) => {
+        await request.navigateBack();
+      }),
+    });
 
     await runReverseTransition({
       ctx,

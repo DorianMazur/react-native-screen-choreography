@@ -1,4 +1,5 @@
 import { useCallback, useContext, useEffect } from 'react';
+import type { CommitBackNavigation } from '../core/navigationCommit';
 import { Platform } from 'react-native';
 import {
   animateOwnedProgress,
@@ -35,7 +36,7 @@ export interface ChoreographyNavigatorBinding {
   currentScreenId: string;
   currentRouteKey?: string;
   isFocused: boolean;
-  goBack: () => void;
+  goBack: CommitBackNavigation;
 }
 
 export function useChoreographyNavigator({
@@ -59,6 +60,8 @@ export function useChoreographyNavigator({
     startTransition,
     cancelTransition,
     completeTransition,
+    commitReverseTransition,
+    reverseController,
     setPendingTargetScreen,
     setNavigationLineage,
     getNavigationLineage,
@@ -146,13 +149,14 @@ export function useChoreographyNavigator({
       Boolean(
         isFocused &&
         session &&
+        !reverseController.owns(session.id) &&
         ((session.direction === 'forward' &&
           session.sourceScreenId === currentScreenId) ||
           (session.direction === 'backward' &&
             session.targetScreenId === currentScreenId)) &&
         !ctx.pendingTargetScreenId
       ),
-    [ctx.pendingTargetScreenId, currentScreenId, isFocused]
+    [ctx.pendingTargetScreenId, currentScreenId, isFocused, reverseController]
   );
 
   const interruptReturnTransition = useCallback(async () => {
@@ -222,46 +226,6 @@ export function useChoreographyNavigator({
       isCurrentProgressAnimationToken,
       isCurrentSessionAnimation,
       logNavigation,
-      releaseNavigationLock,
-    ]
-  );
-
-  const finishReverseTransition = useCallback(
-    (token: number, sessionId: string) => {
-      if (!isCurrentProgressAnimationToken(token)) {
-        logNavigation(() => `ignore stale reverse completion token=${token}`);
-        return;
-      }
-
-      if (!isCurrentSessionAnimation(sessionId)) {
-        logNavigation(
-          () =>
-            `ignore stale reverse completion token=${token} session=${sessionId} current=${describeSession(controller.getActiveSession())}`
-        );
-        return;
-      }
-
-      logNavigation(
-        () => `reverse animation completed token=${token} session=${sessionId}`
-      );
-      releaseNavigationLock();
-      navigateBack();
-      requestAnimationFrame(() => {
-        if (
-          isCurrentProgressAnimationToken(token) &&
-          isCurrentSessionAnimation(sessionId)
-        ) {
-          completeTransition(sessionId);
-        }
-      });
-    },
-    [
-      completeTransition,
-      controller,
-      isCurrentProgressAnimationToken,
-      isCurrentSessionAnimation,
-      logNavigation,
-      navigateBack,
       releaseNavigationLock,
     ]
   );
@@ -588,6 +552,7 @@ export function useChoreographyNavigator({
         return;
       }
 
+      if (session && reverseController.owns(session.id)) return;
       if (session) {
         const detailScreenId =
           session.direction === 'forward'
@@ -639,14 +604,11 @@ export function useChoreographyNavigator({
             () =>
               `goBack continue reverse session elapsed=${elapsedMs(goBackStartedAt)}`
           );
-          animateOwnedProgress({
-            ownership: progressOwnership,
-            token: animationToken,
+          await commitReverseTransition({
             sessionId,
-            progress,
-            target: 0,
-            spring: springConfig,
-            onComplete: finishReverseTransition,
+            token: animationToken,
+            navigateBack,
+            options: { spring: springConfig, duration: options?.duration },
           });
         }
       } else {
@@ -659,7 +621,8 @@ export function useChoreographyNavigator({
       controller,
       currentScreenId,
       createProgressAnimationToken,
-      finishReverseTransition,
+      commitReverseTransition,
+      reverseController,
       finishSettledReverseTransition,
       getNavigationLineage,
       logNavigation,

@@ -1,4 +1,4 @@
-import { useCallback } from 'react';
+import { useCallback, useEffect } from 'react';
 import {
   useIsFocused,
   useNavigation,
@@ -11,6 +11,11 @@ import {
 } from '../components/ChoreographyScreenBase';
 import { isSingleRouteBack } from '../core/removalAction';
 import { waitForNavigationTarget } from '../core/navigationTarget';
+import {
+  createBackCommit,
+  observeNavigationPresentation,
+  type NavigationCommitSource,
+} from '../core/navigationCommit';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
 import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
@@ -25,7 +30,7 @@ export function useChoreographyNavigation(navigation: any) {
     currentScreenId: route.key,
     currentRouteKey: route.key,
     isFocused,
-    goBack: () => navigation.goBack(),
+    goBack: createBackCommit(navigation, route.key, () => navigation.goBack()),
   });
 
   return {
@@ -55,7 +60,10 @@ export function useChoreographyNavigation(navigation: any) {
 export function useInteractiveTransition() {
   const navigation = useNavigation<any>();
   const route = useRoute();
-  const navigateBack = useCallback(() => navigation.goBack(), [navigation]);
+  const navigateBack = useCallback(
+    () => createBackCommit(navigation, route.key, () => navigation.goBack())(),
+    [navigation, route.key]
+  );
 
   return useInteractiveTransitionNavigator({
     navigateBack,
@@ -68,6 +76,13 @@ export function ChoreographyScreen(props: ChoreographyScreenProps) {
   const navigation = useNavigation();
   const route = useRoute();
   const isFocused = useIsFocused();
+  useEffect(
+    () =>
+      observeNavigationPresentation(
+        navigation as unknown as NavigationCommitSource
+      ),
+    [navigation]
+  );
   const routeParams = (route.params ?? {}) as Record<string, unknown>;
   const { interceptRemoval, preventRemove, sourceScreenId, sourceRouteKey } =
     useChoreographyScreenRemoval({
@@ -79,7 +94,11 @@ export function ChoreographyScreen(props: ChoreographyScreenProps) {
     });
 
   usePreventRemove(preventRemove, ({ data }) => {
-    const resume = () => navigation.dispatch(data.action);
+    const resume = createBackCommit(
+      navigation as unknown as NavigationCommitSource,
+      route.key,
+      () => navigation.dispatch(data.action)
+    );
     const canAnimate = isSingleRouteBack(
       data.action,
       navigation.getState(),

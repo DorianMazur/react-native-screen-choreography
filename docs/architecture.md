@@ -94,7 +94,7 @@ The provider deliberately does **not** hide real elements when a session becomes
 
 `syncHiddenElements()` compares desired visibility against the registry's last scheduled values and sends only changed entries in one UI worklet. Repeated presentation acknowledgements with the same hidden set schedule no work. Comparisons do not read shared values on JS. Ordered hide/reveal batches preserve cancellation and replacement behavior; unregistering a hidden element retains its shared value, and cleanup reveals retained entries before releasing them. The presentation callbacks and 150ms safety net remain the only hide triggers.
 
-At an owned animation's endpoint, the UI runtime reveals the ordinary shared elements and marks their stand-in layers invisible before scheduling JS completion. JS can then finish navigation and unmount the overlay without controlling that visual transfer. Session and animation ownership reject stale completion; reclaiming a visually completed session restores its hidden elements and stand-in layers.
+At a forward animation's endpoint, the UI runtime reveals the ordinary shared elements and marks their stand-in layers invisible before scheduling JS completion. Reverse commits disable that unconditional handoff: `ReverseTransitionHandoff` combines the animation endpoint and the navigation adapter's presentation acknowledgment in shared UI state. Whichever signal arrives last reveals the ordinary shared elements and assigns input ownership to the destination in one UI worklet. If navigation is already presented, a busy JS runtime cannot delay that endpoint handoff. JS subsequently releases navigation bookkeeping and removes the overlay. Session and animation ownership reject stale completion; reclaiming a visually completed session restores its hidden elements and stand-in layers.
 
 Live pairs are different: their only mounted native subtree is still inside an overlay portal until React reparents it. Their overlay layers remain visible at the endpoint until that commit. Completion visibility is therefore applied per pair, not to the whole overlay, so mixed sessions can release stand-ins without hiding live content prematurely. The session gate still hides stale overlay instances in both modes.
 
@@ -109,7 +109,7 @@ Live pairs are different: their only mounted native subtree is still inside an o
   - progress always means `0 = collapsed/list`, `1 = expanded/detail`; direction and role identify which physical side a screen represents, not a separate animation clock
   - during `active`, expanded-screen opacity is `clamp(progress / 0.4, 0, 1)` and collapsed-screen opacity is its complement. The expanded screen is the forward target or backward source.
   - during `preparing`, the forward target is hidden; the backward target and both source roles remain visible. Inactive screens and terminal phases retain normal visibility.
-  - participating screens block pointer events (`shouldBlockInteraction`) during `preparing` and `active`, and re-enable them during `completing` and `cancelling`
+  - participating screens block pointer events (`shouldBlockInteraction`) during `preparing` and `active`. A shared UI input owner can release the acknowledged reverse destination while React still has an active session. The plain outer view blocks input during preparation; the animated inner view controls the active-phase handoff.
 - the same physical screen has the same opacity at a given expansion progress in either direction. On Back, companion content fades out over `1` to `0.7` while the detail background stays opaque; screen crossfade follows over `0.4` to `0`. This avoids multiplying a late content fade by an early whole-screen fade.
 
 ### `SharedElement`
@@ -182,16 +182,20 @@ There are two main reverse paths today.
 
 ### Reverse after the forward session has already settled
 
-- detail elements are measured again
-- a new backward session is created
-- the detail route is popped
-- progress animates back over the visible source screen
+- detail elements are measured again and a new backward session is created
+- accepting `finish()` transfers settlement ownership to the provider's `ReverseTransitionController`
+- for stand-in sessions, `ScreenChoreographySnapshotView` captures the inner outgoing content view and hides that view atomically; the retained image sits under the paired overlay renderers and reproduces the screen's opacity curve
+- after native capture acknowledgment, the remaining animation and navigation dispatch run concurrently; the route may unmount without cancelling provider-owned settlement
+- both adapters subscribe before dispatch and accept navigation as soon as the outgoing route is removed from state. A matching `transitionEnd` observed before removal is diagnostic only, not a handoff requirement. Mounted `ChoreographyScreen` wrappers forward parent-navigation events for nested destinations, scoped to their owning navigator
+- the shared UI gate releases visuals and input only after animation completion and confirmed route removal; React session teardown follows. Native-stack should use `animation: 'none'` to avoid its own animation and input blocking
+- failed capture (150ms maximum wait), missing refs, and sessions containing live pairs retain the animate-then-pop ordering. Live portals keep their original React owner and are not rasterized
+- missing navigation state events use a 700ms safety timeout to recheck removal; observed removal clears it immediately without waiting for native presentation. The adapter reports removal separately from presentation so an already removed source is never restored. A prevented action cancels back to the source
 
 ### Back-navigation interception
 
 Both adapters use `usePreventRemove` in `ChoreographyScreen` and look up provider-owned lineage by the current route key. A single-route Back can run a reverse transition when its previous route matches the recorded source route key. Multi-route removals and unrelated routes do not borrow that transition.
 
-`runReverseTransition` acquires the provider's preparation lock, keeps the outgoing route mounted during the spring, then redispatches the original action. Unavailable pairing falls back to the original action while the preparation still owns its session. Explicit hook Back during an active forward transition retains the existing pop-first reuse path. Built-in native swipe progress is not connected to choreography progress.
+`runReverseTransition` acquires the provider's preparation lock and delegates to the same provider-owned reverse commit used by interactive finish and programmatic reverse. The intercepted original action is redispatched through the adapter's navigation acknowledgment contract. Unavailable pairing falls back to the original action while the preparation still owns its session. Explicit hook Back during an active forward transition retains the existing pop-first reuse path. Built-in native swipe progress is not connected to choreography progress.
 
 ## Visibility And Readiness Rules
 

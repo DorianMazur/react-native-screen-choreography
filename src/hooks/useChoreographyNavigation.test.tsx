@@ -165,6 +165,7 @@ describe('Back preparation ownership', () => {
       progress,
       progressOwnership,
       navigationController: new NavigationSessionController(),
+      reverseController: { owns: () => false },
       activeSession: {
         id: 'session',
         sourceScreenId: 'list',
@@ -221,6 +222,7 @@ describe('Back preparation ownership', () => {
         progress,
         progressOwnership,
         navigationController: new NavigationSessionController(),
+        reverseController: { owns: () => false },
         activeSession: {
           id: 'A',
           direction: 'forward',

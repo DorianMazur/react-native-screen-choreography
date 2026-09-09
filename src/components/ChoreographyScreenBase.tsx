@@ -1,6 +1,9 @@
 import React, { useCallback, useContext, useEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedProps,
+  useAnimatedStyle,
+} from 'react-native-reanimated';
 import { ScreenIdContext } from '../core/screenIdContext';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import {
@@ -31,6 +34,7 @@ export function ChoreographyScreenBase({
   const screenId = instanceId ?? screenName;
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
+  const presentationRef = useRef<React.ComponentRef<typeof View> | null>(null);
   const readinessTokenRef = useRef(0);
   const layoutReadyRef = useRef(false);
   const readyRef = useRef(ready);
@@ -65,8 +69,21 @@ export function ChoreographyScreenBase({
 
   const blockInteraction =
     isPendingTarget || shouldBlockInteraction(role, phase);
+  const interactionOwner = choreography?.interactionOwner;
+  const interactionProps = useAnimatedProps(() => ({
+    pointerEvents:
+      blockInteraction && interactionOwner?.value !== screenId
+        ? ('none' as const)
+        : ('auto' as const),
+  }));
   const setScreenReady = actions?.setScreenReady;
   const unregisterScreen = actions?.unregisterScreen;
+  const registerScreenPresentation = actions?.registerScreenPresentation;
+
+  useEffect(
+    () => registerScreenPresentation?.(screenId, presentationRef),
+    [registerScreenPresentation, screenId]
+  );
 
   useEffect(() => {
     setScreenReady?.(screenId, false, screenName);
@@ -110,12 +127,26 @@ export function ChoreographyScreenBase({
       <View
         onLayout={handleLayout}
         style={[styles.container, { opacity: staticOpacity }]}
-        pointerEvents={blockInteraction ? 'none' : 'auto'}
+        pointerEvents={
+          isPendingTarget || (role !== 'inactive' && phase === 'preparing')
+            ? 'none'
+            : 'box-none'
+        }
       >
-        <Animated.View style={[styles.container, revealStyle]}>
-          <ChoreographyProgressProvider>
-            {children}
-          </ChoreographyProgressProvider>
+        <Animated.View
+          style={[styles.container, revealStyle]}
+          pointerEvents={blockInteraction ? 'none' : 'auto'}
+          animatedProps={interactionProps}
+        >
+          <View
+            ref={presentationRef}
+            collapsable={false}
+            style={styles.container}
+          >
+            <ChoreographyProgressProvider>
+              {children}
+            </ChoreographyProgressProvider>
+          </View>
         </Animated.View>
       </View>
     </ScreenIdContext.Provider>

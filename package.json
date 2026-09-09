@@ -176,6 +176,9 @@
       "components": {
         "ScreenChoreographyView": {
           "className": "ScreenChoreographyView"
+        },
+        "ScreenChoreographySnapshotView": {
+          "className": "ScreenChoreographySnapshotView"
         }
       }
     }

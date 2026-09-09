@@ -31,7 +31,7 @@ import {
   useSafeAreaInsets,
 } from '../runtime';
 import { theme } from '../theme';
-import { setupOptionTransition, walletSetupSpring } from './setupTransitions';
+import { setupOptionTransition } from './setupTransitions';
 
 const groupId = 'wallet-setup';
 const surfaceTransition = makeSurfaceTransition();
@@ -189,7 +189,7 @@ export function WalletSetupScreen() {
     () =>
       navigate(
         { screen: 'WalletExisting' },
-        { transitionConfig: { group: groupId }, spring: walletSetupSpring }
+        { transitionConfig: { group: groupId } }
       ),
     () =>
       Alert.alert(

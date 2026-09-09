@@ -1,4 +1,4 @@
-import { animateOwnedProgress } from './ProgressOwnership';
+import type { CommitBackNavigation } from './navigationCommit';
 import type { ChoreographyContextType } from './ChoreographyContext';
 import { FAST_SPRING } from './constants';
 import type { SpringConfig } from '../types';
@@ -13,7 +13,7 @@ export interface RunReverseTransitionArgs {
   /** Screen we are leaving (the original forward target). */
   currentScreenId: string;
   /** Pop the route. Always invoked, even on failure, so the user is not stuck. */
-  popAction: () => void;
+  popAction: CommitBackNavigation;
   isRouteRemoved?: () => boolean;
   canContinue?: () => boolean;
   /** Spring config. Defaults to {@link FAST_SPRING}. */
@@ -34,12 +34,10 @@ export async function runReverseTransition(
     spring = FAST_SPRING,
   } = args;
   const {
-    progress,
     progressOwnership,
     navigationController,
     preMeasureGroup,
     startTransition,
-    completeTransition,
     cancelTransition,
     waitForOverlayReady,
   } = ctx;
@@ -57,10 +55,10 @@ export async function runReverseTransition(
         ? !progressOwnership.isSession(reverseSessionId)
         : progressOwnership.version !== preparationVersion)
     ) {
-      return;
+      return Promise.resolve({ removed: false, presented: false });
     }
     navigationCommitted = true;
-    popAction();
+    return popAction();
   };
 
   try {
@@ -101,60 +99,18 @@ export async function runReverseTransition(
       cancelTransition(reverseSession.id);
       return;
     }
-    debugLog('[BackIntercept] overlay ready, scheduling spring before pop');
-
-    const sessionId = reverseSession.id;
-    let completionHandled = false;
-    const finishNavigation = async (
-      token: number,
-      completedSessionId: string
-    ) => {
-      if (
-        completionHandled ||
-        !progressOwnership.isCurrent(token, completedSessionId)
-      ) {
-        return;
-      }
-      completionHandled = true;
-      try {
-        if (!canContinue()) {
-          cancelTransition(completedSessionId);
-          return;
-        }
-        commitNavigation();
-        if (isRouteRemoved) {
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve())
-          );
-          if (!progressOwnership.isCurrent(token, completedSessionId)) return;
-          if (!isRouteRemoved()) {
-            cancelTransition(completedSessionId);
-            return;
-          }
-        }
-        if (progressOwnership.isCurrent(token, completedSessionId)) {
-          completeTransition(completedSessionId);
-        }
-      } catch (error) {
-        debugLog(
-          `[BackIntercept] navigation commit failed: ${
-            error instanceof Error ? error.message : String(error)
-          }`
-        );
-        if (progressOwnership.isCurrent(token, completedSessionId)) {
-          cancelTransition(completedSessionId);
-        }
-      }
-    };
-    animateOwnedProgress({
-      ownership: progressOwnership,
+    await ctx.commitReverseTransition({
+      sessionId: reverseSession.id,
       token: animationToken,
-      sessionId,
-      progress,
-      target: 0,
-      spring,
-      onComplete: (token, completedSessionId) => {
-        void finishNavigation(token, completedSessionId);
+      options: { spring },
+      navigateBack: async () => {
+        const result = await commitNavigation();
+        return (
+          result ?? {
+            removed: isRouteRemoved?.() ?? true,
+            presented: false,
+          }
+        );
       },
     });
   } catch (error) {

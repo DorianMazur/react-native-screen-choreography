@@ -3,6 +3,7 @@ import {
   ChoreographyContext,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
+import type { CommitBackNavigation } from '../core/navigationCommit';
 import { runReverseTransition } from '../core/runReverseTransition';
 
 interface ChoreographyScreenRemovalOptions {
@@ -34,7 +35,7 @@ export function useChoreographyScreenRemoval({
 
   const interceptRemoval = useCallback(
     (
-      popAction: () => void,
+      popAction: CommitBackNavigation,
       canAnimate = true,
       isRouteRemoved?: () => boolean
     ): boolean => {
