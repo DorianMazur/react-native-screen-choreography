@@ -4,6 +4,7 @@ import js from '@eslint/js';
 import prettier from 'eslint-plugin-prettier';
 import { defineConfig } from 'eslint/config';
 import path from 'node:path';
+import tsParser from '@typescript-eslint/parser';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -24,6 +25,17 @@ export default defineConfig([
     },
   },
   {
-    ignores: ['node_modules/', 'lib/', '**/.expo/', '**/expo-env.d.ts'],
+    files: ['scripts/performance/**/*.mts'],
+    languageOptions: { parser: tsParser },
+  },
+  {
+    ignores: [
+      'node_modules/',
+      'lib/',
+      '**/.expo/',
+      '**/expo-env.d.ts',
+      '**/android/**/build/',
+      'artifacts/performance/',
+    ],
   },
 ]);

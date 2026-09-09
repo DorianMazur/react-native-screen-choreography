@@ -21,6 +21,7 @@ import {
 import { SafeAreaView } from '../runtime';
 import { AppIcon, IconButton, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
+import { GalleryImage } from './GalleryImage';
 import { PHOTOS } from './data';
 import {
   galleryFrameTransition,
@@ -72,11 +73,7 @@ export function GalleryDetailScreen({
                 transition={galleryPhotoTransition}
                 style={StyleSheet.absoluteFill}
               >
-                <Image
-                  source={photo.image}
-                  resizeMode="cover"
-                  style={styles.heroPhoto}
-                />
+                <GalleryImage photo={photo} />
                 <View style={styles.heroScrim} pointerEvents="none" />
               </SharedElement>
 
@@ -203,10 +200,6 @@ const styles = StyleSheet.create({
     flex: 1,
     position: 'relative',
     overflow: 'hidden',
-  },
-  heroPhoto: {
-    width: '100%',
-    height: '100%',
   },
   heroGlyphWrap: {
     position: 'absolute',

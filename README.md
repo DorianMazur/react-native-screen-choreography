@@ -634,6 +634,7 @@ For app code, the cleanest pattern is:
 ## Further Documentation
 
 - [docs/architecture.md](docs/architecture.md) for the runtime architecture and contributor-level internals
+- [docs/performance.md](docs/performance.md) for local benchmark commands, measurement definitions, and CI performance reports
 - [examples/react-navigation/README.md](examples/react-navigation/README.md) for the bare React Native example
 - [examples/expo-router/README.md](examples/expo-router/README.md) for the Expo Router example
 

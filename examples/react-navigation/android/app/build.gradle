@@ -78,12 +78,16 @@ android {
     compileSdk rootProject.ext.compileSdkVersion
 
     namespace "screenchoreography.example"
+    buildFeatures {
+        buildConfig true
+    }
     defaultConfig {
         applicationId "screenchoreography.example"
         minSdkVersion rootProject.ext.minSdkVersion
         targetSdkVersion rootProject.ext.targetSdkVersion
         versionCode 1
         versionName "1.0"
+        buildConfigField "boolean", "PERFORMANCE_BENCHMARK", "false"
     }
     signingConfigs {
         debug {
@@ -104,6 +108,13 @@ android {
             minifyEnabled enableProguardInReleaseBuilds
             proguardFiles getDefaultProguardFile("proguard-android.txt"), "proguard-rules.pro"
         }
+        benchmark {
+            initWith release
+            matchingFallbacks = ["release"]
+            debuggable false
+            manifestPlaceholders = [usesCleartextTraffic: "false"]
+            buildConfigField "boolean", "PERFORMANCE_BENCHMARK", "true"
+        }
     }
 }
 
@@ -116,4 +127,10 @@ dependencies {
     } else {
         implementation jscFlavor
     }
+}
+
+// Metro selects the production profiling renderer only for the dedicated
+// profiling run. Switching locally must invalidate the cached JS bundle.
+tasks.withType(com.facebook.react.tasks.BundleHermesCTask).configureEach {
+    inputs.property("choreographyReactProfile", providers.environmentVariable("CHOREOGRAPHY_REACT_PROFILE").orElse("0"))
 }

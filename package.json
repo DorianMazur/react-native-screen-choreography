@@ -46,12 +46,14 @@
     "example:react-native": "yarn workspace react-native-screen-choreography-example",
     "example:expo-router": "yarn workspace screen-choreography-expo-router-example",
     "test": "jest",
+    "test:performance": "node --experimental-transform-types --test scripts/performance/*.test.ts",
+    "perf:android": "bash scripts/performance/run-android.sh",
     "clean": "del-cli android/build examples/react-navigation/android/build examples/react-navigation/android/app/build examples/react-navigation/ios/build examples/expo-router/android/build examples/expo-router/ios/build lib",
     "prepare": "bob build",
     "prepublishOnly": "yarn clean && yarn lint && yarn typecheck && yarn test --runInBand && yarn prepare",
-    "typecheck": "tsc",
-    "lint": "eslint \"**/*.{js,ts,tsx}\"",
-    "lint:fix": "eslint \"**/*.{js,ts,tsx}\" --fix"
+    "typecheck": "tsc && tsc -p scripts/performance/tsconfig.json",
+    "lint": "eslint \"**/*.{js,ts,tsx,mts}\"",
+    "lint:fix": "eslint \"**/*.{js,ts,tsx,mts}\" --fix"
   },
   "keywords": [
     "react-native",
@@ -197,5 +199,8 @@
       "eslint"
     ],
     "version": "0.60.0"
+  },
+  "resolutions": {
+    "react-native@npm:0.83.0": "patch:react-native@npm%3A0.83.0#~/.yarn/patches/react-native-npm-0.83.0-577d0f2d83.patch"
   }
 }

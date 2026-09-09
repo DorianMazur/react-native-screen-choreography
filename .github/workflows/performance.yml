@@ -1,0 +1,95 @@
+name: Performance
+
+on:
+  pull_request:
+    branches: [main]
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: performance-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  collectors:
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - name: Test measurement and comment validation
+        run: node --experimental-transform-types --test scripts/performance/*.test.ts
+
+  android:
+    needs: collectors
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      fail-fast: false
+      matrix:
+        mode: [native-release, react-profile]
+    env:
+      PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/android-${{ matrix.mode }}
+      PERFORMANCE_ITERATIONS: '3'
+      PERFORMANCE_MEMORY_CYCLES: '3'
+      PERFORMANCE_ABI: x86_64
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Enable emulator acceleration
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - name: Collect native measurements and fixture reports
+        uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
+        with:
+          # API 31's traced_probes crashes while decoding ftrace events on the
+          # hosted emulator. Use a current system image for Perfetto collection.
+          api-level: 35
+          target: google_apis
+          arch: x86_64
+          profile: pixel_2
+          cores: 2
+          ram-size: 4096M
+          disable-animations: false
+          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
+          script: bash scripts/performance/run-android.sh ${{ matrix.mode }}
+      - name: Add timing summary
+        if: always()
+        run: |
+          if [[ -f "$PERFORMANCE_OUTPUT/report/summary.md" ]]; then
+            cat "$PERFORMANCE_OUTPUT/report/summary.md" >> "$GITHUB_STEP_SUMMARY"
+          else
+            echo 'Performance collection did not produce a report. See build/test logs.' >> "$GITHUB_STEP_SUMMARY"
+          fi
+      - name: Upload compact summary for PR comment
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-summary-android-${{ matrix.mode }}
+          path: ${{ env.PERFORMANCE_OUTPUT }}/report/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload raw measurements and Perfetto traces
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-android-${{ matrix.mode }}
+          path: ${{ env.PERFORMANCE_OUTPUT }}/
+          if-no-files-found: warn
+          retention-days: 7

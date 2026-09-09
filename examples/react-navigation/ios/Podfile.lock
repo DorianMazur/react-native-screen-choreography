@@ -2776,7 +2776,7 @@ PODS:
     - ReactCommon/turbomodule/core
     - SocketRocket
     - Yoga
-  - ScreenChoreography (0.4.2):
+  - ScreenChoreography (0.4.3):
     - boost
     - DoubleConversion
     - fast_float
@@ -3131,7 +3131,7 @@ SPEC CHECKSUMS:
   FBLazyVector: a293a88992c4c33f0aee184acab0b64a08ff9458
   fmt: a40bb5bd0294ea969aaaba240a927bd33d878cdd
   glog: 5683914934d5b6e4240e497e0f4a3b42d1854183
-  hermes-engine: 0b5a1a6502f486371b82c3692c3f9eeb576f000a
+  hermes-engine: c04fbc069a024327374061b7b4672d6f160c7a20
   RCT-Folly: 846fda9475e61ec7bcbf8a3fe81edfcaeb090669
   RCTDeprecation: 2b70c6e3abe00396cefd8913efbf6a2db01a2b36
   RCTRequired: f3540eee8094231581d40c5c6d41b0f170237a81
@@ -3205,7 +3205,7 @@ SPEC CHECKSUMS:
   RNReanimated: 4e6187f2ba1e30e6ddc7c8fc9f19b2dd2b6b2532
   RNScreens: 7f643ee0fd1407dc5085c7795460bd93da113b8f
   RNWorklets: 6daa3975bebe6047822c7485666d501a716674ca
-  ScreenChoreography: dd8ea211728e147419a388a2edcc4e6fe3d22d67
+  ScreenChoreography: 16adf71d35df36a213261a24def1ba8ab295c7b9
   SocketRocket: d4aabe649be1e368d1318fdf28a022d714d65748
   Teleport: c92ee143c5c0af9a27e380a8ca39538f13fac4db
   Yoga: 6ca93c8c13f56baeec55eb608577619b17a4d64e

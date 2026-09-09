@@ -5,7 +5,6 @@ import {
   StyleSheet,
   ScrollView,
   Pressable,
-  Image,
   StatusBar,
   useWindowDimensions,
 } from 'react-native';
@@ -13,6 +12,7 @@ import { SharedElement, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { AppIcon, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
+import { GalleryImage } from './GalleryImage';
 import { PHOTOS, type Photo } from './data';
 import {
   galleryFrameTransition,
@@ -106,11 +106,7 @@ function Tile({
             transition={galleryPhotoTransition}
             style={StyleSheet.absoluteFill}
           >
-            <Image
-              source={photo.image}
-              resizeMode="cover"
-              style={styles.tilePhoto}
-            />
+            <GalleryImage photo={photo} />
             <View style={styles.tileScrim} pointerEvents="none" />
           </SharedElement>
           <View style={styles.tileGlyphWrap} pointerEvents="none">
@@ -208,10 +204,6 @@ const styles = StyleSheet.create({
   tileFrameInner: {
     flex: 1,
     position: 'relative',
-  },
-  tilePhoto: {
-    width: '100%',
-    height: '100%',
   },
   tileGlyphWrap: {
     position: 'absolute',
