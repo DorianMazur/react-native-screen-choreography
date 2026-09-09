@@ -26,33 +26,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     factory.startReactNative(
       withModuleName: "ScreenChoreographyExample",
       in: window,
-      initialProperties: performanceInitialProperties(),
       launchOptions: launchOptions
     )
 
     return true
-  }
-
-  private func performanceInitialProperties() -> [AnyHashable: Any]? {
-    let arguments = ProcessInfo.processInfo.arguments
-    guard let index = arguments.firstIndex(of: "--performanceScenario"),
-      arguments.indices.contains(index + 1),
-      ["ordinary", "live"].contains(arguments[index + 1])
-    else {
-      return nil
-    }
-
-    let profileIndex = arguments.firstIndex(of: "--performanceReactProfile")
-    let reactProfile = profileIndex.map { index in
-      arguments.indices.contains(index + 1)
-        && ["true", "1"].contains(arguments[index + 1].lowercased())
-    } ?? false
-
-    return [
-      "performanceScenario": arguments[index + 1],
-      // The matching production profiling renderer is selected at bundle time.
-      "performanceReactProfile": reactProfile,
-    ]
   }
 }
 

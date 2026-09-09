@@ -6,7 +6,6 @@ import type {
 import { readdir, readFile, mkdir, writeFile } from 'node:fs/promises';
 import path from 'node:path';
 import { pathToFileURL } from 'node:url';
-import { parseXCTestMetrics } from './xctest-metrics.mts';
 import { execFileSync } from 'node:child_process';
 
 const SCENARIOS = ['ordinary', 'live'];
@@ -47,8 +46,7 @@ function add(metrics: MetricSamples, name: string, value: number) {
 function readFixture(
   report: InputRecord,
   mode: string,
-  metrics: MetricSamples,
-  platform: string
+  metrics: MetricSamples
 ) {
   if (report.schemaVersion !== 1 || report.fixtureVersion !== 2) {
     throw new Error('Unsupported fixture schema/version');
@@ -152,7 +150,7 @@ function readFixture(
     `${report.scenario}.payloadUnmountsPerRun`,
     finite(report.payloadUnmounts, 'payloadUnmounts')
   );
-  if (platform === 'android') readAndroidInput(report, metrics);
+  readAndroidInput(report, metrics);
 }
 
 function readAndroidInput(report: InputRecord, metrics: MetricSamples) {
@@ -314,14 +312,10 @@ function readMacrobenchmark(
   const coverage = new Set<string>();
   for (const benchmark of report.benchmarks) {
     const name = String(benchmark.name ?? '');
-    const match =
-      /^(coldStartup|warmStartup|transitionFrames)\[(ordinary|live)\]$/.exec(
-        name
-      );
+    const match = /^transitionFrames\[(ordinary|live)\]$/.exec(name);
     if (!match) throw new Error(`Unexpected Android benchmark name: ${name}`);
     if (existingNames.has(name) || coverage.has(name))
       throw new Error(`Duplicate Android benchmark: ${name}`);
-    const [, kind] = match;
     for (const [key, value] of Object.entries(
       (benchmark.metrics as Record<string, InputRecord>) ?? {}
     )) {
@@ -381,20 +375,10 @@ function readMacrobenchmark(
         );
       }
     }
-    if (kind === 'transitionFrames') {
-      if (!benchmark.sampledMetrics?.frameOverrunMs?.runs?.length) {
-        throw new Error(
-          `Missing ${name} native frame-overrun measurements (requires API 31+)`
-        );
-      }
-    } else {
-      for (const metric of ['timeToInitialDisplayMs', 'timeToFullDisplayMs']) {
-        if (!benchmark.metrics?.[metric]?.runs?.length) {
-          throw new Error(
-            `Missing ${name} native startup measurement: ${metric}`
-          );
-        }
-      }
+    if (!benchmark.sampledMetrics?.frameOverrunMs?.runs?.length) {
+      throw new Error(
+        `Missing ${name} native frame-overrun measurements (requires API 31+)`
+      );
     }
     coverage.add(name);
   }
@@ -409,8 +393,7 @@ export function summarize(
     metadata = {},
   }: { platform: string; mode: string; metadata?: Record<string, unknown> }
 ) {
-  if (!['android', 'ios'].includes(platform))
-    throw new Error('platform must be android or ios');
+  if (platform !== 'android') throw new Error('platform must be android');
   if (!MODES.includes(mode)) throw new Error('Unknown build mode');
   const metrics: MetricSamples = {};
   const errors = [];
@@ -419,7 +402,6 @@ export function summarize(
   const sources = [];
   const runIds = new Set<string>();
   const nativeBenchmarks = new Set<string>();
-  let xctest;
   let expectedIterations;
   let expectedCycles;
   try {
@@ -440,28 +422,12 @@ export function summarize(
     try {
       // Keep invalid producers from partially contributing plausible metrics.
       const documentMetrics: MetricSamples = {};
-      if (Array.isArray(data)) {
-        if (platform !== 'ios') continue;
-        if (xctest)
-          throw new Error(
-            'Duplicate XCTest export would double-count measurements'
-          );
-        // The profiling cases intentionally emit no XCTest performance metrics.
-        if (mode === 'react-profile' && data.length === 0) continue;
-        const parsed = parseXCTestMetrics(data);
-        if (mode === 'react-profile')
-          throw new Error(
-            'Native XCTest timings found in React profiling artifact'
-          );
-        Object.assign(documentMetrics, parsed.metrics);
-        xctest = parsed;
-        sources.push(file);
-      } else if (data.fixtureVersion !== undefined) {
+      if (data.fixtureVersion !== undefined) {
         if (typeof data.runId !== 'string' || !data.runId)
           throw new Error('Missing run ID');
         if (runIds.has(data.runId))
           throw new Error('Duplicate run ID would double-count timings');
-        readFixture(data, mode, documentMetrics, platform);
+        readFixture(data, mode, documentMetrics);
         runIds.add(data.runId);
         fixtures.add(data.scenario);
         sources.push(file);
@@ -495,26 +461,12 @@ export function summarize(
   for (const scenario of SCENARIOS) {
     if (!fixtures.has(scenario))
       errors.push(`Missing valid ${scenario} fixture run`);
-    if (platform === 'android' && !memories.has(scenario))
+    if (!memories.has(scenario))
       errors.push(`Missing ${scenario} memory measurements`);
-    if (
-      platform === 'android' &&
-      !nativeBenchmarks.has(`transitionFrames[${scenario}]`)
-    ) {
+    if (!nativeBenchmarks.has(`transitionFrames[${scenario}]`)) {
       errors.push(
         `Missing ${scenario} native frame-overrun measurements (requires API 31+)`
       );
-    }
-  }
-  if (platform === 'ios' && mode === 'native-release') {
-    for (const scenario of SCENARIOS) {
-      for (const kind of ['Clock', 'Memory']) {
-        if (!xctest?.coverage[`${scenario}${kind}`]) {
-          errors.push(
-            `Missing ${scenario} native XCTest ${kind.toLowerCase()} measurements`
-          );
-        }
-      }
     }
   }
   return {
@@ -528,33 +480,19 @@ export function summarize(
     valid: errors.length === 0,
     errors,
     sources,
-    ...(xctest
-      ? {
-          nativeProvenance: {
-            deviceId: xctest.deviceId,
-            configurationId: xctest.configurationId,
-          },
-          metricDefinitions: xctest.definitions,
-        }
-      : {}),
     metrics: Object.fromEntries(
       Object.entries(metrics)
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, values]) => [key, distribution(values)])
     ),
     notes: [
-      'Hosted emulator/simulator timings are diagnostics, not physical-device performance guarantees.',
+      'Android emulator timings are diagnostics, not physical-device performance guarantees.',
       'requestToSessionActiveMs ends at the JS active callback; it does not measure first presented motion.',
       'Probe times include native test waiting; they are observed upper bounds, not earliest possible input readiness.',
       'React actualDuration measures render work, not native Fabric commit time. Profiling-build timings are separate.',
       'deadlineOverrunPercent is the fraction of captured frames past their platform deadline, not a display refresh/drop count.',
-      'Android memory peaks are sampled checkpoints; iOS memory peaks come from XCTest. Memory deltas include caches and do not prove a leak.',
+      'Memory peaks are sampled checkpoints. Memory deltas include caches and do not prove a leak.',
       'P95 is omitted for fewer than 20 samples. Correlated frame samples do not replace repeated independent trials.',
-      ...(platform === 'ios'
-        ? [
-            'Native iOS timings use seconds; JS timings use milliseconds. The xcresult retains the original XCTest measurements. No iOS dropped-frame count is inferred.',
-          ]
-        : []),
     ],
   };
 }

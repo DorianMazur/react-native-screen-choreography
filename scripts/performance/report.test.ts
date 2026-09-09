@@ -375,103 +375,6 @@ test('rejects invalid expected counts and duplicate native or memory artifacts',
   }
 });
 
-function iosDocuments(profile = false): MeasurementDocument[] {
-  const fixtures = documents(profile).filter(({ data }) => data.fixtureVersion);
-  if (profile) return [...fixtures, { file: 'xctest-metrics.json', data: [] }];
-  const metric = (
-    identifier: string,
-    displayName: string,
-    unitOfMeasurement: string,
-    measurements: number[]
-  ) => ({
-    identifier: `com.apple.dt.XCTMetric_${identifier}`,
-    displayName,
-    unitOfMeasurement,
-    measurements,
-  });
-  return [
-    ...fixtures,
-    {
-      file: 'xctest-metrics.json',
-      data: ['Ordinary', 'Live'].flatMap((scenario) =>
-        ['RoundTrip'].map((kind) => ({
-          testIdentifier: `PerformanceTests/test${scenario}${kind}()`,
-          testRuns: [
-            {
-              device: { deviceId: 'sim-1', deviceName: 'iPhone' },
-              testPlanConfiguration: {
-                configurationId: '1',
-                configurationName: 'Performance',
-              },
-              metrics: [
-                metric(
-                  'Clock.time.monotonic',
-                  'Clock Monotonic Time',
-                  's',
-                  [1.2, 1.4]
-                ),
-                metric(
-                  'Memory.physical_peak',
-                  'Memory Peak Physical',
-                  'kB',
-                  [23000, 24000]
-                ),
-              ],
-            },
-          ],
-        }))
-      ),
-    },
-  ];
-}
-
-test('iOS reports XCTest measurements and requires both native scenarios', () => {
-  const iosOptions = { platform: 'ios', mode: 'native-release' };
-  const summary = summarize(iosDocuments(), iosOptions);
-  assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(
-    summary.metrics['ios.ordinary.xctest.roundTripSeconds']!.median,
-    (1.2 + 1.4) / 2
-  );
-  assert.equal(
-    summary.metrics['ios.live.xctest.memoryPeakPhysical_kB']!.median,
-    23500
-  );
-  assert.equal(
-    summary.metricDefinitions!['ios.live.xctest.roundTripSeconds']
-      .unitOfMeasurement,
-    's'
-  );
-  assert.equal(
-    Object.keys(summary.metrics).some((key) => key.startsWith('android.')),
-    false
-  );
-  const missing = iosDocuments();
-  missing.at(-1)!.data.pop();
-  assert.match(
-    summarize(missing, iosOptions).errors.join(),
-    /Missing live native XCTest memory/
-  );
-  assert.equal(summarize(iosDocuments().slice(0, -1), iosOptions).valid, false);
-  const duplicate = iosDocuments();
-  duplicate.push(duplicate.at(-1)!);
-  assert.match(
-    summarize(duplicate, iosOptions).errors.join(),
-    /Duplicate XCTest/
-  );
-});
-
-test('iOS profiling requires React observations and permits empty native metric export', () => {
-  const iosOptions = { platform: 'ios', mode: 'react-profile' };
-  assert.equal(summarize(iosDocuments(true), iosOptions).valid, true);
-  const mixed = iosDocuments(true);
-  mixed.at(-1)!.data = iosDocuments().at(-1)!.data;
-  assert.match(
-    summarize(mixed, iosOptions).errors.join(),
-    /Native XCTest timings found/
-  );
-});
-
 test('tail estimates require enough observations', () => {
   assert.equal(distribution([]), null);
   assert.equal(distribution([1, 3])!.median, 2);
@@ -487,4 +390,11 @@ test('rejects synthetic-panel fixtures from before the gallery workload', () => 
   input[0]!.data.fixtureVersion = 1;
   const summary = summarize(input, options);
   assert.equal(summary.valid, false);
+});
+
+test('rejects unsupported benchmark platforms', () => {
+  assert.throws(
+    () => summarize(documents(), { ...options, platform: 'ios' }),
+    /platform must be android/
+  );
 });

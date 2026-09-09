@@ -48,7 +48,6 @@
     "test": "jest",
     "test:performance": "node --experimental-transform-types --test scripts/performance/*.test.ts",
     "perf:android": "bash scripts/performance/run-android.sh",
-    "perf:ios": "bash scripts/performance/run-ios.sh",
     "clean": "del-cli android/build examples/react-navigation/android/build examples/react-navigation/android/app/build examples/react-navigation/ios/build examples/expo-router/android/build examples/expo-router/ios/build lib",
     "prepare": "bob build",
     "prepublishOnly": "yarn clean && yarn lint && yarn typecheck && yarn test --runInBand && yarn prepare",

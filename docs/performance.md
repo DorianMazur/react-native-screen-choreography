@@ -37,9 +37,6 @@ generate a report:
 ```sh
 yarn perf:android native-release
 yarn perf:android react-profile
-
-yarn perf:ios native-release
-yarn perf:ios react-profile
 ```
 
 Omitting the mode selects `native-release`. Neither mode requires a running
@@ -91,65 +88,6 @@ Frame tests still start a fresh Activity before each measured round trip; launch
 and settling are outside the measured interval. Native compilation and installation
 still take their usual time, especially on the first run.
 
-### Optional local iOS measurements
-
-Use macOS with Xcode 26, its command-line tools and an installed iPhone simulator
-runtime. Install Ruby and Bundler compatible with
-`examples/react-navigation/Gemfile.lock`, then install the locked Pods:
-
-```sh
-cd examples/react-navigation
-bundle install
-bundle exec pod install --deployment --project-directory=ios
-cd ../..
-```
-
-The committed Pod lockfile builds React Native core and its C++ dependencies
-from source while using prebuilt Hermes. Leave `RCT_USE_RN_DEP` and
-`RCT_USE_PREBUILT_RNCORE` unset for this installation; enabling their prebuilt
-alternatives changes the dependency graph and is incompatible with this lock.
-
-The dependency installation must succeed before running the benchmarks. If a
-locked native artifact such as Hermes cannot be downloaded, preserve the error
-and retry when that artifact is available. Do not silently switch engine
-versions or fall back to an unpinned source build to obtain a timing result.
-
-Boot one iPhone simulator, or select a booted simulator explicitly:
-
-```sh
-PERFORMANCE_IOS_DEVICE=YOUR_SIMULATOR_UDID \
-  PERFORMANCE_OUTPUT=artifacts/performance/ios-comparison-01 \
-  yarn perf:ios native-release
-```
-
-Without `PERFORMANCE_IOS_DEVICE`, exactly one available simulator must be booted.
-`PERFORMANCE_OUTPUT` follows the same fresh-directory rule as Android. The
-runner uses separate build directories for native and profiling modes.
-
-The native XCTest cases record three iterations per metric. XCTest also executes
-and discards a first iteration; round-trip tests explicitly warm the fixture
-before the measured loop. The profiling cases collect an acknowledged round
-trip without native XCTest performance measurements. Android iteration variables
-do not change these iOS counts.
-
-`yarn perf:ios` targets simulators and disables code signing. For a signed
-physical-device XCTest run, use the underlying scheme with your device and
-signing configuration:
-
-```sh
-xcodebuild test \
-  -workspace examples/react-navigation/ios/ScreenChoreographyExample.xcworkspace \
-  -scheme ScreenChoreographyPerformance -configuration Release \
-  -destination 'platform=iOS,id=YOUR_DEVICE_UDID' \
-  -resultBundlePath artifacts/performance/ios-device.xcresult
-```
-
-Use a fresh result path and configure signing for the app and UI test target.
-For profiling, set `CHOREOGRAPHY_REACT_PROFILE=1` in the environment and pass
-`PERFORMANCE_REACT_PROFILE=1` to `xcodebuild`; keep a separate derived-data directory.
-The app exports JSON to `Documents/choreography-benchmarks/` in its data container,
-which must be collected alongside the `.xcresult` bundle for a manual run.
-
 ## What the measurements mean
 
 | Measurement                                             | Definition and limitation                                                                                                                                                                                                                              |
@@ -162,20 +100,17 @@ which must be collected alongside the `.xcresult` bundle for a manual run.
 | Payload mounts and unmounts                             | Instrumented React payload lifecycle. A live run requires one owner mount and no owner unmount during its journeys. This does not establish native video/focus continuity.                                                                             |
 | Android frame timing                                    | Macrobenchmark `FrameTimingMetric` samples and Perfetto traces from the scripted forward/back round trip, including probe and status updates. `frameOverrunMs` is time past a platform frame deadline; negative means it finished before the deadline. |
 | Android `deadlineOverrunPercent`                        | Percentage of captured frame samples with positive overrun. It is not a count of skipped display refreshes.                                                                                                                                            |
-| iOS `roundTripSeconds`                                  | XCTest clock time for opening, acknowledging a real detail tap, returning, and acknowledging a real list tap. Includes automation and observation overhead.                                                                                            |
-| iOS physical memory                                     | XCTest application peak physical memory and memory change during that round trip. The report preserves XCTest's declared memory units and allows negative changes.                                                                                     |
 | Android PSS/RSS                                         | Process memory checkpoints at baseline, detail, and after returning. The sampled maximum can miss a peak between checkpoints.                                                                                                                          |
 
 On Android, JavaScript lifecycle and probe telemetry is collected separately
 from the native frame window through the repeated memory/input fixture. Do not
 treat its probe timestamps as frame-by-frame observations of the Macrobenchmark
 trace. Report serialization and file export happen outside measured transition
-windows. On iOS, fixture resets and exports are outside the XCTest clock/memory
-intervals.
+windows.
 
-There is no iOS dropped-frame count in this suite. There is also no measurement
-of native Fabric commit duration or precise first-motion presentation latency.
-Those need additional native instrumentation or Instruments analysis.
+This suite does not measure native Fabric commit duration or precise
+first-motion presentation latency.
+Those need additional native instrumentation.
 
 Memory after returning includes caches and retained application state. A positive
 delta does not prove a leak; a flat sampled delta does not prove that transient
@@ -186,8 +121,7 @@ resource lifetimes require separate investigation.
 
 Each run writes `report/summary.md`, `report/summary.json`, raw measurements,
 device metadata, and build/test logs under its output directory. Android retains
-Macrobenchmark results, Perfetto traces, and memory dumps. iOS retains the
-`.xcresult` bundle, exported native metrics, and fixture JSON.
+Macrobenchmark results, Perfetto traces, and memory dumps.
 
 Summaries show sample count, median, minimum, maximum, and P95 only when at least
 20 samples are available. Frame samples within a transition are correlated;
@@ -197,12 +131,11 @@ making a product performance claim.
 
 Collection fails for missing required measurements, unsuccessful journeys,
 unacknowledged input, lost telemetry, duplicate run IDs, invalid units, or a
-profiling-mode mismatch. iOS native-release collection requires ordinary and live
-round-trip clock and peak-memory coverage. Numerical performance values
+profiling-mode mismatch. Numerical performance values
 are informational: the suite does not impose an automatic percentage-regression
 threshold or compute a controlled comparison against the base branch.
 
-Hosted emulator and simulator results are diagnostics. Keep them separate from
+Hosted emulator results are diagnostics. Keep them separate from
 physical-device measurements and avoid treating cross-run host load, OS changes,
 or different build modes as library regressions.
 
@@ -211,7 +144,6 @@ or different build modes as library regressions.
 Performance CI runs only on Android. The regular iOS build remains in the main
 CI workflow. Check iOS transitions locally after native iOS changes and before
 releases; Android measurements cannot detect iOS-specific rendering regressions.
-The optional `perf:ios` command remains available for local investigation.
 
 The [Performance workflow](../.github/workflows/performance.yml) runs collector
 tests and Android jobs for each build mode on pull requests to
@@ -262,8 +194,8 @@ inject native touches; invoking their JS handlers directly is not a valid test.
 8. Tap `benchmark-end`, then wait for `benchmark-export-complete` (also aliased as
    `benchmark-exported`). The marker appears after native export resolves.
 
-For another cycle, capture `benchmark-run-id` (iOS identifier/accessibility value;
-Android content description `benchmark-run-id:<runId>`),
+For another cycle, capture `benchmark-run-id` (Android content description
+`benchmark-run-id:<runId>`),
 tap `benchmark-reset`, wait for a changed run ID, then wait for `benchmark-ready`.
 Reset exports any measured, unexported run before replacing its collector. A reset
 during an unfinished request preserves an explicit failure. Initial resets with
