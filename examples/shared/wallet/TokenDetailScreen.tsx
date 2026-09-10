@@ -9,20 +9,14 @@ import {
 } from 'react-native';
 import {
   SafeAreaView,
-  SharedElement,
   useChoreographyControls,
   useExampleNavigation,
 } from '../runtime';
 import { TOKENS } from './data';
 import { formatMoney, walletTheme as theme } from './walletTheme';
 import { WalletIconButton } from './WalletIcon';
-import { WalletSection } from './WalletSection';
 import { PriceHistory } from './PriceHistory';
-import {
-  tokenIconTransition,
-  tokenTextTransition,
-  tokenValueTransition,
-} from './walletTransitions';
+import { walletTransition } from './walletTransitions';
 
 const websites: Record<string, string> = {
   polygon: 'https://polygon.technology',
@@ -78,26 +72,23 @@ export function TokenDetailScreen({
         <View style={styles.detailCard}>
           <View style={styles.cardContent}>
             <View style={styles.headerRow}>
-              <SharedElement.Target
-                id={`token.${token.id}.icon`}
+              <walletTransition.Element.Target
+                name="icon"
                 groupId={`token.${token.id}`}
-                transition={tokenIconTransition}
                 style={styles.iconTarget}
                 metadata={{ scale: 48 / 44 }}
               />
 
               <View style={styles.headerInfo}>
-                <SharedElement.Target
-                  id={`token.${token.id}.name`}
+                <walletTransition.Element.Target
+                  name="name"
                   groupId={`token.${token.id}`}
-                  transition={tokenTextTransition}
                   style={styles.nameTarget}
                   metadata={{ scale: 22 / 16 }}
                 />
-                <SharedElement.Target
-                  id={`token.${token.id}.symbol`}
+                <walletTransition.Element.Target
+                  name="symbol"
                   groupId={`token.${token.id}`}
-                  transition={tokenTextTransition}
                   style={styles.symbolTarget}
                   metadata={{ scale: 1 }}
                 />
@@ -105,37 +96,35 @@ export function TokenDetailScreen({
             </View>
 
             <View style={styles.valueSection}>
-              <SharedElement.Target
-                id={`token.${token.id}.value`}
+              <walletTransition.Element.Target
+                name="value"
                 groupId={`token.${token.id}`}
-                transition={tokenValueTransition}
                 style={styles.valueTarget}
                 metadata={{ scale: 36 / 15 }}
               />
               <View style={styles.changeRow}>
-                <SharedElement.Target
-                  id={`token.${token.id}.change`}
+                <walletTransition.Element.Target
+                  name="change"
                   groupId={`token.${token.id}`}
-                  transition={tokenValueTransition}
                   style={styles.changeTarget}
                   metadata={{ scale: 1 }}
                 />
-                <WalletSection start={0.8} distance={0}>
+                <walletTransition.Enter name="period">
                   <Text style={styles.periodLabel}>past 24h</Text>
-                </WalletSection>
+                </walletTransition.Enter>
               </View>
             </View>
           </View>
         </View>
 
-        <WalletSection start={0.4} distance={0}>
+        <walletTransition.Enter name="history">
           <PriceHistory
             key={token.id}
             token={token}
             onInteract={settleTransition}
           />
-        </WalletSection>
-        <WalletSection start={0.72}>
+        </walletTransition.Enter>
+        <walletTransition.Enter name="holdings">
           <View style={styles.section}>
             <View style={styles.sectionHeading}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>
@@ -171,7 +160,7 @@ export function TokenDetailScreen({
             </Text>
             <Text style={styles.description}>{token.description}</Text>
           </View>
-        </WalletSection>
+        </walletTransition.Enter>
       </ScrollView>
     </SafeAreaView>
   );

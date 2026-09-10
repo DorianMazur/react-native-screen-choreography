@@ -5,7 +5,7 @@ This example app exposes the shared gallery, wallet, and wallet-setup demos thro
 ## What It Demonstrates
 
 - one live Gallery hero owned by the list and reparented into the detail target: photo, title, subtitle, camera icon, and gradient share one derived frame; fixed image/text layouts use transforms instead of image reloads or text crossfades
-- explicit custom transition objects in the Wallet demo
+- declarative shared roles and section reveals in the Wallet demo
 - a retained Wallet setup panel with persistent controls and expanding background
 - icon handoff with shared bounds interpolation
 - live component transitions with custom wallet value motion
@@ -70,3 +70,18 @@ The Expo Router app imports those same files. Only navigator setup, destination 
 - start scrolling during an active detail transition and verify `settleTransition()` snaps cleanly to the detail endpoint
 - go back quickly and tap a different token once
 - repeat push-pop cycles to check for flashes, dropped reverses, or large startup delays
+
+## Transition definitions
+
+All three demos use `defineTransition` from the shared core API:
+
+| Demo | Definition | Live content |
+| --- | --- | --- |
+| Gallery | `../shared/gallery/galleryTransitions.tsx` | One hero plus a local detail reveal |
+| Wallet | `../shared/wallet/walletTransitions.tsx` | Five named logo/text/value roles plus staged detail sections |
+| Wallet setup | `../shared/wallet-setup/setupTransitions.tsx` | One panel containing persistent buttons and artwork |
+
+The definitions coordinate endpoints and local section reveals. Image cropping,
+text scaling, and the setup panel's internal motion stay inside their retained
+components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
+ordinary screen content, not to content hosted on another route.

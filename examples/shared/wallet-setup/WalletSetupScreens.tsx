@@ -25,13 +25,12 @@ import Animated, {
 } from 'react-native-reanimated';
 import { AppIcon, IconButton } from '../AppChrome';
 import {
-  SharedElement,
   useSharedElementPresentation,
   useExampleNavigation,
   useSafeAreaInsets,
 } from '../runtime';
 import { theme } from '../theme';
-import { surfaceTransition } from './setupTransitions';
+import { walletSetupTransition } from './setupTransitions';
 
 const groupId = 'wallet-setup';
 type IconName = ComponentProps<typeof AppIcon>['name'];
@@ -284,14 +283,13 @@ export function WalletSetupScreen() {
           },
         ]}
       >
-        <SharedElement
-          id="wallet-setup.surface"
+        <walletSetupTransition.Element
+          name="panel"
           groupId={groupId}
           style={[
             styles.sheetSurface,
             { height: Math.min(470, height - insets.top - insets.bottom - 24) },
           ]}
-          transition={surfaceTransition}
         >
           <WalletPanel actions={actions}>
             <ScrollView
@@ -316,7 +314,7 @@ export function WalletSetupScreen() {
               <View style={styles.optionsPlaceholder} />
             </ScrollView>
           </WalletPanel>
-        </SharedElement>
+        </walletSetupTransition.Element>
       </Animated.View>
     </View>
   );
@@ -327,11 +325,10 @@ export function WalletExistingScreen() {
   return (
     <View style={styles.modalScreen}>
       <StatusBar barStyle="light-content" />
-      <SharedElement.Target
-        id="wallet-setup.surface"
+      <walletSetupTransition.Element.Target
+        name="panel"
         groupId={groupId}
         style={StyleSheet.absoluteFill}
-        transition={surfaceTransition}
         metadata={{ onBack: goBack }}
       />
     </View>

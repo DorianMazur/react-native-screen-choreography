@@ -51,7 +51,7 @@ Current important exports include:
 - `useChoreographyProgress`
 - `useLatchedReveal`
 - `useStaggeredReveal`
-- transition factory: `makeTransition`; retained layout: `useSharedElementPresentation`
+- transition factories: `defineTransition`, `makeTransition`; retained layout: `useSharedElementPresentation`
 - transition primitives: `TransitionSurface`, `TransitionFrame`, `resolveSurfaceStyle`;
 - debug helpers: `setDebugEnabled`
 - types: `ElementPresentation`, `ChoreographyDebugConfig`, `ChoreographyDebugLevel`, `ChoreographyDebugCategory`

@@ -144,3 +144,19 @@ and missing endpoint handling when modifying lifecycle code.
 Gallery, Wallet, and Wallet setup share screen implementations between the two
 example apps. The Android performance workload mounts the actual Gallery screens;
 it does not compare synthetic default/custom rendering modes.
+
+## Declarative composition
+
+`defineTransition` compiles named bounds/surface recipes into module-stable
+`makeTransition` adapters. Typed owner/target wrappers resolve the same role
+without adding another component representation. Recipes copy their scalar
+configuration when defined; endpoint presentation data is still frozen by the
+coordinator at session start.
+
+Enter/exit roles render local animated views driven by screen progress. They do
+not participate in pair discovery or overlay readiness. There are no unpaired
+tracks or copied image/text recipes. All examples use this layer: Gallery for its hero and details, Wallet for five
+shared roles and staged sections, and Wallet setup for its single panel.
+Reveals use direction-specific preparation endpoints and suppress translation
+under reduced-motion settings. They read screen state, so retained descendants
+continue to use `useSharedElementPresentation` for their own internal motion.

@@ -1,14 +1,9 @@
 import { TokenSharedContent } from './TokenSharedContent';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { SharedElement } from '../runtime';
 import type { Token } from './data';
 import { formatMoney, walletTheme as theme } from './walletTheme';
 import { TokenLogo } from './TokenLogo';
-import {
-  tokenIconTransition,
-  tokenTextTransition,
-  tokenValueTransition,
-} from './walletTransitions';
+import { walletTransition } from './walletTransitions';
 
 interface TokenRowProps {
   token: Token;
@@ -27,57 +22,52 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
     >
       <View style={styles.rowContainer}>
         <View style={styles.row}>
-          <SharedElement
-            id={`token.${token.id}.icon`}
+          <walletTransition.Element
+            name="icon"
             groupId={`token.${token.id}`}
-            transition={tokenIconTransition}
             portalStyle={styles.portal}
           >
             <TokenSharedContent>
               <TokenLogo token={token} size={44} />
             </TokenSharedContent>
-          </SharedElement>
+          </walletTransition.Element>
 
           <View style={styles.info}>
-            <SharedElement
-              id={`token.${token.id}.name`}
+            <walletTransition.Element
+              name="name"
               groupId={`token.${token.id}`}
-              transition={tokenTextTransition}
               portalStyle={styles.portal}
             >
               <TokenSharedContent>
                 <Text style={styles.name}>{token.name}</Text>
               </TokenSharedContent>
-            </SharedElement>
+            </walletTransition.Element>
 
-            <SharedElement
-              id={`token.${token.id}.symbol`}
+            <walletTransition.Element
+              name="symbol"
               groupId={`token.${token.id}`}
-              transition={tokenTextTransition}
               portalStyle={styles.portal}
             >
               <TokenSharedContent>
                 <Text style={styles.symbol}>{token.symbol}</Text>
               </TokenSharedContent>
-            </SharedElement>
+            </walletTransition.Element>
           </View>
 
           <View style={styles.valueContainer}>
-            <SharedElement
-              id={`token.${token.id}.value`}
+            <walletTransition.Element
+              name="value"
               groupId={`token.${token.id}`}
-              transition={tokenValueTransition}
               portalStyle={styles.portal}
             >
               <TokenSharedContent>
                 <Text style={styles.value}>{formatMoney(token.price)}</Text>
               </TokenSharedContent>
-            </SharedElement>
+            </walletTransition.Element>
 
-            <SharedElement
-              id={`token.${token.id}.change`}
+            <walletTransition.Element
+              name="change"
               groupId={`token.${token.id}`}
-              transition={tokenValueTransition}
               portalStyle={styles.portal}
             >
               <TokenSharedContent>
@@ -93,7 +83,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
                   {token.change24h.toFixed(2)}%
                 </Text>
               </TokenSharedContent>
-            </SharedElement>
+            </walletTransition.Element>
           </View>
         </View>
       </View>

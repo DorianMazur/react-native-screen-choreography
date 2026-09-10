@@ -96,6 +96,11 @@ describe('Public entry points', () => {
           'MakeTransitionOptions',
           'SharedElement',
           'makeTransition',
+          'defineTransition',
+          'TransitionDefinition',
+          'DefinedTransition',
+          'SharedMotionRecipe',
+          'RevealRecipe',
         ])
       );
     }

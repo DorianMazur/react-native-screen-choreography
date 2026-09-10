@@ -260,6 +260,60 @@ The Expo Router equivalent is `useChoreographyRouter(router, screenId)` from the
 `/expo-router` entry; call `push({ href, targetScreenId, transitionConfig })` and
 `back()`. Both integrations record the originating route instance for Back.
 
+## Declarative transitions
+
+`defineTransition` names shared roles and companion enter/exit motion in one
+module-scoped definition. It uses the same live-only core as `makeTransition`.
+
+```tsx
+import { defineTransition, Springs } from 'react-native-screen-choreography';
+
+const photoMotion = defineTransition({
+  motion: { spring: Springs.default },
+  shared: {
+    hero: { kind: 'bounds', radius: [8, 0], zIndex: 2 },
+  },
+  enter: { details: { during: [0.55, 0.9], translateY: 0 } },
+  exit: { caption: { during: [0.1, 0.4] } },
+});
+
+// List: the only mounted hero content.
+<photoMotion.Element name="hero" groupId="photo.aurora" style={styles.tile}>
+  <PhotoHero />
+</photoMotion.Element>
+
+// Detail: empty receiving host and ordinary local content.
+<photoMotion.Element.Target name="hero" groupId="photo.aurora" style={styles.hero} />
+<photoMotion.Enter name="details"><PhotoDetails /></photoMotion.Enter>
+
+await navigate('PhotoDetail', { photoId: 'aurora' }, {
+  ...photoMotion.navigationOptions,
+  transitionConfig: { group: 'photo.aurora' },
+});
+```
+
+`Element` and `Element.Target` accept only names declared in `shared` and bind
+the same transition automatically. A shared role can use `kind: 'bounds'`,
+`kind: 'surface'`, or a custom `Transition` returned by `makeTransition`.
+Surface motion includes endpoint colors and shadows. Numeric endpoint radii
+are used unless a canonical `[collapsed, expanded]` radius pair is supplied.
+
+`Enter` and `Exit` are ordinary animated views on their own screens; they do not
+register unpaired shared elements or copy content into the overlay. `during`
+uses increasing expansion progress, and `translateY` is the offset while hidden.
+Back reverses these tracks. Preparing uses the requested direction instead of
+stale progress from a previous session. Reduced-motion settings suppress reveal
+translation while preserving the fade. At idle, mounted content is visible. The screen's
+own visibility also applies, so effective opacity includes the screen crossfade.
+Use `Exit` for nonshared source content. Enter/Exit read the containing screen
+state, so use `useSharedElementPresentation` for motion inside retained content.
+Keep these wrappers mounted while
+animating. Their role names are independently typed from the shared roles.
+
+`navigationOptions` contains the configured spring/duration; spread it into
+Back options too when requesting an explicit duration in both directions.
+For layout within the retained component, use `useSharedElementPresentation`.
+
 ## Custom motion
 
 Create a transition once, outside render, with `makeTransition`. A renderer
@@ -363,6 +417,7 @@ keeps the route. Native-stack swipe progress is not connected automatically.
 | `ChoreographyProvider` | Session lifecycle, shared progress, native overlay, debug configuration |
 | `ChoreographyScreen` | Route identity, readiness, visibility, and navigation integration |
 | `SharedElement` / `SharedElement.Target` | One live owner and its receiving endpoint |
+| `defineTransition` | Named shared roles and local enter/exit motion |
 | `makeTransition` | Custom motion around the library-owned portal host |
 | `TransitionFrame` / `TransitionSurface` | Bounds and surface interpolation |
 | `useSharedElementPresentation` | Canonical endpoint data inside retained content |
@@ -396,7 +451,11 @@ The source of truth for shared exports is `src/entries/core.ts`.
 
 ## Example Apps
 
-The bare React Navigation app contains the full demo gallery:
+Both apps share Gallery, Wallet, and Wallet setup, each with a module-scoped
+`defineTransition` definition. Retained components handle their own interior
+layout; the declarative layer coordinates shared roles and local reveals.
+
+Run the bare React Navigation app:
 
 ```bash
 cd examples/react-navigation

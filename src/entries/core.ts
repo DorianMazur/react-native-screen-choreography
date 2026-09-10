@@ -60,3 +60,14 @@ export {
   type SharedElementPresentation,
   type SharedElementEndpoint,
 } from '../core/SharedElementPresentation';
+
+export {
+  defineTransition,
+  type DefinedTransition,
+  type TransitionDefinition,
+  type TransitionElementProps,
+  type TransitionTargetProps,
+  type TransitionRevealProps,
+  type SharedMotionRecipe,
+  type RevealRecipe,
+} from '../transitions/defineTransition';

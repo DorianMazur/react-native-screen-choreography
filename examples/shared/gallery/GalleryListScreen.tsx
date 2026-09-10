@@ -8,13 +8,13 @@ import {
   StatusBar,
   useWindowDimensions,
 } from 'react-native';
-import { SharedElement, useExampleNavigation } from '../runtime';
+import { useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS, type Photo } from './data';
 import {
-  galleryHeroTransition,
+  galleryTransition,
   galleryNavigationOptions,
 } from './galleryTransitions';
 
@@ -103,10 +103,9 @@ function Tile({
         pressed && { opacity: 0.7 },
       ]}
     >
-      <SharedElement
-        id="hero"
+      <galleryTransition.Element
+        name="hero"
         groupId={`photo.${photo.id}`}
-        transition={galleryHeroTransition}
         style={styles.tileFrame}
       >
         <GalleryHero
@@ -115,7 +114,7 @@ function Tile({
           height={width / 0.72}
           observation={observation}
         />
-      </SharedElement>
+      </galleryTransition.Element>
     </Pressable>
   );
 }

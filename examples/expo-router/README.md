@@ -38,3 +38,18 @@ Expo Go is not supported because the library includes a custom native overlay ho
 - `../shared` contains the actual demo screens and transition recipes used by both example apps.
 
 Keep `animation: 'none'` and transparent stack content so the choreography overlay owns the visible motion.
+
+## Transition definitions
+
+All three demos use `defineTransition` from the shared core API:
+
+| Demo | Definition | Live content |
+| --- | --- | --- |
+| Gallery | `../shared/gallery/galleryTransitions.tsx` | One hero plus a local detail reveal |
+| Wallet | `../shared/wallet/walletTransitions.tsx` | Five named logo/text/value roles plus staged detail sections |
+| Wallet setup | `../shared/wallet-setup/setupTransitions.tsx` | One panel containing persistent buttons and artwork |
+
+The definitions coordinate endpoints and local section reveals. Image cropping,
+text scaling, and the setup panel's internal motion stay inside their retained
+components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
+ordinary screen content, not to content hosted on another route.

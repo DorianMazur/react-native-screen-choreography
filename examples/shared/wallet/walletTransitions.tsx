@@ -1,25 +1,16 @@
-import { makeTransition, TransitionFrame } from '../runtime';
-import type { TransitionRendererProps } from 'react-native-screen-choreography/core';
-function TokenMotion({
-  children,
-  source,
-  target,
-  progress,
-  direction,
-  zIndex,
-}: TransitionRendererProps) {
-  return (
-    <TransitionFrame
-      sourceMetrics={source.metrics}
-      targetMetrics={target.metrics}
-      progress={progress}
-      direction={direction}
-      zIndex={zIndex}
-    >
-      {children}
-    </TransitionFrame>
-  );
-}
-export const tokenIconTransition = makeTransition({ renderer: TokenMotion });
-export const tokenTextTransition = tokenIconTransition;
-export const tokenValueTransition = tokenIconTransition;
+import { defineTransition } from '../runtime';
+
+export const walletTransition = defineTransition({
+  shared: {
+    icon: { kind: 'bounds' },
+    name: { kind: 'bounds' },
+    symbol: { kind: 'bounds' },
+    value: { kind: 'bounds' },
+    change: { kind: 'bounds' },
+  },
+  enter: {
+    period: { during: [0.8, 0.95] },
+    history: { during: [0.4, 0.95] },
+    holdings: { during: [0.72, 0.95], translateY: 10 },
+  },
+});

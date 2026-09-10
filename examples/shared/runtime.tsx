@@ -9,16 +9,10 @@ import type { ChoreographyNavigationOptions } from 'react-native-screen-choreogr
 
 export {
   Springs,
-  SharedElement,
   useSharedElementPresentation,
-  TransitionSurface,
-  makeTransition,
-  TransitionFrame,
-  resolveSurfaceStyle,
+  defineTransition,
   useChoreographyControls,
   useChoreographyProgress,
-  useLatchedReveal,
-  useStaggeredReveal,
 } from 'react-native-screen-choreography/core';
 export {
   SafeAreaView,

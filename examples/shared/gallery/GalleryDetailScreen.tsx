@@ -1,8 +1,4 @@
 import React, { useState } from 'react';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
 import {
   View,
   Text,
@@ -14,16 +10,12 @@ import {
   Share,
   StatusBar,
 } from 'react-native';
-import {
-  SharedElement,
-  useChoreographyProgress,
-  useExampleNavigation,
-} from '../runtime';
+import { useChoreographyControls, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { AppIcon, IconButton, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS } from './data';
-import { galleryHeroTransition } from './galleryTransitions';
+import { galleryTransition } from './galleryTransitions';
 
 export function GalleryDetailScreen({
   photoId = 'aurora',
@@ -33,14 +25,7 @@ export function GalleryDetailScreen({
   const photo = PHOTOS.find((item) => item.id === photoId) ?? PHOTOS[0]!;
   const [lightboxVisible, setLightboxVisible] = useState(false);
   const { goBack } = useExampleNavigation();
-  const { progress, isActive, settleTransition } = useChoreographyProgress();
-  // Keep companion content inside the ScrollView throughout the fade so its
-  // viewport clipping and safe-area boundary never change at handoff.
-  const detailsStyle = useAnimatedStyle(() => ({
-    opacity: isActive
-      ? interpolate(progress.value, [0.55, 0.9], [0, 1], 'clamp')
-      : 1,
-  }));
+  const { settleTransition } = useChoreographyControls();
 
   return (
     <>
@@ -56,14 +41,13 @@ export function GalleryDetailScreen({
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
-          <SharedElement.Target
-            id="hero"
+          <galleryTransition.Element.Target
+            name="hero"
             groupId={`photo.${photo.id}`}
-            transition={galleryHeroTransition}
             style={styles.frame}
           />
 
-          <Animated.View style={detailsStyle}>
+          <galleryTransition.Enter name="details">
             <View style={styles.section}>
               <Text style={styles.sectionTitle}>Notes</Text>
               <Text style={styles.body}>{photo.description}</Text>
@@ -97,7 +81,7 @@ export function GalleryDetailScreen({
                 }}
               />
             </View>
-          </Animated.View>
+          </galleryTransition.Enter>
         </ScrollView>
         <Modal
           visible={lightboxVisible}
