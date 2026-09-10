@@ -55,4 +55,8 @@ export type {
   ChoreographyDebugCategory,
 } from '../types';
 
-export { useSharedElementPresentation, type SharedElementPresentation, type SharedElementEndpoint } from '../core/SharedElementPresentation';
+export {
+  useSharedElementPresentation,
+  type SharedElementPresentation,
+  type SharedElementEndpoint,
+} from '../core/SharedElementPresentation';

@@ -18,7 +18,6 @@ import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
 import { debugLog, debugTrace, debugWarn } from '../debug/logger';
 import { getElementIdentityKey } from './elementIdentity';
 
-
 let sessionCounter = 0;
 
 function nowMs(): number {
@@ -146,15 +145,14 @@ export class TransitionCoordinator {
     }
 
     const refreshStartedAt = nowMs();
-    const batchEntries: BatchMeasureEntry[] = session.pairs
-      .map((pair) => {
-        const element = side === 'source' ? pair.source : pair.target;
-        return {
-          id: pair.id,
-          ref: element.ref,
-          animatedRef: getAnimatedRef(element),
-        };
-      });
+    const batchEntries: BatchMeasureEntry[] = session.pairs.map((pair) => {
+      const element = side === 'source' ? pair.source : pair.target;
+      return {
+        id: pair.id,
+        ref: element.ref,
+        animatedRef: getAnimatedRef(element),
+      };
+    });
 
     const results = await measureElementsBatched(batchEntries);
 
@@ -775,7 +773,8 @@ export class TransitionCoordinator {
       const targetPresentation = target?.getPresentation();
       const transition =
         sourcePresentation?.transition ?? targetPresentation?.transition;
-      if (!source || !target || !sourcePresentation || !targetPresentation) continue;
+      if (!source || !target || !sourcePresentation || !targetPresentation)
+        continue;
       const measuredSource =
         batchResults.get(`source:${id}`) ?? source?.metrics;
       const measuredTarget =

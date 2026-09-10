@@ -116,7 +116,6 @@ export class ReverseTransitionController {
       this.finish(operation, 'cancel');
       return;
     }
-
   }
 
   private async commit(operation: ReverseOperation): Promise<void> {

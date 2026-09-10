@@ -6,7 +6,7 @@ This example app exposes the shared gallery, wallet, and wallet-setup demos thro
 
 - one live Gallery hero owned by the list and reparented into the detail target: photo, title, subtitle, camera icon, and gradient share one derived frame; fixed image/text layouts use transforms instead of image reloads or text crossfades
 - explicit custom transition objects in the Wallet demo
-- surface interpolation for the row-to-detail card container
+- a retained Wallet setup panel with persistent controls and expanding background
 - icon handoff with shared bounds interpolation
 - live component transitions with custom wallet value motion
 - early settle handling when detail interaction starts mid-transition

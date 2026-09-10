@@ -7,10 +7,7 @@ Choreographed shared element transitions for React Native with multi-element coo
 <p align="center">
   <img src="docs/Gallery_demo.gif" width="200" />
   &nbsp;
-  &nbsp;
   <img src="docs/Wallet_demo.gif" width="200" />
-  &nbsp;
-  <img src="docs/Player_demo.gif" width="200" />
 </p>
 
 ## Overview
@@ -216,432 +213,179 @@ You can also toggle the logger imperatively from anywhere via the exported `setD
 
 ## Quick Start
 
-For new transitions, start with the [declarative API](docs/declarative-transitions.md).
-`defineTransition` combines built-in surface, image, fixed-layout text, crossfade,
-and enter/exit recipes into one reusable definition. Endpoints register a semantic
-name and group; entering and exiting content needs no invisible matching view.
-Reanimated remains the internal animation runtime. Existing custom renderers and
-the lower-level APIs below remain supported.
+Every shared element has one mounted owner and an empty receiving target. The
+library uses `react-native-teleport` to move the owner's native subtree through
+the overlay and into the target. The owner screen must remain mounted while its
+content is hosted elsewhere.
 
-### 1. Wrap each screen root
-
-`ChoreographyScreen` gives the library a screen scope for registration, readiness, and visibility handoff. Keep `screenId` as your logical screen name. Both navigation adapters use the navigator's unique route key internally, so multiple mounted instances of the same screen name remain independent.
-
-Session and renderer `sourceScreenId`, `targetScreenId`, and side `screenId` values identify route instances, not logical screen names. Continue using screen names in `navigate()` and Expo Router's `targetScreenId` option. Navigation preparation and request queueing are shared by all callers under one provider.
-
-```tsx
-import { ChoreographyScreen } from 'react-native-screen-choreography';
-
-function TokenListScreen() {
-  return (
-    <ChoreographyScreen screenId="TokenList">
-      {/** screen content */}
-    </ChoreographyScreen>
-  );
-}
-```
-
-Pass `ready={false}` while destination data or visual state is not ready to measure. For async work that can overlap, use a reference-counted blocker:
-
-```tsx
-const { acquire } = useChoreographyBlocker();
-
-useEffect(() => {
-  const release = acquire();
-  prepareDestination().finally(release);
-  return release;
-}, [acquire]);
-```
-
-### 2. Mark matching shared elements
-
-Use the same `id` and `groupId` on source and target elements. The `groupId` represents one transition session and the `id` represents one element within it. Every element requires a developer-authored `transition` renderer; the library coordinates the session but does not choose the visual behavior.
+Wrap each route in `ChoreographyScreen` with a stable logical `screenId`. On the
+list, render the content once:
 
 ```tsx
 import { SharedElement } from 'react-native-screen-choreography';
-import { cardTransition, nameTransition } from './tokenTransitions';
 
-<SharedElement
-  id="card"
-  groupId={`token.${token.id}`}
-  transition={cardTransition}
-  style={styles.card}
->
-  <View>
-    <SharedElement
-      id="name"
-      groupId={`token.${token.id}`}
-      transition={nameTransition}
-    >
-      <Text>{token.name}</Text>
-    </SharedElement>
-  </View>
-</SharedElement>;
-```
-
-Each transition renderer receives frozen React content, flattened style, and measured source/target bounds. The library does not choose how a pair moves, resizes, or fades. During an accepted back transition it can retain a temporary native image of the ordinary outgoing screen content while the paired renderers continue animating independently.
-
-Use `SharedElement.Target` when the shared wrapper owns interaction or layout but a nested child owns the visual bounds:
-
-```tsx
-<SharedElement id="artwork" groupId={groupId} transition={artworkTransition}>
-  <Pressable style={styles.row}>
-    <SharedElement.Target style={styles.artwork}>
-      <Image source={image} style={styles.fill} />
-    </SharedElement.Target>
-    <Text>{title}</Text>
-  </Pressable>
+<SharedElement id="hero" groupId={`photo.${photo.id}`} style={styles.tile}>
+  <PhotoHero photo={photo} />
 </SharedElement>
 ```
 
-`createSharedElementComponent(Component)` makes a ref-forwarding native component shared without adding a wrapper view.
-
-### Live native payloads
-
-Use `SharedElement.Live` and `SharedElement.LiveTarget` when one stateful native subtree must survive the move. The live owner renders exactly once; `react-native-teleport` reparents it into the transition overlay and then into the destination host.
+On the detail screen, reserve the destination bounds:
 
 ```tsx
-// Source owns the only player instance.
-<SharedElement.Live id="player" groupId="player.demo" style={styles.compact}>
-  <VideoPlayer />
-</SharedElement.Live>
-
-// Destination only supplies bounds and a native host.
-<SharedElement.LiveTarget
-  id="player"
-  groupId="player.demo"
-  style={styles.expanded}
+<SharedElement.Target
+  id="hero"
+  groupId={`photo.${photo.id}`}
+  style={styles.hero}
 />
 ```
 
-The screen containing `SharedElement.Live` must stay mounted while the payload is hosted elsewhere. Use this for video, maps, camera previews, editors, or other stateful native views; use ordinary `SharedElement` renderers for normal static content.
+The target has no children. Give both endpoints measurable layout. Intrinsic
+owners preserve their measured space while their content is elsewhere; explicit
+width/height and flex-height rules remain controlled by the app. If content
+must respond to changing bounds, animate it using `useSharedElementPresentation`.
 
-Ordinary stand-ins hand visibility back to the real elements on the UI thread at animation completion. Live content instead remains visible at its endpoint in the overlay until React reparents it into the destination host; delayed JS cleanup must not hide the only mounted instance.
-
-#### Custom live motion and layout
-
-Use `makeLiveTransition` when the same mounted content needs custom motion. Its
-renderer receives a required `children` value containing the library-owned live
-host. Render those children **exactly once, continuously throughout the
-transition**. Do not replace them with a copy of the payload. Live renderer sides
-expose metrics, style, screen identity, and metadata, but no React `content`.
-TypeScript requires the host input; it cannot prove that your renderer displays it.
+Navigate with the matching group:
 
 ```tsx
-import Animated, { interpolate, useAnimatedStyle } from 'react-native-reanimated';
+const { navigate, goBack } = useChoreographyNavigation(navigation);
+
+await navigate('PhotoDetail', { photoId: photo.id }, {
+  transitionConfig: { group: `photo.${photo.id}` },
+});
+// On the detail route:
+await goBack();
+```
+
+The Expo Router equivalent is `useChoreographyRouter(router, screenId)` from the
+`/expo-router` entry; call `push({ href, targetScreenId, transitionConfig })` and
+`back()`. Both integrations record the originating route instance for Back.
+
+## Custom motion
+
+Create a transition once, outside render, with `makeTransition`. A renderer
+receives frozen endpoint styles, metadata, and metrics plus the shared progress.
+Render its supplied `children` exactly once: this is the library-owned portal
+host, not a copy of the component.
+
+```tsx
 import {
-  makeLiveTransition,
-  SharedElement,
-  type LiveTransitionRendererProps,
+  makeTransition,
+  TransitionFrame,
+  type TransitionRendererProps,
 } from 'react-native-screen-choreography';
 
-function PanelMotion({
-  children, source, target, progress, direction, zIndex,
-}: LiveTransitionRendererProps) {
-  const motion = useAnimatedStyle(() => {
-    const t = direction === 'backward' ? 1 - progress.value : progress.value;
-    return {
-      left: interpolate(t, [0, 1], [source.metrics.pageX, target.metrics.pageX]),
-      top: interpolate(t, [0, 1], [source.metrics.pageY, target.metrics.pageY]),
-      transform: [{ scale: interpolate(t, [0, 1], [
-        source.metrics.width / 240, target.metrics.width / 240,
-      ]) }],
-    };
-  });
+function HeroMotion({ source, target, progress, direction, zIndex, children }:
+  TransitionRendererProps) {
   return (
-    <Animated.View style={[
-      { position: 'absolute', width: 240, height: 160,
-        transformOrigin: 'top left', zIndex },
-      motion,
-    ]}>
-      {children}
-    </Animated.View>
-  );
-}
-
-// Create once, outside render, and reuse on BOTH endpoints.
-const panelMotion = makeLiveTransition({ renderer: PanelMotion });
-
-// Owner: measured endpoint and payload both start at 240 × 160.
-<SharedElement.Live
-  id="panel" groupId="demo" transition={panelMotion}
-  style={{ width: 240, height: 160 }}
-  portalStyle={{ flex: 0, width: 240, height: 160 }}
->
-  <StatefulPanel />
-</SharedElement.Live>
-
-// Destination: measure 120 × 80, retain 240 × 160 content layout, scale to fit.
-<SharedElement.LiveTarget
-  id="panel" groupId="demo" transition={panelMotion}
-  style={{ width: 120, height: 80 }}
-  hostStyle={{
-    right: undefined, bottom: undefined, width: 240, height: 160,
-    transformOrigin: 'top left', transform: [{ scale: 0.5 }],
-  }}
-/>
-```
-
-The coordinator uses the departing endpoint's transition, including on back
-navigation. Reuse the same transition object at both endpoints for consistent
-motion. If configuration depends on props, memoize the factory result with
-`useMemo`; recreating a renderer identity during a transition can remount its
-host. Custom transitions default to `zIndex: 100`, matching built-in live motion;
-an explicit `zIndex`, including zero, overrides it.
-
-`style` controls the measured endpoint wrapper. `portalStyle` on `Live` overrides
-the portal's default `flex: 1`, `width: '100%'`, and `height: '100%'` layout.
-`hostStyle` on `LiveTarget` overrides its absolute-fill receiving host separately.
-Your renderer's resting geometry must match these endpoints to avoid a jump at
-handoff. This also supports an offscreen one-pixel endpoint with a full-height
-payload and receiving host. Omitting all options keeps built-in live behavior.
-
-Both live endpoints accept `metadata?: unknown`, exposed as `source.metadata`
-and `target.metadata`. Narrow it before use. The library captures each metadata
-reference at session start; replacing it affects the next session. It does not
-deep-clone or freeze application objects. SharedValue references inside metadata
-can continue changing on the UI thread, allowing motion to follow an ongoing
-gesture without inspecting private child props. The same API is exported from
-`/core` and `/expo-router`.
-
-### 3. Navigate through the choreography hook
-
-`useChoreographyNavigation` pre-measures the source, manages pending target visibility, creates the transition session, and coordinates reverse flows.
-
-```tsx
-import { useChoreographyNavigation } from 'react-native-screen-choreography';
-
-function TokenListScreen({ navigation }) {
-  const { navigate } = useChoreographyNavigation(navigation);
-
-  return (
-    <Pressable
-      onPress={() =>
-        navigate(
-          'TokenDetail',
-          { tokenId: token.id },
-          {
-            transitionConfig: {
-              group: `token.${token.id}`,
-            },
-          }
-        )
-      }
+    <TransitionFrame
+      sourceMetrics={source.metrics}
+      targetMetrics={target.metrics}
+      progress={progress}
+      direction={direction}
+      zIndex={zIndex}
     >
-      <TokenRow token={token} />
-    </Pressable>
+      {children}
+    </TransitionFrame>
   );
 }
+
+const heroTransition = makeTransition({ renderer: HeroMotion });
 ```
 
-### 4. Add companion motion on the detail screen
+Pass the same transition to the owner and target. `TransitionFrame` interpolates
+bounds and optional radii. `TransitionSurface` also interpolates surface colors
+and radius; its expanded-side `boxShadow` stays static while opacity animates.
+Use `resolveSurfaceStyle` to extract surface properties from a `ViewStyle`.
+Do not animate shadow parameters per frame on Android.
 
-`useChoreographyProgress` exposes the shared progress value and common derived behaviors such as backdrop dim and early settle handling when the user starts interacting before the transition is fully settled. Combine it with `useLatchedReveal` and `useStaggeredReveal` to drive companion content.
+### Layout inside the owner
 
-When a component only needs to settle a transition, use `useChoreographyControls()` instead. Its `settleTransition` callback stays stable for the current screen and acts on the latest session without subscribing the component to session changes. Keep `useChoreographyProgress()` in components that render phase-dependent UI or companion animations; it subscribes to screen-visible session fields, not pair or measurement updates.
+`useSharedElementPresentation()` is available inside the owner subtree. It returns
+`progress`, `transitioning`, `settled`, and canonical `collapsed`/`expanded`
+endpoints. Endpoint metrics are initially `null`; provide initial layout from
+props until a transition has measured both sides.
+
+The shared progress is `0` at the list and `1` at the detail. When no transition
+is active, use `settled` to choose the correct endpoint instead of relying on
+progress left by another group. The Gallery example demonstrates a single hero
+whose image, gradient, icon, and text follow one derived frame.
+
+`metadata` is captured by reference at session start, not deep-cloned. Treat
+endpoint metadata as immutable. `portalStyle` controls the owner's native
+container; `hostStyle` controls the target's receiving host independently of its
+measured wrapper. The retained component keeps its original React context, so
+pass destination-specific callbacks explicitly when needed (see Wallet setup).
+
+## Companion content and readiness
+
+`useChoreographyProgress()` exposes progress, screen role, phase, direction,
+`backdropStyle`, and `settleTransition()`. Use animated styles for detail content
+that appears alongside the shared element. `useLatchedReveal` and
+`useStaggeredReveal` provide optional reveal helpers.
+
+For components that only need to settle on interaction,
+`useChoreographyControls()` provides a stable `settleTransition` callback:
 
 ```tsx
 const { settleTransition } = useChoreographyControls();
-
 <ScrollView onScrollBeginDrag={settleTransition}>{children}</ScrollView>;
 ```
 
-Progress always runs from `0` (list) to `1` (detail), including when Back drives it toward `0`. The screen crossfade occupies `0–0.4`, and the default companion reveal occupies `0.7–1`. Opening reveals the detail background before its companion content; closing fades the content before the background. Custom content timings that overlap the screen crossfade also inherit its opacity. Forward and reverse use different default springs, so this ordering is reversible without requiring equal duration.
+`ChoreographyScreen` accepts `ready`; `useChoreographyBlocker()` provides
+reference-counted `acquire()`/release handles for asynchronous preparation.
+These gate destination measurement. The overlay does not mount duplicate images
+or wait for an overlay image reload. Load necessary content before navigating.
+
+## Interactive Back
+
+`useInteractiveTransition()` prepares a return without popping the route. Its
+exposed gesture progress is `0` at the untouched detail and `1` at a completed
+back gesture (the inverse of the shared expansion progress).
 
 ```tsx
-import Animated from 'react-native-reanimated';
-import {
-  useChoreographyProgress,
-  useLatchedReveal,
-  useStaggeredReveal,
-} from 'react-native-screen-choreography';
-
-function TokenDetailScreen() {
-  const { backdropStyle, settleTransition } = useChoreographyProgress();
-  const showSections = useLatchedReveal();
-  const { getItemStyle } = useStaggeredReveal(4, { stagger: 0.04 });
-
-  return (
-    <ScrollView onScrollBeginDrag={settleTransition}>
-      <Animated.View style={[styles.backdrop, backdropStyle]} />
-      {showSections ? (
-        <Animated.View style={getItemStyle(0)}>
-          <SectionOne />
-        </Animated.View>
-      ) : null}
-    </ScrollView>
-  );
-}
-```
-
-### 5. Drive a custom back gesture
-
-`useInteractiveTransition` prepares a backward session without popping the route. Its exposed `progress` is gesture-normalized: `0` is the untouched detail and `1` is a completed back gesture.
-
-```tsx
-const { beginBack, setProgress, settle, progress, isActive } =
-  useInteractiveTransition();
-
+const { beginBack, setProgress, settle } = useInteractiveTransition();
 const session = await beginBack();
 if (session) {
   setProgress(translationX / screenWidth);
-  settle({
-    velocity: velocityX / screenWidth,
-    threshold: 0.4,
-  });
+  settle({ velocity: velocityX / screenWidth, threshold: 0.4 });
 }
 ```
 
-`setProgress` is a worklet-compatible callback for per-frame gesture updates. `settle()` projects normalized release velocity and carries it into the endpoint spring; `finish()` and `cancel()` remain available for explicit decisions. This controlled API does not automatically receive native-stack's built-in swipe progress yet.
+`setProgress` is worklet-compatible. `finish()` and `cancel()` support explicit
+decisions. Accepted returns keep the outgoing route mounted until the animation
+ends, then commit navigation and release the overlay after removal. Cancelling
+keeps the route. Native-stack swipe progress is not connected automatically.
 
-When a back gesture is accepted, the provider retains a native image of the outgoing screen's ordinary content and starts navigation alongside the finishing animation. Shared-element renderers keep animating in the overlay. The outgoing route can unmount before `onTransitionEnd`; keep transition cleanup in the provider callback rather than relying on the route to remain mounted. The retained ordinary content is frozen at release and follows the screen crossfade until the handoff.
+## Public API at a glance
 
-The destination accepts touches when the finishing animation is complete and navigation confirms the outgoing route was removed. It does not wait for native-stack's later `transitionEnd` event; keep the navigator's `animation: 'none'` configuration so native navigation does not add its own animation or input blocking. Cancelling a gesture keeps the route. Sessions containing `SharedElement.Live`, missing screen refs, or failed/unsupported native captures keep the outgoing route until the animation ends; they still use the coordinated navigation completion path. Android secure windows and external video surfaces use this fallback. If navigation state events are unavailable, a bounded fallback checks whether the route was actually removed.
-
-This lifecycle uses the `ScreenChoreographySnapshotView` Fabric component. Rebuild the native app after updating the library; a JavaScript-only update cannot add that component.
-
-
-## Mental Model
-
-- `ChoreographyProvider` owns the registry, transition coordinator, overlay, and active session state.
-- `ChoreographyScreen` crossfades the collapsed and expanded screens over expansion progress `0–0.4` in both directions, leaving the detail background opaque during the later companion-content reveal. Shared elements are hidden individually while the overlay owns their positions.
-- `SharedElement` tags matching source and target elements.
-- `useChoreographyNavigation` starts and reverses time-driven sessions.
-- `useInteractiveTransition` prepares and controls custom gesture-driven back sessions.
-- `useChoreographyProgress` lets the screen react to the active session.
-- `useLatchedReveal` and `useStaggeredReveal` help detail screens reveal content without duplicating transition lifecycle code. Pass `translateY: 0` to `useStaggeredReveal` for a fade in place; the default initial vertical offset is 16.
-
-## Public API At A Glance
-
-### Components
-
-| Component                           | Purpose                                                                                                                                                                                                                                                                                 |
-| ----------------------------------- | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `ChoreographyProvider`              | Hosts the registry, coordinator, overlay, and native transition host; accepts `debug`, `onTransitionStart`, and `onTransitionEnd`                                                                                                                                                       |
-| `ChoreographyScreen`                | Provides a stable `screenId` for registration, readiness tracking, and reversible screen crossfade, with shared elements individually hidden while the overlay owns them |
-| `SharedElement`                     | Registers one shared element by compound `(screenId, groupId, id)` identity and requires the renderer that defines its overlay behavior                                                                                                                                                 |
-| `SharedElement.Target`              | Measures a nested visual child while the outer shared element retains layout and visibility ownership                                                                                                                                                                                   |
-| `SharedElement.Live` / `LiveTarget` | Reparents one live native subtree through the overlay into a destination host without remounting it                                                                                                                                                                                     |
-| `createSharedElementComponent()`    | Adds shared-element registration directly to a ref-forwarding component without another wrapper                                                                                                                                                                                         |
-
-`onTransitionStart(session)` fires when a session becomes active with resolved pairs. `onTransitionEnd(session)` fires after the active session completes or is cancelled, which makes them useful for instrumentation, analytics, or app-level UI coordination.
-
-### Hooks
-
-| Hook                                    | Returns                                                                                                                                               |
-| --------------------------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------- |
-| `useChoreographyNavigation(navigation)` | `navigate()` and `goBack()` integrated with the transition system                                                                                     |
-| `useChoreographyBlocker()`              | Reference-counted `acquire()` function for delaying destination measurement until async preparation completes                                         |
-| `useInteractiveTransition()`            | `beginBack()`, worklet-compatible `setProgress()`, velocity-aware `settle()`, explicit `finish()` / `cancel()`, normalized `progress`, and `isActive` |
-| `useChoreographyProgress()`             | `progress`, `role`, `phase`, `direction`, session identity, `backdropStyle`, `isActive`, and `settleTransition()`                                     |
-| `useChoreographyControls()`             | Stable `settleTransition()` for the current screen, without subscribing to session changes |
-| `useLatchedReveal(config?)`             | Boolean gate that opens at a progress threshold and stays visible once revealed                                                                       |
-| `useStaggeredReveal(count, config?)`    | `getItemStyle(index)` for staged reveal sections                                                                                                      |
-
-### Transition Recipes
-
-Use these ready-made `SharedElementTransition` objects instead of writing an overlay renderer for each element. They are exported from the package root, `/core`, and `/expo-router`.
-
-| Recipe | Purpose |
+| API | Purpose |
 | --- | --- |
-| `makeSurfaceTransition(collapsedFallback?, expandedFallback?)` | Moves and resizes a surface, interpolating its background color and corner radius |
-| `makeStretchTransition(options?)` | Carries one expanded-side rendering and scales it into the interpolated frame, without crossfading |
-| `textMorphTransition` | Moves one plain text element while interpolating its actual font size, optional line height, and numeric top margin |
+| `ChoreographyProvider` | Session lifecycle, shared progress, native overlay, debug configuration |
+| `ChoreographyScreen` | Route identity, readiness, visibility, and navigation integration |
+| `SharedElement` / `SharedElement.Target` | One live owner and its receiving endpoint |
+| `makeTransition` | Custom motion around the library-owned portal host |
+| `TransitionFrame` / `TransitionSurface` | Bounds and surface interpolation |
+| `useSharedElementPresentation` | Canonical endpoint data inside retained content |
+| `useChoreographyNavigation` / `useChoreographyRouter` | Navigation through the matching integration |
+| `useInteractiveTransition` | Controlled return gestures |
+| `useChoreographyProgress` / `useChoreographyControls` | Companion motion and settling |
+| `useLatchedReveal` / `useStaggeredReveal` | Reveal helpers |
+| `useChoreographyBlocker` | Application readiness |
+| `Springs` / `Easings` | Animation presets |
+| `resolveSurfaceStyle` / `setDebugEnabled` | Styling and logging helpers |
 
-```tsx
-import { Text } from 'react-native';
-import {
-  SharedElement,
-  makeSurfaceTransition,
-  makeStretchTransition,
-  textMorphTransition,
-} from 'react-native-screen-choreography';
+The source of truth for shared exports is `src/entries/core.ts`.
 
-const cardTransition = makeSurfaceTransition(
-  { backgroundColor: '#202522', borderRadius: 8 },
-  { backgroundColor: '#101412', borderRadius: 0 }
-);
-const iconTransition = makeStretchTransition();
+## Known limitations
 
-function LocationLabel({ location, expanded }: { location: string; expanded: boolean }) {
-  return (
-    <SharedElement id="location" groupId="photo" transition={textMorphTransition}>
-      <Text style={{ fontSize: expanded ? 15 : 11, marginTop: expanded ? 4 : 2 }}>
-        {location}
-      </Text>
-    </SharedElement>
-  );
-}
-```
-
-Define recipe objects outside render and reuse them on both screens. Assign `cardTransition` and `iconTransition` to the corresponding surface and icon shared elements. Surface styles are read from the frozen shared-element wrapper styles; fallbacks apply only when those styles omit a value. Fallback order always means collapsed then expanded, even on Back.
-
-`makeStretchTransition` accepts `sourceBorderRadius`, `targetBorderRadius`, and `zIndex`. Radius options mean collapsed and expanded defaults respectively; numeric wrapper radii take precedence. It scales width and height independently, so use it for compatible representations such as the same icon at two sizes. For photographs with changing aspect ratios, use `StandInElement` with a single `Image` child and `resizeMode="cover"` to resize the crop without stretching it.
-
-`textMorphTransition` requires a direct `Text` or `Animated.Text` child containing identical plain text on both sides. Keep the font family, weight, style, letter spacing, color, other layout styles, and font-scaling settings the same; give `lineHeight` on both sides or neither. Unsupported child types, different text, and incompatible checked typography produce an explanatory error. Rich text, font-family changes, different content, and custom layout require a custom renderer. Text is laid out at its animated font size and width, so multiline text can change line breaks; use compatible single-line layouts when continuous glyph placement is essential.
-
-### Stand-in primitives
-
-| Primitive                    | Purpose                                                                           |
-| ---------------------------- | --------------------------------------------------------------------------------- |
-| `StandInContainer`           | Interpolates surface bounds, background color, and radius; applies a static expanded-side shadow with reversible opacity |
-| `StandInElement`             | Resizes and positions one `children` subtree; does not scale or crossfade its content |
-| `resolveSurfaceStyle(style)` | Extracts surface-level styling from a `ViewStyle` for use inside a stand-in       |
-
-### Spring & easing presets
-
-`Springs` and `Easings` export the canonical spring/easing values used by the library and are re-exported for app-level companion motion.
-
-### Transition Renderers
-
-`SharedElementTransition` and `SharedElementTransitionRendererProps` are exported from [src/types.ts](src/types.ts). The public contract is intentionally small:
-
-```ts
-interface SharedElementTransition {
-  renderer: SharedElementTransitionRenderer;
-  zIndex?: number;
-}
-```
-
-The renderer receives:
-
-- `progress` and `direction` for the active session
-- `source` and `target` objects with `screenId`, measured bounds, flattened style, and rendered content
-- `zIndex` so related transitions can layer predictably
-
-The low-level `StandInContainer`, `StandInElement`, and `resolveSurfaceStyle` exports remain available for custom visual recipes. `StandInContainer` defaults to a transparent background and zero radius; supply styles when a visible surface is required. Shadow parameters stay static to avoid recreating Android drawables per frame.
-
-### Core Transition Config
-
-`SharedElementTransition`, `TransitionConfig`, and `ChoreographyNavigationOptions` are exported from [src/types.ts](src/types.ts). The session-matching config still looks like this:
-
-```ts
-interface TransitionConfig {
-  group: string;
-}
-
-interface ChoreographyNavigationOptions {
-  transitionConfig?: TransitionConfig;
-  spring?: SpringConfig;
-  duration?: number;
-}
-```
-
-For app code, the cleanest pattern is:
-
-- define each `SharedElementTransition` close to the feature that owns its visual behavior
-- use separate shared elements for independently moving layers such as a background surface, artwork, and labels
-- pass only `transitionConfig.group` during navigation in the common case
-- pass `spring` or `duration` as navigation options when you want to override the default transition animation
-- a custom opening `spring` is retained for Back, including native Back and interrupted returns; transitions without a custom spring keep the faster default return
-
-## Known Limitations
-
-- The best-supported setups are `@react-navigation/native-stack` and Expo Router's native `Stack`, both with stack animation disabled.
-- Custom back gestures can control progress with `useInteractiveTransition`; native-stack's built-in swipe progress is not connected automatically.
-- Transition startup still depends on destination registration, application readiness, and target measurement. Native forward preparation validates attached layout before one measurement batch; the legacy fallback and return path can reuse cached geometry after a validation read.
-- Ordinary renderers receive frozen React content, style, and metrics rather than captured pixels. `SharedElement.Live` is the opt-in path for one stateful native subtree and requires its owner screen to remain mounted.
-- Elements use compound `(route instance, groupId, id)` identities; the same ID can safely appear in several groups or repeated screen instances. Explicit interactive Back screen-name hints use the recorded source instance when available; ambiguous names without lineage do not start a choreography.
+- Owner screens must remain mounted while their content is hosted elsewhere.
+- Startup still depends on endpoint registration, readiness, and measurement.
+- Intrinsic placeholder dimensions reflect the last measured owner layout;
+  orientation or font-size changes while content is away need application-level
+  layout consideration.
+- Native-stack swipe progress is not connected automatically.
+- Elements use compound route-instance/group/element identities. Ambiguous
+  interactive screen-name hints without navigation lineage do not start a transition.
 
 ## Further Documentation
 

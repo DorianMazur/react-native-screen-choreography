@@ -1,4 +1,3 @@
-import React from 'react';
 import { GalleryHero } from './GalleryHero';
 import {
   View,

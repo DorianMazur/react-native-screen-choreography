@@ -22,7 +22,7 @@ interface TransitionSurfaceProps {
 }
 
 /**
- * Stand-in for container/card elements during a transition.
+ * Surface geometry and styling around a live transition host.
  *
  * Shadow strategy: apply the expanded-side boxShadow statically and only animate
  * `opacity` (GPU-composited on Android via View.setAlpha). Animating

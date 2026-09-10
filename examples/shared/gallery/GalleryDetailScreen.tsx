@@ -91,7 +91,7 @@ export function GalleryDetailScreen({
                 icon="share"
                 label="Share photo notes"
                 onPress={() => {
-                  void Share.share({
+                  Share.share({
                     message: `${photo.title} - ${photo.location}\n\n${photo.description}`,
                   }).catch(() => {});
                 }}

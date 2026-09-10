@@ -24,8 +24,6 @@ export interface SharedElementTransitionSide {
   metrics: ElementMetrics;
   style?: ViewStyle;
   metadata?: unknown;
-  /** False for the absent endpoint of a declarative enter/exit track. */
-  present?: boolean;
 }
 
 export interface TransitionAnchor {

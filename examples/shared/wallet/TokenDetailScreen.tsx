@@ -40,7 +40,6 @@ export function TokenDetailScreen({
   tokenId?: string;
 }) {
   const token = TOKENS.find((item) => item.id === tokenId) ?? TOKENS[0]!;
-  const isPositiveChange = token.change24h >= 0;
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyControls();
   const allocation = (token.value / portfolioValue) * 100;
@@ -79,33 +78,48 @@ export function TokenDetailScreen({
         <View style={styles.detailCard}>
           <View style={styles.cardContent}>
             <View style={styles.headerRow}>
-              <SharedElement.Target id={`token.${token.id}.icon`}
+              <SharedElement.Target
+                id={`token.${token.id}.icon`}
                 groupId={`token.${token.id}`}
                 transition={tokenIconTransition}
-               style={{ width: 48, height: 48 }} metadata={{ scale: 48 / 44 }} />
+                style={styles.iconTarget}
+                metadata={{ scale: 48 / 44 }}
+              />
 
               <View style={styles.headerInfo}>
-                <SharedElement.Target id={`token.${token.id}.name`}
+                <SharedElement.Target
+                  id={`token.${token.id}.name`}
                   groupId={`token.${token.id}`}
                   transition={tokenTextTransition}
-                 style={{ width: '100%', height: 31 }} metadata={{ scale: 22 / 16 }} />
-                <SharedElement.Target id={`token.${token.id}.symbol`}
+                  style={styles.nameTarget}
+                  metadata={{ scale: 22 / 16 }}
+                />
+                <SharedElement.Target
+                  id={`token.${token.id}.symbol`}
                   groupId={`token.${token.id}`}
                   transition={tokenTextTransition}
-                 style={{ width: '100%', height: 18 }} metadata={{ scale: 1 }} />
+                  style={styles.symbolTarget}
+                  metadata={{ scale: 1 }}
+                />
               </View>
             </View>
 
             <View style={styles.valueSection}>
-              <SharedElement.Target id={`token.${token.id}.value`}
+              <SharedElement.Target
+                id={`token.${token.id}.value`}
                 groupId={`token.${token.id}`}
                 transition={tokenValueTransition}
-               style={{ width: '100%', height: 51 }} metadata={{ scale: 36 / 15 }} />
+                style={styles.valueTarget}
+                metadata={{ scale: 36 / 15 }}
+              />
               <View style={styles.changeRow}>
-                <SharedElement.Target id={`token.${token.id}.change`}
+                <SharedElement.Target
+                  id={`token.${token.id}.change`}
                   groupId={`token.${token.id}`}
                   transition={tokenValueTransition}
-                 style={{ width: 100, height: 18 }} metadata={{ scale: 1 }} />
+                  style={styles.changeTarget}
+                  metadata={{ scale: 1 }}
+                />
                 <WalletSection start={0.8} distance={0}>
                   <Text style={styles.periodLabel}>past 24h</Text>
                 </WalletSection>
@@ -164,6 +178,12 @@ export function TokenDetailScreen({
 }
 
 const styles = StyleSheet.create({
+  iconTarget: { width: 48, height: 48 },
+  nameTarget: { width: '100%', height: 31 },
+  symbolTarget: { width: '100%', height: 18 },
+  valueTarget: { width: '100%', height: 51 },
+  changeTarget: { width: 100, height: 18 },
+
   container: { flex: 1, backgroundColor: theme.background },
   toolbar: {
     flexDirection: 'row',

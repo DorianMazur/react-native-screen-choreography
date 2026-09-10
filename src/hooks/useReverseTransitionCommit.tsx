@@ -1,9 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type View } from 'react-native';
-import {
-  useSharedValue,
-  type SharedValue,
-} from 'react-native-reanimated';
+import { useSharedValue, type SharedValue } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import {
   animateOwnedProgress,
@@ -98,8 +95,7 @@ export function useReverseTransitionCommit({
         return Promise.resolve();
 
       if (reverseController.owns(sessionId)) return Promise.resolve();
-      const current = () =>
-        progressOwnership.isCurrent(token, sessionId);
+      const current = () => progressOwnership.isCurrent(token, sessionId);
       const { owner, handoff } = progressOwnership;
       const targetScreenId = session.targetScreenId;
       scheduleOnUI(() => {
@@ -219,6 +215,5 @@ export function useReverseTransitionCommit({
     reverseController,
     commitReverseTransition,
     registerScreenPresentation,
-
   };
 }

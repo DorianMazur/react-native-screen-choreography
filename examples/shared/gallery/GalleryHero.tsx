@@ -14,8 +14,8 @@ import type { Photo } from './data';
 
 export function GalleryHero({
   photo,
-  width,
-  height,
+  width: initialWidth,
+  height: initialHeight,
   observation,
 }: {
   photo: Photo;
@@ -27,13 +27,13 @@ export function GalleryHero({
   const { progress, transitioning, settled, collapsed, expanded } =
     useSharedElementPresentation();
   const from = {
-    width: collapsed.metrics?.width ?? width,
-    height: collapsed.metrics?.height ?? height,
+    width: collapsed.metrics?.width ?? initialWidth,
+    height: collapsed.metrics?.height ?? initialHeight,
     expansion: 0,
   };
   const to = {
-    width: expanded.metrics?.width ?? width,
-    height: expanded.metrics?.height ?? height,
+    width: expanded.metrics?.width ?? initialWidth,
+    height: expanded.metrics?.height ?? initialHeight,
     expansion: 1,
   };
   const frame = useDerivedValue(() =>

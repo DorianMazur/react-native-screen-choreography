@@ -194,7 +194,7 @@ function LiveSharedElement({
   let hostName: string | undefined;
   if (participates) {
     wasParticipatingRef.current = true;
-    const pair = session!.pairs.find((pair) => pair.id === id)!;
+    const pair = session!.pairs.find((candidate) => candidate.id === id)!;
     const source = {
       metrics: pair.sourceMetrics,
       metadata: pair.sourcePresentation.metadata,

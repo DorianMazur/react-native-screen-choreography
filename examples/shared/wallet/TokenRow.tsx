@@ -31,26 +31,35 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             id={`token.${token.id}.icon`}
             groupId={`token.${token.id}`}
             transition={tokenIconTransition}
-           portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
-            <TokenLogo token={token} size={44} />
-          </TokenSharedContent></SharedElement>
+            portalStyle={styles.portal}
+          >
+            <TokenSharedContent>
+              <TokenLogo token={token} size={44} />
+            </TokenSharedContent>
+          </SharedElement>
 
           <View style={styles.info}>
             <SharedElement
               id={`token.${token.id}.name`}
               groupId={`token.${token.id}`}
               transition={tokenTextTransition}
-             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
-              <Text style={styles.name}>{token.name}</Text>
-            </TokenSharedContent></SharedElement>
+              portalStyle={styles.portal}
+            >
+              <TokenSharedContent>
+                <Text style={styles.name}>{token.name}</Text>
+              </TokenSharedContent>
+            </SharedElement>
 
             <SharedElement
               id={`token.${token.id}.symbol`}
               groupId={`token.${token.id}`}
               transition={tokenTextTransition}
-             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
-              <Text style={styles.symbol}>{token.symbol}</Text>
-            </TokenSharedContent></SharedElement>
+              portalStyle={styles.portal}
+            >
+              <TokenSharedContent>
+                <Text style={styles.symbol}>{token.symbol}</Text>
+              </TokenSharedContent>
+            </SharedElement>
           </View>
 
           <View style={styles.valueContainer}>
@@ -58,27 +67,33 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
               id={`token.${token.id}.value`}
               groupId={`token.${token.id}`}
               transition={tokenValueTransition}
-             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
-              <Text style={styles.value}>{formatMoney(token.price)}</Text>
-            </TokenSharedContent></SharedElement>
+              portalStyle={styles.portal}
+            >
+              <TokenSharedContent>
+                <Text style={styles.value}>{formatMoney(token.price)}</Text>
+              </TokenSharedContent>
+            </SharedElement>
 
             <SharedElement
               id={`token.${token.id}.change`}
               groupId={`token.${token.id}`}
               transition={tokenValueTransition}
-             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
-              <Text
-                style={[
-                  styles.change,
-                  isPositiveChange
-                    ? styles.changePositive
-                    : styles.changeNegative,
-                ]}
-              >
-                {isPositiveChange ? '+' : ''}
-                {token.change24h.toFixed(2)}%
-              </Text>
-            </TokenSharedContent></SharedElement>
+              portalStyle={styles.portal}
+            >
+              <TokenSharedContent>
+                <Text
+                  style={[
+                    styles.change,
+                    isPositiveChange
+                      ? styles.changePositive
+                      : styles.changeNegative,
+                  ]}
+                >
+                  {isPositiveChange ? '+' : ''}
+                  {token.change24h.toFixed(2)}%
+                </Text>
+              </TokenSharedContent>
+            </SharedElement>
           </View>
         </View>
       </View>
@@ -87,6 +102,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
 }
 
 const styles = StyleSheet.create({
+  portal: { flex: 0, width: 'auto', height: 'auto' },
   pressable: {
     marginHorizontal: 24,
     borderBottomWidth: StyleSheet.hairlineWidth,
