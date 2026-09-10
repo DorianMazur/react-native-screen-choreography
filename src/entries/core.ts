@@ -1,30 +1,15 @@
 export { ChoreographyProvider } from '../components/ChoreographyProvider';
 export {
   SharedElement,
-  type LiveSharedElementProps,
-  type LiveSharedElementTargetProps,
   type SharedElementProps,
   type SharedElementTargetProps,
 } from '../components/SharedElement';
+export { TransitionSurface } from '../standin/TransitionSurface';
+export { TransitionFrame } from '../standin/TransitionFrame';
 export {
-  createSharedElementComponent,
-  type SharedElementComponentProps,
-} from '../components/createSharedElementComponent';
-export { StandInContainer } from '../standin/StandInContainer';
-export { StandInElement } from '../standin/StandInElement';
-export {
-  makeSurfaceTransition,
-  type SurfaceTransitionFallback,
-} from '../transitions/makeSurfaceTransition';
-export {
-  makeStretchTransition,
-  type StretchTransitionOptions,
-} from '../transitions/makeStretchTransition';
-export { textMorphTransition } from '../transitions/textMorphTransition';
-export {
-  makeLiveTransition,
-  type MakeLiveTransitionOptions,
-} from '../transitions/makeLiveTransition';
+  makeTransition,
+  type MakeTransitionOptions,
+} from '../transitions/makeTransition';
 export {
   resolveSurfaceStyle,
   type BoxShadowEntry,
@@ -45,16 +30,19 @@ export type {
   TransitionDirection,
 } from '../core/screenVisibility';
 export type {
+  ChoreographyPreparationStage,
+  ChoreographyPreparationTrace,
   SpringConfig,
   ElementMetrics,
+  TransitionAnchor,
   ElementPresentation,
   SharedElementTransition,
   SharedElementTransitionRenderer,
   SharedElementTransitionRendererProps,
   SharedElementTransitionSide,
-  LiveTransition,
-  LiveTransitionRendererProps,
-  LiveTransitionSide,
+  Transition,
+  TransitionRendererProps,
+  TransitionEndpoint,
   TransitionConfig,
   ChoreographyNavigationOptions,
   ChoreographyNavigationLineage,
@@ -66,3 +54,20 @@ export type {
   ChoreographyDebugLevel,
   ChoreographyDebugCategory,
 } from '../types';
+
+export {
+  useSharedElementPresentation,
+  type SharedElementPresentation,
+  type SharedElementEndpoint,
+} from '../core/SharedElementPresentation';
+
+export {
+  defineTransition,
+  type DefinedTransition,
+  type TransitionDefinition,
+  type TransitionElementProps,
+  type TransitionTargetProps,
+  type TransitionRevealProps,
+  type SharedMotionRecipe,
+  type RevealRecipe,
+} from '../transitions/defineTransition';

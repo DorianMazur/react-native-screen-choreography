@@ -1,4 +1,4 @@
-import type { ComponentType, ReactElement, ReactNode } from 'react';
+import type { ComponentType, ReactElement } from 'react';
 import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
 
@@ -23,7 +23,12 @@ export interface SharedElementTransitionSide {
   screenId: string;
   metrics: ElementMetrics;
   style?: ViewStyle;
-  content?: ReactNode;
+  metadata?: unknown;
+}
+
+export interface TransitionAnchor {
+  collapsed: ElementMetrics;
+  expanded: ElementMetrics;
 }
 
 export interface SharedElementTransitionRendererProps {
@@ -34,6 +39,8 @@ export interface SharedElementTransitionRendererProps {
   zIndex: number;
   source: SharedElementTransitionSide;
   target: SharedElementTransitionSide;
+  /** Frozen geometry for relative motion; never contains React content. */
+  anchors?: Readonly<Record<string, TransitionAnchor>>;
 }
 
 export type SharedElementTransitionRenderer =
@@ -42,31 +49,25 @@ export type SharedElementTransitionRenderer =
 export interface SharedElementTransition {
   renderer: SharedElementTransitionRenderer;
   zIndex?: number;
-  /** `live` pairs animate the real native view, so they are never hidden. */
-  mode?: 'standin' | 'live';
 }
 
 declare const liveTransitionBrand: unique symbol;
 
-/** A live transition created by `makeLiveTransition`. */
-export interface LiveTransition extends SharedElementTransition {
+/** A live transition created by `makeTransition`. */
+export interface Transition extends SharedElementTransition {
   readonly [liveTransitionBrand]: true;
-  mode: 'live';
 }
 
-export interface LiveTransitionSide extends Omit<
-  SharedElementTransitionSide,
-  'content'
-> {
+export interface TransitionEndpoint extends SharedElementTransitionSide {
   metadata?: unknown;
 }
 
-export interface LiveTransitionRendererProps extends Omit<
+export interface TransitionRendererProps extends Omit<
   SharedElementTransitionRendererProps,
   'source' | 'target'
 > {
-  source: LiveTransitionSide;
-  target: LiveTransitionSide;
+  source: TransitionEndpoint;
+  target: TransitionEndpoint;
   /** The library-owned live portal host. Render it exactly once. */
   children: ReactElement;
 }
@@ -75,7 +76,6 @@ export type NodeHandleRef = React.RefObject<any> | (() => any);
 
 /** Frozen renderer input captured at session start. */
 export interface ElementPresentation {
-  content: ReactNode;
   style?: ViewStyle;
   transition: SharedElementTransition;
   metadata?: unknown;
@@ -90,8 +90,10 @@ export interface RegisteredElement {
   /** Resolves a nested measurement target without re-registering the element. */
   getAnimatedRef?: () => AnimatedRef<any> | undefined;
   metrics: ElementMetrics | null;
-  /** Captures content, style, and transition once at session start. */
+  /** Captures metadata, style, and transition once at session start. */
   getPresentation: () => ElementPresentation;
+  /** Read the current pairing policy without capturing a presentation early. */
+  getTransition?: () => SharedElementTransition;
 }
 
 export type TransitionState =
@@ -137,6 +139,36 @@ export interface ChoreographyNavigationOptions {
   spring?: SpringConfig;
   /** Duration override (uses timing instead of spring) */
   duration?: number;
+}
+
+export interface ChoreographyPreparationStage {
+  name: string;
+  startedAtMs: number;
+  durationMs: number;
+  /** False when preparation ended before the stage's awaited work finished. */
+  completed: boolean;
+  details?: Readonly<Record<string, string | number | boolean>>;
+}
+
+/** Optional startup diagnostics; timestamps share the JavaScript performance clock. */
+export interface ChoreographyPreparationTrace {
+  traceId: string;
+  sessionId: string | null;
+  groupId: string;
+  sourceScreenId: string;
+  targetScreenId: string;
+  direction: 'forward' | 'backward';
+  clock: 'js-performance-now';
+  startedAtMs: number;
+  completedAtMs: number;
+  outcome:
+    | 'overlay-ready'
+    | 'overlay-timeout'
+    | 'cancelled'
+    | 'unavailable'
+    | 'failed';
+  stages: readonly ChoreographyPreparationStage[];
+  droppedStages: number;
 }
 
 export interface ChoreographyNavigationLineage {

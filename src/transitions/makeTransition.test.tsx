@@ -1,11 +1,11 @@
 import React from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type {
-  LiveTransitionRendererProps,
+  TransitionRendererProps,
   SharedElementTransitionRendererProps,
   SharedElementTransitionSide,
 } from '../types';
-import { makeLiveTransition } from './makeLiveTransition';
+import { makeTransition } from './makeTransition';
 
 jest.mock('react-native-teleport', () => ({
   PortalHost: 'PortalHost',
@@ -42,42 +42,36 @@ function rendererProps(
     source: {
       screenId: 'feed:one',
       metrics,
-      content: <React.Fragment>source presentation</React.Fragment>,
       metadata: { label: 'source-v1' },
     },
     target: {
       screenId: 'detail:two',
       metrics: { pageX: 55, pageY: 66, width: 77, height: 88 },
-      content: <React.Fragment>target presentation</React.Fragment>,
       metadata: { label: 'target-v1' },
     },
     ...overrides,
   };
 }
 
-describe('makeLiveTransition', () => {
-  test('brands live mode and defaults zIndex to 100 while retaining explicit zero', () => {
+describe('makeTransition', () => {
+  test('defaults zIndex to 100 while retaining explicit zero', () => {
     const Renderer = () => null;
 
-    expect(makeLiveTransition({ renderer: Renderer })).toMatchObject({
-      mode: 'live',
+    expect(makeTransition({ renderer: Renderer })).toMatchObject({
       zIndex: 100,
     });
-    expect(makeLiveTransition({ renderer: Renderer, zIndex: 0 })).toMatchObject(
-      {
-        mode: 'live',
-        zIndex: 0,
-      }
-    );
+    expect(makeTransition({ renderer: Renderer, zIndex: 0 })).toMatchObject({
+      zIndex: 0,
+    });
   });
 
   test('injects the exact pair host and strips frozen presentation content', async () => {
-    const render = jest.fn((_props: LiveTransitionRendererProps) => null);
-    function Renderer(props: LiveTransitionRendererProps) {
+    const render = jest.fn((_props: TransitionRendererProps) => null);
+    function Renderer(props: TransitionRendererProps) {
       render(props);
       return props.children;
     }
-    const transition = makeLiveTransition({ renderer: Renderer });
+    const transition = makeTransition({ renderer: Renderer });
     const props = rendererProps();
     let tree!: ReactTestRenderer;
 
@@ -127,12 +121,12 @@ describe('makeLiveTransition', () => {
   });
 
   test('keeps geometry and metadata independent for source and target', async () => {
-    let received!: LiveTransitionRendererProps;
-    function Renderer(props: LiveTransitionRendererProps) {
+    let received!: TransitionRendererProps;
+    function Renderer(props: TransitionRendererProps) {
       received = props;
       return props.children;
     }
-    const transition = makeLiveTransition({ renderer: Renderer, zIndex: 314 });
+    const transition = makeTransition({ renderer: Renderer, zIndex: 314 });
     const props = rendererProps({ direction: 'backward', zIndex: 314 });
     let tree!: ReactTestRenderer;
 
@@ -156,19 +150,18 @@ describe('makeLiveTransition', () => {
   test('keeps the custom renderer mounted across ordinary presentation updates', async () => {
     const mounts = jest.fn();
     const unmounts = jest.fn();
-    function Renderer({ children }: LiveTransitionRendererProps) {
+    function Renderer({ children }: TransitionRendererProps) {
       React.useEffect(() => {
         mounts();
         return unmounts;
       }, []);
       return children;
     }
-    const transition = makeLiveTransition({ renderer: Renderer });
+    const transition = makeTransition({ renderer: Renderer });
     const first = rendererProps();
     const second = rendererProps({
       source: {
         ...first.source,
-        content: <React.Fragment>changed presentation</React.Fragment>,
         metadata: { label: 'source-v2' },
       },
     });
@@ -191,10 +184,10 @@ describe('makeLiveTransition', () => {
   });
 
   test('names hosts collision-safely across screen pairs and groups', async () => {
-    function Renderer({ children }: LiveTransitionRendererProps) {
+    function Renderer({ children }: TransitionRendererProps) {
       return children;
     }
-    const transition = makeLiveTransition({ renderer: Renderer });
+    const transition = makeTransition({ renderer: Renderer });
     const cases = [
       rendererProps(),
       rendererProps({

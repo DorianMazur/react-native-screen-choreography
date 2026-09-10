@@ -1,3 +1,5 @@
+import { hasNativePreparation } from '../core/nativePreparation';
+import { PreparationTrace } from '../core/preparationTrace';
 import { useCallback, useContext, useEffect } from 'react';
 import type { CommitBackNavigation } from '../core/navigationCommit';
 import { Platform } from 'react-native';
@@ -327,7 +329,18 @@ export function useChoreographyNavigator({
           groupId,
           sourceScreenId,
           targetScreenId,
-          isAndroid: Platform.OS === 'android',
+          isAndroid: Platform.OS === 'android' && !hasNativePreparation(),
+          trace: ctx.onPreparationTrace
+            ? new PreparationTrace(
+                {
+                  groupId,
+                  sourceScreenId,
+                  targetScreenId,
+                  direction: 'forward',
+                },
+                ctx.onPreparationTrace
+              )
+            : undefined,
           preMeasureGroup: async (group, screen) => {
             const startedAt = nowMs();
             logNavigation(() => `preMeasure start group=${group}`);
@@ -361,6 +374,7 @@ export function useChoreographyNavigator({
             );
             return ready;
           },
+          isOverlayPresented: ctx.isOverlayPresented,
           waitForNextFrame,
           startTransition,
           waitForOverlayReady,
@@ -421,6 +435,8 @@ export function useChoreographyNavigator({
     [
       ctx.activeSession,
       ctx.pendingTargetScreenId,
+      ctx.onPreparationTrace,
+      ctx.isOverlayPresented,
       controller,
       canInterruptReturnToCurrentScreen,
       createProgressAnimationToken,

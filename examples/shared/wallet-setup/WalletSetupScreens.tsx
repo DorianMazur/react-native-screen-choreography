@@ -1,4 +1,4 @@
-import { useEffect, type ComponentProps } from 'react';
+import { useEffect, type ComponentProps, type ReactNode } from 'react';
 import {
   Alert,
   Pressable,
@@ -15,6 +15,7 @@ import Animated, {
   SlideInDown,
   cancelAnimation,
   interpolate,
+  interpolateColor,
   useAnimatedReaction,
   useAnimatedStyle,
   useReducedMotion,
@@ -24,17 +25,14 @@ import Animated, {
 } from 'react-native-reanimated';
 import { AppIcon, IconButton } from '../AppChrome';
 import {
-  SharedElement,
-  makeSurfaceTransition,
-  useChoreographyProgress,
+  useSharedElementPresentation,
   useExampleNavigation,
   useSafeAreaInsets,
 } from '../runtime';
 import { theme } from '../theme';
-import { setupOptionTransition } from './setupTransitions';
+import { walletSetupTransition } from './setupTransitions';
 
 const groupId = 'wallet-setup';
-const surfaceTransition = makeSurfaceTransition();
 type IconName = ComponentProps<typeof AppIcon>['name'];
 
 const newOptions: {
@@ -89,41 +87,102 @@ const existingOptions: {
   },
 ];
 
-function SetupOption({
-  option,
+const recoveryActions = [
+  () =>
+    Alert.alert(
+      'No saved accounts',
+      'There is no account connected to this sample.'
+    ),
+  () =>
+    Alert.alert(
+      'Keep your recovery phrase private',
+      'Never enter a real recovery phrase or private key into a demo app.'
+    ),
+  () =>
+    Alert.alert(
+      'No backups found',
+      'There are no wallet backups connected to this sample.'
+    ),
+];
+
+function WalletOption({
   index,
   onPress,
-  outlined = false,
 }: {
-  option: (typeof newOptions)[number];
   index: number;
   onPress: () => void;
-  outlined?: boolean;
 }) {
+  const { progress, transitioning, settled } = useSharedElementPresentation();
+  const compact = newOptions[index]!;
+  const expanded = existingOptions[index]!;
+  const surface = useAnimatedStyle(() => {
+    const t = transitioning ? progress.value : settled === 'expanded' ? 1 : 0;
+    return {
+      backgroundColor: interpolateColor(
+        t,
+        [0, 1],
+        [theme.surfaceElevated, index === 2 ? theme.bg : theme.surfaceElevated]
+      ),
+      borderColor: interpolateColor(
+        t,
+        [0, 1],
+        ['transparent', index === 2 ? theme.borderStrong : 'transparent']
+      ),
+    };
+  });
+  // Change the contents inside one persistent button, without ghosting two
+  // complete cards or moving the controls with the expanding panel's top.
+  const compactStyle = useAnimatedStyle(() => {
+    const t = transitioning ? progress.value : settled === 'expanded' ? 1 : 0;
+    return {
+      opacity: interpolate(t, [0.2, 0.45], [1, 0], 'clamp'),
+      transform: [
+        { translateY: interpolate(t, [0.2, 0.45], [0, -8], 'clamp') },
+      ],
+    };
+  });
+  const expandedStyle = useAnimatedStyle(() => {
+    const t = transitioning ? progress.value : settled === 'expanded' ? 1 : 0;
+    return {
+      opacity: interpolate(t, [0.45, 0.78], [0, 1], 'clamp'),
+      transform: [
+        { translateY: interpolate(t, [0.45, 0.78], [8, 0], 'clamp') },
+      ],
+    };
+  });
   return (
     <Pressable
       accessibilityRole="button"
-      accessibilityLabel={option.title}
-      onPress={onPress}
+      accessibilityLabel={
+        settled === 'expanded' ? expanded.title : compact.title
+      }
+      disabled={transitioning}
+      onPress={settled === 'expanded' ? recoveryActions[index] : onPress}
       style={({ pressed }) => pressed && styles.pressed}
     >
-      <SharedElement
-        id={`wallet-setup.option.${index}`}
-        groupId={groupId}
-        style={[styles.option, outlined && styles.outlined]}
-        transition={setupOptionTransition}
-      >
+      <Animated.View style={[styles.option, styles.persistentOption, surface]}>
         <View style={styles.optionContent}>
-          <View style={[styles.optionIcon, { backgroundColor: option.color }]}>
-            <AppIcon name={option.icon} color={theme.ink} size={23} />
+          <View style={[styles.optionIcon, { backgroundColor: compact.color }]}>
+            <Animated.View style={[styles.iconLayer, compactStyle]}>
+              <AppIcon name={compact.icon} color={theme.ink} size={23} />
+            </Animated.View>
+            <Animated.View style={[styles.iconLayer, expandedStyle]}>
+              <AppIcon name={expanded.icon} color={theme.ink} size={23} />
+            </Animated.View>
           </View>
           <View style={styles.optionCopy}>
-            <Text style={styles.optionTitle}>{option.title}</Text>
-            <Text style={styles.secondary}>{option.description}</Text>
+            <Animated.View style={[styles.copyLayer, compactStyle]}>
+              <Text style={styles.optionTitle}>{compact.title}</Text>
+              <Text style={styles.secondary}>{compact.description}</Text>
+            </Animated.View>
+            <Animated.View style={[styles.copyLayer, expandedStyle]}>
+              <Text style={styles.optionTitle}>{expanded.title}</Text>
+              <Text style={styles.secondary}>{expanded.description}</Text>
+            </Animated.View>
           </View>
           <AppIcon name="arrow" color={theme.textMuted} size={16} />
         </View>
-      </SharedElement>
+      </Animated.View>
     </Pressable>
   );
 }
@@ -224,50 +283,38 @@ export function WalletSetupScreen() {
           },
         ]}
       >
-        <SharedElement
-          id="wallet-setup.surface"
+        <walletSetupTransition.Element
+          name="panel"
           groupId={groupId}
-          style={[StyleSheet.absoluteFill, styles.sheetSurface]}
-          transition={surfaceTransition}
+          style={[
+            styles.sheetSurface,
+            { height: Math.min(470, height - insets.top - insets.bottom - 24) },
+          ]}
         >
-          <View style={styles.spacer} />
-        </SharedElement>
-        <ScrollView contentContainerStyle={styles.sheetContent} bounces={false}>
-          <SharedElement
-            id="wallet-setup.header"
-            groupId={groupId}
-            transition={setupOptionTransition}
-          >
-            <View style={styles.sheetHeader}>
-              <Text accessibilityRole="header" style={styles.sectionTitle}>
-                New wallet
-              </Text>
-              <IconButton
-                icon="close"
-                label="Close new wallet"
-                onPress={() => goBack()}
-              />
-            </View>
-          </SharedElement>
-          <SharedElement
-            id="wallet-setup.hero"
-            groupId={groupId}
-            style={styles.heroOrigin}
-            transition={setupOptionTransition}
-          >
-            <View />
-          </SharedElement>
-          <View style={styles.options}>
-            {newOptions.map((option, index) => (
-              <SetupOption
-                key={option.title}
-                option={option}
-                index={index}
-                onPress={actions[index]!}
-              />
-            ))}
-          </View>
-        </ScrollView>
+          <WalletPanel actions={actions}>
+            <ScrollView
+              contentContainerStyle={styles.sheetContent}
+              bounces={false}
+            >
+              <View>
+                <View style={styles.sheetHeader}>
+                  <Text accessibilityRole="header" style={styles.sectionTitle}>
+                    New wallet
+                  </Text>
+                  <IconButton
+                    icon="close"
+                    label="Close new wallet"
+                    onPress={() => goBack()}
+                  />
+                </View>
+              </View>
+              <View style={styles.heroOrigin}>
+                <View />
+              </View>
+              <View style={styles.optionsPlaceholder} />
+            </ScrollView>
+          </WalletPanel>
+        </walletSetupTransition.Element>
       </Animated.View>
     </View>
   );
@@ -275,26 +322,167 @@ export function WalletSetupScreen() {
 
 export function WalletExistingScreen() {
   const { goBack } = useExampleNavigation();
+  return (
+    <View style={styles.modalScreen}>
+      <StatusBar barStyle="light-content" />
+      <walletSetupTransition.Element.Target
+        name="panel"
+        groupId={groupId}
+        style={StyleSheet.absoluteFill}
+        metadata={{ onBack: goBack }}
+      />
+    </View>
+  );
+}
+
+function WalletPanel({
+  children,
+  actions,
+}: {
+  children: ReactNode;
+  actions: (() => void)[];
+}) {
+  const { width, height } = useWindowDimensions();
+  const insets = useSafeAreaInsets();
+  const { progress, transitioning, settled, collapsed, expanded } =
+    useSharedElementPresentation();
+  const fromWidth = collapsed.metrics?.width ?? width - 24;
+  const fromHeight =
+    collapsed.metrics?.height ??
+    Math.min(470, height - insets.top - insets.bottom - 24);
+  const toWidth = expanded.metrics?.width ?? width;
+  const toHeight = expanded.metrics?.height ?? height;
+  const bottomTravel =
+    collapsed.metrics && expanded.metrics
+      ? expanded.metrics.pageY + toHeight - collapsed.metrics.pageY - fromHeight
+      : Math.max(insets.bottom, 12);
+  const onBack =
+    (expanded.metadata as { onBack?: () => void } | undefined)?.onBack ??
+    (() => {});
+  const panelStyle = useAnimatedStyle(() => {
+    const t = transitioning ? progress.value : settled === 'expanded' ? 1 : 0;
+    return {
+      width: interpolate(t, [0, 1], [fromWidth, toWidth], 'clamp'),
+      height: interpolate(t, [0, 1], [fromHeight, toHeight], 'clamp'),
+      borderRadius: interpolate(t, [0, 1], [8, 0], 'clamp'),
+      backgroundColor: interpolateColor(
+        t,
+        [0, 1],
+        [theme.bgElevated, theme.bg]
+      ),
+    };
+  });
+  // Keep both header layouts aligned with the bottom-anchored controls.
+  const collapsedPosition = useAnimatedStyle(() => ({
+    bottom:
+      (transitioning ? progress.value : settled === 'expanded' ? 1 : 0) *
+      bottomTravel,
+    left:
+      (interpolate(
+        transitioning ? progress.value : settled === 'expanded' ? 1 : 0,
+        [0, 1],
+        [fromWidth, toWidth],
+        'clamp'
+      ) -
+        fromWidth) /
+      2,
+  }));
+  const expandedPosition = useAnimatedStyle(() => {
+    const t = transitioning ? progress.value : settled === 'expanded' ? 1 : 0;
+    return {
+      bottom: -(1 - t) * bottomTravel,
+      left:
+        (interpolate(t, [0, 1], [fromWidth, toWidth], 'clamp') - toWidth) / 2,
+    };
+  });
+  const collapsedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      transitioning ? progress.value : settled === 'expanded' ? 1 : 0,
+      [0, 0.18],
+      [1, 0],
+      'clamp'
+    ),
+  }));
+  const expandedStyle = useAnimatedStyle(() => ({
+    opacity: interpolate(
+      transitioning ? progress.value : settled === 'expanded' ? 1 : 0,
+      [0.35, 0.85],
+      [0, 1],
+      'clamp'
+    ),
+  }));
+  const optionsStyle = useAnimatedStyle(() => {
+    const t = transitioning ? progress.value : settled === 'expanded' ? 1 : 0;
+    const inset = interpolate(t, [0, 1], [20, 32], 'clamp');
+    return {
+      bottom: 20 + interpolate(t, [0, 1], [0, bottomTravel], 'clamp'),
+      left: inset,
+      right: inset,
+    };
+  });
+  return (
+    <Animated.View style={[styles.panel, panelStyle]}>
+      <Animated.View
+        pointerEvents={
+          !transitioning && settled === 'collapsed' ? 'auto' : 'none'
+        }
+        style={[
+          styles.panelContent,
+          { width: fromWidth, height: fromHeight },
+          collapsedPosition,
+          collapsedStyle,
+        ]}
+      >
+        {children}
+      </Animated.View>
+      <Animated.View
+        pointerEvents={
+          !transitioning && settled === 'expanded' ? 'auto' : 'none'
+        }
+        style={[
+          styles.panelContent,
+          { width: toWidth, height: toHeight },
+          expandedPosition,
+          expandedStyle,
+        ]}
+      >
+        <ExistingWalletContent
+          onBack={onBack}
+          bottomSpacing={bottomTravel + 20}
+        />
+      </Animated.View>
+      <Animated.View
+        style={[styles.persistentOptions, styles.options, optionsStyle]}
+      >
+        {newOptions.map((option, index) => (
+          <WalletOption
+            key={option.title}
+            index={index}
+            onPress={actions[index]!}
+          />
+        ))}
+      </Animated.View>
+    </Animated.View>
+  );
+}
+
+function ExistingWalletContent({
+  onBack,
+  bottomSpacing,
+}: {
+  onBack: () => void;
+  bottomSpacing: number;
+}) {
+  const goBack = onBack;
   const insets = useSafeAreaInsets();
   const { height } = useWindowDimensions();
-  const {
-    progress,
-    direction,
-    groupId: activeGroup,
-    role,
-    phase,
-  } = useChoreographyProgress();
+  const { progress, transitioning, settled } = useSharedElementPresentation();
   const reduceMotion = useReducedMotion();
   const wiggle = useSharedValue(1);
   useAnimatedReaction(
     () => ({
-      finishing:
-        direction === 'forward' &&
-        activeGroup === groupId &&
-        role === 'target' &&
-        phase === 'active' &&
-        progress.value >= 0.85,
-      settled: phase === 'idle' && progress.value === 1,
+      finishing: transitioning && progress.value >= 0.85,
+      settled: !transitioning,
     }),
     (current, previous) => {
       if (reduceMotion || (!current.finishing && !current.settled)) {
@@ -308,45 +496,22 @@ export function WalletExistingScreen() {
         });
       }
     },
-    [direction, activeGroup, role, phase, reduceMotion, progress, wiggle]
+    [transitioning, reduceMotion, progress, wiggle]
   );
   useEffect(() => () => cancelAnimation(wiggle), [wiggle]);
   const artworkHeight = Math.max(88, Math.min(176, height * 0.2));
-  const actions = [
-    () =>
-      Alert.alert(
-        'No saved accounts',
-        'There is no account connected to this sample.'
-      ),
-    () =>
-      Alert.alert(
-        'Keep your recovery phrase private',
-        'Never enter a real recovery phrase or private key into a demo app.'
-      ),
-    () =>
-      Alert.alert(
-        'No backups found',
-        'There are no wallet backups connected to this sample.'
-      ),
-  ];
+  const heroMotion = useAnimatedStyle(() => {
+    const t = transitioning ? progress.value : settled === 'expanded' ? 1 : 0;
+    return {
+      transformOrigin: '50% 100%',
+      transform: [{ scale: interpolate(t, [0.18, 1], [0.05, 1], 'clamp') }],
+    };
+  });
 
   return (
     <View style={styles.modalScreen}>
-      <StatusBar barStyle="light-content" />
-      <SharedElement
-        id="wallet-setup.surface"
-        groupId={groupId}
-        style={[StyleSheet.absoluteFill, styles.expandedSurface]}
-        transition={surfaceTransition}
-      >
-        <View style={styles.spacer} />
-      </SharedElement>
       <View style={{ paddingTop: insets.top }}>
-        <SharedElement
-          id="wallet-setup.header"
-          groupId={groupId}
-          transition={setupOptionTransition}
-        >
+        <View>
           <View style={styles.expandedHeader}>
             <IconButton
               icon="close"
@@ -364,22 +529,18 @@ export function WalletExistingScreen() {
               }
             />
           </View>
-        </SharedElement>
+        </View>
       </View>
       <ScrollView
         contentContainerStyle={[
           styles.expandedContent,
-          { paddingBottom: Math.max(insets.bottom, 24) },
+          { paddingBottom: bottomSpacing },
         ]}
         showsVerticalScrollIndicator={false}
         bounces={false}
       >
-        <SharedElement
-          id="wallet-setup.hero"
-          groupId={groupId}
-          transition={setupOptionTransition}
-        >
-          <View style={styles.hero}>
+        <View>
+          <Animated.View style={[styles.hero, heroMotion]}>
             <WalletArtwork height={artworkHeight} wiggle={wiggle} />
             <View style={styles.heroCopy}>
               <Text accessibilityRole="header" style={styles.heroTitle}>
@@ -390,19 +551,9 @@ export function WalletExistingScreen() {
                 up where you left off.
               </Text>
             </View>
-          </View>
-        </SharedElement>
-        <View style={[styles.options, styles.expandedOptions]}>
-          {existingOptions.map((option, index) => (
-            <SetupOption
-              key={option.title}
-              option={option}
-              index={index}
-              outlined={index === 2}
-              onPress={actions[index]!}
-            />
-          ))}
+          </Animated.View>
         </View>
+        <View style={styles.optionsPlaceholder} />
       </ScrollView>
     </View>
   );
@@ -411,6 +562,8 @@ export function WalletExistingScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg },
   modalScreen: { flex: 1 },
+  panel: { overflow: 'hidden' },
+  panelContent: { position: 'absolute', left: 0, bottom: 0 },
   sectionTitle: {
     fontFamily: theme.font,
     fontSize: 21,
@@ -428,7 +581,7 @@ const styles = StyleSheet.create({
   },
   sheetSurface: { backgroundColor: theme.bgElevated, borderRadius: 8 },
   expandedSurface: { backgroundColor: theme.bg, borderRadius: 0 },
-  sheetContent: { padding: 20, paddingTop: 8 },
+  sheetContent: { flexGrow: 1, padding: 20, paddingTop: 8 },
   sheetHeader: {
     flexDirection: 'row',
     alignItems: 'center',
@@ -439,6 +592,11 @@ const styles = StyleSheet.create({
   },
   heroOrigin: { height: 1, overflow: 'hidden', marginBottom: 18 },
   options: { gap: 12 },
+  optionsPlaceholder: { height: 336, marginTop: 'auto' },
+  persistentOptions: { position: 'absolute' },
+  persistentOption: { height: 104, borderWidth: 1, borderStyle: 'dashed' },
+  iconLayer: { position: 'absolute' },
+  copyLayer: { position: 'absolute', left: 0, right: 0, gap: 5 },
   option: {
     backgroundColor: theme.surfaceElevated,
     borderRadius: 8,
@@ -465,7 +623,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  optionCopy: { flex: 1, gap: 5 },
+  optionCopy: { flex: 1, height: 64, justifyContent: 'center' },
   optionTitle: {
     fontFamily: theme.font,
     fontSize: 16,
@@ -486,7 +644,7 @@ const styles = StyleSheet.create({
     paddingVertical: 6,
   },
   expandedContent: { flexGrow: 1 },
-  expandedOptions: { paddingHorizontal: 24, paddingTop: 8 },
+  expandedOptions: { marginTop: 'auto', paddingHorizontal: 32, paddingTop: 8 },
   hero: { paddingTop: 20 },
   heroCopy: {
     paddingHorizontal: 24,

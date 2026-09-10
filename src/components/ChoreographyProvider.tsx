@@ -1,3 +1,4 @@
+import type { PreparationTrace } from '../core/preparationTrace';
 import React, {
   useCallback,
   useEffect,
@@ -12,6 +13,8 @@ import { FullWindowOverlay } from 'react-native-screens';
 import { PortalProvider } from 'react-native-teleport';
 import type {
   ChoreographyDebugConfig,
+  ChoreographyPreparationTrace,
+  NodeHandleRef,
   ChoreographyNavigationLineage,
   RegisteredElement,
   TransitionSessionData,
@@ -77,6 +80,8 @@ interface ChoreographyProviderProps {
   onTransitionStart?: (session: TransitionSessionData) => void;
   /** Called when a transition session completes or is cancelled */
   onTransitionEnd?: (session: TransitionSessionData) => void;
+  /** Optional deferred startup diagnostics; does not run inside preparation. */
+  onPreparationTrace?: (trace: ChoreographyPreparationTrace) => void;
 }
 
 interface OverlayWaiter {
@@ -103,6 +108,7 @@ export function ChoreographyProvider({
   debug = false,
   onTransitionStart,
   onTransitionEnd,
+  onPreparationTrace,
 }: ChoreographyProviderProps) {
   const progress = useSharedValue(0);
   const progressOwner = useSharedValue(0);
@@ -174,13 +180,15 @@ export function ChoreographyProvider({
         hostPresentedSessionIdRef.current === sessionId &&
         overlayContentReadySessionIdRef.current === sessionId
       ) {
+        syncHiddenElements();
         settleOverlayWaiters(sessionId, true);
       }
     },
-    [settleOverlayWaiters]
+    [settleOverlayWaiters, syncHiddenElements]
   );
   const screenReadinessRef = useRef(new ScreenReadinessRegistry());
   const screenNamesRef = useRef(new Map<string, string>());
+  const nativeScreenRefs = useRef(new Map<string, NodeHandleRef>());
 
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
@@ -192,7 +200,12 @@ export function ChoreographyProvider({
     coordinatorRef.current = new TransitionCoordinator(
       registryRef.current,
       progress,
-      (screenId) => screenNamesRef.current.get(screenId) ?? screenId
+      (screenId) => screenNamesRef.current.get(screenId) ?? screenId,
+      {
+        getScreenRef: (screenId) => nativeScreenRefs.current.get(screenId),
+        isScreenReady: (screenId) =>
+          screenReadinessRef.current.isReady(screenId),
+      }
     );
   }
 
@@ -425,6 +438,7 @@ export function ChoreographyProvider({
       targetScreenId: string;
       direction: 'forward' | 'backward';
       onUnavailable?: (sessionId: string) => void;
+      trace?: PreparationTrace;
     }) => {
       return coordinatorRef.current!.startTransition(config);
     },
@@ -445,6 +459,13 @@ export function ChoreographyProvider({
     []
   );
 
+  const isOverlayPresented = useCallback(
+    (sessionId: string) =>
+      hostPresentedSessionIdRef.current === sessionId &&
+      overlayContentReadySessionIdRef.current === sessionId,
+    []
+  );
+
   const waitForOverlayReady = useCallback(
     async (sessionId: string) => {
       if (
@@ -461,16 +482,28 @@ export function ChoreographyProvider({
           overlayWaitersRef.current.set(sessionId, waiters);
         }
 
-        // 150ms safety net for slow Android frames; also hides reals so the
-        // spring never animates with originals visible behind the overlay.
+        // Native-ack timeout may proceed only with ready content. Never hide
+        // an original to show an image that has not finished preparing.
         const timeoutId = setTimeout(() => {
           waiters!.delete(waiter);
           if (waiters!.size === 0) {
             overlayWaitersRef.current.delete(sessionId);
           }
-          if (activeSessionRef.current?.id === sessionId) {
-            syncHiddenElements();
+          const session = activeSessionRef.current;
+          if (session?.id !== sessionId) {
+            resolve(false);
+            return;
           }
+          if (overlayContentReadySessionIdRef.current !== sessionId) {
+            // Forward navigation already pushed its destination. Release its
+            // visibility gate and leave it as an ordinary, unanimated screen.
+            if (session.direction === 'forward') {
+              coordinatorRef.current?.cancelTransition(sessionId);
+            }
+            resolve(false);
+            return;
+          }
+          syncHiddenElements();
           resolve(true);
         }, 150);
 
@@ -508,8 +541,7 @@ export function ChoreographyProvider({
   const {
     reverseController,
     commitReverseTransition,
-    registerScreenPresentation,
-    retainedPresentation,
+    registerScreenPresentation: registerReverseScreenPresentation,
   } = useReverseTransitionCommit({
     progress,
     progressOwnership,
@@ -519,6 +551,21 @@ export function ChoreographyProvider({
     completeTransition,
     cancelTransition,
   });
+
+  const registerScreenPresentation = useCallback<
+    ChoreographyActionsType['registerScreenPresentation']
+  >(
+    (screenId, ref) => {
+      nativeScreenRefs.current.set(screenId, ref);
+      const release = registerReverseScreenPresentation(screenId, ref);
+      return () => {
+        if (nativeScreenRefs.current.get(screenId) === ref)
+          nativeScreenRefs.current.delete(screenId);
+        release();
+      };
+    },
+    [registerReverseScreenPresentation]
+  );
 
   const setPendingTargetScreen = useCallback(
     (screenId: string | null, sourceScreenId?: string) => {
@@ -532,19 +579,13 @@ export function ChoreographyProvider({
     (sessionId: string) => {
       const session = activeSessionRef.current;
       // Ignore stale acks from a previous session's layout effect.
-      if (!session || session.id !== sessionId) {
-        syncHiddenElements();
-        return;
-      }
+      if (!session || session.id !== sessionId) return;
       if (session.state === 'active' && session.pairs.length > 0) {
         overlayContentReadySessionIdRef.current = sessionId;
-        syncHiddenElements();
         resolveOverlayWaitersIfReady(sessionId);
-        return;
       }
-      syncHiddenElements();
     },
-    [resolveOverlayWaitersIfReady, syncHiddenElements]
+    [resolveOverlayWaitersIfReady]
   );
 
   const handleHostPresentationReady = useCallback(() => {
@@ -554,9 +595,8 @@ export function ChoreographyProvider({
     }
 
     hostPresentedSessionIdRef.current = session.id;
-    syncHiddenElements();
     resolveOverlayWaitersIfReady(session.id);
-  }, [resolveOverlayWaitersIfReady, syncHiddenElements]);
+  }, [resolveOverlayWaitersIfReady]);
 
   const settleTransition = useCallback(
     (screenId: string) => {
@@ -645,9 +685,11 @@ export function ChoreographyProvider({
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
+      isOverlayPresented,
       startTransition,
       completeTransition,
       cancelTransition,
+      onPreparationTrace,
       debug,
     }),
     [
@@ -674,9 +716,11 @@ export function ChoreographyProvider({
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
+      isOverlayPresented,
       startTransition,
       completeTransition,
       cancelTransition,
+      onPreparationTrace,
       debug,
     ]
   );
@@ -695,11 +739,9 @@ export function ChoreographyProvider({
                   active={Boolean(isOverlayActive && activeSession)}
                   onPresentationReady={handleHostPresentationReady}
                 >
-                  {retainedPresentation}
                   <TransitionOverlay
                     session={activeSession}
                     progress={progress}
-                    handoff={visibilityRegistry.handoff}
                     onReady={handleOverlayReady}
                   />
                 </NativeTransitionHost>

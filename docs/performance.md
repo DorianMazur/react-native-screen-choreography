@@ -1,20 +1,18 @@
 # Performance measurements
 
-The performance suite measures a gallery card-to-detail round trip using the
-example's bundled photos, shared `GalleryImage` component, theme, and gallery
-transition recipes. The selected card pairs its frame, photo, camera glyph,
-title, and location. The grid remains mounted behind the detail screen.
+The performance suite opens Aurora in the actual shared `GalleryListScreen`,
+then returns from `GalleryDetailScreen`. It uses the same live hero (photo,
+gradient, icon, title, and subtitle), detail content, layout, navigation options,
+and spring animation as the example app. There is one scenario: **gallery**.
 
-Both variants use the same five pairs and assets. Ordinary mode renders photo
-content in the screens and overlay; live mode retains a single photo owner.
-The surrounding frame and text transitions are the same in both. The fixture
-waits for the selected image to load before declaring readiness.
+The harness adds timing/profiling observers and input-probe/export controls.
+It waits for the selected image to load and checks that the selected hero stays
+mounted across repeated navigation. Android automation taps “View Aurora” and
+“Back to gallery”, rather than separate synthetic navigation buttons.
 
-This is a controlled gallery workload, not a benchmark of every demo feature:
-there is no lightbox, sharing, scrolling gesture, or interactive cancellation in
-the measured journey. It does not establish video or text-input continuity.
-Gallery reports use fixture version 2. Version 1 synthetic-panel exports are
-rejected because their workload is not comparable.
+The measured journey excludes lightbox, sharing, scrolling, and interactive
+cancellation. Reports use fixture version 4; previous synthetic workloads are
+rejected and cannot serve as comparable baselines.
 
 ## Run locally
 
@@ -47,7 +45,7 @@ Metro server; both build bundled JavaScript.
 | `native-release` | Normal production React renderer; native frame or elapsed-time, lifecycle, and input observations.           |
 | `react-profile`  | Production profiling renderer with React `Profiler` observations enabled. Development mode remains disabled. |
 
-Compare ordinary and live measurements within the same mode, device, runtime,
+Compare Gallery measurements within the same mode, device, runtime,
 and dependency versions. **Do not compare elapsed timings across these modes.**
 Profiling adds work of its own. A requested profiling run fails validation if
 the renderer produces no timing observations; missing durations are not zeros.
@@ -84,14 +82,14 @@ example's old device benchmark exports and host-side additional-test outputs
 before collection so stale samples cannot make a failed run appear successful.
 
 Android runs four test cases: transition frames and repeated navigation
-timing/input for ordinary and live rendering. Startup measurements are omitted.
+timing/input for the Gallery example. Startup measurements are omitted.
 Frame tests still start a fresh Activity before each measured round trip; launch
 and settling are outside the measured interval. Native compilation and installation
 still take their usual time, especially on the first run.
 
 ## Measurements and comparisons
 
-The main summary has six rows: three measurements for ordinary and live rendering.
+The main summary has three rows for the Gallery example.
 
 | Measurement              | Meaning                                                                                   |
 | ------------------------ | ----------------------------------------------------------------------------------------- |
@@ -131,6 +129,48 @@ device before making performance claims. Collection still fails for missing
 measurements, failed journeys, unacknowledged input, lost samples, invalid units,
 or a profiling-mode mismatch.
 
+### Optional startup diagnostics
+
+`ChoreographyProvider` accepts `onPreparationTrace` for opt-in forward startup
+diagnostics. The performance fixture enables it for the Gallery example
+transitions, including the legacy renderer path. Production apps incur no trace
+buffering when the callback is absent. Each trace identifies the group, source,
+target instance, direction, and eventual session; all timestamps use JavaScript
+`performance.now()`. Traces are buffered and the callback is deferred until
+preparation ends. The collector performs no React updates or logging while a
+stage runs.
+
+The trace separates source measurement, navigation dispatch until target-instance
+resolution, screen readiness, the additional Android frame (when required),
+coordinator preparation, and overlay readiness. Coordinator stages give finer
+detail about registration, native preparation, cache validation, measurement,
+and pairing. Stage names can repeat; the report sums each repeated stage within
+one journey before calculating its median or P95. Parent and child stages can
+overlap, so their durations must not be added together.
+
+`requestToOverlayReadyMs` starts at the same fixture request timestamp as open
+preparation and ends when JavaScript observes both overlay readiness acknowledgments. It excludes
+deferred observer delivery time. It is a readiness proxy, **not first presented
+motion**, and cannot establish a tap-to-visible-motion target on its own. The
+first version traces forward preparation only; return preparation keeps its
+existing measurement. Cancellation, unavailable targets, and failures emit their
+own outcomes rather than successful overlay timings.
+
+The existing overlay safety timeout may allow a transition to proceed before
+both acknowledgments arrive. Such traces use `overlay-timeout`, retain their
+stage timings, and contribute to an explicit timeout count. They do not emit
+`requestToOverlayReadyMs`. A timeout alone does not invalidate otherwise verified
+navigation or remove its original preparation sample. The report shows traced,
+acknowledged, and timed-out journey counts so a smaller acknowledged timing sample
+cannot hide missing acknowledgments.
+
+These diagnostics add optional raw fields and a separate report table. The main
+preparation metrics retain measurement definition version 3. Old exports remain
+readable; absent traces produce no diagnostic numbers. When tracing is requested,
+missing or invalid forward traces invalidate collection. Compare instrumented
+baseline and candidate runs on the same device; instrumentation itself adds
+small clock-read and buffering costs.
+
 ## CI and pull-request comments
 
 Performance CI runs only on Android. The regular iOS build remains in the main
@@ -169,7 +209,7 @@ The fixture uses bundled gallery images and five shared pairs with 350 ms transi
 stays mounted and unfrozen. Forward navigation uses `useChoreographyNavigation`;
 back uses `useInteractiveTransition().beginBack()` and `finish({ duration: 350 })`.
 A ten-second timeout records failure. Native launch props select
-`performanceScenario: "ordinary" | "live"` and `performanceReactProfile`.
+`performanceScenario: "gallery"` and `performanceReactProfile`.
 
 ### Native automation protocol
 

@@ -69,11 +69,11 @@ class ChoreographyBenchmarks(private val scenario: String) {
   }
 
   private fun roundTrip() {
-    click("benchmark-start")
+    click("View Aurora")
     await("benchmark-detail-settled")
     click("benchmark-detail-probe")
     await("benchmark-detail-probe-ack")
-    click("benchmark-back")
+    click("Back to gallery")
     await("benchmark-list-settled")
     click("benchmark-list-probe")
     await("benchmark-list-probe-ack")
@@ -167,6 +167,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
 
     @JvmStatic
     @Parameterized.Parameters(name = "{0}")
-    fun scenarios(): List<Array<String>> = listOf(arrayOf("ordinary"), arrayOf("live"))
+    fun scenarios(): List<Array<String>> = listOf(arrayOf("gallery"))
   }
 }

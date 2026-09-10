@@ -46,7 +46,7 @@ test('renders a compact update with explicit missing/failed collection and profi
       mode: 'native-release',
       valid: true,
       metrics: {
-        'live.forward.requestToSessionActiveMs': {
+        'gallery.forward.requestToSessionActiveMs': {
           count: 10,
           median: 31.4567,
           p95: null,
@@ -102,13 +102,13 @@ test('keeps the headline table small and profiling collapsed', () => {
       platform: 'android',
       mode,
       valid: true,
-      metrics: { 'live.react.renderWorkPerRunMs': { count: 3, median: 12 } },
+      metrics: { 'gallery.react.renderWorkPerRunMs': { count: 3, median: 12 } },
     };
   const body = renderComment(run, reports);
   assert.match(body, /<details><summary>React profiling/);
   assert.equal(
-    body.split('\n').filter((line) => /^\| (ordinary|live)/.test(line)).length,
-    8
+    body.split('\n').filter((line) => /^\| Gallery/.test(line)).length,
+    4
   );
   assert.doesNotMatch(body, /P95|requestToProbeHandlerMs|retained memory/);
   const visible = body.replace(/<details>[\s\S]*?<\/details>/g, '');
@@ -152,7 +152,7 @@ test('malformed, unavailable, or mismatched artifacts fail only their own lane',
         mode: 'react-profile',
         valid: true,
         metrics: {
-          'live.react.renderWorkPerRunMs': {
+          'gallery.react.renderWorkPerRunMs': {
             count: 10,
             median: 42,
             p95: null,
@@ -169,7 +169,7 @@ test('malformed, unavailable, or mismatched artifacts fail only their own lane',
     );
     assert.match(body, /Run: \*\*failure\*\*/);
     assert.match(body, /Collection failed/);
-    assert.match(body, /live · React render work \(ms\/run\) \| — \| 42/);
+    assert.match(body, /Gallery · React render work \(ms\/run\) \| — \| 42/);
   }
 });
 

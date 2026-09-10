@@ -54,11 +54,12 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
           invalidate()
 
           val dismissalId = ++dismissalRequestId
-          // Two main-thread hops ≈ two frames: enough for Reanimated to commit.
-          mainHandler.post {
-            mainHandler.post {
+          // Queue against actual frame boundaries. Handler.post can run twice
+          // before the next draw and release the bridge frame too early.
+          postOnAnimation {
+            postOnAnimation release@{
               if (active || dismissalId != dismissalRequestId) {
-                return@post
+                return@release
               }
               clearDismissalFrame()
               alpha = 0f
@@ -116,6 +117,9 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
   override fun onDetachedFromWindow() {
     super.onDetachedFromWindow()
+    presentationRequestId += 1
+    dismissalRequestId += 1
+    pendingPresentationAck = false
     clearDismissalFrame()
     mainHandler.removeCallbacksAndMessages(null)
   }
@@ -133,19 +137,13 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       return
     }
 
-    val requestId = ++presentationRequestId
+    presentationRequestId += 1
     // Deterministic path: ack from the first dispatchDraw after activation,
     // so the JS handshake observes a frame that actually painted the overlay.
     pendingPresentationAck = true
     invalidate()
 
-    // Fallback for the rare case where no draw pass runs (e.g. an already
-    // valid hardware layer): two frames is enough for any pending commit.
-    mainHandler.postDelayed({
-      if (active && requestId == presentationRequestId && pendingPresentationAck && windowToken != null) {
-        pendingPresentationAck = false
-        onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble())
-      }
-    }, 32)
+    // If drawing is delayed, the provider's 150ms timeout is the safety net.
+    // A fixed 32ms timer cannot prove that any native frame was presented.
   }
 }

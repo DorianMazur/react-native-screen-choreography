@@ -3,7 +3,6 @@ import { useRouter, type Href } from 'expo-router';
 import {
   ChoreographyScreen,
   useChoreographyRouter,
-  useInteractiveTransition,
 } from 'react-native-screen-choreography/expo-router';
 import {
   ExampleBindings,
@@ -14,7 +13,6 @@ import {
 
 const listRoutes = {
   GalleryList: '/gallery',
-  MusicList: '/music',
   TokenList: '/wallet',
   WalletSetup: '/wallet-setup',
 } satisfies Record<DemoListScreenId, Href>;
@@ -23,8 +21,6 @@ function detailRoute(destination: DemoDetailDestination): Href {
   switch (destination.screen) {
     case 'GalleryDetail':
       return { pathname: '/gallery/[photoId]', params: destination.params };
-    case 'NowPlaying':
-      return { pathname: '/music/[trackId]', params: destination.params };
     case 'TokenDetail':
       return { pathname: '/wallet/[tokenId]', params: destination.params };
     case 'WalletExisting':
@@ -41,7 +37,6 @@ function Bindings({
 }) {
   const router = useRouter();
   const choreography = useChoreographyRouter<Href>(router, screenId);
-  const interactive = useInteractiveTransition();
   return (
     <ExampleBindings
       navigation={{
@@ -54,7 +49,6 @@ function Bindings({
           }),
         goBack: choreography.back,
       }}
-      interactive={interactive}
     >
       {children}
     </ExampleBindings>

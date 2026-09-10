@@ -9,27 +9,27 @@ import { PortalHost } from 'react-native-teleport';
 import { getExpansionProgress } from '../core/expansionProgress';
 import { getLiveOverlayHostName } from '../core/liveHostNames';
 import type {
-  LiveTransition,
-  LiveTransitionRendererProps,
+  Transition,
+  TransitionRendererProps,
   SharedElementTransitionRendererProps,
   SharedElementTransitionSide,
 } from '../types';
 
-interface LiveTransitionAdapterSide extends SharedElementTransitionSide {
+interface TransitionAdapterSide extends SharedElementTransitionSide {
   metadata?: unknown;
 }
 
-interface LiveTransitionAdapterRendererProps extends Omit<
+interface TransitionAdapterRendererProps extends Omit<
   SharedElementTransitionRendererProps,
   'source' | 'target'
 > {
-  source: LiveTransitionAdapterSide;
-  target: LiveTransitionAdapterSide;
+  source: TransitionAdapterSide;
+  target: TransitionAdapterSide;
 }
 
-export interface MakeLiveTransitionOptions {
+export interface MakeTransitionOptions {
   /** Must render the supplied host children exactly once throughout the session. */
-  renderer: ComponentType<LiveTransitionRendererProps>;
+  renderer: ComponentType<TransitionRendererProps>;
   /** Overlay stacking order. Defaults to 100, including for custom motion. */
   zIndex?: number;
 }
@@ -38,11 +38,11 @@ export interface MakeLiveTransitionOptions {
  * Adapts custom motion while the library owns the sole live portal host.
  * Create outside render or memoize, and reuse on both live endpoints.
  */
-export function makeLiveTransition({
+export function makeTransition({
   renderer: Renderer,
   zIndex = 100,
-}: MakeLiveTransitionOptions): LiveTransition {
-  function LiveTransitionAdapter({
+}: MakeTransitionOptions): Transition {
+  function TransitionAdapter({
     id,
     groupId,
     progress,
@@ -50,7 +50,7 @@ export function makeLiveTransition({
     zIndex: rendererZIndex,
     source,
     target,
-  }: LiveTransitionAdapterRendererProps) {
+  }: TransitionAdapterRendererProps) {
     const sourceSide = {
       screenId: source.screenId,
       metrics: source.metrics,
@@ -88,20 +88,19 @@ export function makeLiveTransition({
   }
 
   return {
-    mode: 'live',
     zIndex,
-    renderer: LiveTransitionAdapter,
-  } as LiveTransition;
+    renderer: TransitionAdapter,
+  } as Transition;
 }
 
-function BoundsLiveTransition({
+function BoundsTransition({
   progress,
   direction,
   source,
   target,
   zIndex,
   children,
-}: LiveTransitionRendererProps) {
+}: TransitionRendererProps) {
   const sourceX = source.metrics.pageX;
   const sourceY = source.metrics.pageY;
   const sourceWidth = source.metrics.width;
@@ -145,8 +144,8 @@ function BoundsLiveTransition({
   );
 }
 
-export const defaultLiveTransition = makeLiveTransition({
-  renderer: BoundsLiveTransition,
+export const defaultTransition = makeTransition({
+  renderer: BoundsTransition,
 });
 
 const styles = StyleSheet.create({

@@ -28,8 +28,8 @@ Use these files as the source of truth:
 - `src/core/`: registry, coordinator, overlay, measurement, constants, contexts, visibility
 - `src/native/`: Fabric component spec and native host bridge
 - `src/hooks/`: public progress and navigation hooks
-- `src/standin/`: stand-in primitives
-- `src/transitions/`: reusable surface, stretch, and plain-text transition recipes
+- `src/standin/`: live transition geometry and surface primitives
+- `src/transitions/`: the live transition factory and reusable geometry helpers
 - `src/debug/`: logger
 - `examples/react-navigation/`: bare React Native example app
 - `examples/expo-router/`: Expo Router development-build example app
@@ -51,8 +51,8 @@ Current important exports include:
 - `useChoreographyProgress`
 - `useLatchedReveal`
 - `useStaggeredReveal`
-- transition recipes: `makeSurfaceTransition`, `makeStretchTransition`, `textMorphTransition`
-- stand-in primitives: `StandInContainer`, `StandInElement`, `resolveSurfaceStyle`;
+- transition factories: `defineTransition`, `makeTransition`; retained layout: `useSharedElementPresentation`
+- transition primitives: `TransitionSurface`, `TransitionFrame`, `resolveSurfaceStyle`;
 - debug helpers: `setDebugEnabled`
 - types: `ElementPresentation`, `ChoreographyDebugConfig`, `ChoreographyDebugLevel`, `ChoreographyDebugCategory`
 
@@ -73,7 +73,7 @@ Current important exports include:
 
 - custom gesture progress is exposed through `useInteractiveTransition`; native-stack swipe progress is not connected automatically yet
 - startup still depends on live target measurement for structural elements on first open; repeated opens validate cached target metrics with a single batched read
-- transition renderers receive frozen React content, style, and metrics; the library does not capture or prescribe visual representations
+- transition renderers receive frozen metadata, style, and metrics plus one library-owned portal host child; they must render that child exactly once
 - the registry is keyed by compound `(screenId, groupId, id)` identity, and pair discovery is scoped to the source screen's group
 - rapid interruption paths are actively hardened and should be regression-tested after changes
 
@@ -110,7 +110,7 @@ When debugging or extending behavior, start here:
 - `src/core/TransitionCoordinator.ts`
 - `src/core/TransitionOverlay.tsx`
 - `src/native/NativeTransitionHost.tsx`
-- `src/standin/StandInContainer.tsx`
+- `src/standin/TransitionSurface.tsx`
 - `src/hooks/useChoreographyNavigation.ts`
 - `src/hooks/useChoreographyProgress.ts`
 

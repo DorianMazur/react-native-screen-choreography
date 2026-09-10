@@ -57,21 +57,12 @@ export function useInteractiveTransitionNavigator({
   const sessionIdRef = useRef<string | null>(null);
   const beginTokenRef = useRef(0);
   const preparingRef = useRef(false);
-  const settlementTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [gestureToken, setGestureToken] = useState(0);
   const { owner } = progressOwnership;
 
-  const clearSettlementTimer = useCallback(() => {
-    if (settlementTimerRef.current !== null) {
-      clearTimeout(settlementTimerRef.current);
-      settlementTimerRef.current = null;
-    }
-  }, []);
-
   useEffect(
     () => () => {
-      clearSettlementTimer();
       beginTokenRef.current += 1;
       preparingRef.current = false;
       const sessionId = sessionIdRef.current;
@@ -80,18 +71,17 @@ export function useInteractiveTransitionNavigator({
         cancelTransition(sessionId);
       }
     },
-    [cancelTransition, clearSettlementTimer, reverseController]
+    [cancelTransition, reverseController]
   );
 
   useEffect(() => {
     const sessionId = sessionIdRef.current;
     if (sessionId && activeSession?.id !== sessionId) {
-      clearSettlementTimer();
       sessionIdRef.current = null;
       setGestureToken(0);
       setIsActive(false);
     }
-  }, [activeSession, clearSettlementTimer]);
+  }, [activeSession]);
 
   const gestureProgress = useDerivedValue(() => 1 - progress.value);
 
@@ -221,13 +211,12 @@ export function useInteractiveTransitionNavigator({
       ) {
         return;
       }
-      clearSettlementTimer();
       sessionIdRef.current = null;
       setGestureToken(0);
       setIsActive(false);
       cancelTransition(sessionId);
     },
-    [cancelTransition, clearSettlementTimer, progressOwnership]
+    [cancelTransition, progressOwnership]
   );
 
   const animateSettlement = useCallback(
@@ -236,7 +225,6 @@ export function useInteractiveTransitionNavigator({
       if (!sessionId || reverseController.owns(sessionId)) return;
       const token = progressOwnership.claim(sessionId);
       if (token === null) return;
-      clearSettlementTimer();
       if (target === 0) {
         // The provider retains the source and owns completion across route unmount.
         setGestureToken(0);
@@ -268,22 +256,9 @@ export function useInteractiveTransitionNavigator({
         },
         onComplete,
       });
-      if (options.duration) {
-        settlementTimerRef.current = setTimeout(() => {
-          setOwnedProgress(
-            progressOwnership,
-            token,
-            sessionId,
-            progress,
-            target,
-            onComplete
-          );
-        }, options.duration + 50);
-      }
     },
     [
       cancelOnRN,
-      clearSettlementTimer,
       commitReverseTransition,
       navigateBack,
       progress,

@@ -1,13 +1,9 @@
+import { TokenSharedContent } from './TokenSharedContent';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
-import { SharedElement } from '../runtime';
 import type { Token } from './data';
 import { formatMoney, walletTheme as theme } from './walletTheme';
 import { TokenLogo } from './TokenLogo';
-import {
-  tokenIconTransition,
-  tokenTextTransition,
-  tokenValueTransition,
-} from './walletTransitions';
+import { walletTransition } from './walletTransitions';
 
 interface TokenRowProps {
   token: Token;
@@ -26,58 +22,68 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
     >
       <View style={styles.rowContainer}>
         <View style={styles.row}>
-          <SharedElement
-            id={`token.${token.id}.icon`}
+          <walletTransition.Element
+            name="icon"
             groupId={`token.${token.id}`}
-            transition={tokenIconTransition}
+            portalStyle={styles.portal}
           >
-            <TokenLogo token={token} size={44} />
-          </SharedElement>
+            <TokenSharedContent>
+              <TokenLogo token={token} size={44} />
+            </TokenSharedContent>
+          </walletTransition.Element>
 
           <View style={styles.info}>
-            <SharedElement
-              id={`token.${token.id}.name`}
+            <walletTransition.Element
+              name="name"
               groupId={`token.${token.id}`}
-              transition={tokenTextTransition}
+              portalStyle={styles.portal}
             >
-              <Text style={styles.name}>{token.name}</Text>
-            </SharedElement>
+              <TokenSharedContent>
+                <Text style={styles.name}>{token.name}</Text>
+              </TokenSharedContent>
+            </walletTransition.Element>
 
-            <SharedElement
-              id={`token.${token.id}.symbol`}
+            <walletTransition.Element
+              name="symbol"
               groupId={`token.${token.id}`}
-              transition={tokenTextTransition}
+              portalStyle={styles.portal}
             >
-              <Text style={styles.symbol}>{token.symbol}</Text>
-            </SharedElement>
+              <TokenSharedContent>
+                <Text style={styles.symbol}>{token.symbol}</Text>
+              </TokenSharedContent>
+            </walletTransition.Element>
           </View>
 
           <View style={styles.valueContainer}>
-            <SharedElement
-              id={`token.${token.id}.value`}
+            <walletTransition.Element
+              name="value"
               groupId={`token.${token.id}`}
-              transition={tokenValueTransition}
+              portalStyle={styles.portal}
             >
-              <Text style={styles.value}>{formatMoney(token.price)}</Text>
-            </SharedElement>
+              <TokenSharedContent>
+                <Text style={styles.value}>{formatMoney(token.price)}</Text>
+              </TokenSharedContent>
+            </walletTransition.Element>
 
-            <SharedElement
-              id={`token.${token.id}.change`}
+            <walletTransition.Element
+              name="change"
               groupId={`token.${token.id}`}
-              transition={tokenValueTransition}
+              portalStyle={styles.portal}
             >
-              <Text
-                style={[
-                  styles.change,
-                  isPositiveChange
-                    ? styles.changePositive
-                    : styles.changeNegative,
-                ]}
-              >
-                {isPositiveChange ? '+' : ''}
-                {token.change24h.toFixed(2)}%
-              </Text>
-            </SharedElement>
+              <TokenSharedContent>
+                <Text
+                  style={[
+                    styles.change,
+                    isPositiveChange
+                      ? styles.changePositive
+                      : styles.changeNegative,
+                  ]}
+                >
+                  {isPositiveChange ? '+' : ''}
+                  {token.change24h.toFixed(2)}%
+                </Text>
+              </TokenSharedContent>
+            </walletTransition.Element>
           </View>
         </View>
       </View>
@@ -86,6 +92,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
 }
 
 const styles = StyleSheet.create({
+  portal: { flex: 0, width: 'auto', height: 'auto' },
   pressable: {
     marginHorizontal: 24,
     borderBottomWidth: StyleSheet.hairlineWidth,

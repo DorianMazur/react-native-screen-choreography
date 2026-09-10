@@ -9,7 +9,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-const SCENARIOS = ['ordinary', 'live'];
+const SCENARIOS = ['gallery'];
 const MODES = ['native-release', 'react-profile'];
 
 function finite(value: unknown, label: string) {
@@ -44,12 +44,92 @@ function add(metrics: MetricSamples, name: string, value: number) {
   (metrics[name] ??= []).push(value);
 }
 
+function readPreparationTrace(
+  journey: InputRecord,
+  required: boolean,
+  prefix: string,
+  metrics: MetricSamples
+) {
+  const trace = journey.preparationTrace;
+  if (trace === undefined) {
+    if (required || journey.requestToOverlayReadyMs !== undefined) {
+      throw new Error('Missing forward preparation trace');
+    }
+    return;
+  }
+  if (
+    !trace ||
+    trace.clock !== 'js-performance-now' ||
+    trace.direction !== journey.direction ||
+    trace.sessionId !== journey.sessionId ||
+    !['overlay-ready', 'overlay-timeout'].includes(trace.outcome) ||
+    trace.droppedStages !== 0 ||
+    !Array.isArray(trace.stages) ||
+    !trace.stages.length ||
+    ['traceId', 'groupId', 'sourceScreenId', 'targetScreenId'].some(
+      (key) => typeof trace[key] !== 'string' || !trace[key].length
+    )
+  )
+    throw new Error('Invalid preparation trace identity or outcome');
+  const request = finite(journey.requestJsMs, 'preparation request timestamp');
+  const active = finite(
+    journey.sessionActiveJsMs,
+    'preparation active timestamp'
+  );
+  const start = finite(trace.startedAtMs, 'preparation start timestamp');
+  const end = finite(trace.completedAtMs, 'overlay wait end timestamp');
+  const acknowledged = trace.outcome === 'overlay-ready';
+  const overlay = acknowledged
+    ? finite(journey.requestToOverlayReadyMs, 'requestToOverlayReadyMs')
+    : undefined;
+  if (!acknowledged && journey.requestToOverlayReadyMs !== undefined) {
+    throw new Error(
+      'Overlay timeout must not report observed overlay readiness'
+    );
+  }
+  if (
+    start < request ||
+    end < start ||
+    end < active ||
+    (overlay !== undefined && Math.abs(overlay - (end - request)) > 0.001)
+  ) {
+    throw new Error(
+      'Preparation trace timestamps do not share the request clock'
+    );
+  }
+  const durations = new Map<string, number>();
+  for (const stage of trace.stages) {
+    if (
+      !stage ||
+      typeof stage.name !== 'string' ||
+      !/^[a-z][a-z0-9-]*$/.test(stage.name) ||
+      stage.completed !== true
+    ) {
+      throw new Error('Invalid or incomplete preparation stage');
+    }
+    const stageStart = finite(stage.startedAtMs, 'preparation stage start');
+    const duration = finite(stage.durationMs, 'preparation stage duration');
+    if (stageStart < start || stageStart + duration > end + 0.001) {
+      throw new Error('Preparation stage extends beyond its trace');
+    }
+    // One sample per journey, even when a stage repeats (for example a target
+    // measurement poll). Nested parent/child stages remain separate metrics.
+    durations.set(stage.name, (durations.get(stage.name) ?? 0) + duration);
+  }
+  add(metrics, `${prefix}.overlayReadinessTimeout`, acknowledged ? 0 : 1);
+  if (overlay !== undefined)
+    add(metrics, `${prefix}.requestToOverlayReadyMs`, overlay);
+  for (const [name, duration] of durations) {
+    add(metrics, `${prefix}.preparation.${name}Ms`, duration);
+  }
+}
+
 function readFixture(
   report: InputRecord,
   mode: string,
   metrics: MetricSamples
 ) {
-  if (report.schemaVersion !== 1 || report.fixtureVersion !== 2) {
+  if (report.schemaVersion !== 1 || report.fixtureVersion !== 4) {
     throw new Error('Unsupported fixture schema/version');
   }
   if (!SCENARIOS.includes(report.scenario))
@@ -70,6 +150,15 @@ function readFixture(
   if (!Array.isArray(report.journeys) || report.journeys.length < 2) {
     throw new Error('Fixture must contain a complete forward/back round trip');
   }
+  if (
+    report.preparationTracing !== undefined &&
+    (report.preparationTracing?.version !== 1 ||
+      typeof report.preparationTracing.requested !== 'boolean' ||
+      !Array.isArray(report.preparationTracing.directions) ||
+      report.preparationTracing.directions.length !== 1 ||
+      report.preparationTracing.directions[0] !== 'forward')
+  )
+    throw new Error('Unknown preparation tracing definition');
   const directions = new Set<string>();
   for (const journey of report.journeys) {
     if (!['forward', 'backward'].includes(journey.direction))
@@ -87,6 +176,13 @@ function readFixture(
       throw new Error('Unknown probe timing definition');
     }
     const prefix = `${report.scenario}.${journey.direction}`;
+    readPreparationTrace(
+      journey,
+      report.preparationTracing?.requested === true &&
+        journey.direction === 'forward',
+      prefix,
+      metrics
+    );
     directions.add(journey.direction);
     for (const key of [
       'requestToSessionActiveMs',
@@ -135,10 +231,7 @@ function readFixture(
   }
   finite(report.payloadMounts, 'payloadMounts');
   finite(report.payloadUnmounts, 'payloadUnmounts');
-  if (
-    report.scenario === 'live' &&
-    (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
-  )
+  if (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
     throw new Error('Live photo owner must stay mounted');
   readAndroidInput(report);
 }
@@ -238,7 +331,7 @@ function readMacrobenchmark(
   const coverage = new Set<string>();
   for (const benchmark of report.benchmarks) {
     const name = String(benchmark.name ?? '');
-    const match = /^transitionFrames\[(ordinary|live)\]$/.exec(name);
+    const match = /^transitionFrames\[(gallery)\]$/.exec(name);
     if (!match) throw new Error(`Unexpected Android benchmark name: ${name}`);
     if (existingNames.has(name) || coverage.has(name))
       throw new Error(`Duplicate Android benchmark: ${name}`);
@@ -393,14 +486,30 @@ export function summarize(
     measurementDefinitionVersion: 3,
     platform,
     mode,
-    fixtureVersion: 2,
+    fixtureVersion: 4,
     policy: 'informational-performance-fail-invalid-collection',
     metadata,
     valid: errors.length === 0,
     errors,
     sources,
+    preparationDiagnostics: Object.fromEntries(
+      Object.entries(metrics)
+        .filter(([name]) => name.endsWith('.overlayReadinessTimeout'))
+        .map(([name, values]) => {
+          const timeoutCount = values.reduce((sum, value) => sum + value, 0);
+          return [
+            name.slice(0, -'.overlayReadinessTimeout'.length),
+            {
+              tracedJourneys: values.length,
+              overlayAcknowledgedJourneys: values.length - timeoutCount,
+              overlayTimeoutJourneys: timeoutCount,
+            },
+          ];
+        })
+    ),
     metrics: Object.fromEntries(
       Object.entries(metrics)
+        .filter(([name]) => !name.endsWith('.overlayReadinessTimeout'))
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, values]) => [key, distribution(values)])
     ),
@@ -408,6 +517,11 @@ export function summarize(
 }
 
 export function markdown(summary: ReturnType<typeof summarize>) {
+  const preparation = Object.entries(summary.metrics).filter(
+    ([name]) =>
+      name.includes('.preparation.') ||
+      name.endsWith('.requestToOverlayReadyMs')
+  );
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
@@ -418,6 +532,28 @@ export function markdown(summary: ReturnType<typeof summarize>) {
     ...summary.errors.map((error) => `- ${error.replaceAll('\n', ' ')}`),
     '',
     summaryTable(summary),
+    ...(preparation.length
+      ? [
+          '',
+          '### Optional startup diagnostics',
+          '',
+          'Forward overlay readiness is a JavaScript proxy, not first presented motion. Stages can nest; do not add parent and child durations. Repeated stages are summed within each journey before aggregation.',
+          '',
+          '| Journey | Traced | Overlay acknowledged | Overlay timeout |',
+          '| --- | ---: | ---: | ---: |',
+          ...Object.entries(summary.preparationDiagnostics).map(
+            ([name, counts]) =>
+              `| ${name} | ${counts.tracedJourneys} | ${counts.overlayAcknowledgedJourneys} | ${counts.overlayTimeoutJourneys} |`
+          ),
+          '',
+          '| Metric | Samples | Median (ms) | P95 (ms) |',
+          '| --- | ---: | ---: | ---: |',
+          ...preparation.map(
+            ([name, value]) =>
+              `| ${name} | ${value!.count} | ${value!.median.toFixed(2)} | ${value!.p95?.toFixed(2) ?? '—'} |`
+          ),
+        ]
+      : []),
     '',
     '',
   ].join('\n');

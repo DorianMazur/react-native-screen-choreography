@@ -2,6 +2,7 @@ import type {
   ChoreographyNavigationOptions,
   TransitionSessionData,
 } from '../types';
+import type { PreparationTrace } from './preparationTrace';
 
 export interface PendingNavigationRequest {
   targetScreenId: string;
@@ -16,6 +17,7 @@ interface PrepareForwardTransitionArgs {
   sourceScreenId: string;
   targetScreenId: string;
   isAndroid: boolean;
+  trace?: PreparationTrace;
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   setPendingTargetScreen: (
     screenId: string | null,
@@ -30,8 +32,10 @@ interface PrepareForwardTransitionArgs {
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward';
+    trace?: PreparationTrace;
   }) => Promise<TransitionSessionData | null>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;
+  isOverlayPresented?: (sessionId: string) => boolean;
   isPreparationCurrent?: () => boolean;
   isSessionCurrent?: (sessionId: string) => boolean;
 }
@@ -124,6 +128,7 @@ export class NavigationSessionController {
     sourceScreenId,
     targetScreenId,
     isAndroid,
+    trace,
     preMeasureGroup,
     setPendingTargetScreen,
     dispatchNavigation,
@@ -132,20 +137,27 @@ export class NavigationSessionController {
     waitForNextFrame,
     startTransition,
     waitForOverlayReady,
+    isOverlayPresented = () => true,
     isPreparationCurrent = () => true,
     isSessionCurrent = () => true,
   }: PrepareForwardTransitionArgs): Promise<TransitionSessionData | null> {
+    let outcome: Parameters<PreparationTrace['finish']>[0] = 'cancelled';
     try {
+      const sourceMeasured = trace?.start('source-measure');
       await preMeasureGroup(groupId, sourceScreenId);
+      sourceMeasured?.();
       if (!isPreparationCurrent()) return null;
       setPendingTargetScreen(targetScreenId, sourceScreenId);
+      const instanceResolved = trace?.start('navigation-instance');
       dispatchNavigation();
 
       const targetInstanceId = resolveTargetScreenId
         ? await resolveTargetScreenId()
         : targetScreenId;
+      instanceResolved?.();
       if (!isPreparationCurrent()) return null;
       if (!targetInstanceId) {
+        outcome = 'unavailable';
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
         return null;
@@ -153,47 +165,67 @@ export class NavigationSessionController {
       if (targetInstanceId !== targetScreenId) {
         setPendingTargetScreen(targetInstanceId, sourceScreenId);
       }
+      const screenBecameReady = trace?.start('screen-ready');
       const screenReady = await waitForScreenReady(targetInstanceId);
+      screenBecameReady?.({ ready: screenReady });
       if (!isPreparationCurrent()) return null;
       if (!screenReady) {
+        outcome = 'unavailable';
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
         return null;
       }
 
       if (isAndroid) {
+        const framePassed = trace?.start('android-frame');
         await waitForNextFrame();
+        framePassed?.();
         if (!isPreparationCurrent()) return null;
       }
 
+      const coordinatorReady = trace?.start('coordinator');
       const session = await startTransition({
         groupId,
         sourceScreenId,
         targetScreenId: targetInstanceId,
         direction: 'forward',
+        ...(trace ? { trace } : {}),
       });
+      coordinatorReady?.();
 
       if (!session) {
         if (!isPreparationCurrent()) return null;
+        outcome = 'unavailable';
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
         return null;
       }
 
+      trace?.setSession(session.id, targetInstanceId);
+      const endOverlay = trace?.start('overlay-ready');
       const overlayReady = await waitForOverlayReady(session.id);
+      const acknowledged = trace
+        ? overlayReady && isOverlayPresented(session.id)
+        : overlayReady;
+      endOverlay?.({ ready: overlayReady, acknowledged });
       if (!isSessionCurrent(session.id)) return null;
       if (!overlayReady) {
+        outcome = 'unavailable';
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
         return null;
       }
       setPendingTargetScreen(null);
+      outcome = acknowledged ? 'overlay-ready' : 'overlay-timeout';
       return session;
     } catch (error) {
       if (!isPreparationCurrent()) return null;
+      outcome = 'failed';
       this.releaseNavigationLock();
       setPendingTargetScreen(null);
       throw error;
+    } finally {
+      trace?.finish(outcome);
     }
   }
 }

@@ -104,9 +104,14 @@ describe('ChoreographyProvider lifecycle', () => {
     }
   });
 
-  test.each([false, true])(
-    'publishes and completes sessions with StrictMode=%s',
-    async (strict) => {
+  test.each([
+    [false, 'native'],
+    [true, 'native'],
+    [false, 'timeout'],
+    [true, 'timeout'],
+  ] as const)(
+    'publishes and completes sessions with StrictMode=%s and readiness=%s',
+    async (strict, readiness) => {
       jest.useFakeTimers();
       let context!: ChoreographyContextType;
       let tree: ReactTestRenderer | undefined;
@@ -119,6 +124,7 @@ describe('ChoreographyProvider lifecycle', () => {
         controlRenders();
         return null;
       }
+
       function Consumer() {
         context = useContext(ChoreographyContext)!;
         return null;
@@ -162,8 +168,9 @@ describe('ChoreographyProvider lifecycle', () => {
             }),
             metrics,
             getPresentation: () => ({
-              content: null,
-              transition: { renderer: () => null },
+              transition: {
+                renderer: () => null,
+              },
             }),
           });
         }
@@ -198,16 +205,33 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(context.progressOwnership.isSession(sessionId)).toBe(true);
         expect(onTransitionStart).toHaveBeenCalledTimes(1);
         expect(onTransitionStart).toHaveBeenCalledWith(session);
-        expect(hidden.value).toBe(1);
-        expect(writes[0]).toHaveBeenCalledTimes(1);
+        // React layout is ready, but the native overlay has not presented yet.
+        expect(hidden.value).toBe(0);
+        expect(writes[0]).not.toHaveBeenCalled();
         expect(writes[1]).not.toHaveBeenCalled();
+        expect(context.isOverlayPresented!(sessionId)).toBe(false);
+        const ready = jest.fn();
+        const waiting = context.waitForOverlayReady(sessionId).then(ready);
+        if (readiness === 'native') {
+          await act(async () => {
+            const host = tree!.root.findByType(NativeTransitionHost);
+            host.props.onPresentationReady();
+            host.props.onPresentationReady();
+            await waiting;
+          });
+        } else {
+          await act(async () => jest.advanceTimersByTimeAsync(149));
+          expect(hidden.value).toBe(0);
+          expect(ready).not.toHaveBeenCalled();
+          await act(async () => {
+            await jest.advanceTimersByTimeAsync(1);
+            await waiting;
+          });
+        }
 
-        await act(async () => {
-          const host = tree!.root.findByType(NativeTransitionHost);
-          host.props.onPresentationReady();
-          host.props.onPresentationReady();
-        });
-        expect(writes[0]).toHaveBeenCalledTimes(1);
+        expect(ready).toHaveBeenCalledWith(true);
+        expect(hidden.value).toBe(0);
+        expect(writes[0]).not.toHaveBeenCalled();
         expect(writes[1]).not.toHaveBeenCalled();
 
         expect(controlRenders).not.toHaveBeenCalled();
@@ -219,7 +243,7 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(onTransitionEnd).toHaveBeenCalledTimes(1);
         expect(onTransitionEnd).toHaveBeenCalledWith(session);
         expect(hidden.value).toBe(0);
-        expect(writes[0]).toHaveBeenCalledTimes(2);
+        expect(writes[0]).not.toHaveBeenCalled();
         expect(writes[1]).not.toHaveBeenCalled();
       } finally {
         await act(async () => tree?.unmount());

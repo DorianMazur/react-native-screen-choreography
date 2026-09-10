@@ -7,7 +7,7 @@ function report() {
   return {
     schemaVersion: 1,
     measurementDefinitionVersion: 3,
-    fixtureVersion: 2,
+    fixtureVersion: 4,
     valid: true,
     platform: 'android',
     mode: 'native-release',
@@ -25,11 +25,11 @@ function report() {
       runnerImage: 'ubuntu-1',
     },
     metrics: {
-      'android.transitionFrames[ordinary].deadlineOverrunPercent': {
+      'android.transitionFrames[gallery].deadlineOverrunPercent': {
         count: 3,
         median: 0,
       },
-      'ordinary.forward.requestToSessionActiveMs': { count: 1, median: 40 },
+      'gallery.forward.requestToSessionActiveMs': { count: 1, median: 40 },
     },
   };
 }
@@ -38,9 +38,9 @@ test('shows absolute deltas including zero baselines, negative timing changes', 
   const base = report();
   const current = report();
   current.metrics[
-    'android.transitionFrames[ordinary].deadlineOverrunPercent'
+    'android.transitionFrames[gallery].deadlineOverrunPercent'
   ].median = 5;
-  current.metrics['ordinary.forward.requestToSessionActiveMs'].median = 30;
+  current.metrics['gallery.forward.requestToSessionActiveMs'].median = 30;
   assert.equal(compatible(current, base), true);
   const table = summaryTable(current, base);
   assert.match(table, /0 \| 5 \| \+5 pp/);
@@ -82,7 +82,7 @@ test('compares measurements across runner image versions or missing runner image
 
 test('does not display nonnumeric metrics or compare invalid collections', () => {
   const current = report();
-  current.metrics['ordinary.forward.requestToSessionActiveMs'].median = NaN;
+  current.metrics['gallery.forward.requestToSessionActiveMs'].median = NaN;
   assert.doesNotMatch(summaryTable(current), /NaN/);
   assert.equal(compatible(current, { ...report(), valid: false }), false);
 });
@@ -119,7 +119,7 @@ test('selects only successful push runs for the exact PR base branch and commit'
 
 test('does not compare rows collected with different sample counts', () => {
   const base = report();
-  base.metrics['ordinary.forward.requestToSessionActiveMs'].count = 2;
+  base.metrics['gallery.forward.requestToSessionActiveMs'].count = 2;
   assert.match(
     summaryTable(report(), base),
     /open preparation \(ms\) \| — \| 40 \| —/

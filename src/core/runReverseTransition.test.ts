@@ -61,15 +61,31 @@ function createContext(
 
 function createCoordinatorContext() {
   const ctx = createContext();
-  const coordinator = new TransitionCoordinator(
-    new ElementRegistry(),
-    ctx.progress
-  );
+  const registry = new ElementRegistry();
+  const coordinator = new TransitionCoordinator(registry, ctx.progress);
   coordinator.setOnSessionChange((session) => {
     ctx.progressOwnership.setSession(session?.id ?? null);
   });
   ctx.startTransition = (config) => coordinator.startTransition(config);
-  return { ctx, coordinator };
+  return { ctx, coordinator, registry };
+}
+
+function registerPendingSource(
+  registry: ElementRegistry,
+  screenId: string,
+  groupId: string
+) {
+  registry.register({
+    id: 'card',
+    groupId,
+    screenId,
+    ref: () => null,
+    metrics: null,
+    getPresentation: () => ({
+      content: null,
+      transition: { renderer: () => null },
+    }),
+  });
 }
 
 describe('runReverseTransition ownership', () => {
@@ -211,7 +227,10 @@ describe('runReverseTransition ownership', () => {
     'does not pop when %s interrupts real reverse preparation',
     async (interruption) => {
       jest.useFakeTimers();
-      const { ctx, coordinator } = createCoordinatorContext();
+      const { ctx, coordinator, registry } = createCoordinatorContext();
+      // Exercise a real registration wait; an empty group now falls back immediately.
+      registerPendingSource(registry, 'detail', 'group');
+      registerPendingSource(registry, 'list', 'replacement');
       const popAction = jest.fn();
       let replacement:
         | ReturnType<typeof coordinator.startTransition>
@@ -254,7 +273,8 @@ describe('runReverseTransition ownership', () => {
 
   test('no-pairs cleanup preserves a session started by fallback navigation', async () => {
     jest.useFakeTimers();
-    const { ctx, coordinator } = createCoordinatorContext();
+    const { ctx, coordinator, registry } = createCoordinatorContext();
+    registerPendingSource(registry, 'list', 'replacement');
     let replacement: ReturnType<typeof coordinator.startTransition> | undefined;
     const popAction = jest.fn(() => {
       replacement = coordinator.startTransition({
@@ -273,7 +293,7 @@ describe('runReverseTransition ownership', () => {
         currentScreenId: 'detail',
         popAction,
       });
-      await jest.advanceTimersByTimeAsync(1100);
+      await jest.advanceTimersByTimeAsync(0);
       await reverse;
 
       expect(popAction).toHaveBeenCalledTimes(1);
@@ -348,4 +368,21 @@ describe('runReverseTransition ownership', () => {
     expect(popAction).toHaveBeenCalledTimes(1);
     expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
   });
+});
+
+test('unready overlay falls back to one plain Back action without animating a blank image', async () => {
+  const ctx = createContext({
+    waitForOverlayReady: jest.fn(async () => false),
+  });
+  const popAction = jest.fn(async () => ({ removed: true, presented: false }));
+  await runReverseTransition({
+    ctx,
+    groupId: 'group',
+    sourceScreenId: 'list',
+    currentScreenId: 'detail',
+    popAction,
+  });
+  expect(popAction).toHaveBeenCalledTimes(1);
+  expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+  expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
 });

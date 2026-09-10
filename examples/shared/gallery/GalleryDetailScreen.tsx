@@ -10,26 +10,12 @@ import {
   Share,
   StatusBar,
 } from 'react-native';
-import Animated from 'react-native-reanimated';
-import {
-  SharedElement,
-  useChoreographyControls,
-  useExampleNavigation,
-  useLatchedReveal,
-  useStaggeredReveal,
-} from '../runtime';
+import { useChoreographyControls, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { AppIcon, IconButton, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
-import { GalleryImage } from './GalleryImage';
 import { PHOTOS } from './data';
-import {
-  galleryFrameTransition,
-  galleryPhotoTransition,
-  galleryTitleTransition,
-  galleryLocationTransition,
-  galleryGlyphTransition,
-} from './galleryTransitions';
+import { galleryTransition } from './galleryTransitions';
 
 export function GalleryDetailScreen({
   photoId = 'aurora',
@@ -40,11 +26,6 @@ export function GalleryDetailScreen({
   const [lightboxVisible, setLightboxVisible] = useState(false);
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyControls();
-  const showSections = useLatchedReveal({ resetKey: photo.id });
-  const { getItemStyle } = useStaggeredReveal(3, { stagger: 0.06 });
-  const notesStyle = getItemStyle(0);
-  const exposureStyle = getItemStyle(1);
-  const actionsStyle = getItemStyle(2);
 
   return (
     <>
@@ -60,95 +41,47 @@ export function GalleryDetailScreen({
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
-          <SharedElement
-            id={`photo.${photo.id}.frame`}
+          <galleryTransition.Element.Target
+            name="hero"
             groupId={`photo.${photo.id}`}
-            transition={galleryFrameTransition}
             style={styles.frame}
-          >
-            <View style={styles.frameInner}>
-              <SharedElement
-                id={`photo.${photo.id}.photo`}
-                groupId={`photo.${photo.id}`}
-                transition={galleryPhotoTransition}
-                style={StyleSheet.absoluteFill}
-              >
-                <GalleryImage photo={photo} />
-                <View style={styles.heroScrim} pointerEvents="none" />
-              </SharedElement>
+          />
 
-              <View style={styles.heroGlyphWrap} pointerEvents="none">
-                <SharedElement
-                  id={`photo.${photo.id}.glyph`}
-                  groupId={`photo.${photo.id}`}
-                  transition={galleryGlyphTransition}
-                  style={styles.heroGlyphBox}
-                >
-                  <View style={styles.glyphCenter}>
-                    <AppIcon name="camera" size={21} />
-                  </View>
-                </SharedElement>
-              </View>
-
-              <View style={styles.heroMeta}>
-                <SharedElement
-                  id={`photo.${photo.id}.title`}
-                  groupId={`photo.${photo.id}`}
-                  transition={galleryTitleTransition}
-                >
-                  <Text style={styles.heroTitle}>{photo.title}</Text>
-                </SharedElement>
-                <SharedElement
-                  id={`photo.${photo.id}.location`}
-                  groupId={`photo.${photo.id}`}
-                  transition={galleryLocationTransition}
-                >
-                  <Text style={styles.heroLocation}>{photo.location}</Text>
-                </SharedElement>
+          <galleryTransition.Enter name="details">
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Notes</Text>
+              <Text style={styles.body}>{photo.description}</Text>
+            </View>
+            <View style={styles.section}>
+              <Text style={styles.sectionTitle}>Exposure</Text>
+              <View style={styles.exifRow}>
+                <ExifChip label="ISO" value={photo.iso.replace('ISO ', '')} />
+                <ExifChip label="Shutter" value={photo.shutter} />
+                <ExifChip label="Aperture" value={photo.aperture} />
               </View>
             </View>
-          </SharedElement>
 
-          {showSections ? (
-            <>
-              <Animated.View style={[styles.section, notesStyle]}>
-                <Text style={styles.sectionTitle}>Notes</Text>
-                <Text style={styles.body}>{photo.description}</Text>
-              </Animated.View>
-
-              <Animated.View style={[styles.section, exposureStyle]}>
-                <Text style={styles.sectionTitle}>Exposure</Text>
-                <View style={styles.exifRow}>
-                  <ExifChip label="ISO" value={photo.iso.replace('ISO ', '')} />
-                  <ExifChip label="Shutter" value={photo.shutter} />
-                  <ExifChip label="Aperture" value={photo.aperture} />
-                </View>
-              </Animated.View>
-
-              <Animated.View
-                style={[styles.section, styles.actionRow, actionsStyle]}
+            <View style={[styles.section, styles.actionRow]}>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="View full photo"
+                onPress={() => setLightboxVisible(true)}
+                style={styles.primaryAction}
               >
-                <Pressable
-                  accessibilityRole="button"
-                  accessibilityLabel="View full photo"
-                  onPress={() => setLightboxVisible(true)}
-                  style={styles.primaryAction}
-                >
-                  <AppIcon name="expand" size={18} color={theme.ink} />
-                  <Text style={styles.primaryActionText}>View photo</Text>
-                </Pressable>
-                <IconButton
-                  icon="share"
-                  label="Share photo notes"
-                  onPress={() => {
-                    void Share.share({
-                      message: `${photo.title} - ${photo.location}\n\n${photo.description}`,
-                    }).catch(() => {});
-                  }}
-                />
-              </Animated.View>
-            </>
-          ) : null}
+                <AppIcon name="expand" size={18} color={theme.ink} />
+                <Text style={styles.primaryActionText}>View photo</Text>
+              </Pressable>
+              <IconButton
+                icon="share"
+                label="Share photo notes"
+                onPress={() => {
+                  Share.share({
+                    message: `${photo.title} - ${photo.location}\n\n${photo.description}`,
+                  }).catch(() => {});
+                }}
+              />
+            </View>
+          </galleryTransition.Enter>
         </ScrollView>
         <Modal
           visible={lightboxVisible}
@@ -194,57 +127,8 @@ const styles = StyleSheet.create({
   frame: {
     width: '100%',
     aspectRatio: 1,
-    overflow: 'hidden',
-  },
-  frameInner: {
-    flex: 1,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  heroGlyphWrap: {
-    position: 'absolute',
-    top: 18,
-    right: 18,
-  },
-  heroGlyphBox: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glyphCenter: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  heroScrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '55%',
-    experimental_backgroundImage:
-      'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.65) 100%)',
   },
   lightbox: { flex: 1, width: '100%' },
-  heroMeta: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 24,
-  },
-  heroTitle: {
-    fontFamily: theme.font,
-    color: theme.text,
-    fontSize: 32,
-    fontWeight: '600',
-  },
-  heroLocation: {
-    fontFamily: theme.font,
-    color: theme.text,
-    fontSize: 15,
-    marginTop: 4,
-  },
   section: {
     marginHorizontal: 24,
     paddingVertical: 24,

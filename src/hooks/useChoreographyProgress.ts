@@ -142,6 +142,7 @@ export function useStaggeredReveal(
     startProgress?: number;
     endProgress?: number;
     stagger?: number;
+    translateY?: number;
   } = {}
 ) {
   const ctx = useContext(ChoreographyControlsContext);
@@ -155,6 +156,7 @@ export function useStaggeredReveal(
     startProgress = PROGRESS_RANGES.contentReveal.start,
     endProgress = PROGRESS_RANGES.contentReveal.end,
     stagger = 0.05,
+    translateY = 16,
   } = config;
 
   const { progress } = ctx;
@@ -182,7 +184,7 @@ export function useStaggeredReveal(
             translateY: interpolate(
               progress.value,
               [itemStart, itemEnd],
-              [16, 0],
+              [translateY, 0],
               'clamp'
             ),
           },

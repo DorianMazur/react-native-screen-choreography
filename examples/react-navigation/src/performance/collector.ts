@@ -1,4 +1,6 @@
-export type PerformanceScenario = 'ordinary' | 'live';
+import type { ChoreographyPreparationTrace } from '../../../../src/types';
+
+export type PerformanceScenario = 'gallery';
 export type JourneyDirection = 'forward' | 'backward';
 export type ProbeScreen = 'detail' | 'list';
 
@@ -20,6 +22,9 @@ export interface JourneyObservation {
   requestToSessionActiveMs: number | null;
   sessionActiveToEndMs: number | null;
   requestToSessionEndMs: number | null;
+  /** Optional startup diagnostics; absent in older fixture exports. */
+  preparationTrace?: ChoreographyPreparationTrace;
+  requestToOverlayReadyMs?: number;
   probe: {
     screen: ProbeScreen;
     handlerJsMs: number;
@@ -41,7 +46,7 @@ interface ReactObservation {
 
 export interface BenchmarkReport {
   schemaVersion: 1;
-  fixtureVersion: 2;
+  fixtureVersion: 4;
   runId: string;
   scenario: PerformanceScenario;
   clock: 'js-performance-now';
@@ -52,6 +57,11 @@ export interface BenchmarkReport {
   journeys: JourneyObservation[];
   payloadMounts: number;
   payloadUnmounts: number;
+  preparationTracing: {
+    version: 1;
+    requested: boolean;
+    directions: ['forward'];
+  };
   reactProfiling: {
     requested: boolean;
     supported: boolean;
@@ -84,7 +94,8 @@ export class BenchmarkCollector {
     readonly runId: string,
     readonly scenario: PerformanceScenario,
     readonly profilingRequested: boolean,
-    private readonly now: () => number
+    private readonly now: () => number,
+    private readonly options: { preparationTracing?: boolean } = {}
   ) {}
 
   private timestamp() {
@@ -197,6 +208,58 @@ export class BenchmarkCollector {
     return request.direction === 'forward' ? 'detail' : 'list';
   }
 
+  preparationTrace(trace: ChoreographyPreparationTrace) {
+    const request = this.journeys.find(
+      (journey) =>
+        journey.sessionId !== null && journey.sessionId === trace.sessionId
+    );
+    if (!request || request.direction !== trace.direction) {
+      this.fail('preparation-trace-without-matching-session');
+      return;
+    }
+    if (request.preparationTrace) {
+      this.fail('duplicate-preparation-trace');
+      return;
+    }
+    if (
+      trace.clock !== 'js-performance-now' ||
+      !['overlay-ready', 'overlay-timeout'].includes(trace.outcome) ||
+      trace.droppedStages !== 0 ||
+      !Number.isFinite(trace.startedAtMs) ||
+      !Number.isFinite(trace.completedAtMs) ||
+      trace.startedAtMs < request.requestJsMs ||
+      trace.completedAtMs < trace.startedAtMs ||
+      trace.completedAtMs < (request.sessionActiveJsMs ?? Infinity) ||
+      trace.completedAtMs > this.timestamp() ||
+      trace.stages.some(
+        (stage) =>
+          !stage.name ||
+          !stage.completed ||
+          !Number.isFinite(stage.startedAtMs) ||
+          !Number.isFinite(stage.durationMs) ||
+          stage.durationMs < 0 ||
+          stage.startedAtMs < trace.startedAtMs ||
+          stage.startedAtMs + stage.durationMs > trace.completedAtMs + 0.001
+      )
+    ) {
+      this.fail('invalid-preparation-trace');
+      return;
+    }
+    request.preparationTrace = {
+      ...trace,
+      stages: trace.stages.map((stage) => ({
+        ...stage,
+        ...(stage.details ? { details: { ...stage.details } } : {}),
+      })),
+    };
+    if (trace.outcome === 'overlay-ready') {
+      request.requestToOverlayReadyMs = this.duration(
+        trace.completedAtMs,
+        request.requestJsMs
+      );
+    }
+  }
+
   probe(screen: ProbeScreen): boolean {
     const at = this.timestamp();
     const request = this.current;
@@ -294,21 +357,26 @@ export class BenchmarkCollector {
           journey.failure === null
       );
     if (!completeRoundTrip) errors.push('incomplete-verified-round-trip');
+    if (
+      this.options.preparationTracing &&
+      this.journeys.some(
+        (journey) =>
+          journey.direction === 'forward' && !journey.preparationTrace
+      )
+    )
+      errors.push('missing-forward-preparation-trace');
     const profilingSupported =
       this.profilingRequested && this.reactObservations.length > 0;
     if (this.profilingRequested && !profilingSupported) {
       errors.push('profiling-requested-but-no-profiler-callbacks');
     }
     if (this.droppedSamples > 0) errors.push('sample-buffer-overflow');
-    if (
-      this.scenario === 'live' &&
-      (this.payloadMounts !== 1 || this.payloadUnmounts !== 0)
-    ) {
+    if (this.payloadMounts !== 1 || this.payloadUnmounts !== 0) {
       errors.push('live-payload-owner-not-retained');
     }
     return {
       schemaVersion: 1,
-      fixtureVersion: 2,
+      fixtureVersion: 4,
       runId: this.runId,
       scenario: this.scenario,
       clock: 'js-performance-now',
@@ -319,9 +387,25 @@ export class BenchmarkCollector {
       journeys: this.journeys.map((journey) => ({
         ...journey,
         probe: journey.probe ? { ...journey.probe } : null,
+        ...(journey.preparationTrace
+          ? {
+              preparationTrace: {
+                ...journey.preparationTrace,
+                stages: journey.preparationTrace.stages.map((stage) => ({
+                  ...stage,
+                  ...(stage.details ? { details: { ...stage.details } } : {}),
+                })),
+              },
+            }
+          : {}),
       })),
       payloadMounts: this.payloadMounts,
       payloadUnmounts: this.payloadUnmounts,
+      preparationTracing: {
+        version: 1,
+        requested: this.options.preparationTracing === true,
+        directions: ['forward'],
+      },
       reactProfiling: {
         requested: this.profilingRequested,
         supported: profilingSupported,

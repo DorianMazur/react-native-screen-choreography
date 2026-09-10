@@ -10,7 +10,7 @@ import Animated, {
 import type { ElementMetrics } from '../types';
 import type { SurfaceTransitionStyle } from './resolveSurfaceStyle';
 
-interface StandInContainerProps {
+interface TransitionSurfaceProps {
   progress: SharedValue<number>;
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
@@ -22,7 +22,7 @@ interface StandInContainerProps {
 }
 
 /**
- * Stand-in for container/card elements during a transition.
+ * Surface geometry and styling around a live transition host.
  *
  * Shadow strategy: apply the expanded-side boxShadow statically and only animate
  * `opacity` (GPU-composited on Android via View.setAlpha). Animating
@@ -30,7 +30,7 @@ interface StandInContainerProps {
  * call, which flickers. Opacity fades to 0 near the transition endpoints
  * to prevent double-shadow during handoff.
  */
-export function StandInContainer({
+export function TransitionSurface({
   progress,
   sourceMetrics,
   targetMetrics,
@@ -39,7 +39,7 @@ export function StandInContainer({
   targetStyle = {},
   children,
   zIndex = 0,
-}: StandInContainerProps) {
+}: TransitionSurfaceProps) {
   const sourceRadius = sourceStyle.borderRadius ?? 0;
   const targetRadius = targetStyle.borderRadius ?? 0;
   const sourceColor = sourceStyle.backgroundColor ?? 'transparent';

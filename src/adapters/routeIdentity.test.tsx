@@ -62,12 +62,12 @@ test('live owners and destinations are namespaced by route instance', async () =
           {['first', 'second'].map((instance) => (
             <React.Fragment key={instance}>
               <ScreenIdContext.Provider value={`owner-${instance}`}>
-                <SharedElement.Live id="player" groupId="group">
+                <SharedElement id="player" groupId="group">
                   {null}
-                </SharedElement.Live>
+                </SharedElement>
               </ScreenIdContext.Provider>
               <ScreenIdContext.Provider value={`detail-${instance}`}>
-                <SharedElement.LiveTarget id="player" groupId="group" />
+                <SharedElement.Target id="player" groupId="group" />
               </ScreenIdContext.Provider>
             </React.Fragment>
           ))}

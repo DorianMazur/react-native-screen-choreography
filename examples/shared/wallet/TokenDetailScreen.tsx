@@ -9,21 +9,14 @@ import {
 } from 'react-native';
 import {
   SafeAreaView,
-  SharedElement,
   useChoreographyControls,
   useExampleNavigation,
 } from '../runtime';
 import { TOKENS } from './data';
 import { formatMoney, walletTheme as theme } from './walletTheme';
-import { TokenLogo } from './TokenLogo';
 import { WalletIconButton } from './WalletIcon';
-import { WalletSection } from './WalletSection';
 import { PriceHistory } from './PriceHistory';
-import {
-  tokenIconTransition,
-  tokenTextTransition,
-  tokenValueTransition,
-} from './walletTransitions';
+import { walletTransition } from './walletTransitions';
 
 const websites: Record<string, string> = {
   polygon: 'https://polygon.technology',
@@ -41,7 +34,6 @@ export function TokenDetailScreen({
   tokenId?: string;
 }) {
   const token = TOKENS.find((item) => item.id === tokenId) ?? TOKENS[0]!;
-  const isPositiveChange = token.change24h >= 0;
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyControls();
   const allocation = (token.value / portfolioValue) * 100;
@@ -80,80 +72,59 @@ export function TokenDetailScreen({
         <View style={styles.detailCard}>
           <View style={styles.cardContent}>
             <View style={styles.headerRow}>
-              <SharedElement
-                id={`token.${token.id}.icon`}
+              <walletTransition.Element.Target
+                name="icon"
                 groupId={`token.${token.id}`}
-                transition={tokenIconTransition}
-              >
-                <TokenLogo token={token} size={48} />
-              </SharedElement>
+                style={styles.iconTarget}
+                metadata={{ scale: 48 / 44 }}
+              />
 
               <View style={styles.headerInfo}>
-                <SharedElement
-                  id={`token.${token.id}.name`}
+                <walletTransition.Element.Target
+                  name="name"
                   groupId={`token.${token.id}`}
-                  transition={tokenTextTransition}
-                >
-                  <Text style={styles.detailName}>{token.name}</Text>
-                </SharedElement>
-                <SharedElement
-                  id={`token.${token.id}.symbol`}
+                  style={styles.nameTarget}
+                  metadata={{ scale: 22 / 16 }}
+                />
+                <walletTransition.Element.Target
+                  name="symbol"
                   groupId={`token.${token.id}`}
-                  transition={tokenTextTransition}
-                >
-                  <Text style={styles.detailSymbol}>{token.symbol}</Text>
-                </SharedElement>
+                  style={styles.symbolTarget}
+                  metadata={{ scale: 1 }}
+                />
               </View>
             </View>
 
             <View style={styles.valueSection}>
-              <SharedElement
-                id={`token.${token.id}.value`}
+              <walletTransition.Element.Target
+                name="value"
                 groupId={`token.${token.id}`}
-                transition={tokenValueTransition}
-              >
-                <Text
-                  style={styles.detailPrice}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {formatMoney(token.price)}
-                </Text>
-              </SharedElement>
+                style={styles.valueTarget}
+                metadata={{ scale: 36 / 15 }}
+              />
               <View style={styles.changeRow}>
-                <SharedElement
-                  id={`token.${token.id}.change`}
+                <walletTransition.Element.Target
+                  name="change"
                   groupId={`token.${token.id}`}
-                  transition={tokenValueTransition}
-                >
-                  <Text
-                    style={[
-                      styles.detailChange,
-                      isPositiveChange
-                        ? styles.detailChangePositive
-                        : styles.detailChangeNegative,
-                    ]}
-                  >
-                    {isPositiveChange ? '+' : ''}
-                    {token.change24h.toFixed(2)}%
-                  </Text>
-                </SharedElement>
-                <WalletSection start={0.8} distance={0}>
+                  style={styles.changeTarget}
+                  metadata={{ scale: 1 }}
+                />
+                <walletTransition.Enter name="period">
                   <Text style={styles.periodLabel}>past 24h</Text>
-                </WalletSection>
+                </walletTransition.Enter>
               </View>
             </View>
           </View>
         </View>
 
-        <WalletSection start={0.4} distance={0}>
+        <walletTransition.Enter name="history">
           <PriceHistory
             key={token.id}
             token={token}
             onInteract={settleTransition}
           />
-        </WalletSection>
-        <WalletSection start={0.72}>
+        </walletTransition.Enter>
+        <walletTransition.Enter name="holdings">
           <View style={styles.section}>
             <View style={styles.sectionHeading}>
               <Text accessibilityRole="header" style={styles.sectionTitle}>
@@ -189,13 +160,19 @@ export function TokenDetailScreen({
             </Text>
             <Text style={styles.description}>{token.description}</Text>
           </View>
-        </WalletSection>
+        </walletTransition.Enter>
       </ScrollView>
     </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
+  iconTarget: { width: 48, height: 48 },
+  nameTarget: { width: '100%', height: 31 },
+  symbolTarget: { width: '100%', height: 18 },
+  valueTarget: { width: '100%', height: 51 },
+  changeTarget: { width: 100, height: 18 },
+
   container: { flex: 1, backgroundColor: theme.background },
   toolbar: {
     flexDirection: 'row',

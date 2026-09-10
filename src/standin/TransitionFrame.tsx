@@ -7,7 +7,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
 
-interface StandInElementProps {
+interface TransitionFrameProps {
   progress: SharedValue<number>;
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
@@ -20,7 +20,7 @@ interface StandInElementProps {
   targetBorderRadius?: number;
 }
 
-export function StandInElement({
+export function TransitionFrame({
   progress,
   sourceMetrics,
   targetMetrics,
@@ -29,7 +29,7 @@ export function StandInElement({
   zIndex = 1,
   sourceBorderRadius,
   targetBorderRadius,
-}: StandInElementProps) {
+}: TransitionFrameProps) {
   const hasRadius =
     sourceBorderRadius !== undefined || targetBorderRadius !== undefined;
   const sRadius = sourceBorderRadius ?? 0;

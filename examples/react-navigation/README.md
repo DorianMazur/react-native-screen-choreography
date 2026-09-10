@@ -1,19 +1,17 @@
 # Example App
 
-This example app exposes the shared gallery, music, wallet, and wallet-setup demos through React Navigation.
+This example app exposes the shared gallery, wallet, and wallet-setup demos through React Navigation.
 
 ## What It Demonstrates
 
-- explicit per-element transition objects reused across list and detail screens
-- surface interpolation for the row-to-detail card container
+- one live Gallery hero owned by the list and reparented into the detail target: photo, title, subtitle, camera icon, and gradient share one derived frame; fixed image/text layouts use transforms instead of image reloads or text crossfades
+- declarative shared roles and section reveals in the Wallet demo
+- a retained Wallet setup panel with persistent controls and expanding background
 - icon handoff with shared bounds interpolation
-- built-in surface, stretch, and native font-size recipes, alongside custom wallet value motion
+- live component transitions with custom wallet value motion
 - early settle handling when detail interaction starts mid-transition
 - staged reveal of detail content
 - fast push-pop-push interruption handling
-- native view reparenting in Music with one stateful player instance shared between compact and expanded hosts
-- a custom live renderer in Music that moves and scales a fixed-layout stateful panel between differently measured bounds
-- a pull-down handle that supports completing or cancelling an interactive return to the music list
 
 ## Important Runtime Setup
 
@@ -62,11 +60,6 @@ yarn start
 - `../shared/wallet/TokenListScreen.tsx` for forward navigation and transition config
 - `../shared/wallet/TokenDetailScreen.tsx` for companion animations and reverse navigation
 - `../shared/wallet/TokenRow.tsx` for shared element structure on the list row
-- `../shared/music/MusicListScreen.tsx` for the `SharedElement.Live` owners
-- `../shared/music/NowPlayingScreen.tsx` for the destination-only `LiveTarget` and pull-down handle
-- `../shared/music/TrackItem.tsx` for the playback clock, waveform, and controls that survive teleporting
-- `../shared/music/liveGeometryTransition.tsx` for the custom live transform and its safely narrowed metadata
-- `../shared/music/LiveGeometryPanel.tsx` for the synthetic mount identity and counter state
 
 The Expo Router app imports those same files. Only navigator setup, destination mapping, and dynamic route parameter extraction remain app-specific.
 
@@ -77,12 +70,18 @@ The Expo Router app imports those same files. Only navigator setup, destination 
 - start scrolling during an active detail transition and verify `settleTransition()` snaps cleanly to the detail endpoint
 - go back quickly and tap a different token once
 - repeat push-pop cycles to check for flashes, dropped reverses, or large startup delays
-- start a track from the Music list, open its artwork/title, and verify the elapsed time continues in Now Playing
-- pause, return to the list, and reopen the same track; its elapsed time and play/pause state should not reset
-- tap `+1` on a track's LIVE INSTANCE panel, open that track, and verify the same instance number and counter arrive without an endpoint jump
-- press Back and verify the panel returns to its compact bounds with the same state
-- drag the music handle a short distance and release to cancel; verify the panel returns to the expanded bounds without remounting
-- rapidly open and close a track, then repeat several cycles; verify the panel never duplicates, flashes, or resets
-- pull the music handle down a little and release to cancel, then pull farther to return to the list
 
-Music simulates playback with a clock and animated waveform; it does not play audio. Each track's live component owns its state while the Music list stays mounted.
+## Transition definitions
+
+All three demos use `defineTransition` from the shared core API:
+
+| Demo | Definition | Live content |
+| --- | --- | --- |
+| Gallery | `../shared/gallery/galleryTransitions.tsx` | One hero plus a local detail reveal |
+| Wallet | `../shared/wallet/walletTransitions.tsx` | Five named logo/text/value roles plus staged detail sections |
+| Wallet setup | `../shared/wallet-setup/setupTransitions.tsx` | One panel containing persistent buttons and artwork |
+
+The definitions coordinate endpoints and local section reveals. Image cropping,
+text scaling, and the setup panel's internal motion stay inside their retained
+components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
+ordinary screen content, not to content hosted on another route.

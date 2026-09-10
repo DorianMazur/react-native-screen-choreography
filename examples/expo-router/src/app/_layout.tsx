@@ -51,14 +51,6 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
-            name="music/[trackId]"
-            options={{
-              presentation: 'containedTransparentModal',
-              contentStyle: { backgroundColor: 'transparent' },
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
             name="wallet/[tokenId]"
             options={{
               presentation: 'containedTransparentModal',
