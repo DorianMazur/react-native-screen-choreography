@@ -1,4 +1,3 @@
-// Keep the benchmark fixture stable when the interactive Gallery demo changes.
 import type {
   SharedElementTransition,
   SharedElementTransitionRendererProps,
@@ -45,9 +44,4 @@ export const galleryPhotoTransition: SharedElementTransition = {
 export const galleryTitleTransition = textMorphTransition;
 export const galleryLocationTransition = textMorphTransition;
 
-// Glyph is rendered inside square wraps on both screens, so the stretch
-// renderer's W/H interpolation naturally produces a *uniform* scale and the
-// icon never squishes — even when the source tile is taller than the target
-// hero (the tall tiles in the grid don't share an aspect ratio with the
-// detail hero box).
 export const galleryGlyphTransition = makeStretchTransition();

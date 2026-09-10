@@ -127,6 +127,55 @@ describe('declarative recipes', () => {
     }
   );
 
+  test.each([false, true])(
+    'single-label scaling never overlaps two text copies, backward=%s',
+    async (backward) => {
+      const Renderer = createDeclarativeRenderer({
+        shared: text({ mode: 'scale' }),
+      });
+      const small = {
+        ...collapsed,
+        content: (
+          <Text numberOfLines={1} style={{ fontSize: 11 }}>
+            Tromsø, Norway
+          </Text>
+        ),
+      };
+      const large = {
+        ...expanded,
+        content: (
+          <Text numberOfLines={1} style={{ fontSize: 15 }}>
+            Tromsø, Norway
+          </Text>
+        ),
+      };
+      for (const progress of [0, 0.3, 0.475, 0.65, 1, 0.5]) {
+        const input = {
+          ...props(progress, backward),
+          source: backward ? large : small,
+          target: backward ? small : large,
+        };
+        await act(async () => {
+          if (tree) tree.update(<Renderer {...input} />);
+          else tree = create(<Renderer {...input} />);
+        });
+        const labels = tree!.root.findAllByType(Text);
+        expect(labels).toHaveLength(1);
+        expect(labels[0]!.props.children).toBe('Tromsø, Norway');
+        expect(labels[0]!.props.style.fontSize).toBe(15);
+        const layers = tree!.root.findAllByType(animatedType);
+        expect(layers).toHaveLength(1);
+        const layer = StyleSheet.flatten(layers[0]!.props.style);
+        expect(layer.width).toBe(expanded.metrics.width);
+        expect(layer.height).toBe(expanded.metrics.height);
+        expect(layer.transform[2].scale).toBeCloseTo((11 + 4 * progress) / 15);
+        expect(layer.transform[0].translateX).toBeCloseTo(20 + 20 * progress);
+        expect(layer.transform[1].translateY).toBeCloseTo(200 - 100 * progress);
+        expect(layer.opacity ?? 1).toBe(1);
+      }
+    }
+  );
+
   test.each([0, 0.475, 1])(
     'text retraces identical geometry at expansion %s in either direction',
     async (progress) => {

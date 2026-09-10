@@ -1,6 +1,5 @@
 import { StyleSheet, View } from 'react-native';
 
-/** The same bottom shade fills the image in endpoints and its moving clip. */
 export function GalleryScrim() {
   return <View pointerEvents="none" style={styles.scrim} />;
 }

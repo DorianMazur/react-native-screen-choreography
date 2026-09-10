@@ -2,6 +2,8 @@ import React from 'react';
 import { usePresentationReady } from '../core/PresentationReadiness';
 import {
   Image,
+  Text,
+  type TextProps,
   StyleSheet,
   View,
   type ImageProps,
@@ -47,7 +49,8 @@ export interface ImageOptions extends RecipeOptions {
   radius?: readonly [number, number];
 }
 export interface TextOptions extends RecipeOptions {
-  mode?: 'scale-crossfade';
+  /** Scale one identical single-line label, or blend fixed layouts (default). */
+  mode?: 'scale-crossfade' | 'scale';
 }
 export interface CrossfadeOptions extends RecipeOptions {
   exitDuring?: ProgressRange;
@@ -175,7 +178,7 @@ export function text(options: TextOptions = {}): TextRecipe {
   return Object.freeze({
     ...options,
     kind: 'text',
-    mode: 'scale-crossfade',
+    mode: options.mode ?? 'scale-crossfade',
     zIndex: checkedZIndex(options.zIndex),
   });
 }
@@ -301,6 +304,85 @@ function FixedLayer({
       ]}
     >
       {side.content}
+    </Animated.View>
+  );
+}
+
+function readScaleText(side: SharedElementTransitionSide) {
+  const content = side.content;
+  if (
+    !React.isValidElement<TextProps>(content) ||
+    content.type !== Text ||
+    content.props.numberOfLines !== 1 ||
+    React.Children.toArray(content.props.children).some(
+      (child) => typeof child !== 'string' && typeof child !== 'number'
+    )
+  ) {
+    throw new Error(
+      'text({ mode: "scale" }) requires a direct, plain Text child with numberOfLines={1}.'
+    );
+  }
+  const style = StyleSheet.flatten(content.props.style);
+  const fontSize = style?.fontSize;
+  if (
+    typeof fontSize !== 'number' ||
+    !Number.isFinite(fontSize) ||
+    fontSize <= 0
+  ) {
+    throw new Error(
+      'Scale text requires explicit positive fontSize values at both endpoints.'
+    );
+  }
+  return {
+    content,
+    style,
+    fontSize,
+    label: React.Children.toArray(content.props.children).join(''),
+  };
+}
+
+function ScaledText(props: SharedElementTransitionRendererProps) {
+  const { collapsed, expanded, anchor } = endpoints(props);
+  const first = readScaleText(collapsed);
+  const last = readScaleText(expanded);
+  if (
+    first.label !== last.label ||
+    ['fontFamily', 'fontWeight', 'fontStyle', 'color'].some(
+      (key) =>
+        first.style?.[key as keyof typeof first.style] !==
+        last.style?.[key as keyof typeof last.style]
+    )
+  ) {
+    throw new Error(
+      'Scale text requires identical text, font family, weight, style, and color.'
+    );
+  }
+  const sourceScale = first.fontSize / last.fontSize;
+  const { progress } = props;
+  const motion = useAnimatedStyle(() => {
+    const frame = frameAt(anchor, progress.value);
+    return {
+      transform: [
+        { translateX: frame.pageX },
+        { translateY: frame.pageY },
+        { scale: mix(sourceScale, 1, progress.value) },
+      ],
+    };
+  });
+  return (
+    <Animated.View
+      pointerEvents="none"
+      style={[
+        styles.fixed,
+        {
+          width: expanded.metrics.width,
+          height: expanded.metrics.height,
+          zIndex: props.zIndex,
+        },
+        motion,
+      ]}
+    >
+      {last.content}
     </Animated.View>
   );
 }
@@ -607,6 +689,8 @@ export function createDeclarativeRenderer(config: {
         <SurfaceContent {...props} recipe={config.shared} />
       ) : config.shared.kind === 'image' && config.shared.mode === 'morph' ? (
         <MorphImage {...props} recipe={config.shared} />
+      ) : config.shared.kind === 'text' && config.shared.mode === 'scale' ? (
+        <ScaledText {...props} />
       ) : (
         <SharedContent {...props} recipe={config.shared} />
       );

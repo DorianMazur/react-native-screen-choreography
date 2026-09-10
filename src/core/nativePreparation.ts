@@ -39,7 +39,6 @@ export type PreparedTargets = Map<
   BatchMeasureEntry & { metrics: ElementMetrics; isCurrent?: () => boolean }
 >;
 
-/** Native attachment/layout validation, then a single read in RN's coordinate space. */
 export async function prepareNativeTargets({
   screenRef,
   entries,

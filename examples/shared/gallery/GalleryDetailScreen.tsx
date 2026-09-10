@@ -15,19 +15,12 @@ import {
   Share,
   StatusBar,
 } from 'react-native';
-import {
-  SharedElement,
-  useChoreographyProgress,
-  useExampleNavigation,
-} from '../runtime';
+import { useChoreographyProgress, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { AppIcon, IconButton, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS } from './data';
-import {
-  galleryTransition,
-  galleryLocationTransition,
-} from './galleryTransitions';
+import { galleryTransition } from './galleryTransitions';
 
 export function GalleryDetailScreen({
   photoId = 'aurora',
@@ -99,13 +92,15 @@ export function GalleryDetailScreen({
                 >
                   <Text style={styles.heroTitle}>{photo.title}</Text>
                 </galleryTransition.Element>
-                <SharedElement
-                  id="location"
+                <galleryTransition.Element
+                  name="location"
                   groupId={`photo.${photo.id}`}
-                  transition={galleryLocationTransition}
+                  style={styles.heroLocationSpacing}
                 >
-                  <Text style={styles.heroLocation}>{photo.location}</Text>
-                </SharedElement>
+                  <Text numberOfLines={1} style={styles.heroLocation}>
+                    {photo.location}
+                  </Text>
+                </galleryTransition.Element>
               </View>
             </View>
           </galleryTransition.Element>
@@ -227,11 +222,11 @@ const styles = StyleSheet.create({
     fontSize: 32,
     fontWeight: '600',
   },
+  heroLocationSpacing: { marginTop: 4 },
   heroLocation: {
     fontFamily: theme.font,
     color: theme.text,
     fontSize: 15,
-    marginTop: 4,
   },
   section: {
     marginHorizontal: 24,

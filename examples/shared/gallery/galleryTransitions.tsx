@@ -5,12 +5,10 @@ import {
   text,
   crossfade,
   Springs,
-  textMorphTransition,
 } from '../runtime';
 import { theme } from '../theme';
 import { GalleryScrim } from './GalleryScrim';
 
-// One module-scope definition is shared by both navigator examples and endpoints.
 export const galleryTransition = defineTransition({
   motion: { spring: Springs.default },
   shared: {
@@ -23,9 +21,6 @@ export const galleryTransition = defineTransition({
     }),
     glyph: crossfade({ zIndex: 4 }),
     title: text({ zIndex: 4 }),
+    location: text({ mode: 'scale', zIndex: 4 }),
   },
 });
-
-// The location is identical plain text at both endpoints, so use one morphing
-// text layer instead of crossfading the two endpoint layouts.
-export const galleryLocationTransition = { ...textMorphTransition, zIndex: 4 };

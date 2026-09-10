@@ -11,7 +11,6 @@ type StageDetails = ChoreographyPreparationStage['details'];
 const MAX_STAGES = 1024;
 let traceCounter = 0;
 
-/** Opt-in, preparation-local buffering. Nothing is emitted while a stage runs. */
 export class PreparationTrace {
   private readonly traceId = `preparation_${++traceCounter}`;
   private readonly startedAtMs: number;

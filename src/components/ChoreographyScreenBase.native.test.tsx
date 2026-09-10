@@ -109,7 +109,6 @@ test('publishes layout readiness immediately only with native preparation', asyn
     true
   );
   expect(requestAnimationFrame).not.toHaveBeenCalled();
-  // Layout readiness does not reveal a pending target before the overlay is ready.
   expect(screen.outer().props.style).toContainEqual({ opacity: 0 });
   expect(screen.outer().props.pointerEvents).toBe('none');
 });

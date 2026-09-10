@@ -180,8 +180,6 @@ export function ChoreographyProvider({
         hostPresentedSessionIdRef.current === sessionId &&
         overlayContentReadySessionIdRef.current === sessionId
       ) {
-        // Publish overlay visibility and hide originals together only after
-        // both React content and the native presentation are ready.
         syncHiddenElements();
         settleOverlayWaiters(sessionId, true);
       }

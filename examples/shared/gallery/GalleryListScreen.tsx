@@ -10,15 +10,12 @@ import {
   StatusBar,
   useWindowDimensions,
 } from 'react-native';
-import { SharedElement, useExampleNavigation } from '../runtime';
+import { useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { AppIcon, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS, type Photo } from './data';
-import {
-  galleryTransition,
-  galleryLocationTransition,
-} from './galleryTransitions';
+import { galleryTransition } from './galleryTransitions';
 
 const TILE_GAP = 12;
 
@@ -129,13 +126,15 @@ function Tile({
             >
               <Text style={styles.tileTitle}>{photo.title}</Text>
             </galleryTransition.Element>
-            <SharedElement
-              id="location"
+            <galleryTransition.Element
+              name="location"
               groupId={`photo.${photo.id}`}
-              transition={galleryLocationTransition}
+              style={styles.tileLocationSpacing}
             >
-              <Text style={styles.tileLocation}>{photo.location}</Text>
-            </SharedElement>
+              <Text numberOfLines={1} style={styles.tileLocation}>
+                {photo.location}
+              </Text>
+            </galleryTransition.Element>
           </View>
         </View>
       </galleryTransition.Element>
@@ -234,10 +233,10 @@ const styles = StyleSheet.create({
     fontSize: 16,
     fontWeight: '600',
   },
+  tileLocationSpacing: { marginTop: 2 },
   tileLocation: {
     fontFamily: theme.font,
     color: theme.text,
     fontSize: 11,
-    marginTop: 2,
   },
 });
