@@ -1,3 +1,4 @@
+import type { PreparationTrace } from './preparationTrace';
 import { createContext } from 'react';
 import type { ProgressOwnership } from './ProgressOwnership';
 import type { NavigationSessionController } from './NavigationSessionController';
@@ -7,6 +8,7 @@ import type { ReverseTransitionController } from './ReverseTransitionController'
 import type { ReverseCommitRequest } from '../hooks/useReverseTransitionCommit';
 import type {
   ChoreographyDebugConfig,
+  ChoreographyPreparationTrace,
   ChoreographyNavigationLineage,
   RegisteredElement,
   TransitionSessionData,
@@ -94,15 +96,18 @@ export interface ChoreographyContextType {
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;
+  isOverlayPresented?: (sessionId: string) => boolean;
   startTransition: (config: {
     groupId: string;
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward' | 'backward';
     onUnavailable?: (sessionId: string) => void;
+    trace?: PreparationTrace;
   }) => Promise<TransitionSessionData | null>;
   completeTransition: (sessionId?: string) => void;
   cancelTransition: (sessionId?: string) => void;
+  onPreparationTrace?: (trace: ChoreographyPreparationTrace) => void;
   debug: ChoreographyDebugConfig;
 }
 

@@ -54,6 +54,8 @@ Animation layer
   Companion animation hooks
 
 Native layer
+  ScreenChoreographyPreparation
+    Batched mounted-layout validation before forward pairing
   ScreenChoreographyView
     iOS Fabric component above stack containers
     Android Fabric view group above stack containers
@@ -65,7 +67,7 @@ The library uses a hybrid runtime because different parts of the problem have di
 
 - JavaScript / TypeScript owns registration, pairing, screen readiness, and navigation orchestration.
 - Reanimated owns progress and visual interpolation on the UI thread.
-- Native owns the overlay host so the transition surface is actually above the native-stack containers.
+- Native validates mounted destination layout and owns the overlay host so the transition surface is actually above the native-stack containers.
 
 This gives the library a flexible public API while avoiding the most common z-order and reveal-timing failures that appear with screen-level navigator animations.
 
@@ -90,7 +92,7 @@ This gives the library a flexible public API while avoiding the most common z-or
 
 ### Hide / Reveal Handoff
 
-The provider deliberately does **not** hide real elements when a session becomes `active`. Hiding is driven by the overlay's `useLayoutEffect` callback (`handleOverlayReady(sessionId)`) and the native host presentation ack (`handleHostPresentationReady`). Both call `syncHiddenElements()` after their respective host has committed. The UI visibility batch hides the originals and enables the session's overlay gate together. A 150ms safety-net inside `waitForOverlayReady` calls `syncHiddenElements()` if neither callback fired.
+The provider deliberately does **not** hide real elements when a session becomes `active`. Hiding is driven by the overlay's `useLayoutEffect` callback (`handleOverlayReady(sessionId)`) and the native host presentation ack (`handleHostPresentationReady`). The second acknowledgment calls `syncHiddenElements()` only after both content and native presentation are ready. Morph-image renderers block content readiness until `Image.onLoad`; each overlay session has its own readiness gate, so a late event from a replaced session cannot release the new one. The UI visibility batch hides the originals and enables the session's overlay gate together. A 150ms safety-net inside `waitForOverlayReady` calls `syncHiddenElements()` if the combined acknowledgment is still missing.
 
 `syncHiddenElements()` compares desired visibility against the registry's last scheduled values and sends only changed entries in one UI worklet. Repeated presentation acknowledgements with the same hidden set schedule no work. Comparisons do not read shared values on JS. Ordered hide/reveal batches preserve cancellation and replacement behavior; unregistering a hidden element retains its shared value, and cleanup reveals retained entries before releasing them. The presentation callbacks and 150ms safety net remain the only hide triggers.
 
@@ -102,7 +104,7 @@ Live pairs are different: their only mounted native subtree is still inside an o
 
 - keeps the supplied `screenId` as a logical name while adapters supply the navigator route key as its internal instance identity; registration, readiness, visibility, and lineage use that instance key
 - reads volatile transition state from `ChoreographyContext` and lifecycle callbacks (`setScreenReady`, `unregisterScreen`) from `ChoreographyActionsContext` so its registration effect depends only on stable identities and never re-runs on session changes
-- reports layout readiness via a double-RAF after each `onLayout`
+- reports layout readiness from `onLayout` when the optional native preparation module is available; forward preparation then validates the mounted native views. Without the module, it retains the double-RAF readiness gate
 - drives screen-level visibility through a single direction-agnostic model derived from `(direction, role, phase, progress)`. The pure helpers live in `src/core/screenVisibility.ts` and are unit-tested:
   - **`role`** is one of `source`, `target`, or `inactive` and comes from `getScreenRole(session, screenId)`
   - **`phase`** is one of `idle`, `preparing`, `active`, `completing`, `cancelling` and comes from `getSessionPhase(session, pendingTargetScreenId, screenId)` (treats `state: 'measuring'` and a matching `pendingTargetScreenId` as `preparing`)
@@ -135,17 +137,61 @@ Live pairs are different: their only mounted native subtree is still inside an o
 
 - pre-measures source elements before navigation
 - waits for target elements to register via registry subscription events (with a 500ms safety deadline) instead of a 16ms polling loop
-- validates cached target metrics from previous sessions with one batched measurement; the cache is keyed by logical screen layout, group, and element so new route instances retain this optimization without sharing registrations
+- for forward preparation with the native module, validates the mounted screen and all participating target views across two stable native passes, then obtains coordinates through one existing batched measurement
+- retains cached target validation for backward preparation and the legacy forward path; the cache is keyed by logical screen layout, group, and element so new route instances retain this optimization without sharing registrations
 - discovers expected IDs from the source screen's group, creates only matching source/target pairs, and freezes a `sourcePresentation` and `targetPresentation` onto each pair before promoting the session to `active`
 - can refresh source or target metrics for the active session in place
 - maintains the `hiddenElements` set; the provider mirrors it onto per-element shared values when the overlay paints
 - completes or cancels the active session through a single `state` transition (`measuring → active → completing | cancelling → cleared`)
 
+Declarative enter/exit tracks explicitly allow a missing collapsed or expanded
+endpoint. Pair discovery includes destination-only tracks after readiness, and
+waits for matching registrations only for source elements requiring a pair.
+Absent endpoints are plain session data with `present: false`; they never
+register views, take measurements, enter the metric cache, or hide real content.
+Shared and live transitions keep their existing pairing requirements. The final
+validated target batch is reused for pairing when its native refs still match;
+changed refs invalidate that reuse. Native forward preparation also rechecks
+explicit application readiness and operation ownership before activation.
+
+### `ScreenChoreographyPreparation`
+
+This optional TurboModule is a mounted-layout barrier for forward preparation.
+After application readiness and target registration, it resolves the destination
+screen and every participating target tag together. The native views must remain
+attached in the same window, the targets must belong to the screen, identities
+must remain current, and all measured bounds must be nonzero with no pending
+ancestor layout. Each screen and target rectangle must remain stable within 0.5
+layout units across two distinct native passes. Android samples at pre-draw; iOS samples
+on display-link ticks after flushing pending window and screen layout.
+
+The acknowledgment is followed by one `measureElementsBatched` call, preserving
+the existing React Native/Reanimated window-coordinate contract. JavaScript node
+identities and native tags are checked after the acknowledgment, after that
+measurement, and before the prepared metrics are reused. The normal native path
+skips the screen's two JavaScript frame waits and Android navigation's extra
+JavaScript frame wait; it also replaces the legacy target stability loop.
+
+An early native failure restores those conservative frame waits and the existing
+measurement fallback. A native 500ms deadline, or its 550ms JavaScript guard,
+ends preparation instead of starting another long fallback wait. Cancellation,
+screen removal, and module invalidation clean up pending native work. An app
+binary without the optional module retains the legacy path; enabling the module
+after a library upgrade requires rebuilding the native app.
+
+Two stable mounted samples do not guarantee that future React commits, image
+loads, fonts, or application data cannot change the layout. `ready` and application
+blockers remain separate requirements and are rechecked before activation. This
+barrier neither captures nor hides content and does not replace the overlay's
+presentation acknowledgment. Backward preparation and the retained reverse
+handoff keep their existing paths.
+
 ### `NativeTransitionHost`
 
 - lives above the native stack in `FullWindowOverlay`
-- reports when the host is presented and ready: iOS emits `onPresentationReady` from a `CATransaction` completion block after the mount commit, Android emits from the first `dispatchDraw` after activation (with a two-frame fallback)
+- reports when the host is presented and ready: iOS emits `onPresentationReady` from a `CATransaction` completion block after the mount commit, Android emits from the first `dispatchDraw` after activation (the provider retains the 150ms timeout fallback)
 - gives the JS runtime a reliable handoff point before revealing the pushed screen
+- on Android, retains its dismissal frame across two `postOnAnimation` callbacks rather than two main-queue callbacks, which can both execute before a draw
 - retains one private host frame for two ticks during teardown to cover the native/React commit boundary; this is not per-element capture and is never exposed to renderers
 
 ### `TransitionOverlay`
@@ -154,6 +200,12 @@ Live pairs are different: their only mounted native subtree is still inside an o
 - picks the correct stand-in strategy for each animation type
 - reports when overlay content is ready to render
 
+The overlay supplies immutable, direction-normalized anchor geometry for shared
+pairs and marks ordinary renderer subtrees with `useTransitionPresentation()`.
+Declarative renderers use semantic expansion progress in both directions. Their
+fixed endpoint content uses transforms/crossfades; surface and image clip frames
+can resize independently. Existing renderer components remain supported.
+
 ## Forward Transition Lifecycle
 
 1. A source screen calls `navigate()` from `useChoreographyNavigation`.
@@ -161,8 +213,8 @@ Live pairs are different: their only mounted native subtree is still inside an o
 3. The target screen is marked as pending so its real content stays hidden.
 4. Navigation pushes the target route with stack animation disabled. The adapter resolves its route key from navigation state before waiting for that instance's readiness. Until resolution, the logical pending-target gate applies only to the focused destination and excludes the source instance.
 5. Target `SharedElement`s register as the destination mounts.
-6. `TransitionCoordinator` waits for the structural target elements to exist and stabilize.
-7. The coordinator captures `getPresentation()` for every paired element and stores frozen `sourcePresentation`/`targetPresentation` on each pair, then promotes the session to `active`.
+6. After application readiness and target registration, `TransitionCoordinator` awaits two stable native layout passes and one coordinate batch when the preparation module is available. Otherwise it uses the legacy readiness and target measurement path.
+7. The coordinator captures `getPresentation()` for every paired element and stores frozen `sourcePresentation`/`targetPresentation` on each pair. It rechecks readiness, operation ownership, and prepared-view identities before promoting the session to `active`.
 8. `TransitionOverlay` mounts and `NativeTransitionHost` reports presentation ready. Each callback runs `syncHiddenElements()` so the originals are hidden the same frame the overlay first paints. A 150ms safety-net hides them anyway if neither callback fires.
 9. Pending target hiding is cleared.
 10. Reanimated drives progress from `0` to `1`.
@@ -184,7 +236,8 @@ There are two main reverse paths today.
 
 - detail elements are measured again and a new backward session is created
 - accepting `finish()` transfers settlement ownership to the provider's `ReverseTransitionController`
-- for stand-in sessions, `ScreenChoreographySnapshotView` captures the inner outgoing content view and hides that view atomically; the retained image sits under the paired overlay renderers and reproduces the screen's opacity curve
+- on iOS, the outgoing route stays mounted through the reverse animation with its shared elements hidden. The controller commits Back at the animation endpoint, then releases the overlay after removal is confirmed. This avoids UIKit snapshots retaining duplicate shared content; iOS does not mount a retained screen snapshot for reverse commits
+- on Android, for stand-in sessions, `ScreenChoreographySnapshotView` captures the inner outgoing content view and hides that view atomically; the retained image sits under the paired overlay renderers and reproduces the screen's opacity curve
 - after native capture acknowledgment, the remaining animation and navigation dispatch run concurrently; the route may unmount without cancelling provider-owned settlement
 - both adapters subscribe before dispatch and accept navigation as soon as the outgoing route is removed from state. A matching `transitionEnd` observed before removal is diagnostic only, not a handoff requirement. Mounted `ChoreographyScreen` wrappers forward parent-navigation events for nested destinations, scoped to their owning navigator
 - the shared UI gate releases visuals and input only after animation completion and confirmed route removal; React session teardown follows. Native-stack should use `animation: 'none'` to avoid its own animation and input blocking
@@ -211,11 +264,15 @@ The runtime measures live views but avoids timing-based polling where it can.
 
 - source elements are measured before navigation
 - target registration is awaited through registry subscription events
-- target metrics are cached per `(logical screen layout, groupId, id)` and validated against the actual destination instance with one batched read; mismatches fall back to the stability loop
-- startup waits are biased toward structural elements such as the container and icon
+- native forward preparation checks mounted screen and target geometry together across two stable native passes, then reads target coordinates in one batch
+- backward preparation and the legacy forward path validate cached target metrics per `(logical screen layout, groupId, id)` against the actual destination instance with one batched read; mismatches fall back to the stability loop
+- the legacy stability loop gives structural elements such as the container and icon additional settling time on first open
 - reused reverse paths can refresh active session metrics after the source screen becomes visible again
 
-First-open structural measurement is still the largest startup cost in the current architecture.
+Native layout validation establishes current mounted readiness, while the final
+coordinate batch preserves renderer geometry. Their latency, navigation and
+application readiness, and overlay presentation must be measured separately to
+attribute startup cost; the barrier does not impose a preparation-time guarantee.
 
 ## Progress And Companion Motion
 

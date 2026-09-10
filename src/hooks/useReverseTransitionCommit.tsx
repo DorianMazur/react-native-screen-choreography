@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { findNodeHandle, StyleSheet, type View } from 'react-native';
+import { findNodeHandle, Platform, StyleSheet, type View } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useSharedValue,
@@ -198,6 +198,10 @@ export function useReverseTransitionCommit({
         targetScreenId: session.targetScreenId,
         isCurrent: current,
         preparePresentation: () => {
+          // UIKit screen snapshots can retain original shared content behind
+          // the moving overlay despite pending visibility updates. On iOS keep
+          // the actual route mounted through the endpoint and then commit Back.
+          if (Platform.OS === 'ios') return Promise.resolve(false);
           // Live portals keep their original React owner. Do not rasterize live
           // content or remove its owner during a gesture settlement.
           if (session.pairs.some((pair) => pair.transition.mode === 'live')) {

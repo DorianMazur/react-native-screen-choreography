@@ -89,6 +89,7 @@ export function createSharedElementComponent<Props extends object>(
         []
       );
       const getNode = useCallback(() => viewNodeRef.current, []);
+      const getTransition = useCallback(() => transitionRef.current, []);
       const setRef = useCallback(
         (node: any) => {
           viewNodeRef.current = node;
@@ -107,6 +108,7 @@ export function createSharedElementComponent<Props extends object>(
           animatedRef,
           metrics: null,
           getPresentation,
+          getTransition,
         });
         return () => actions.unregisterElement(id, screenId, groupId);
       }, [
@@ -114,6 +116,7 @@ export function createSharedElementComponent<Props extends object>(
         animatedRef,
         getNode,
         getPresentation,
+        getTransition,
         groupId,
         id,
         screenId,

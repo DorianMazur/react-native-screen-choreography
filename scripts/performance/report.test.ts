@@ -86,6 +86,177 @@ const options = {
   metadata: { iterations: 2, timingCycles: 1 },
 };
 
+function withPreparationTrace(data: InputRecord) {
+  data.preparationTracing = {
+    version: 1,
+    requested: true,
+    directions: ['forward'],
+  };
+  Object.assign(data.journeys[0], {
+    requestJsMs: 100,
+    sessionActiveJsMs: 140,
+    requestToOverlayReadyMs: 60,
+    preparationTrace: {
+      traceId: 'trace-forward',
+      sessionId: 'session-forward',
+      groupId: 'photo',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail:instance',
+      direction: 'forward',
+      clock: 'js-performance-now',
+      startedAtMs: 105,
+      completedAtMs: 160,
+      outcome: 'overlay-ready',
+      droppedStages: 0,
+      stages: [
+        {
+          name: 'coordinator',
+          startedAtMs: 110,
+          durationMs: 30,
+          completed: true,
+        },
+        {
+          name: 'target-measure',
+          startedAtMs: 110,
+          durationMs: 5,
+          completed: true,
+        },
+        {
+          name: 'target-measure',
+          startedAtMs: 130,
+          durationMs: 7,
+          completed: true,
+        },
+        {
+          name: 'overlay-ready',
+          startedAtMs: 140,
+          durationMs: 20,
+          completed: true,
+        },
+      ],
+    },
+  });
+}
+
+test('optional startup diagnostics preserve definition 3 and aggregate repeated stages per journey', () => {
+  const input = documents();
+  withPreparationTrace(input[0].data);
+  const summary = summarize(input, options);
+  assert.equal(summary.valid, true, summary.errors.join());
+  assert.equal(summary.measurementDefinitionVersion, 3);
+  assert.equal(
+    summary.metrics['ordinary.forward.requestToSessionActiveMs']!.median,
+    40
+  );
+  assert.equal(
+    summary.metrics['ordinary.forward.requestToOverlayReadyMs']!.median,
+    60
+  );
+  assert.equal(
+    summary.metrics['ordinary.forward.preparation.target-measureMs']!.median,
+    12
+  );
+  assert.equal(
+    summary.metrics['ordinary.forward.preparation.target-measureMs']!.count,
+    1
+  );
+  assert.equal(
+    summary.metrics['ordinary.forward.preparation.coordinatorMs']!.median,
+    30
+  );
+  assert.equal(
+    summary.metrics['ordinary.backward.requestToOverlayReadyMs'],
+    undefined
+  );
+  assert.equal(
+    summary.metrics['live.forward.requestToOverlayReadyMs'],
+    undefined
+  );
+  assert.match(markdown(summary), /not first presented motion/);
+});
+
+test('invalid or missing requested startup diagnostics fail atomically', () => {
+  for (const mutate of [
+    (data: InputRecord) => {
+      delete data.journeys[0].preparationTrace;
+    },
+    (data: InputRecord) => {
+      delete data.journeys[0].requestToOverlayReadyMs;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].requestToOverlayReadyMs = 0;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].preparationTrace.sessionId = 'stale';
+    },
+    (data: InputRecord) => {
+      data.journeys[0].preparationTrace.clock = 'android-uptime-ms';
+    },
+    (data: InputRecord) => {
+      data.journeys[0].preparationTrace.completedAtMs = 139;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].preparationTrace.droppedStages = 1;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].preparationTrace.stages[0].completed = false;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].preparationTrace.stages[0].durationMs = 100;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].preparationTrace.stages[0].durationMs = -1;
+    },
+  ]) {
+    const input = documents();
+    withPreparationTrace(input[0].data);
+    mutate(input[0].data);
+    const summary = summarize(input, options);
+    assert.equal(summary.valid, false);
+    assert.equal(
+      summary.metrics['ordinary.forward.requestToSessionActiveMs'],
+      undefined
+    );
+    assert.equal(
+      summary.metrics['ordinary.forward.requestToOverlayReadyMs'],
+      undefined
+    );
+  }
+});
+
+test('overlay timeouts are counted separately and excluded from acknowledged timing distributions', () => {
+  const input = documents();
+  withPreparationTrace(input[0].data);
+  const journey = input[0].data.journeys[0];
+  journey.preparationTrace.outcome = 'overlay-timeout';
+  delete journey.requestToOverlayReadyMs;
+  const summary = summarize(input, options);
+  assert.equal(summary.valid, true, summary.errors.join());
+  assert.deepEqual(summary.preparationDiagnostics['ordinary.forward'], {
+    tracedJourneys: 1,
+    overlayAcknowledgedJourneys: 0,
+    overlayTimeoutJourneys: 1,
+  });
+  assert.equal(
+    summary.metrics['ordinary.forward.requestToOverlayReadyMs'],
+    undefined
+  );
+  assert.equal(
+    summary.metrics['ordinary.forward.requestToSessionActiveMs']!.median,
+    40
+  );
+  assert.match(markdown(summary), /Overlay timeout/);
+  assert.match(markdown(summary), /ordinary.forward \| 1 \| 0 \| 1/);
+
+  journey.requestToOverlayReadyMs = 60;
+  const invalid = summarize(input, options);
+  assert.equal(invalid.valid, false);
+  assert.match(
+    invalid.errors.join(),
+    /timeout must not report observed overlay readiness/
+  );
+});
+
 test('aggregates valid native data without inventing unsupported profiling values', () => {
   const summary = summarize(documents(), options);
   assert.equal(summary.valid, true, summary.errors.join('\n'));

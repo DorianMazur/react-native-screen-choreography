@@ -14,6 +14,8 @@ export function GalleryImage({
   return (
     <View style={StyleSheet.absoluteFill}>
       <Image
+        // Overlay copies must be opaque immediately, including on Android Back.
+        fadeDuration={0}
         source={photo.image}
         resizeMode="cover"
         style={StyleSheet.absoluteFill}

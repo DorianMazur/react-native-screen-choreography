@@ -135,8 +135,12 @@ static char SnapshotSourceOwnerKey;
       [self emitCaptured:NO generation:generation captureId:captureId];
       return;
     }
+    // Reverse preparation has just hidden the shared elements in this source.
+    // Capturing the previous rendered frame retains those originals behind the
+    // moving overlay (a full-size image and duplicate labels throughout Back).
+    // Include pending screen updates before hiding the source root itself.
     UIView *snapshot = [source resizableSnapshotViewFromRect:source.bounds
-                                       afterScreenUpdates:NO
+                                       afterScreenUpdates:YES
                                             withCapInsets:UIEdgeInsetsZero];
     if (snapshot == nil) {
       [self emitCaptured:NO generation:generation captureId:captureId];

@@ -43,7 +43,7 @@ import {
   galleryTitleTransition,
   galleryLocationTransition,
   galleryGlyphTransition,
-} from '../../../shared/gallery/galleryTransitions';
+} from './galleryTransitions';
 import { theme } from '../../../shared/theme';
 import {
   BenchmarkCollector,
@@ -447,7 +447,8 @@ function createCollector(props: PerformanceLaunchProps) {
     `${props.performanceScenario}-${launchNonce}-${++runCounter}`,
     props.performanceScenario,
     props.performanceReactProfile === true,
-    () => performance.now()
+    () => performance.now(),
+    { preparationTracing: true }
   );
 }
 
@@ -604,6 +605,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
       <ChoreographyProvider
         key={collector.runId}
         debug={false}
+        onPreparationTrace={(trace) => collector.preparationTrace(trace)}
         onTransitionStart={(session) => {
           collector.sessionActive(
             session.id,

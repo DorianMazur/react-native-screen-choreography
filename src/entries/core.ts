@@ -22,6 +22,33 @@ export {
 } from '../transitions/makeStretchTransition';
 export { textMorphTransition } from '../transitions/textMorphTransition';
 export {
+  defineTransition,
+  type DefinedTransition,
+  type TransitionDefinition,
+  type TransitionElementProps,
+} from '../transitions/defineTransition';
+export {
+  surface,
+  image,
+  text,
+  crossfade,
+  fade,
+  type SurfaceOptions,
+  type ImageOptions,
+  type TextOptions,
+  type CrossfadeOptions,
+  type FadeOptions,
+  type SurfaceRecipe,
+  type ImageRecipe,
+  type TextRecipe,
+  type CrossfadeRecipe,
+  type FadeRecipe,
+  type SharedRecipe,
+  type OpacityTrack,
+  type ProgressRange,
+} from '../transitions/declarativeRecipes';
+export { useTransitionPresentation } from '../core/TransitionPresentationContext';
+export {
   makeLiveTransition,
   type MakeLiveTransitionOptions,
 } from '../transitions/makeLiveTransition';
@@ -45,8 +72,11 @@ export type {
   TransitionDirection,
 } from '../core/screenVisibility';
 export type {
+  ChoreographyPreparationStage,
+  ChoreographyPreparationTrace,
   SpringConfig,
   ElementMetrics,
+  TransitionAnchor,
   ElementPresentation,
   SharedElementTransition,
   SharedElementTransitionRenderer,

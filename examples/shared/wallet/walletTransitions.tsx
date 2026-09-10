@@ -10,7 +10,7 @@ import type {
   ElementMetrics,
   SharedElementTransition,
   SharedElementTransitionRendererProps,
-} from 'react-native-screen-choreography';
+} from 'react-native-screen-choreography/core';
 
 interface MorphContentStandInProps {
   progress: SharedElementTransitionRendererProps['progress'];

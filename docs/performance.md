@@ -131,6 +131,48 @@ device before making performance claims. Collection still fails for missing
 measurements, failed journeys, unacknowledged input, lost samples, invalid units,
 or a profiling-mode mismatch.
 
+### Optional startup diagnostics
+
+`ChoreographyProvider` accepts `onPreparationTrace` for opt-in forward startup
+diagnostics. The performance fixture enables it for both ordinary and live
+transitions, including the legacy renderer path. Production apps incur no trace
+buffering when the callback is absent. Each trace identifies the group, source,
+target instance, direction, and eventual session; all timestamps use JavaScript
+`performance.now()`. Traces are buffered and the callback is deferred until
+preparation ends. The collector performs no React updates or logging while a
+stage runs.
+
+The trace separates source measurement, navigation dispatch until target-instance
+resolution, screen readiness, the additional Android frame (when required),
+coordinator preparation, and overlay readiness. Coordinator stages give finer
+detail about registration, native preparation, cache validation, measurement,
+and pairing. Stage names can repeat; the report sums each repeated stage within
+one journey before calculating its median or P95. Parent and child stages can
+overlap, so their durations must not be added together.
+
+`requestToOverlayReadyMs` starts at the same fixture request timestamp as open
+preparation and ends when JavaScript observes both overlay readiness acknowledgments. It excludes
+deferred observer delivery time. It is a readiness proxy, **not first presented
+motion**, and cannot establish a tap-to-visible-motion target on its own. The
+first version traces forward preparation only; return preparation keeps its
+existing measurement. Cancellation, unavailable targets, and failures emit their
+own outcomes rather than successful overlay timings.
+
+The existing overlay safety timeout may allow a transition to proceed before
+both acknowledgments arrive. Such traces use `overlay-timeout`, retain their
+stage timings, and contribute to an explicit timeout count. They do not emit
+`requestToOverlayReadyMs`. A timeout alone does not invalidate otherwise verified
+navigation or remove its original preparation sample. The report shows traced,
+acknowledged, and timed-out journey counts so a smaller acknowledged timing sample
+cannot hide missing acknowledgments.
+
+These diagnostics add optional raw fields and a separate report table. The main
+preparation metrics retain measurement definition version 3. Old exports remain
+readable; absent traces produce no diagnostic numbers. When tracing is requested,
+missing or invalid forward traces invalidate collection. Compare instrumented
+baseline and candidate runs on the same device; instrumentation itself adds
+small clock-read and buffering costs.
+
 ## CI and pull-request comments
 
 Performance CI runs only on Android. The regular iOS build remains in the main

@@ -65,6 +65,12 @@ For iOS, install pods after adding the dependency:
 cd ios && pod install
 ```
 
+Rebuild the native app after upgrading to enable native forward preparation.
+It checks mounted destination layout across two native frames, then reads target
+coordinates in one batch. An older app binary without the optional preparation
+module keeps the existing readiness path. Application `ready` flags and blockers
+still control when destination content is ready to animate.
+
 ## Choosing An Entry Point
 
 Choose the import path for your navigation setup. Each integration includes the same shared components, transition recipes, progress hooks, utilities, and types.
@@ -210,6 +216,13 @@ You can also toggle the logger imperatively from anywhere via the exported `setD
 | Logs are very noisy                                            | `debug={true}` enables `info` level                                                          | Use `debug={false}`, or `debug={{ level: 'warn' }}` for production-style output                                            |
 
 ## Quick Start
+
+For new transitions, start with the [declarative API](docs/declarative-transitions.md).
+`defineTransition` combines built-in surface, image, fixed-layout text, crossfade,
+and enter/exit recipes into one reusable definition. Endpoints register a semantic
+name and group; entering and exiting content needs no invisible matching view.
+Reanimated remains the internal animation runtime. Existing custom renderers and
+the lower-level APIs below remain supported.
 
 ### 1. Wrap each screen root
 
@@ -497,7 +510,7 @@ This lifecycle uses the `ScreenChoreographySnapshotView` Fabric component. Rebui
 - `useChoreographyNavigation` starts and reverses time-driven sessions.
 - `useInteractiveTransition` prepares and controls custom gesture-driven back sessions.
 - `useChoreographyProgress` lets the screen react to the active session.
-- `useLatchedReveal` and `useStaggeredReveal` help detail screens reveal content without duplicating transition lifecycle code.
+- `useLatchedReveal` and `useStaggeredReveal` help detail screens reveal content without duplicating transition lifecycle code. Pass `translateY: 0` to `useStaggeredReveal` for a fade in place; the default initial vertical offset is 16.
 
 ## Public API At A Glance
 
@@ -627,7 +640,7 @@ For app code, the cleanest pattern is:
 
 - The best-supported setups are `@react-navigation/native-stack` and Expo Router's native `Stack`, both with stack animation disabled.
 - Custom back gestures can control progress with `useInteractiveTransition`; native-stack's built-in swipe progress is not connected automatically.
-- Transition startup still depends on live target measurement for structural elements, though repeated opens of the same target layout reuse cached metrics after one validation read.
+- Transition startup still depends on destination registration, application readiness, and target measurement. Native forward preparation validates attached layout before one measurement batch; the legacy fallback and return path can reuse cached geometry after a validation read.
 - Ordinary renderers receive frozen React content, style, and metrics rather than captured pixels. `SharedElement.Live` is the opt-in path for one stateful native subtree and requires its owner screen to remain mounted.
 - Elements use compound `(route instance, groupId, id)` identities; the same ID can safely appear in several groups or repeated screen instances. Explicit interactive Back screen-name hints use the recorded source instance when available; ambiguous names without lineage do not start a choreography.
 

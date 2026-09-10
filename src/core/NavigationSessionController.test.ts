@@ -1,5 +1,6 @@
 import { NavigationSessionController } from './NavigationSessionController';
 import type { TransitionSessionData } from '../types';
+import { PreparationTrace } from './preparationTrace';
 
 function createSession(id: string): TransitionSessionData {
   return {
@@ -15,6 +16,198 @@ function createSession(id: string): TransitionSessionData {
 }
 
 describe('NavigationSessionController', () => {
+  test('buffers forward stage durations through overlay readiness without changing order', async () => {
+    jest.useFakeTimers();
+    try {
+      let now = 100;
+      const observer = jest.fn();
+      const trace = new PreparationTrace(
+        {
+          groupId: 'group',
+          sourceScreenId: 'source',
+          targetScreenId: 'target',
+          direction: 'forward',
+        },
+        observer,
+        () => now
+      );
+      const controller = new NavigationSessionController();
+      const session = createSession('traced-session');
+      const startTransition = jest.fn(async () => {
+        now += 30;
+        return session;
+      });
+
+      expect(
+        await controller.prepareForwardTransition({
+          groupId: 'group',
+          sourceScreenId: 'source',
+          targetScreenId: 'target',
+          isAndroid: true,
+          trace,
+          preMeasureGroup: async () => {
+            now += 5;
+          },
+          setPendingTargetScreen: () => {},
+          dispatchNavigation: () => {
+            now += 2;
+          },
+          resolveTargetScreenId: async () => {
+            now += 3;
+            return 'target:instance';
+          },
+          waitForScreenReady: async () => {
+            now += 20;
+            return true;
+          },
+          waitForNextFrame: async () => {
+            now += 16;
+          },
+          startTransition,
+          waitForOverlayReady: async () => {
+            now += 7;
+            return true;
+          },
+        })
+      ).toBe(session);
+      expect(startTransition).toHaveBeenCalledWith(
+        expect.objectContaining({ trace })
+      );
+      expect(observer).not.toHaveBeenCalled();
+      jest.runOnlyPendingTimers();
+      const report = observer.mock.calls[0]![0];
+      expect(report.outcome).toBe('overlay-ready');
+      expect(report.sessionId).toBe('traced-session');
+      expect(report.targetScreenId).toBe('target:instance');
+      expect(report.completedAtMs - report.startedAtMs).toBe(83);
+      expect(
+        report.stages.map(
+          ({ name, durationMs }: { name: string; durationMs: number }) => [
+            name,
+            durationMs,
+          ]
+        )
+      ).toEqual([
+        ['source-measure', 5],
+        ['navigation-instance', 5],
+        ['screen-ready', 20],
+        ['android-frame', 16],
+        ['coordinator', 30],
+        ['overlay-ready', 7],
+      ]);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('unavailable preparation emits diagnostics without fabricating an overlay-ready outcome', async () => {
+    jest.useFakeTimers();
+    try {
+      const observer = jest.fn();
+      const trace = new PreparationTrace(
+        {
+          groupId: 'group',
+          sourceScreenId: 'source',
+          targetScreenId: 'target',
+          direction: 'forward',
+        },
+        observer
+      );
+      const controller = new NavigationSessionController();
+      expect(
+        await controller.prepareForwardTransition({
+          groupId: 'group',
+          sourceScreenId: 'source',
+          targetScreenId: 'target',
+          isAndroid: true,
+          trace,
+          preMeasureGroup: async () => {},
+          setPendingTargetScreen: () => {},
+          dispatchNavigation: () => {},
+          waitForScreenReady: async () => false,
+          waitForNextFrame: async () => {},
+          startTransition: async () => null,
+          waitForOverlayReady: async () => true,
+        })
+      ).toBeNull();
+      jest.runOnlyPendingTimers();
+      expect(observer.mock.calls[0]![0]).toMatchObject({
+        outcome: 'unavailable',
+        sessionId: null,
+      });
+      expect(
+        observer.mock.calls[0]![0].stages.some(
+          ({ name }: { name: string }) => name === 'overlay-ready'
+        )
+      ).toBe(false);
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
+  test('the overlay safety timeout preserves navigation without claiming acknowledged readiness', async () => {
+    jest.useFakeTimers();
+    try {
+      let now = 100;
+      let waitSettled = false;
+      const observer = jest.fn();
+      const trace = new PreparationTrace(
+        {
+          groupId: 'group',
+          sourceScreenId: 'source',
+          targetScreenId: 'target',
+          direction: 'forward',
+        },
+        observer,
+        () => now
+      );
+      const controller = new NavigationSessionController();
+      const session = createSession('timeout-session');
+      const isOverlayPresented = jest.fn((sessionId: string) => {
+        expect(sessionId).toBe(session.id);
+        expect(waitSettled).toBe(true);
+        return false;
+      });
+
+      expect(
+        await controller.prepareForwardTransition({
+          groupId: 'group',
+          sourceScreenId: 'source',
+          targetScreenId: 'target',
+          isAndroid: false,
+          trace,
+          preMeasureGroup: async () => {},
+          setPendingTargetScreen: () => {},
+          dispatchNavigation: () => {},
+          waitForScreenReady: async () => true,
+          waitForNextFrame: async () => {},
+          startTransition: async () => session,
+          waitForOverlayReady: async () => {
+            now += 150;
+            waitSettled = true;
+            return true;
+          },
+          isOverlayPresented,
+        })
+      ).toBe(session);
+      expect(isOverlayPresented).toHaveBeenCalledTimes(1);
+      expect(observer).not.toHaveBeenCalled();
+      jest.runOnlyPendingTimers();
+      expect(observer.mock.calls[0]![0]).toMatchObject({
+        outcome: 'overlay-timeout',
+        sessionId: session.id,
+        completedAtMs: 250,
+      });
+      expect(observer.mock.calls[0]![0].stages.at(-1)).toMatchObject({
+        name: 'overlay-ready',
+        durationMs: 150,
+        details: { ready: true, acknowledged: false },
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('a stale release cannot unlock a replacement request', () => {
     const controller = new NavigationSessionController();
     controller.acquireNavigationLock('first');

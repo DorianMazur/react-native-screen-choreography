@@ -1,5 +1,7 @@
+import { GalleryScrim } from './GalleryScrim';
 import React from 'react';
 import {
+  Image,
   View,
   Text,
   StyleSheet,
@@ -12,14 +14,10 @@ import { SharedElement, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { AppIcon, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
-import { GalleryImage } from './GalleryImage';
 import { PHOTOS, type Photo } from './data';
 import {
-  galleryFrameTransition,
-  galleryPhotoTransition,
-  galleryTitleTransition,
+  galleryTransition,
   galleryLocationTransition,
-  galleryGlyphTransition,
 } from './galleryTransitions';
 
 const TILE_GAP = 12;
@@ -61,6 +59,7 @@ export function GalleryListScreen() {
                     params: { photoId: photo.id },
                   },
                   {
+                    ...galleryTransition.navigationOptions,
                     transitionConfig: { group: `photo.${photo.id}` },
                   }
                 )
@@ -93,44 +92,45 @@ function Tile({
         pressed && { opacity: 0.7 },
       ]}
     >
-      <SharedElement
-        id={`photo.${photo.id}.frame`}
+      <galleryTransition.Element
+        name="frame"
         groupId={`photo.${photo.id}`}
-        transition={galleryFrameTransition}
         style={styles.tileFrame}
       >
         <View style={styles.tileFrameInner}>
-          <SharedElement
-            id={`photo.${photo.id}.photo`}
+          <galleryTransition.Element
+            name="photo"
             groupId={`photo.${photo.id}`}
-            transition={galleryPhotoTransition}
             style={StyleSheet.absoluteFill}
           >
-            <GalleryImage photo={photo} />
-            <View style={styles.tileScrim} pointerEvents="none" />
-          </SharedElement>
+            <Image
+              source={photo.image}
+              resizeMode="cover"
+              fadeDuration={0}
+              style={StyleSheet.absoluteFill}
+            />
+          </galleryTransition.Element>
+          <GalleryScrim />
           <View style={styles.tileGlyphWrap} pointerEvents="none">
-            <SharedElement
-              id={`photo.${photo.id}.glyph`}
+            <galleryTransition.Element
+              name="glyph"
               groupId={`photo.${photo.id}`}
-              transition={galleryGlyphTransition}
               style={styles.tileGlyphBox}
             >
               <View style={styles.glyphCenter}>
                 <AppIcon name="camera" size={14} />
               </View>
-            </SharedElement>
+            </galleryTransition.Element>
           </View>
           <View style={styles.tileMeta}>
-            <SharedElement
-              id={`photo.${photo.id}.title`}
+            <galleryTransition.Element
+              name="title"
               groupId={`photo.${photo.id}`}
-              transition={galleryTitleTransition}
             >
               <Text style={styles.tileTitle}>{photo.title}</Text>
-            </SharedElement>
+            </galleryTransition.Element>
             <SharedElement
-              id={`photo.${photo.id}.location`}
+              id="location"
               groupId={`photo.${photo.id}`}
               transition={galleryLocationTransition}
             >
@@ -138,7 +138,7 @@ function Tile({
             </SharedElement>
           </View>
         </View>
-      </SharedElement>
+      </galleryTransition.Element>
     </Pressable>
   );
 }
@@ -200,6 +200,7 @@ const styles = StyleSheet.create({
     flex: 1,
     borderRadius: theme.radius.lg,
     overflow: 'hidden',
+    backgroundColor: theme.surface,
   },
   tileFrameInner: {
     flex: 1,
@@ -220,15 +221,6 @@ const styles = StyleSheet.create({
     ...StyleSheet.absoluteFill,
     alignItems: 'center',
     justifyContent: 'center',
-  },
-  tileScrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '55%',
-    experimental_backgroundImage:
-      'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.65) 100%)',
   },
   tileMeta: {
     position: 'absolute',

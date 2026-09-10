@@ -8,7 +8,7 @@ import { StyleSheet } from 'react-native';
 import type {
   SharedElementTransition,
   SharedElementTransitionRendererProps,
-} from 'react-native-screen-choreography';
+} from 'react-native-screen-choreography/core';
 import { resolveSurfaceStyle } from '../runtime';
 import { theme } from '../theme';
 

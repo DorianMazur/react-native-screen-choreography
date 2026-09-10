@@ -35,6 +35,8 @@ export default defineConfig([
       '**/.expo/',
       '**/expo-env.d.ts',
       '**/android/**/build/',
+      '**/ios/Pods/',
+      '**/ios/build/',
       'artifacts/performance/',
     ],
   },

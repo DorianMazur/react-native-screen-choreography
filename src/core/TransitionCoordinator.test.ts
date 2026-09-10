@@ -1,6 +1,9 @@
+import { Platform } from 'react-native';
+import * as measurement from './measurement';
 import { TransitionCoordinator } from './TransitionCoordinator';
 import { ElementRegistry } from './ElementRegistry';
 import type {
+  ElementMetrics,
   ElementPresentation,
   RegisteredElement,
   SharedElementTransition,
@@ -45,6 +48,246 @@ function deferred<T>() {
   });
   return { promise, resolve };
 }
+
+describe('TransitionCoordinator validated measurement reuse', () => {
+  let registry: ElementRegistry;
+  let coordinator: TransitionCoordinator;
+  const sourceMetrics = { pageX: 10, pageY: 20, width: 50, height: 50 };
+  const targetMetrics = { pageX: 0, pageY: 0, width: 200, height: 200 };
+  const config = {
+    groupId: 'group',
+    sourceScreenId: 'list',
+    targetScreenId: 'detail',
+    direction: 'forward' as const,
+  };
+
+  beforeEach(() => {
+    jest.useFakeTimers();
+    jest.replaceProperty(Platform, 'OS', 'ios');
+    registry = new ElementRegistry();
+    coordinator = new TransitionCoordinator(registry, { value: 0 } as any);
+  });
+
+  afterEach(() => {
+    coordinator.dispose();
+    jest.restoreAllMocks();
+    jest.useRealTimers();
+  });
+
+  function registerTarget(ref: RegisteredElement['ref']) {
+    registry.register(
+      makeElement(
+        { screenId: 'detail', ref },
+        { current: { content: null, transition } }
+      )
+    );
+  }
+
+  function registerSource(metrics: ElementMetrics | null = sourceMetrics) {
+    registry.register(
+      makeElement(
+        { screenId: 'list', metrics, ref: refWithMetrics(sourceMetrics) },
+        { current: { content: null, transition } }
+      )
+    );
+  }
+
+  async function start() {
+    const pending = coordinator.startTransition(config);
+    await jest.runAllTimersAsync();
+    return pending;
+  }
+
+  test.each([
+    ['ios', 3],
+    ['android', 5],
+  ] as const)(
+    'pairs with the final stable batch on %s without an extra target read',
+    async (platform, expectedReads) => {
+      jest.replaceProperty(Platform, 'OS', platform);
+      registerSource();
+      let reads = 0;
+      registerTarget(() => ({
+        measureInWindow: (callback: Function) => {
+          reads += 1;
+          // Small changes satisfy the tolerance, but distinguish every batch.
+          callback(reads * 0.1, 0, 200, 200);
+        },
+      }));
+      const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+      const session = await start();
+      const finalBatch = await batches.mock.results.at(-1)!.value;
+
+      expect(reads).toBe(expectedReads);
+      expect(session?.pairs[0]?.targetMetrics).toBe(finalBatch.get('card'));
+      expect(session?.pairs[0]?.targetMetrics.pageX).toBe(expectedReads * 0.1);
+      expect(
+        batches.mock.calls.every(([entries]) => entries[0]?.id === 'card')
+      ).toBe(true);
+    }
+  );
+
+  test('pairs with fresh cache-validation geometry rather than cached geometry', async () => {
+    registerSource();
+    const current = { ...targetMetrics };
+    registerTarget(refWithMetrics(current));
+    await start();
+    coordinator.completeTransition();
+    current.pageX = 0.25;
+    const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+    const session = await start();
+    const validatedBatch = await batches.mock.results[0]!.value;
+
+    expect(batches).toHaveBeenCalledTimes(1);
+    expect(session?.pairs[0]?.targetMetrics).toBe(validatedBatch.get('card'));
+    expect(session?.pairs[0]?.targetMetrics.pageX).toBe(0.25);
+  });
+
+  test('measures an uncached source without remeasuring the validated target', async () => {
+    registerSource(null);
+    registerTarget(refWithMetrics(targetMetrics));
+    const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+    const session = await start();
+    const validatedBatch = await batches.mock.results[2]!.value;
+
+    expect(batches.mock.calls.at(-1)![0].map(({ id }) => id)).toEqual([
+      'source:card',
+    ]);
+    expect(session?.pairs[0]?.sourceMetrics).toEqual(sourceMetrics);
+    expect(session?.pairs[0]?.targetMetrics).toBe(validatedBatch.get('card'));
+  });
+
+  test('invalid cache validation falls back to the full stability loop', async () => {
+    registerSource();
+    const current = { ...targetMetrics };
+    let invalidNextRead = false;
+    registerTarget(() => ({
+      measureInWindow: (callback: Function) => {
+        if (invalidNextRead) {
+          invalidNextRead = false;
+          callback(0, 0, 0, 0);
+        } else {
+          callback(current.pageX, current.pageY, current.width, current.height);
+        }
+      },
+    }));
+    await start();
+    coordinator.completeTransition();
+    invalidNextRead = true;
+    current.width = 320;
+    const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+    const session = await start();
+    const finalBatch = await batches.mock.results.at(-1)!.value;
+
+    expect(batches).toHaveBeenCalledTimes(4);
+    expect(session?.pairs[0]?.targetMetrics).toBe(finalBatch.get('card'));
+    expect(session?.pairs[0]?.targetMetrics.width).toBe(320);
+  });
+
+  test.each([true, false])(
+    'a stability timeout keeps the final read and registry fallback (valid final read: %s)',
+    async (validFinalRead) => {
+      registerSource();
+      const startedAt = Date.now();
+      let reads = 0;
+      registerTarget(() => ({
+        measureInWindow: (callback: Function) => {
+          reads += 1;
+          if (Date.now() - startedAt >= 500) {
+            callback(
+              999,
+              0,
+              validFinalRead ? 200 : 0,
+              validFinalRead ? 200 : 0
+            );
+          } else {
+            callback(reads, 0, 200, 200);
+          }
+        },
+      }));
+      const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+      const session = await start();
+      const finalBatch = await batches.mock.results.at(-1)!.value;
+      const lastStabilityBatch = await batches.mock.results.at(-2)!.value;
+
+      expect(batches.mock.calls.at(-1)![0].map(({ id }) => id)).toEqual([
+        'target:card',
+      ]);
+      expect(session?.pairs[0]?.targetMetrics).toBe(
+        validFinalRead
+          ? finalBatch.get('target:card')
+          : lastStabilityBatch.get('card')
+      );
+      expect(session?.pairs[0]?.targetMetrics.pageX).toBe(
+        validFinalRead ? 999 : reads - 1
+      );
+    }
+  );
+
+  test('failed stability and final reads do not manufacture a valid pair', async () => {
+    registerSource();
+    registerTarget(() => ({
+      measureInWindow: (callback: Function) => callback(0, 0, 0, 0),
+    }));
+    const onUnavailable = jest.fn();
+    const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+    const pending = coordinator.startTransition({ ...config, onUnavailable });
+    await jest.runAllTimersAsync();
+
+    await expect(pending).resolves.toBeNull();
+    expect(batches.mock.calls.at(-1)![0][0]?.id).toBe('target:card');
+    expect(onUnavailable).toHaveBeenCalledTimes(1);
+    expect(coordinator.getActiveSession()).toBeNull();
+    expect(coordinator.getHiddenElements().size).toBe(0);
+  });
+
+  test('a replaced target is remeasured after the old ref validates', async () => {
+    registerSource();
+    let replaceDuringRead = false;
+    const replacementMetrics = { ...targetMetrics, width: 320 };
+    registerTarget(() => ({
+      measureInWindow: (callback: Function) => {
+        if (replaceDuringRead) {
+          replaceDuringRead = false;
+          registerTarget(refWithMetrics(replacementMetrics));
+        }
+        callback(0, 0, 200, 200);
+      },
+    }));
+    await start();
+    coordinator.completeTransition();
+    replaceDuringRead = true;
+    const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+    const session = await start();
+
+    expect(batches).toHaveBeenCalledTimes(2);
+    expect(batches.mock.calls[1]![0][0]?.id).toBe('target:card');
+    expect(session?.pairs[0]?.targetMetrics).toEqual(replacementMetrics);
+  });
+
+  test('cancellation during a target batch cannot reactivate the session', async () => {
+    registerSource();
+    registerTarget(() => ({
+      measureInWindow: (callback: Function) => {
+        coordinator.cancelTransition();
+        callback(0, 0, 200, 200);
+      },
+    }));
+    const batches = jest.spyOn(measurement, 'measureElementsBatched');
+
+    await expect(start()).resolves.toBeNull();
+    expect(batches).toHaveBeenCalledTimes(1);
+    expect(coordinator.getActiveSession()).toBeNull();
+    expect(coordinator.getHiddenElements().size).toBe(0);
+  });
+});
 
 describe('TransitionCoordinator presentation freezing', () => {
   let registry: ElementRegistry;
@@ -498,7 +741,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
-    const stability = deferred<boolean>();
+    const stability = deferred<Map<string, unknown>>();
     (coordinator as any).waitForStableTargetMeasurements = jest.fn(
       () => stability.promise
     );
@@ -531,7 +774,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     await Promise.resolve();
 
     coordinator.cancelTransition();
-    stability.resolve(true);
+    stability.resolve(new Map());
 
     await expect(sessionPromise).resolves.toBeNull();
     expect(coordinator.getActiveSession()).toBeNull();
@@ -544,8 +787,8 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
       const snap: { current: ElementPresentation } = {
         current: { content: null, transition },
       };
-      const firstStability = deferred<boolean>();
-      const secondStability = deferred<boolean>();
+      const firstStability = deferred<Map<string, unknown>>();
+      const secondStability = deferred<Map<string, unknown>>();
       (coordinator as any).waitForStableTargetMeasurements = jest.fn(
         (targetScreenId: string) =>
           targetScreenId === 'first-detail'
@@ -597,16 +840,16 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
       await Promise.resolve();
 
       if (staleFinishOrder === 'first') {
-        firstStability.resolve(true);
+        firstStability.resolve(new Map());
         await expect(firstSessionPromise).resolves.toBeNull();
-        secondStability.resolve(true);
+        secondStability.resolve(new Map());
       } else {
-        secondStability.resolve(true);
+        secondStability.resolve(new Map());
       }
 
       const secondSession = await secondSessionPromise;
       if (staleFinishOrder === 'second') {
-        firstStability.resolve(true);
+        firstStability.resolve(new Map());
         await expect(firstSessionPromise).resolves.toBeNull();
       }
 
@@ -620,8 +863,8 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
-    const firstStability = deferred<boolean>();
-    const secondStability = deferred<boolean>();
+    const firstStability = deferred<Map<string, unknown>>();
+    const secondStability = deferred<Map<string, unknown>>();
     (coordinator as any).waitForStableTargetMeasurements = jest.fn(
       (targetScreenId: string) =>
         targetScreenId === 'first-detail'
@@ -672,10 +915,10 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     });
     await Promise.resolve();
 
-    secondStability.resolve(true);
+    secondStability.resolve(new Map());
     const secondSession = await secondSessionPromise;
     registry.unregister('first-card', 'first-detail', 'first-group');
-    firstStability.resolve(true);
+    firstStability.resolve(new Map());
 
     await expect(firstSessionPromise).resolves.toBeNull();
     expect(coordinator.getActiveSession()?.id).toBe(secondSession?.id);
@@ -686,7 +929,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     const snap: { current: ElementPresentation } = {
       current: { content: null, transition },
     };
-    const stability = deferred<boolean>();
+    const stability = deferred<Map<string, unknown>>();
     (coordinator as any).waitForStableTargetMeasurements = jest.fn(
       () => stability.promise
     );
@@ -718,7 +961,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     await Promise.resolve();
 
     coordinator.dispose();
-    stability.resolve(true);
+    stability.resolve(new Map());
 
     await expect(sessionPromise).resolves.toBeNull();
     expect(coordinator.getActiveSession()).toBeNull();
@@ -831,10 +1074,9 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
       });
       coordinator.completeTransition();
 
-      // Hot path: one cache-validation read plus the pairing re-measure,
-      // instead of the multi-read stability loop.
+      // Hot path reuses the single cache-validation read for pairing.
       expect(target.state.calls).toBeLessThan(firstRunReads);
-      expect(target.state.calls).toBeLessThanOrEqual(2);
+      expect(target.state.calls).toBe(1);
     },
     5000
   );

@@ -139,6 +139,7 @@ function SharedElementRegistration({
     }),
     []
   );
+  const getTransition = useCallback(() => transitionRef.current, []);
 
   const getNode = useCallback(
     () => targetNodeRef.current ?? viewNodeRef.current,
@@ -175,6 +176,7 @@ function SharedElementRegistration({
       getAnimatedRef,
       metrics: null,
       getPresentation,
+      getTransition,
     });
 
     return () => {
@@ -188,6 +190,7 @@ function SharedElementRegistration({
     animatedRef,
     getAnimatedRef,
     getPresentation,
+    getTransition,
     registerElement,
     unregisterElement,
   ]);

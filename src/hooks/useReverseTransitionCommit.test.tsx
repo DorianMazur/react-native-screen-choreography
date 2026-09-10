@@ -1,4 +1,4 @@
-import { findNodeHandle, type View } from 'react-native';
+import { findNodeHandle, Platform, type View } from 'react-native';
 import { makeMutable, withSpring } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -160,7 +160,10 @@ async function mountHook({
   };
 }
 
+const originalPlatform = Platform.OS;
+
 beforeEach(() => {
+  Platform.OS = 'android';
   jest.useFakeTimers();
   jest.clearAllMocks();
   jest.spyOn(require('react-native'), 'findNodeHandle').mockReturnValue(37);
@@ -173,9 +176,38 @@ afterEach(async () => {
   jest.clearAllTimers();
   jest.useRealTimers();
   jest.restoreAllMocks();
+  Platform.OS = originalPlatform;
 });
 
 describe('provider reverse commit integration', () => {
+  test('iOS keeps the outgoing route until the reverse endpoint without a screen snapshot', async () => {
+    Platform.OS = 'ios';
+    const harness = await mountHook();
+    const { completion, navigation, navigateBack } = await harness.start();
+    expect(harness.tree.root.findAllByType(RetainedView)).toHaveLength(0);
+    expect(findNodeHandle).not.toHaveBeenCalled();
+    expect(withSpring).toHaveBeenCalledTimes(1);
+    expect(navigateBack).not.toHaveBeenCalled();
+    expect(harness.sourceHidden.value).toBe(1);
+    expect(harness.targetHidden.value).toBe(1);
+    await act(async () => {
+      harness.finishAnimation();
+      flushRN();
+    });
+    expect(navigateBack).toHaveBeenCalledTimes(1);
+    // Keep overlay ownership until navigation confirms removal as well.
+    expect(harness.visibility.handoff.value.completed).toBe(false);
+    await act(async () =>
+      navigation.resolve({ removed: true, presented: false })
+    );
+    await completion;
+    expect(harness.visibility.handoff.value.completed).toBe(true);
+    expect(harness.interactionOwner.value).toBe('home');
+    expect(harness.cancelTransition).not.toHaveBeenCalled();
+    await act(async () => flushRN());
+    expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
+  });
+
   test.each(['standin', 'live'] as const)(
     '%s releases input after animation and removal without native transitionEnd',
     async (mode) => {

@@ -18,6 +18,7 @@ import {
   resumeVisibilityHandoff,
 } from './ElementVisibilityRegistry';
 import { TransitionOverlay } from './TransitionOverlay';
+import { useTransitionPresentation } from './TransitionPresentationContext';
 import { makeLiveTransition } from '../transitions/makeLiveTransition';
 import type { LiveTransitionRendererProps } from '../types';
 
@@ -145,6 +146,89 @@ test('renders frozen live metadata while preserving evolving shared refs', async
     await act(async () => tree?.unmount());
   }
 });
+
+test.each(['forward', 'backward'] as const)(
+  'provides inert presentation context and normalized anchors during %s',
+  async (direction) => {
+    let received!: SharedElementTransitionRendererProps;
+    let presentation = false;
+    const transition: SharedElementTransition = {
+      renderer: function PresentationRenderer(props) {
+        received = props;
+        presentation = useTransitionPresentation();
+        return null;
+      },
+    };
+    const collapsed = { pageX: 12, pageY: 100, width: 100, height: 40 };
+    const expanded = { pageX: 0, pageY: 0, width: 300, height: 180 };
+    const sourceMetrics = direction === 'forward' ? collapsed : expanded;
+    const targetMetrics = direction === 'forward' ? expanded : collapsed;
+    const element = {
+      id: 'image',
+      groupId: 'article',
+      screenId: 'list',
+      ref: () => null,
+      metrics: sourceMetrics,
+      getPresentation: () => {
+        throw new Error('Do not recapture live props');
+      },
+    };
+    const pair: ElementTransitionPair = {
+      id: 'image',
+      source: element,
+      target: { ...element, screenId: 'detail' },
+      sourceMetrics,
+      targetMetrics,
+      transition,
+      sourcePresentation: { content: null, transition },
+      targetPresentation: { content: null, transition },
+    };
+    const progress = { value: 0.4 } as TransitionSessionData['progress'];
+    const session: TransitionSessionData = {
+      id: 'declarative',
+      groupId: 'article',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      direction,
+      progress,
+      state: 'active',
+      pairs: [
+        pair,
+        {
+          ...pair,
+          id: 'controls',
+          sourcePresent: false,
+        },
+      ],
+    };
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(
+          <TransitionOverlay
+            session={session}
+            progress={progress}
+            handoff={
+              {
+                value: {
+                  sessionId: session.id,
+                  completed: false,
+                  elements: [],
+                },
+              } as never
+            }
+          />
+        );
+      });
+      expect(presentation).toBe(true);
+      expect(received.anchors).toEqual({ image: { collapsed, expanded } });
+      expect(received.source.present).toBe(false);
+      expect(received.target.present).toBe(true);
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  }
+);
 
 test.each(['forward', 'backward'] as const)(
   'keeps live content visible at %s completion until React reparents it',

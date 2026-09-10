@@ -1,9 +1,10 @@
-import React, { useCallback, useContext, useEffect, useRef } from 'react';
+import React, { useCallback, useContext, useLayoutEffect, useRef } from 'react';
 import { StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
 } from 'react-native-reanimated';
+import { hasNativePreparation } from '../core/nativePreparation';
 import { ScreenIdContext } from '../core/screenIdContext';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import {
@@ -80,12 +81,14 @@ export function ChoreographyScreenBase({
   const unregisterScreen = actions?.unregisterScreen;
   const registerScreenPresentation = actions?.registerScreenPresentation;
 
-  useEffect(
+  useLayoutEffect(
     () => registerScreenPresentation?.(screenId, presentationRef),
     [registerScreenPresentation, screenId]
   );
 
-  useEffect(() => {
+  useLayoutEffect(() => {
+    // Initialize before native layout events can publish immediate readiness.
+    layoutReadyRef.current = false;
     setScreenReady?.(screenId, false, screenName);
 
     return () => {
@@ -94,7 +97,7 @@ export function ChoreographyScreenBase({
     };
   }, [screenId, screenName, setScreenReady, unregisterScreen]);
 
-  useEffect(() => {
+  useLayoutEffect(() => {
     if (!ready) {
       setScreenReady?.(screenId, false);
     } else if (layoutReadyRef.current) {
@@ -111,6 +114,13 @@ export function ChoreographyScreenBase({
     const token = readinessTokenRef.current;
     layoutReadyRef.current = false;
     setScreenReady(screenId, false);
+
+    if (hasNativePreparation()) {
+      // This is the application/layout gate; native attachment is checked as a batch.
+      layoutReadyRef.current = true;
+      setScreenReady(screenId, readyRef.current);
+      return;
+    }
 
     requestAnimationFrame(() => {
       requestAnimationFrame(() => {

@@ -24,6 +24,13 @@ export interface SharedElementTransitionSide {
   metrics: ElementMetrics;
   style?: ViewStyle;
   content?: ReactNode;
+  /** False for the absent endpoint of a declarative enter/exit track. */
+  present?: boolean;
+}
+
+export interface TransitionAnchor {
+  collapsed: ElementMetrics;
+  expanded: ElementMetrics;
 }
 
 export interface SharedElementTransitionRendererProps {
@@ -34,6 +41,8 @@ export interface SharedElementTransitionRendererProps {
   zIndex: number;
   source: SharedElementTransitionSide;
   target: SharedElementTransitionSide;
+  /** Frozen geometry for relative motion; never contains React content. */
+  anchors?: Readonly<Record<string, TransitionAnchor>>;
 }
 
 export type SharedElementTransitionRenderer =
@@ -44,6 +53,8 @@ export interface SharedElementTransition {
   zIndex?: number;
   /** `live` pairs animate the real native view, so they are never hidden. */
   mode?: 'standin' | 'live';
+  /** Declarative tracks can participate with only this semantic endpoint. */
+  unpaired?: 'collapsed' | 'expanded' | 'either';
 }
 
 declare const liveTransitionBrand: unique symbol;
@@ -92,6 +103,8 @@ export interface RegisteredElement {
   metrics: ElementMetrics | null;
   /** Captures content, style, and transition once at session start. */
   getPresentation: () => ElementPresentation;
+  /** Read the current pairing policy without capturing a presentation early. */
+  getTransition?: () => SharedElementTransition;
 }
 
 export type TransitionState =
@@ -113,6 +126,8 @@ export interface ElementTransitionPair {
   sourcePresentation: ElementPresentation;
   /** Frozen target renderer input captured when the session became active. */
   targetPresentation: ElementPresentation;
+  sourcePresent?: boolean;
+  targetPresent?: boolean;
 }
 
 export interface TransitionSessionData {
@@ -137,6 +152,36 @@ export interface ChoreographyNavigationOptions {
   spring?: SpringConfig;
   /** Duration override (uses timing instead of spring) */
   duration?: number;
+}
+
+export interface ChoreographyPreparationStage {
+  name: string;
+  startedAtMs: number;
+  durationMs: number;
+  /** False when preparation ended before the stage's awaited work finished. */
+  completed: boolean;
+  details?: Readonly<Record<string, string | number | boolean>>;
+}
+
+/** Optional startup diagnostics; timestamps share the JavaScript performance clock. */
+export interface ChoreographyPreparationTrace {
+  traceId: string;
+  sessionId: string | null;
+  groupId: string;
+  sourceScreenId: string;
+  targetScreenId: string;
+  direction: 'forward' | 'backward';
+  clock: 'js-performance-now';
+  startedAtMs: number;
+  completedAtMs: number;
+  outcome:
+    | 'overlay-ready'
+    | 'overlay-timeout'
+    | 'cancelled'
+    | 'unavailable'
+    | 'failed';
+  stages: readonly ChoreographyPreparationStage[];
+  droppedStages: number;
 }
 
 export interface ChoreographyNavigationLineage {

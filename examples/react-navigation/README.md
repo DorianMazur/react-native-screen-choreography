@@ -4,7 +4,8 @@ This example app exposes the shared gallery, music, wallet, and wallet-setup dem
 
 ## What It Demonstrates
 
-- explicit per-element transition objects reused across list and detail screens
+- one declarative Gallery transition definition reused across list and detail screens
+- explicit custom transition objects in the Wallet and Music demos
 - surface interpolation for the row-to-detail card container
 - icon handoff with shared bounds interpolation
 - built-in surface, stretch, and native font-size recipes, alongside custom wallet value motion

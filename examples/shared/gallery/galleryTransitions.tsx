@@ -1,52 +1,31 @@
-import type {
-  SharedElementTransition,
-  SharedElementTransitionRendererProps,
-} from 'react-native-screen-choreography';
 import {
-  StandInElement,
-  makeStretchTransition,
-  makeSurfaceTransition,
+  defineTransition,
+  surface,
+  image,
+  text,
+  crossfade,
+  Springs,
   textMorphTransition,
 } from '../runtime';
 import { theme } from '../theme';
+import { GalleryScrim } from './GalleryScrim';
 
-export const galleryFrameTransition = makeSurfaceTransition(
-  { backgroundColor: theme.surface, borderRadius: theme.radius.lg },
-  { backgroundColor: theme.surface, borderRadius: 0 }
-);
-
-export const galleryPhotoTransition: SharedElementTransition = {
-  zIndex: 2,
-  renderer: function GalleryPhotoRenderer({
-    progress,
-    direction,
-    source,
-    target,
-    zIndex,
-  }: SharedElementTransitionRendererProps) {
-    const isBackward = direction === 'backward';
-    return (
-      <StandInElement
-        progress={progress}
-        direction={direction}
-        sourceMetrics={source.metrics}
-        targetMetrics={target.metrics}
-        sourceBorderRadius={isBackward ? 0 : theme.radius.lg}
-        targetBorderRadius={isBackward ? theme.radius.lg : 0}
-        zIndex={zIndex}
-      >
-        {source.content ?? target.content}
-      </StandInElement>
-    );
+// One module-scope definition is shared by both navigator examples and endpoints.
+export const galleryTransition = defineTransition({
+  motion: { spring: Springs.default },
+  shared: {
+    frame: surface({ radius: [theme.radius.lg, 0] }),
+    photo: image({
+      mode: 'morph',
+      radius: [theme.radius.lg, 0],
+      zIndex: 2,
+      overlay: <GalleryScrim />,
+    }),
+    glyph: crossfade({ zIndex: 4 }),
+    title: text({ zIndex: 4 }),
   },
-};
+});
 
-export const galleryTitleTransition = textMorphTransition;
-export const galleryLocationTransition = textMorphTransition;
-
-// Glyph is rendered inside square wraps on both screens, so the stretch
-// renderer's W/H interpolation naturally produces a *uniform* scale and the
-// icon never squishes — even when the source tile is taller than the target
-// hero (the tall tiles in the grid don't share an aspect ratio with the
-// detail hero box).
-export const galleryGlyphTransition = makeStretchTransition();
+// The location is identical plain text at both endpoints, so use one morphing
+// text layer instead of crossfading the two endpoint layouts.
+export const galleryLocationTransition = { ...textMorphTransition, zIndex: 4 };

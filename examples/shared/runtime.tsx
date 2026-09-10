@@ -15,6 +15,13 @@ import type {
 import type { SharedValue } from 'react-native-reanimated';
 
 export {
+  defineTransition,
+  surface,
+  image,
+  text,
+  crossfade,
+  fade,
+  Springs,
   SharedElement,
   StandInContainer,
   makeLiveTransition,
