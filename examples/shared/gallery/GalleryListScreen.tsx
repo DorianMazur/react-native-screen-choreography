@@ -1,7 +1,6 @@
-import { GalleryScrim } from './GalleryScrim';
 import React from 'react';
+import { GalleryHero } from './GalleryHero';
 import {
-  Image,
   View,
   Text,
   StyleSheet,
@@ -10,16 +9,29 @@ import {
   StatusBar,
   useWindowDimensions,
 } from 'react-native';
-import { useExampleNavigation } from '../runtime';
+import { SharedElement, useExampleNavigation } from '../runtime';
 import { SafeAreaView } from '../runtime';
-import { AppIcon, ScreenHeader } from '../AppChrome';
+import { ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS, type Photo } from './data';
-import { galleryTransition } from './galleryTransitions';
+import {
+  galleryHeroTransition,
+  galleryNavigationOptions,
+} from './galleryTransitions';
 
 const TILE_GAP = 12;
 
-export function GalleryListScreen() {
+export interface GalleryObservation {
+  mounted: (photoId: string) => () => void;
+  loaded: (photoId: string) => void;
+  failed: (photoId: string) => void;
+}
+
+export function GalleryListScreen({
+  observation,
+}: {
+  observation?: GalleryObservation;
+}) {
   const { goBack, navigate } = useExampleNavigation();
   const { width } = useWindowDimensions();
   const tileWidth = (width - 48 - TILE_GAP) / 2;
@@ -48,6 +60,7 @@ export function GalleryListScreen() {
             <Tile
               key={photo.id}
               photo={photo}
+              observation={observation}
               width={tileWidth}
               onPress={() =>
                 navigate(
@@ -56,7 +69,7 @@ export function GalleryListScreen() {
                     params: { photoId: photo.id },
                   },
                   {
-                    ...galleryTransition.navigationOptions,
+                    ...galleryNavigationOptions,
                     transitionConfig: { group: `photo.${photo.id}` },
                   }
                 )
@@ -73,10 +86,12 @@ function Tile({
   photo,
   width,
   onPress,
+  observation,
 }: {
   photo: Photo;
   width: number;
   onPress: () => void;
+  observation?: GalleryObservation;
 }) {
   return (
     <Pressable
@@ -89,55 +104,19 @@ function Tile({
         pressed && { opacity: 0.7 },
       ]}
     >
-      <galleryTransition.Element
-        name="frame"
+      <SharedElement
+        id="hero"
         groupId={`photo.${photo.id}`}
+        transition={galleryHeroTransition}
         style={styles.tileFrame}
       >
-        <View style={styles.tileFrameInner}>
-          <galleryTransition.Element
-            name="photo"
-            groupId={`photo.${photo.id}`}
-            style={StyleSheet.absoluteFill}
-          >
-            <Image
-              source={photo.image}
-              resizeMode="cover"
-              fadeDuration={0}
-              style={StyleSheet.absoluteFill}
-            />
-          </galleryTransition.Element>
-          <GalleryScrim />
-          <View style={styles.tileGlyphWrap} pointerEvents="none">
-            <galleryTransition.Element
-              name="glyph"
-              groupId={`photo.${photo.id}`}
-              style={styles.tileGlyphBox}
-            >
-              <View style={styles.glyphCenter}>
-                <AppIcon name="camera" size={14} />
-              </View>
-            </galleryTransition.Element>
-          </View>
-          <View style={styles.tileMeta}>
-            <galleryTransition.Element
-              name="title"
-              groupId={`photo.${photo.id}`}
-            >
-              <Text style={styles.tileTitle}>{photo.title}</Text>
-            </galleryTransition.Element>
-            <galleryTransition.Element
-              name="location"
-              groupId={`photo.${photo.id}`}
-              style={styles.tileLocationSpacing}
-            >
-              <Text numberOfLines={1} style={styles.tileLocation}>
-                {photo.location}
-              </Text>
-            </galleryTransition.Element>
-          </View>
-        </View>
-      </galleryTransition.Element>
+        <GalleryHero
+          photo={photo}
+          width={width}
+          height={width / 0.72}
+          observation={observation}
+        />
+      </SharedElement>
     </Pressable>
   );
 }
@@ -197,46 +176,5 @@ const styles = StyleSheet.create({
   },
   tileFrame: {
     flex: 1,
-    borderRadius: theme.radius.lg,
-    overflow: 'hidden',
-    backgroundColor: theme.surface,
-  },
-  tileFrameInner: {
-    flex: 1,
-    position: 'relative',
-  },
-  tileGlyphWrap: {
-    position: 'absolute',
-    top: 10,
-    right: 10,
-  },
-  tileGlyphBox: {
-    width: 28,
-    height: 28,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glyphCenter: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  tileMeta: {
-    position: 'absolute',
-    left: 12,
-    right: 12,
-    bottom: 10,
-  },
-  tileTitle: {
-    fontFamily: theme.font,
-    color: theme.text,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  tileLocationSpacing: { marginTop: 2 },
-  tileLocation: {
-    fontFamily: theme.font,
-    color: theme.text,
-    fontSize: 11,
   },
 });

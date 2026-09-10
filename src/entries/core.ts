@@ -1,57 +1,15 @@
 export { ChoreographyProvider } from '../components/ChoreographyProvider';
 export {
   SharedElement,
-  type LiveSharedElementProps,
-  type LiveSharedElementTargetProps,
   type SharedElementProps,
   type SharedElementTargetProps,
 } from '../components/SharedElement';
+export { TransitionSurface } from '../standin/TransitionSurface';
+export { TransitionFrame } from '../standin/TransitionFrame';
 export {
-  createSharedElementComponent,
-  type SharedElementComponentProps,
-} from '../components/createSharedElementComponent';
-export { StandInContainer } from '../standin/StandInContainer';
-export { StandInElement } from '../standin/StandInElement';
-export {
-  makeSurfaceTransition,
-  type SurfaceTransitionFallback,
-} from '../transitions/makeSurfaceTransition';
-export {
-  makeStretchTransition,
-  type StretchTransitionOptions,
-} from '../transitions/makeStretchTransition';
-export { textMorphTransition } from '../transitions/textMorphTransition';
-export {
-  defineTransition,
-  type DefinedTransition,
-  type TransitionDefinition,
-  type TransitionElementProps,
-} from '../transitions/defineTransition';
-export {
-  surface,
-  image,
-  text,
-  crossfade,
-  fade,
-  type SurfaceOptions,
-  type ImageOptions,
-  type TextOptions,
-  type CrossfadeOptions,
-  type FadeOptions,
-  type SurfaceRecipe,
-  type ImageRecipe,
-  type TextRecipe,
-  type CrossfadeRecipe,
-  type FadeRecipe,
-  type SharedRecipe,
-  type OpacityTrack,
-  type ProgressRange,
-} from '../transitions/declarativeRecipes';
-export { useTransitionPresentation } from '../core/TransitionPresentationContext';
-export {
-  makeLiveTransition,
-  type MakeLiveTransitionOptions,
-} from '../transitions/makeLiveTransition';
+  makeTransition,
+  type MakeTransitionOptions,
+} from '../transitions/makeTransition';
 export {
   resolveSurfaceStyle,
   type BoxShadowEntry,
@@ -82,9 +40,9 @@ export type {
   SharedElementTransitionRenderer,
   SharedElementTransitionRendererProps,
   SharedElementTransitionSide,
-  LiveTransition,
-  LiveTransitionRendererProps,
-  LiveTransitionSide,
+  Transition,
+  TransitionRendererProps,
+  TransitionEndpoint,
   TransitionConfig,
   ChoreographyNavigationOptions,
   ChoreographyNavigationLineage,
@@ -96,3 +54,5 @@ export type {
   ChoreographyDebugLevel,
   ChoreographyDebugCategory,
 } from '../types';
+
+export { useSharedElementPresentation, type SharedElementPresentation, type SharedElementEndpoint } from '../core/SharedElementPresentation';

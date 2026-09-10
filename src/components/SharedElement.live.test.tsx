@@ -2,7 +2,7 @@ import { StyleSheet, View } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type {
   ElementTransitionPair,
-  LiveTransition,
+  Transition,
   RegisteredElement,
   TransitionSessionData,
 } from '../types';
@@ -13,7 +13,7 @@ import {
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import { ScreenIdContext } from '../core/screenIdContext';
-import { makeLiveTransition } from '../transitions/makeLiveTransition';
+import { makeTransition } from '../transitions/makeTransition';
 import { SharedElement } from './SharedElement';
 
 jest.mock('react-native-reanimated', () => {
@@ -35,7 +35,7 @@ const { Portal, PortalHost } = jest.requireMock('react-native-teleport') as {
 };
 const AnimatedView = 'Animated.View' as React.ElementType;
 
-const noopTransition = makeLiveTransition({ renderer: () => null });
+const noopTransition = makeTransition({ renderer: () => null });
 
 function session(
   sourceScreenId: string,
@@ -101,7 +101,7 @@ describe('SharedElement live endpoints', () => {
           <ChoreographyActionsContext.Provider value={state.actions}>
             <ChoreographyContext.Provider value={choreography(null)}>
               <ScreenIdContext.Provider value="list-instance">
-                <SharedElement.Live
+                <SharedElement
                   id="player"
                   groupId="media"
                   style={{ width: 240, height: 160 }}
@@ -113,10 +113,10 @@ describe('SharedElement live endpoints', () => {
                   }}
                 >
                   <View testID="player-content" />
-                </SharedElement.Live>
+                </SharedElement>
               </ScreenIdContext.Provider>
               <ScreenIdContext.Provider value="detail-instance">
-                <SharedElement.LiveTarget
+                <SharedElement.Target
                   id="player"
                   groupId="media"
                   style={{ width: 1, height: 1 }}
@@ -174,25 +174,25 @@ describe('SharedElement live endpoints', () => {
 
   test('keeps registration stable while renderer and metadata snapshots advance', async () => {
     const state = makeContexts();
-    const firstTransition = makeLiveTransition({ renderer: () => null });
+    const firstTransition = makeTransition({ renderer: () => null });
     const secondRenderer = () => null;
-    const secondTransition = makeLiveTransition({
+    const secondTransition = makeTransition({
       renderer: secondRenderer,
       zIndex: 222,
     });
     let tree!: ReactTestRenderer;
-    const render = (transition: LiveTransition, version: number) => (
+    const render = (transition: Transition, version: number) => (
       <ChoreographyActionsContext.Provider value={state.actions}>
         <ChoreographyContext.Provider value={choreography(null)}>
           <ScreenIdContext.Provider value="list">
-            <SharedElement.Live
+            <SharedElement
               id="player"
               groupId="media"
               transition={transition}
               metadata={{ version }}
             >
               <View testID={`content-${version}`} />
-            </SharedElement.Live>
+            </SharedElement>
           </ScreenIdContext.Provider>
         </ChoreographyContext.Provider>
       </ChoreographyActionsContext.Provider>
@@ -236,13 +236,13 @@ describe('SharedElement live endpoints', () => {
       <ChoreographyActionsContext.Provider value={state.actions}>
         <ChoreographyContext.Provider value={choreography(activeSession)}>
           <ScreenIdContext.Provider value="list">
-            <SharedElement.Live
+            <SharedElement
               id="player"
               groupId="media"
               transition={noopTransition}
             >
               <View />
-            </SharedElement.Live>
+            </SharedElement>
           </ScreenIdContext.Provider>
         </ChoreographyContext.Provider>
       </ChoreographyActionsContext.Provider>

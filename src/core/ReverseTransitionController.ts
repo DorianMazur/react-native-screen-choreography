@@ -7,12 +7,10 @@ export interface ReverseTransitionConfig {
   sessionId: string;
   sourceScreenId: string;
   targetScreenId: string;
-  preparePresentation: () => Promise<boolean>;
   commitNavigation: () => Promise<ReverseNavigationResult>;
   animate: (onFinished: () => void) => void;
   handoff: () => void;
   cancel: () => void;
-  releasePresentation: () => void;
   isCurrent: () => boolean;
 }
 
@@ -24,7 +22,6 @@ interface ReverseOperation {
   navigationStarted: boolean;
   sourceUnmounted: boolean;
   animationFinished: boolean;
-  retainedPresentation: boolean;
   navigationResult: ReverseNavigationResult | null;
   finished: boolean;
 }
@@ -72,7 +69,6 @@ export class ReverseTransitionController {
       navigationStarted: false,
       sourceUnmounted: false,
       animationFinished: false,
-      retainedPresentation: false,
       navigationResult: null,
       finished: false,
     };
@@ -106,13 +102,7 @@ export class ReverseTransitionController {
     return false;
   }
 
-  private async prepare(operation: ReverseOperation): Promise<void> {
-    try {
-      operation.retainedPresentation =
-        await operation.config.preparePresentation();
-    } catch {
-      operation.retainedPresentation = false;
-    }
+  private prepare(operation: ReverseOperation): void {
     if (!this.isCurrent(operation)) return;
 
     try {
@@ -127,9 +117,6 @@ export class ReverseTransitionController {
       return;
     }
 
-    if (operation.retainedPresentation && this.isCurrent(operation)) {
-      this.commit(operation);
-    }
   }
 
   private async commit(operation: ReverseOperation): Promise<void> {
@@ -175,11 +162,6 @@ export class ReverseTransitionController {
     } catch (error) {
       operation.reject(error);
     } finally {
-      try {
-        operation.config.releasePresentation();
-      } catch (error) {
-        operation.reject(error);
-      }
       if (this.operation === operation) this.operation = null;
       operation.resolve();
     }

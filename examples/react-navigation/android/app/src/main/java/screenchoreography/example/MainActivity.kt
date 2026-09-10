@@ -72,7 +72,7 @@ class MainActivity : ReactActivity() {
         override fun getLaunchOptions(): Bundle? {
           if (!BuildConfig.PERFORMANCE_BENCHMARK) return null
           val scenario = intent.getStringExtra("performanceScenario")
-          if (scenario != "ordinary" && scenario != "live") return null
+          if (scenario != "gallery") return null
           return Bundle().apply {
             putString("performanceScenario", scenario)
             putBoolean("performanceReactProfile", intent.getBooleanExtra("performanceReactProfile", false))

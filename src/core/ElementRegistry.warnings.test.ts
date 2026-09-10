@@ -12,7 +12,7 @@ function makeElement(
   overrides: Partial<RegisteredElement> = {}
 ): RegisteredElement {
   const presentation: ElementPresentation = {
-    content: null,
+    metadata: null,
     transition: { renderer: () => null },
   };
   return {

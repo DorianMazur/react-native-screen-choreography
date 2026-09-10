@@ -1,6 +1,6 @@
 import type { ChoreographyPreparationTrace } from '../../../../src/types';
 
-export type PerformanceScenario = 'ordinary' | 'live';
+export type PerformanceScenario = 'gallery';
 export type JourneyDirection = 'forward' | 'backward';
 export type ProbeScreen = 'detail' | 'list';
 
@@ -46,7 +46,7 @@ interface ReactObservation {
 
 export interface BenchmarkReport {
   schemaVersion: 1;
-  fixtureVersion: 2;
+  fixtureVersion: 4;
   runId: string;
   scenario: PerformanceScenario;
   clock: 'js-performance-now';
@@ -371,15 +371,12 @@ export class BenchmarkCollector {
       errors.push('profiling-requested-but-no-profiler-callbacks');
     }
     if (this.droppedSamples > 0) errors.push('sample-buffer-overflow');
-    if (
-      this.scenario === 'live' &&
-      (this.payloadMounts !== 1 || this.payloadUnmounts !== 0)
-    ) {
+    if (this.payloadMounts !== 1 || this.payloadUnmounts !== 0) {
       errors.push('live-payload-owner-not-retained');
     }
     return {
       schemaVersion: 1,
-      fixtureVersion: 2,
+      fixtureVersion: 4,
       runId: this.runId,
       scenario: this.scenario,
       clock: 'js-performance-now',

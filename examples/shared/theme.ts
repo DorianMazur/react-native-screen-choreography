@@ -30,10 +30,6 @@ export const theme = {
     accent: '#E6B9AB',
     glow: 'rgba(230, 185, 171, 0.12)',
   },
-  music: {
-    accent: '#A8DDB5',
-    glow: 'rgba(168, 221, 181, 0.12)',
-  },
 
   radius: {
     sm: 8,

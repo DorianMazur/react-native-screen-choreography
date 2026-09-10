@@ -9,7 +9,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-const SCENARIOS = ['ordinary', 'live'];
+const SCENARIOS = ['gallery'];
 const MODES = ['native-release', 'react-profile'];
 
 function finite(value: unknown, label: string) {
@@ -129,7 +129,7 @@ function readFixture(
   mode: string,
   metrics: MetricSamples
 ) {
-  if (report.schemaVersion !== 1 || report.fixtureVersion !== 2) {
+  if (report.schemaVersion !== 1 || report.fixtureVersion !== 4) {
     throw new Error('Unsupported fixture schema/version');
   }
   if (!SCENARIOS.includes(report.scenario))
@@ -231,10 +231,7 @@ function readFixture(
   }
   finite(report.payloadMounts, 'payloadMounts');
   finite(report.payloadUnmounts, 'payloadUnmounts');
-  if (
-    report.scenario === 'live' &&
-    (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
-  )
+  if (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
     throw new Error('Live photo owner must stay mounted');
   readAndroidInput(report);
 }
@@ -334,7 +331,7 @@ function readMacrobenchmark(
   const coverage = new Set<string>();
   for (const benchmark of report.benchmarks) {
     const name = String(benchmark.name ?? '');
-    const match = /^transitionFrames\[(ordinary|live)\]$/.exec(name);
+    const match = /^transitionFrames\[(gallery)\]$/.exec(name);
     if (!match) throw new Error(`Unexpected Android benchmark name: ${name}`);
     if (existingNames.has(name) || coverage.has(name))
       throw new Error(`Duplicate Android benchmark: ${name}`);
@@ -489,7 +486,7 @@ export function summarize(
     measurementDefinitionVersion: 3,
     platform,
     mode,
-    fixtureVersion: 2,
+    fixtureVersion: 4,
     policy: 'informational-performance-fail-invalid-collection',
     metadata,
     valid: errors.length === 0,

@@ -1,3 +1,4 @@
+import { TokenSharedContent } from './TokenSharedContent';
 import { View, Text, StyleSheet, Pressable } from 'react-native';
 import { SharedElement } from '../runtime';
 import type { Token } from './data';
@@ -30,26 +31,26 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
             id={`token.${token.id}.icon`}
             groupId={`token.${token.id}`}
             transition={tokenIconTransition}
-          >
+           portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
             <TokenLogo token={token} size={44} />
-          </SharedElement>
+          </TokenSharedContent></SharedElement>
 
           <View style={styles.info}>
             <SharedElement
               id={`token.${token.id}.name`}
               groupId={`token.${token.id}`}
               transition={tokenTextTransition}
-            >
+             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
               <Text style={styles.name}>{token.name}</Text>
-            </SharedElement>
+            </TokenSharedContent></SharedElement>
 
             <SharedElement
               id={`token.${token.id}.symbol`}
               groupId={`token.${token.id}`}
               transition={tokenTextTransition}
-            >
+             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
               <Text style={styles.symbol}>{token.symbol}</Text>
-            </SharedElement>
+            </TokenSharedContent></SharedElement>
           </View>
 
           <View style={styles.valueContainer}>
@@ -57,15 +58,15 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
               id={`token.${token.id}.value`}
               groupId={`token.${token.id}`}
               transition={tokenValueTransition}
-            >
+             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
               <Text style={styles.value}>{formatMoney(token.price)}</Text>
-            </SharedElement>
+            </TokenSharedContent></SharedElement>
 
             <SharedElement
               id={`token.${token.id}.change`}
               groupId={`token.${token.id}`}
               transition={tokenValueTransition}
-            >
+             portalStyle={{ flex: 0, width: 'auto', height: 'auto' }}><TokenSharedContent>
               <Text
                 style={[
                   styles.change,
@@ -77,7 +78,7 @@ export function TokenRow({ token, onPress }: TokenRowProps) {
                 {isPositiveChange ? '+' : ''}
                 {token.change24h.toFixed(2)}%
               </Text>
-            </SharedElement>
+            </TokenSharedContent></SharedElement>
           </View>
         </View>
       </View>

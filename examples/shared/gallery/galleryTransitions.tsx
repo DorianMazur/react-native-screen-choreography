@@ -1,26 +1,27 @@
-import {
-  defineTransition,
-  surface,
-  image,
-  text,
-  crossfade,
-  Springs,
-} from '../runtime';
-import { theme } from '../theme';
-import { GalleryScrim } from './GalleryScrim';
-
-export const galleryTransition = defineTransition({
-  motion: { spring: Springs.default },
-  shared: {
-    frame: surface({ radius: [theme.radius.lg, 0] }),
-    photo: image({
-      mode: 'morph',
-      radius: [theme.radius.lg, 0],
-      zIndex: 2,
-      overlay: <GalleryScrim />,
-    }),
-    glyph: crossfade({ zIndex: 4 }),
-    title: text({ zIndex: 4 }),
-    location: text({ mode: 'scale', zIndex: 4 }),
-  },
+import type { TransitionRendererProps } from 'react-native-screen-choreography/core';
+import { makeTransition, TransitionFrame, Springs } from '../runtime';
+export const galleryNavigationOptions = { spring: Springs.default };
+function GalleryHeroMotion({
+  progress,
+  direction,
+  source,
+  target,
+  children,
+  zIndex,
+}: TransitionRendererProps) {
+  return (
+    <TransitionFrame
+      progress={progress}
+      direction={direction}
+      sourceMetrics={source.metrics}
+      targetMetrics={target.metrics}
+      zIndex={zIndex}
+    >
+      {children}
+    </TransitionFrame>
+  );
+}
+export const galleryHeroTransition = makeTransition({
+  renderer: GalleryHeroMotion,
+  zIndex: 2,
 });

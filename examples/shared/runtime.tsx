@@ -5,30 +5,15 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type {
-  ChoreographyNavigationOptions,
-  InteractiveBackOptions,
-  InteractiveTransitionSession,
-  InteractiveTransitionSettleOptions,
-  InteractiveTransitionDecisionOptions,
-} from 'react-native-screen-choreography/core';
-import type { SharedValue } from 'react-native-reanimated';
+import type { ChoreographyNavigationOptions } from 'react-native-screen-choreography/core';
 
 export {
-  defineTransition,
-  surface,
-  image,
-  text,
-  crossfade,
-  fade,
   Springs,
   SharedElement,
-  StandInContainer,
-  makeLiveTransition,
-  makeStretchTransition,
-  makeSurfaceTransition,
-  textMorphTransition,
-  StandInElement,
+  useSharedElementPresentation,
+  TransitionSurface,
+  makeTransition,
+  TransitionFrame,
   resolveSurfaceStyle,
   useChoreographyControls,
   useChoreographyProgress,
@@ -40,15 +25,10 @@ export {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 
-export type DemoListScreenId =
-  | 'GalleryList'
-  | 'MusicList'
-  | 'TokenList'
-  | 'WalletSetup';
+export type DemoListScreenId = 'GalleryList' | 'TokenList' | 'WalletSetup';
 
 export type DemoDetailDestination =
   | { screen: 'GalleryDetail'; params: { photoId: string } }
-  | { screen: 'NowPlaying'; params: { trackId: string } }
   | { screen: 'TokenDetail'; params: { tokenId: string } }
   | { screen: 'WalletExisting'; params?: undefined };
 
@@ -66,30 +46,13 @@ export type DemoScreenId =
   | DemoListScreenId
   | DemoDetailDestination['screen'];
 
-export interface ExampleInteractiveTransition {
-  beginBack: (
-    options?: InteractiveBackOptions
-  ) => Promise<InteractiveTransitionSession | null>;
-  setProgress: (value: number) => void;
-  finish: (options?: InteractiveTransitionSettleOptions) => void;
-  cancel: (options?: InteractiveTransitionSettleOptions) => void;
-  settle: (options?: InteractiveTransitionDecisionOptions) => void;
-  progress: SharedValue<number>;
-  isActive: boolean;
-}
-
 const NavigationContext = createContext<ExampleNavigation | null>(null);
-const InteractiveContext = createContext<ExampleInteractiveTransition | null>(
-  null
-);
 
 export function ExampleBindings({
   navigation,
-  interactive,
   children,
 }: {
   navigation: ExampleNavigation;
-  interactive: ExampleInteractiveTransition;
   children: React.ReactNode;
 }) {
   const navigationRef = useRef(navigation);
@@ -104,9 +67,7 @@ export function ExampleBindings({
 
   return (
     <NavigationContext.Provider value={commands}>
-      <InteractiveContext.Provider value={interactive}>
-        {children}
-      </InteractiveContext.Provider>
+      {children}
     </NavigationContext.Provider>
   );
 }
@@ -118,13 +79,4 @@ export function useExampleNavigation(): ExampleNavigation {
       'Shared screens must be rendered inside an app ExampleScreen.'
     );
   return navigation;
-}
-
-export function useInteractiveTransition(): ExampleInteractiveTransition {
-  const interactive = useContext(InteractiveContext);
-  if (!interactive)
-    throw new Error(
-      'Interactive demos must be rendered inside an app ExampleScreen.'
-    );
-  return interactive;
 }

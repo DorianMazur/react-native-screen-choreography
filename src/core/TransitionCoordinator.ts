@@ -17,10 +17,7 @@ import type { ElementRegistry } from './ElementRegistry';
 import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
 import { debugLog, debugTrace, debugWarn } from '../debug/logger';
 import { getElementIdentityKey } from './elementIdentity';
-import {
-  allowsUnpairedTransition,
-  canAnimateUnpaired,
-} from './unpairedElements';
+
 
 let sessionCounter = 0;
 
@@ -150,11 +147,6 @@ export class TransitionCoordinator {
 
     const refreshStartedAt = nowMs();
     const batchEntries: BatchMeasureEntry[] = session.pairs
-      .filter((pair) =>
-        side === 'source'
-          ? pair.sourcePresent !== false
-          : pair.targetPresent !== false
-      )
       .map((pair) => {
         const element = side === 'source' ? pair.source : pair.target;
         return {
@@ -596,14 +588,7 @@ export class TransitionCoordinator {
 
     const sourceIds = this.registry.getGroupElementIds(groupId, sourceScreenId);
 
-    const requiredTargetIds = sourceIds.filter(
-      (id) =>
-        !canAnimateUnpaired(
-          this.registry.getByIdAndScreen(id, sourceScreenId, groupId),
-          'source',
-          direction
-        )
-    );
+    const requiredTargetIds = sourceIds;
 
     debugTrace(
       `[Coordinator] Found ${sourceIds.length} source element IDs in group "${groupId}"`
@@ -623,22 +608,7 @@ export class TransitionCoordinator {
       return null;
     }
 
-    // Destination-only enter tracks register as the screen becomes ready.
-    // Their IDs join the plan without requiring invisible source views.
-    const elementIds = [
-      ...new Set([
-        ...sourceIds,
-        ...this.registry
-          .getGroupElementIds(groupId, targetScreenId)
-          .filter((id) =>
-            canAnimateUnpaired(
-              this.registry.getByIdAndScreen(id, targetScreenId, groupId),
-              'target',
-              direction
-            )
-          ),
-      ]),
-    ];
+    const elementIds = sourceIds;
     const measurableTargetIds = elementIds.filter(
       (id) => !!this.registry.getByIdAndScreen(id, targetScreenId, groupId)
     );
@@ -748,15 +718,7 @@ export class TransitionCoordinator {
         groupId
       );
 
-      if (
-        (!source && !canAnimateUnpaired(target, 'target', direction)) ||
-        (!target && !canAnimateUnpaired(source, 'source', direction))
-      ) {
-        debugWarn(
-          `[Coordinator] Skipping "${id}" — source: ${!!source}, target: ${!!target}`
-        );
-        continue;
-      }
+      if (!source || !target) continue;
 
       const validatedTarget = validatedTargets.get(id);
       // A target may have been replaced while awaiting a native measurement.
@@ -813,14 +775,7 @@ export class TransitionCoordinator {
       const targetPresentation = target?.getPresentation();
       const transition =
         sourcePresentation?.transition ?? targetPresentation?.transition;
-      // Props can change without re-registering while measurement is pending.
-      // Only the frozen renderer's policy may authorize a virtual endpoint.
-      if (
-        (!source &&
-          !allowsUnpairedTransition(transition, 'target', direction)) ||
-        (!target && !allowsUnpairedTransition(transition, 'source', direction))
-      )
-        continue;
+      if (!source || !target || !sourcePresentation || !targetPresentation) continue;
       const measuredSource =
         batchResults.get(`source:${id}`) ?? source?.metrics;
       const measuredTarget =
@@ -842,28 +797,15 @@ export class TransitionCoordinator {
       if (target)
         this.registry.updateMetrics(id, targetScreenId, targetMetrics, groupId);
 
-      // Virtual endpoints are plain session data, never registered or measured.
-      const absentPresentation = { content: null, transition };
-      const absentEndpoint = (screenId: string): RegisteredElement => ({
-        id,
-        groupId,
-        screenId,
-        ref: () => null,
-        metrics: null,
-        getPresentation: () => absentPresentation,
-      });
-
       pairs.push({
         id,
-        source: source ?? absentEndpoint(sourceScreenId),
-        target: target ?? absentEndpoint(targetScreenId),
+        source,
+        target,
         sourceMetrics,
         targetMetrics,
         transition,
-        sourcePresentation: sourcePresentation ?? absentPresentation,
-        targetPresentation: targetPresentation ?? absentPresentation,
-        sourcePresent: !!source,
-        targetPresent: !!target,
+        sourcePresentation,
+        targetPresentation,
       });
     }
 
@@ -904,35 +846,10 @@ export class TransitionCoordinator {
       return null;
     }
 
-    for (const pair of pairs) {
-      // A live pair's single native view is what animates; hiding its
-      // endpoint wrapper would blank the frame the view lands in.
-      if (pair.transition.mode === 'live') {
-        continue;
-      }
-      if (pair.sourcePresent !== false)
-        this.hiddenElements.add(
-          getElementIdentityKey(
-            pair.source.screenId,
-            pair.source.groupId,
-            pair.id
-          )
-        );
-      if (pair.targetPresent !== false)
-        this.hiddenElements.add(
-          getElementIdentityKey(
-            pair.target.screenId,
-            pair.target.groupId,
-            pair.id
-          )
-        );
-    }
-
     if (this.targetMetricsCache.size > 200) {
       this.targetMetricsCache.clear();
     }
     for (const pair of pairs) {
-      if (pair.targetPresent === false) continue;
       this.targetMetricsCache.set(
         this.elementKey(targetScreenId, groupId, pair.id),
         pair.targetMetrics

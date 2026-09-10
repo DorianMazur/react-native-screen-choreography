@@ -10,15 +10,7 @@ import React, {
   useState,
   type ProfilerOnRenderCallback,
 } from 'react';
-import {
-  NativeModules,
-  Pressable,
-  StyleSheet,
-  Text,
-  View,
-  ScrollView,
-  useWindowDimensions,
-} from 'react-native';
+import { NativeModules, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import {
   createNativeStackNavigator,
@@ -27,23 +19,17 @@ import {
 import {
   ChoreographyProvider,
   ChoreographyScreen,
-  SharedElement,
-  StandInElement,
-  makeLiveTransition,
   useChoreographyNavigation,
-  useInteractiveTransition,
-  type SharedElementTransitionRendererProps,
 } from 'react-native-screen-choreography';
-import { GalleryImage } from '../../../shared/gallery/GalleryImage';
-import { PHOTOS } from '../../../shared/gallery/data';
-import { AppIcon } from '../../../shared/AppChrome';
 import {
-  galleryFrameTransition,
-  galleryPhotoTransition,
-  galleryTitleTransition,
-  galleryLocationTransition,
-  galleryGlyphTransition,
-} from './galleryTransitions';
+  GalleryListScreen,
+  type GalleryObservation,
+} from '../../../shared/gallery/GalleryListScreen';
+import { GalleryDetailScreen } from '../../../shared/gallery/GalleryDetailScreen';
+import { ExampleBindings } from '../../../shared/runtime';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { PHOTOS } from '../../../shared/gallery/data';
+
 import { theme } from '../../../shared/theme';
 import {
   BenchmarkCollector,
@@ -60,10 +46,11 @@ export interface PerformanceLaunchProps {
   performanceReactProfile?: boolean;
 }
 
-type StackParams = { BenchmarkList: undefined; BenchmarkDetail: undefined };
+type StackParams = {
+  GalleryList: undefined;
+  GalleryDetail: { photoId: string };
+};
 const Stack = createNativeStackNavigator<StackParams>();
-const GROUP = 'benchmark.fixed';
-const TRANSITION_MS = 350;
 const REQUEST_TIMEOUT_MS = 10000;
 
 interface BenchmarkNativeModule {
@@ -81,7 +68,6 @@ function nativeBenchmark(): BenchmarkNativeModule | undefined {
 
 interface FixtureActions {
   collector: BenchmarkCollector;
-  scenario: PerformanceScenario;
   ready: () => void;
   request: (direction: JourneyDirection) => boolean;
   probe: (screen: ProbeScreen) => void;
@@ -92,175 +78,6 @@ function useFixture() {
   const fixture = useContext(FixtureContext);
   if (!fixture) throw new Error('Benchmark fixture context is missing');
   return fixture;
-}
-
-/** Match the gallery photo recipe for the retained live owner. */
-function GalleryLiveMotion({
-  progress,
-  direction,
-  source,
-  target,
-  children,
-  zIndex,
-}: SharedElementTransitionRendererProps & { children: React.ReactNode }) {
-  const backward = direction === 'backward';
-  return (
-    <StandInElement
-      progress={progress}
-      direction={direction}
-      sourceMetrics={source.metrics}
-      targetMetrics={target.metrics}
-      sourceBorderRadius={backward ? 0 : theme.radius.lg}
-      targetBorderRadius={backward ? theme.radius.lg : 0}
-      zIndex={zIndex}
-    >
-      {children}
-    </StandInElement>
-  );
-}
-const ordinaryTransition = galleryPhotoTransition;
-const liveTransition = makeLiveTransition({
-  renderer: GalleryLiveMotion,
-  zIndex: 2,
-});
-
-function Payload({
-  collector,
-  onLoad,
-}: {
-  collector: BenchmarkCollector;
-  onLoad: () => void;
-}) {
-  const instanceId = useRef<number | null>(null);
-  if (instanceId.current === null) {
-    instanceId.current = collector.allocatePayloadInstance();
-  }
-  useEffect(() => {
-    collector.payloadLifecycle(instanceId.current!, true);
-    return () => collector.payloadLifecycle(instanceId.current!, false);
-  }, [collector]);
-
-  const fixture = useFixture();
-  return (
-    <GalleryImage
-      photo={PHOTOS[0]!}
-      onLoad={onLoad}
-      onError={() => fixture.fail('gallery-image-load-failed')}
-    />
-  );
-}
-
-function useOpenPhoto() {
-  const fixture = useFixture();
-  const navigation = useNavigation<NativeStackNavigationProp<StackParams>>();
-  const choreography = useChoreographyNavigation(navigation);
-  return () => {
-    if (!fixture.request('forward')) return;
-    choreography
-      .navigate('BenchmarkDetail', undefined, {
-        transitionConfig: { group: GROUP },
-        duration: TRANSITION_MS,
-      })
-      .catch((error: unknown) => {
-        fixture.fail(`forward-transition-error:${String(error)}`);
-      });
-  };
-}
-
-function SharedPayload({
-  detail,
-  onLoad = () => {},
-}: {
-  detail: boolean;
-  onLoad?: () => void;
-}) {
-  const { collector, scenario } = useFixture();
-  if (scenario === 'live') {
-    return detail ? (
-      <SharedElement.LiveTarget
-        id="panel"
-        groupId={GROUP}
-        style={StyleSheet.absoluteFill}
-        transition={liveTransition}
-      />
-    ) : (
-      <SharedElement.Live
-        id="panel"
-        groupId={GROUP}
-        style={StyleSheet.absoluteFill}
-        transition={liveTransition}
-      >
-        <Payload collector={collector} onLoad={onLoad} />
-      </SharedElement.Live>
-    );
-  }
-  return (
-    <SharedElement
-      id="panel"
-      groupId={GROUP}
-      transition={ordinaryTransition}
-      style={StyleSheet.absoluteFill}
-    >
-      <Payload collector={collector} onLoad={onLoad} />
-    </SharedElement>
-  );
-}
-
-function GalleryCard({
-  detail,
-  onLoad,
-}: {
-  detail: boolean;
-  onLoad?: () => void;
-}) {
-  const photo = PHOTOS[0]!;
-  return (
-    <SharedElement
-      id="frame"
-      groupId={GROUP}
-      transition={galleryFrameTransition}
-      style={[
-        StyleSheet.absoluteFill,
-        styles.cardBackground,
-        detail && styles.heroFrame,
-      ]}
-    >
-      <View style={styles.cardInner}>
-        <SharedPayload detail={detail} onLoad={onLoad} />
-        <View pointerEvents="none" style={styles.scrim} />
-        <View style={styles.glyphPosition}>
-          <SharedElement
-            id="glyph"
-            groupId={GROUP}
-            transition={galleryGlyphTransition}
-            style={detail ? styles.heroGlyph : styles.tileGlyph}
-          >
-            <View style={styles.glyphCenter}>
-              <AppIcon name="camera" size={detail ? 21 : 14} />
-            </View>
-          </SharedElement>
-        </View>
-        <View style={styles.photoMeta}>
-          <SharedElement
-            id="title"
-            groupId={GROUP}
-            transition={galleryTitleTransition}
-          >
-            <Text style={[styles.photoTitle, detail && styles.heroTitle]}>
-              {photo.title}
-            </Text>
-          </SharedElement>
-          <SharedElement
-            id="location"
-            groupId={GROUP}
-            transition={galleryLocationTransition}
-          >
-            <Text style={styles.caption}>{photo.location}</Text>
-          </SharedElement>
-        </View>
-      </View>
-    </SharedElement>
-  );
 }
 
 function Control({
@@ -296,126 +113,79 @@ function Marker({ id }: { id: string }) {
   );
 }
 
+function GalleryBindings({ children }: { children: React.ReactNode }) {
+  const fixture = useFixture();
+  const navigation = useNavigation<NativeStackNavigationProp<StackParams>>();
+  const choreography = useChoreographyNavigation(navigation);
+  return (
+    <ExampleBindings
+      navigation={{
+        open: () => {
+          throw new Error('Only Gallery is available in the benchmark');
+        },
+        navigate: async (destination, options) => {
+          if (destination.screen !== 'GalleryDetail')
+            throw new Error('Unexpected benchmark destination');
+          if (!fixture.request('forward')) return;
+          try {
+            await choreography.navigate(
+              'GalleryDetail',
+              destination.params,
+              options
+            );
+          } catch (error) {
+            fixture.fail(`forward-transition-error:${String(error)}`);
+          }
+        },
+        goBack: async (options) => {
+          if (!fixture.request('backward')) return;
+          try {
+            await choreography.goBack(options);
+          } catch (error) {
+            fixture.fail(`back-transition-error:${String(error)}`);
+          }
+        },
+      }}
+    >
+      {children}
+    </ExampleBindings>
+  );
+}
+
 function ListScreen() {
   const fixture = useFixture();
-  const open = useOpenPhoto();
-  const { width } = useWindowDimensions();
-  const tileWidth = (width - 44) / 2;
-  const readySent = useRef(false);
-  const imageLoaded = useRef(false);
-  const mounted = useRef(true);
-  useEffect(
-    () => () => {
-      mounted.current = false;
-    },
-    []
-  );
-  const layout = useCallback(() => {
-    if (readySent.current || !imageLoaded.current) return;
-    readySent.current = true;
-    requestAnimationFrame(() =>
-      requestAnimationFrame(() => {
-        if (mounted.current) fixture.ready();
-      })
-    );
+  const observation = useMemo<GalleryObservation>(() => {
+    let ready = false;
+    return {
+      mounted: (photoId) => {
+        if (photoId !== PHOTOS[0]!.id) return () => {};
+        const id = fixture.collector.allocatePayloadInstance();
+        fixture.collector.payloadLifecycle(id, true);
+        return () => fixture.collector.payloadLifecycle(id, false);
+      },
+      loaded: (photoId) => {
+        if (photoId !== PHOTOS[0]!.id || ready) return;
+        ready = true;
+        fixture.ready();
+      },
+      failed: (photoId) => fixture.fail(`gallery-image-load-failed:${photoId}`),
+    };
   }, [fixture]);
   return (
-    <ChoreographyScreen screenId="BenchmarkList">
-      <View style={styles.screen} onLayout={layout}>
-        <Text style={styles.heading}>Field notes</Text>
-        <Text style={styles.caption}>
-          THE FIELD JOURNAL · {TRANSITION_MS} ms
-        </Text>
-        <ScrollView contentContainerStyle={styles.grid}>
-          <Pressable
-            testID="benchmark-start"
-            accessibilityLabel="benchmark-start"
-            accessibilityRole="button"
-            onPress={open}
-            style={{ width: tileWidth, height: tileWidth / 0.72 }}
-          >
-            <GalleryCard
-              detail={false}
-              onLoad={() => {
-                imageLoaded.current = true;
-                layout();
-              }}
-            />
-          </Pressable>
-          {PHOTOS.slice(1).map((photo) => (
-            <View
-              key={photo.id}
-              style={[
-                styles.staticCard,
-                { width: tileWidth, height: tileWidth / 0.72 },
-              ]}
-            >
-              <GalleryImage photo={photo} />
-              <View style={styles.scrim} />
-              <View style={styles.photoMeta}>
-                <Text style={styles.photoTitle}>{photo.title}</Text>
-                <Text style={styles.caption}>{photo.location}</Text>
-              </View>
-            </View>
-          ))}
-        </ScrollView>
-        <View style={styles.controls}>
-          <Control
-            id="benchmark-list-probe"
-            label="Probe list input"
-            onPress={() => fixture.probe('list')}
-          />
-        </View>
-      </View>
+    <ChoreographyScreen screenId="GalleryList">
+      <GalleryBindings>
+        <GalleryListScreen observation={observation} />
+      </GalleryBindings>
     </ChoreographyScreen>
   );
 }
 
-function DetailScreen() {
-  const fixture = useFixture();
-  const interactive = useInteractiveTransition();
+function DetailScreen({ route }: { route: { params: { photoId: string } } }) {
   return (
-    <ChoreographyScreen screenId="BenchmarkDetail">
-      <View style={styles.screen}>
-        <Text style={styles.heading}>Field notes</Text>
-        <ScrollView>
-          <View style={styles.heroBounds}>
-            <GalleryCard detail />
-          </View>
-          <Text style={styles.sectionTitle}>Notes</Text>
-          <Text style={styles.caption}>{PHOTOS[0]!.description}</Text>
-          <Text style={styles.sectionTitle}>Exposure</Text>
-          <Text style={styles.caption}>
-            {PHOTOS[0]!.iso} · {PHOTOS[0]!.shutter} · {PHOTOS[0]!.aperture}
-          </Text>
-        </ScrollView>
-        <View style={styles.controls}>
-          <Control
-            id="benchmark-detail-probe"
-            label="Probe detail input"
-            onPress={() => fixture.probe('detail')}
-          />
-          <Control
-            id="benchmark-back"
-            label="Return to list"
-            onPress={() => {
-              if (!fixture.request('backward')) return;
-              interactive
-                .beginBack()
-                .then((session) => {
-                  if (!session) {
-                    fixture.fail('back-transition-unavailable');
-                    return;
-                  }
-                  interactive.finish({ duration: TRANSITION_MS });
-                })
-                .catch((error: unknown) => {
-                  fixture.fail(`back-transition-error:${String(error)}`);
-                });
-            }}
-          />
-        </View>
-      </View>
+    <ChoreographyScreen screenId="GalleryDetail">
+      <GalleryBindings>
+        <GalleryDetailScreen photoId={route.params.photoId} />
+      </GalleryBindings>
     </ChoreographyScreen>
   );
 }
@@ -468,10 +238,9 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
   const fixture = useMemo<FixtureActions>(
     () => ({
       collector,
-      scenario: props.performanceScenario,
       ready: () => {
         collector.note('fixture-ready', {
-          meaning: 'list-layout-plus-two-JS-animation-frames',
+          meaning: 'selected-gallery-image-loaded',
         });
         // Keep startup tracing open until Android has reported fully drawn.
         // Publishing the marker first can race the native module/UI queues.
@@ -510,7 +279,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         setStatus('failed');
       },
     }),
-    [collector, props.performanceScenario, clearRequestTimer]
+    [collector, clearRequestTimer]
   );
 
   const onRender = useCallback<ProfilerOnRenderCallback>(
@@ -587,9 +356,9 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
           contentStyle: { backgroundColor: theme.bg },
         }}
       >
-        <Stack.Screen name="BenchmarkList" component={ListScreen} />
+        <Stack.Screen name="GalleryList" component={ListScreen} />
         <Stack.Screen
-          name="BenchmarkDetail"
+          name="GalleryDetail"
           component={DetailScreen}
           options={{
             presentation: 'containedTransparentModal',
@@ -649,6 +418,18 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
                 disabled={exporting || status === 'running'}
               />
             </View>
+            <Control
+              id="benchmark-list-probe"
+              label="Probe list"
+              onPress={() => fixture.probe('list')}
+              disabled={status !== 'list-settled'}
+            />
+            <Control
+              id="benchmark-detail-probe"
+              label="Probe detail"
+              onPress={() => fixture.probe('detail')}
+              disabled={status !== 'detail-settled'}
+            />
             {status === 'ready' && <Marker id="benchmark-ready" />}
             {status === 'detail-settled' && (
               <Marker id="benchmark-detail-settled" />
@@ -671,12 +452,16 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
       </ChoreographyProvider>
     </FixtureContext.Provider>
   );
-  return props.performanceReactProfile === true ? (
-    <Profiler id="benchmark-root" onRender={onRender}>
-      {content}
-    </Profiler>
-  ) : (
-    content
+  return (
+    <SafeAreaProvider>
+      {props.performanceReactProfile === true ? (
+        <Profiler id="benchmark-root" onRender={onRender}>
+          {content}
+        </Profiler>
+      ) : (
+        content
+      )}
+    </SafeAreaProvider>
   );
 }
 
@@ -684,11 +469,16 @@ const styles = StyleSheet.create({
   root: {
     flex: 1,
     backgroundColor: theme.bg,
-    paddingTop: 44,
-    paddingBottom: 24,
   },
   navigation: { flex: 1 },
-  toolbar: { paddingHorizontal: 16, paddingBottom: 12 },
+  toolbar: {
+    position: 'absolute',
+    bottom: 0,
+    right: 0,
+    zIndex: 100,
+    padding: 8,
+    backgroundColor: theme.bg,
+  },
   controls: { flexDirection: 'row', gap: 12 },
   screen: { flex: 1, padding: 16, backgroundColor: theme.bg },
   heading: {
@@ -709,45 +499,4 @@ const styles = StyleSheet.create({
   },
   buttonText: { color: theme.text, fontSize: 14 },
   disabled: { opacity: 0.4 },
-  heroFrame: { borderRadius: 0 },
-  heroBounds: { width: '100%', aspectRatio: 1 },
-  heroGlyph: { width: 42, height: 42 },
-  tileGlyph: { width: 28, height: 28 },
-  grid: { flexDirection: 'row', flexWrap: 'wrap', gap: 12, paddingBottom: 12 },
-  staticCard: { borderRadius: theme.radius.lg, overflow: 'hidden' },
-  cardBackground: {
-    backgroundColor: theme.surface,
-    borderRadius: theme.radius.lg,
-    overflow: 'hidden',
-  },
-  cardInner: { flex: 1 },
-  photoMeta: { position: 'absolute', left: 12, right: 12, bottom: 10 },
-  photoTitle: {
-    color: theme.text,
-    fontFamily: theme.font,
-    fontSize: 16,
-    fontWeight: '600',
-  },
-  heroTitle: { fontSize: 28 },
-  sectionTitle: {
-    color: theme.text,
-    fontSize: 18,
-    marginTop: 16,
-    marginBottom: 8,
-  },
-  glyphPosition: { position: 'absolute', right: 10, top: 10 },
-  glyphCenter: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  scrim: {
-    position: 'absolute',
-    left: 0,
-    right: 0,
-    bottom: 0,
-    height: '55%',
-    experimental_backgroundImage:
-      'linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,0.65) 100%)',
-  },
 });

@@ -1,7 +1,7 @@
 {
   "name": "react-native-screen-choreography",
   "version": "0.4.3",
-  "description": "Choreographed shared element transitions for React Native — fluid, multi-element, native-feeling screen transitions",
+  "description": "Choreographed shared element transitions for React Native \u2014 fluid, multi-element, native-feeling screen transitions",
   "main": "./lib/module/entries/index.js",
   "types": "./lib/typescript/src/entries/index.d.ts",
   "exports": {
@@ -181,9 +181,6 @@
       "components": {
         "ScreenChoreographyView": {
           "className": "ScreenChoreographyView"
-        },
-        "ScreenChoreographySnapshotView": {
-          "className": "ScreenChoreographySnapshotView"
         }
       }
     }

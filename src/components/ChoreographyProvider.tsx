@@ -482,16 +482,28 @@ export function ChoreographyProvider({
           overlayWaitersRef.current.set(sessionId, waiters);
         }
 
-        // 150ms safety net for slow Android frames; also hides reals so the
-        // spring never animates with originals visible behind the overlay.
+        // Native-ack timeout may proceed only with ready content. Never hide
+        // an original to show an image that has not finished preparing.
         const timeoutId = setTimeout(() => {
           waiters!.delete(waiter);
           if (waiters!.size === 0) {
             overlayWaitersRef.current.delete(sessionId);
           }
-          if (activeSessionRef.current?.id === sessionId) {
-            syncHiddenElements();
+          const session = activeSessionRef.current;
+          if (session?.id !== sessionId) {
+            resolve(false);
+            return;
           }
+          if (overlayContentReadySessionIdRef.current !== sessionId) {
+            // Forward navigation already pushed its destination. Release its
+            // visibility gate and leave it as an ordinary, unanimated screen.
+            if (session.direction === 'forward') {
+              coordinatorRef.current?.cancelTransition(sessionId);
+            }
+            resolve(false);
+            return;
+          }
+          syncHiddenElements();
           resolve(true);
         }, 150);
 
@@ -530,7 +542,6 @@ export function ChoreographyProvider({
     reverseController,
     commitReverseTransition,
     registerScreenPresentation: registerReverseScreenPresentation,
-    retainedPresentation,
   } = useReverseTransitionCommit({
     progress,
     progressOwnership,
@@ -728,11 +739,9 @@ export function ChoreographyProvider({
                   active={Boolean(isOverlayActive && activeSession)}
                   onPresentationReady={handleHostPresentationReady}
                 >
-                  {retainedPresentation}
                   <TransitionOverlay
                     session={activeSession}
                     progress={progress}
-                    handoff={visibilityRegistry.handoff}
                     onReady={handleOverlayReady}
                   />
                 </NativeTransitionHost>

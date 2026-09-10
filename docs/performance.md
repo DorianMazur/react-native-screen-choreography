@@ -1,20 +1,18 @@
 # Performance measurements
 
-The performance suite measures a gallery card-to-detail round trip using the
-example's bundled photos, shared `GalleryImage` component, theme, and gallery
-transition recipes. The selected card pairs its frame, photo, camera glyph,
-title, and location. The grid remains mounted behind the detail screen.
+The performance suite opens Aurora in the actual shared `GalleryListScreen`,
+then returns from `GalleryDetailScreen`. It uses the same live hero (photo,
+gradient, icon, title, and subtitle), detail content, layout, navigation options,
+and spring animation as the example app. There is one scenario: **gallery**.
 
-Both variants use the same five pairs and assets. Ordinary mode renders photo
-content in the screens and overlay; live mode retains a single photo owner.
-The surrounding frame and text transitions are the same in both. The fixture
-waits for the selected image to load before declaring readiness.
+The harness adds timing/profiling observers and input-probe/export controls.
+It waits for the selected image to load and checks that the selected hero stays
+mounted across repeated navigation. Android automation taps “View Aurora” and
+“Back to gallery”, rather than separate synthetic navigation buttons.
 
-This is a controlled gallery workload, not a benchmark of every demo feature:
-there is no lightbox, sharing, scrolling gesture, or interactive cancellation in
-the measured journey. It does not establish video or text-input continuity.
-Gallery reports use fixture version 2. Version 1 synthetic-panel exports are
-rejected because their workload is not comparable.
+The measured journey excludes lightbox, sharing, scrolling, and interactive
+cancellation. Reports use fixture version 4; previous synthetic workloads are
+rejected and cannot serve as comparable baselines.
 
 ## Run locally
 
@@ -47,7 +45,7 @@ Metro server; both build bundled JavaScript.
 | `native-release` | Normal production React renderer; native frame or elapsed-time, lifecycle, and input observations.           |
 | `react-profile`  | Production profiling renderer with React `Profiler` observations enabled. Development mode remains disabled. |
 
-Compare ordinary and live measurements within the same mode, device, runtime,
+Compare Gallery measurements within the same mode, device, runtime,
 and dependency versions. **Do not compare elapsed timings across these modes.**
 Profiling adds work of its own. A requested profiling run fails validation if
 the renderer produces no timing observations; missing durations are not zeros.
@@ -84,14 +82,14 @@ example's old device benchmark exports and host-side additional-test outputs
 before collection so stale samples cannot make a failed run appear successful.
 
 Android runs four test cases: transition frames and repeated navigation
-timing/input for ordinary and live rendering. Startup measurements are omitted.
+timing/input for the Gallery example. Startup measurements are omitted.
 Frame tests still start a fresh Activity before each measured round trip; launch
 and settling are outside the measured interval. Native compilation and installation
 still take their usual time, especially on the first run.
 
 ## Measurements and comparisons
 
-The main summary has six rows: three measurements for ordinary and live rendering.
+The main summary has three rows for the Gallery example.
 
 | Measurement              | Meaning                                                                                   |
 | ------------------------ | ----------------------------------------------------------------------------------------- |
@@ -134,7 +132,7 @@ or a profiling-mode mismatch.
 ### Optional startup diagnostics
 
 `ChoreographyProvider` accepts `onPreparationTrace` for opt-in forward startup
-diagnostics. The performance fixture enables it for both ordinary and live
+diagnostics. The performance fixture enables it for the Gallery example
 transitions, including the legacy renderer path. Production apps incur no trace
 buffering when the callback is absent. Each trace identifies the group, source,
 target instance, direction, and eventual session; all timestamps use JavaScript
@@ -211,7 +209,7 @@ The fixture uses bundled gallery images and five shared pairs with 350 ms transi
 stays mounted and unfrozen. Forward navigation uses `useChoreographyNavigation`;
 back uses `useInteractiveTransition().beginBack()` and `finish({ duration: 350 })`.
 A ten-second timeout records failure. Native launch props select
-`performanceScenario: "ordinary" | "live"` and `performanceReactProfile`.
+`performanceScenario: "gallery"` and `performanceReactProfile`.
 
 ### Native automation protocol
 

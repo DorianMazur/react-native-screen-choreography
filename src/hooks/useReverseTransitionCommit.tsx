@@ -1,7 +1,6 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { findNodeHandle, Platform, StyleSheet, type View } from 'react-native';
-import Animated, {
-  useAnimatedStyle,
+import { type View } from 'react-native';
+import {
   useSharedValue,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -17,9 +16,7 @@ import {
 import { ReverseTransitionController } from '../core/ReverseTransitionController';
 import type { NavigationSessionController } from '../core/NavigationSessionController';
 import type { CommitBackNavigation } from '../core/navigationCommit';
-import { RetainedView } from '../native/RetainedView';
 import { FAST_SPRING } from '../core/constants';
-import { deriveScreenOpacity } from '../core/screenVisibility';
 import type {
   InteractiveTransitionSettleOptions,
   TransitionSessionData,
@@ -32,13 +29,6 @@ export interface ReverseCommitRequest {
   options?: InteractiveTransitionSettleOptions;
 }
 
-interface CaptureRequest {
-  sessionId: string;
-  sourceTag: number;
-  resolve: (ready: boolean) => void;
-  timeout: ReturnType<typeof setTimeout>;
-}
-
 interface ReverseCommitDependencies {
   progress: SharedValue<number>;
   progressOwnership: ProgressOwnership;
@@ -47,42 +37,6 @@ interface ReverseCommitDependencies {
   getSession: () => TransitionSessionData | null;
   completeTransition: (sessionId: string) => void;
   cancelTransition: (sessionId: string) => void;
-}
-
-function RetainedScreen({
-  request,
-  progress,
-}: {
-  request: CaptureRequest;
-  progress: SharedValue<number>;
-}) {
-  // The captured content is inside the screen's reveal wrapper. Reproduce that
-  // wrapper's opacity while the native route is removed beneath this image.
-  const style = useAnimatedStyle(() => ({
-    opacity: deriveScreenOpacity(
-      'backward',
-      'source',
-      'active',
-      progress.value
-    ),
-  }));
-  return (
-    <Animated.View
-      pointerEvents="none"
-      style={[StyleSheet.absoluteFill, style]}
-    >
-      <RetainedView
-        sourceTag={request.sourceTag}
-        captureId={request.sessionId}
-        style={StyleSheet.absoluteFill}
-        onCaptured={({ nativeEvent }) => {
-          if (nativeEvent.captureId === request.sessionId) {
-            request.resolve(nativeEvent.success);
-          }
-        }}
-      />
-    </Animated.View>
-  );
 }
 
 /** Runs in the provider, so accepted back navigation may unmount its caller. */
@@ -100,29 +54,9 @@ export function useReverseTransitionCommit({
   const screens = useRef(
     new Map<string, React.RefObject<React.ComponentRef<typeof View> | null>>()
   );
-  const captureRef = useRef<CaptureRequest | null>(null);
-  const [capture, setCapture] = useState<CaptureRequest | null>(null);
-  const mounted = useRef(true);
-  const settlementTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const releasePresentation = useCallback((sessionId: string) => {
-    const request = captureRef.current;
-    if (request?.sessionId === sessionId) {
-      request.resolve(false);
-      captureRef.current = null;
-      if (mounted.current) setCapture(null);
-    }
-    if (settlementTimer.current !== null) {
-      clearTimeout(settlementTimer.current);
-      settlementTimer.current = null;
-    }
-  }, []);
-
   useEffect(() => {
-    mounted.current = true;
     const registeredScreens = screens.current;
     return () => {
-      mounted.current = false;
       reverseController.dispose();
       scheduleOnUI(() => {
         'worklet';
@@ -165,7 +99,7 @@ export function useReverseTransitionCommit({
 
       if (reverseController.owns(sessionId)) return Promise.resolve();
       const current = () =>
-        mounted.current && progressOwnership.isCurrent(token, sessionId);
+        progressOwnership.isCurrent(token, sessionId);
       const { owner, handoff } = progressOwnership;
       const targetScreenId = session.targetScreenId;
       scheduleOnUI(() => {
@@ -197,41 +131,6 @@ export function useReverseTransitionCommit({
         sourceScreenId: session.sourceScreenId,
         targetScreenId: session.targetScreenId,
         isCurrent: current,
-        preparePresentation: () => {
-          // UIKit screen snapshots can retain original shared content behind
-          // the moving overlay despite pending visibility updates. On iOS keep
-          // the actual route mounted through the endpoint and then commit Back.
-          if (Platform.OS === 'ios') return Promise.resolve(false);
-          // Live portals keep their original React owner. Do not rasterize live
-          // content or remove its owner during a gesture settlement.
-          if (session.pairs.some((pair) => pair.transition.mode === 'live')) {
-            return Promise.resolve(false);
-          }
-          const node = screens.current.get(session.sourceScreenId)?.current;
-          const sourceTag = node ? findNodeHandle(node) : null;
-          if (!sourceTag) return Promise.resolve(false);
-          return new Promise<boolean>((resolve) => {
-            let settled = false;
-            const finish = (ready: boolean) => {
-              if (settled) return;
-              settled = true;
-              clearTimeout(retention.timeout);
-              if (!ready && captureRef.current === retention) {
-                captureRef.current = null;
-                if (mounted.current) setCapture(null);
-              }
-              resolve(ready && current());
-            };
-            const retention: CaptureRequest = {
-              sessionId,
-              sourceTag,
-              resolve: finish,
-              timeout: setTimeout(() => finish(false), 150),
-            };
-            captureRef.current = retention;
-            setCapture(retention);
-          });
-        },
         commitNavigation: async () => {
           const result = await navigateBack();
           // Core bindings may be void; the bundled navigation adapters always
@@ -275,18 +174,6 @@ export function useReverseTransitionCommit({
             onCompleteUI: markAnimationFinished,
             onComplete,
           });
-          if (options.duration) {
-            settlementTimer.current = setTimeout(() => {
-              if (!current()) return;
-              scheduleOnUI(() => {
-                'worklet';
-                if (owner.value !== token) return;
-                progress.value = 0;
-                markAnimationFinished();
-                scheduleOnRN(onComplete);
-              });
-            }, options.duration + 50);
-          }
         },
         handoff: () => {
           const finish = () => {
@@ -313,7 +200,6 @@ export function useReverseTransitionCommit({
           });
         },
         cancel: () => cancelTransition(sessionId),
-        releasePresentation: () => releasePresentation(sessionId),
       });
     },
     [
@@ -324,7 +210,6 @@ export function useReverseTransitionCommit({
       navigationController,
       progress,
       progressOwnership,
-      releasePresentation,
       reverseController,
       reverseHandoff,
     ]
@@ -334,8 +219,6 @@ export function useReverseTransitionCommit({
     reverseController,
     commitReverseTransition,
     registerScreenPresentation,
-    retainedPresentation: capture ? (
-      <RetainedScreen request={capture} progress={progress} />
-    ) : null,
+
   };
 }

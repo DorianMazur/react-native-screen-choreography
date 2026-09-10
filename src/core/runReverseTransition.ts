@@ -96,6 +96,8 @@ export async function runReverseTransition(
     const overlayReady = await waitForOverlayReady(reverseSession.id);
     if (!progressOwnership.isCurrent(animationToken, reverseSession.id)) return;
     if (!overlayReady || !canContinue()) {
+      // Unready overlay content must not swallow a requested Back action.
+      if (!overlayReady && canContinue()) await commitNavigation();
       cancelTransition(reverseSession.id);
       return;
     }

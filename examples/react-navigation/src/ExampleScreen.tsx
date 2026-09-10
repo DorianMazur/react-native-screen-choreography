@@ -4,7 +4,6 @@ import type { NativeStackNavigationProp } from '@react-navigation/native-stack';
 import {
   ChoreographyScreen,
   useChoreographyNavigation,
-  useInteractiveTransition,
 } from 'react-native-screen-choreography';
 import { ExampleBindings, type DemoScreenId } from '../../shared/runtime';
 
@@ -12,8 +11,6 @@ export type ExampleStackParams = {
   Landing: undefined;
   GalleryList: undefined;
   GalleryDetail: { photoId: string };
-  MusicList: undefined;
-  NowPlaying: { trackId: string };
   TokenList: undefined;
   TokenDetail: { tokenId: string };
   WalletSetup: undefined;
@@ -24,7 +21,6 @@ function Bindings({ children }: { children: React.ReactNode }) {
   const navigation =
     useNavigation<NativeStackNavigationProp<ExampleStackParams>>();
   const choreography = useChoreographyNavigation(navigation);
-  const interactive = useInteractiveTransition();
   return (
     <ExampleBindings
       navigation={{
@@ -37,7 +33,6 @@ function Bindings({ children }: { children: React.ReactNode }) {
           ),
         goBack: choreography.goBack,
       }}
-      interactive={interactive}
     >
       {children}
     </ExampleBindings>

@@ -20,13 +20,6 @@ const demos = [
     color: theme.gallery.accent,
   },
   {
-    route: 'MusicList',
-    title: 'Music',
-    subtitle: 'Your daily rotation',
-    icon: 'headphones',
-    color: theme.music.accent,
-  },
-  {
     route: 'TokenList',
     title: 'Wallet',
     subtitle: 'Demo portfolio',

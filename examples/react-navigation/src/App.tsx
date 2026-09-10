@@ -10,8 +10,6 @@ import { withExampleScreen, type ExampleStackParams } from './ExampleScreen';
 import { LandingScreen } from '../../shared/LandingScreen';
 import { GalleryListScreen } from '../../shared/gallery/GalleryListScreen';
 import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
-import { MusicListScreen } from '../../shared/music/MusicListScreen';
-import { NowPlayingScreen } from '../../shared/music/NowPlayingScreen';
 import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
@@ -23,7 +21,6 @@ import {
 const Stack = createNativeStackNavigator<ExampleStackParams>();
 const LandingRoute = withExampleScreen('Landing', LandingScreen);
 const GalleryListRoute = withExampleScreen('GalleryList', GalleryListScreen);
-const MusicListRoute = withExampleScreen('MusicList', MusicListScreen);
 const TokenListRoute = withExampleScreen('TokenList', TokenListScreen);
 const WalletSetupRoute = withExampleScreen('WalletSetup', WalletSetupScreen);
 const WalletExistingRoute = withExampleScreen(
@@ -59,15 +56,6 @@ const GalleryDetailRoute = withExampleScreen(
   }
 );
 
-const NowPlayingRoute = withExampleScreen(
-  'NowPlaying',
-  function NowPlayingRoute({
-    route,
-  }: NativeStackScreenProps<ExampleStackParams, 'NowPlaying'>) {
-    return <NowPlayingScreen trackId={route.params?.trackId} />;
-  }
-);
-
 const TokenDetailRoute = withExampleScreen(
   'TokenDetail',
   function TokenDetailRoute({
@@ -95,13 +83,6 @@ export default function App() {
             <Stack.Screen
               name="GalleryDetail"
               component={GalleryDetailRoute}
-              options={detailOptions}
-            />
-
-            <Stack.Screen name="MusicList" component={MusicListRoute} />
-            <Stack.Screen
-              name="NowPlaying"
-              component={NowPlayingRoute}
               options={detailOptions}
             />
 

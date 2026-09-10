@@ -88,14 +88,14 @@ describe('Public entry points', () => {
     (entry) => {
       expect([...getExports(entries[entry]).keys()]).toEqual(
         expect.arrayContaining([
-          'LiveSharedElementProps',
-          'LiveSharedElementTargetProps',
-          'LiveTransition',
-          'LiveTransitionRendererProps',
-          'LiveTransitionSide',
-          'MakeLiveTransitionOptions',
+          'SharedElementProps',
+          'SharedElementTargetProps',
+          'Transition',
+          'TransitionRendererProps',
+          'TransitionEndpoint',
+          'MakeTransitionOptions',
           'SharedElement',
-          'makeLiveTransition',
+          'makeTransition',
         ])
       );
     }

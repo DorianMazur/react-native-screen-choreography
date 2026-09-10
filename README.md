@@ -7,7 +7,6 @@ Choreographed shared element transitions for React Native with multi-element coo
 <p align="center">
   <img src="docs/Gallery_demo.gif" width="200" />
   &nbsp;
-  <img src="docs/Music_demo.gif" width="200" />
   &nbsp;
   <img src="docs/Wallet_demo.gif" width="200" />
   &nbsp;

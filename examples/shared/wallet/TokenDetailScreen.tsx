@@ -15,7 +15,6 @@ import {
 } from '../runtime';
 import { TOKENS } from './data';
 import { formatMoney, walletTheme as theme } from './walletTheme';
-import { TokenLogo } from './TokenLogo';
 import { WalletIconButton } from './WalletIcon';
 import { WalletSection } from './WalletSection';
 import { PriceHistory } from './PriceHistory';
@@ -80,64 +79,33 @@ export function TokenDetailScreen({
         <View style={styles.detailCard}>
           <View style={styles.cardContent}>
             <View style={styles.headerRow}>
-              <SharedElement
-                id={`token.${token.id}.icon`}
+              <SharedElement.Target id={`token.${token.id}.icon`}
                 groupId={`token.${token.id}`}
                 transition={tokenIconTransition}
-              >
-                <TokenLogo token={token} size={48} />
-              </SharedElement>
+               style={{ width: 48, height: 48 }} metadata={{ scale: 48 / 44 }} />
 
               <View style={styles.headerInfo}>
-                <SharedElement
-                  id={`token.${token.id}.name`}
+                <SharedElement.Target id={`token.${token.id}.name`}
                   groupId={`token.${token.id}`}
                   transition={tokenTextTransition}
-                >
-                  <Text style={styles.detailName}>{token.name}</Text>
-                </SharedElement>
-                <SharedElement
-                  id={`token.${token.id}.symbol`}
+                 style={{ width: '100%', height: 31 }} metadata={{ scale: 22 / 16 }} />
+                <SharedElement.Target id={`token.${token.id}.symbol`}
                   groupId={`token.${token.id}`}
                   transition={tokenTextTransition}
-                >
-                  <Text style={styles.detailSymbol}>{token.symbol}</Text>
-                </SharedElement>
+                 style={{ width: '100%', height: 18 }} metadata={{ scale: 1 }} />
               </View>
             </View>
 
             <View style={styles.valueSection}>
-              <SharedElement
-                id={`token.${token.id}.value`}
+              <SharedElement.Target id={`token.${token.id}.value`}
                 groupId={`token.${token.id}`}
                 transition={tokenValueTransition}
-              >
-                <Text
-                  style={styles.detailPrice}
-                  numberOfLines={1}
-                  adjustsFontSizeToFit
-                >
-                  {formatMoney(token.price)}
-                </Text>
-              </SharedElement>
+               style={{ width: '100%', height: 51 }} metadata={{ scale: 36 / 15 }} />
               <View style={styles.changeRow}>
-                <SharedElement
-                  id={`token.${token.id}.change`}
+                <SharedElement.Target id={`token.${token.id}.change`}
                   groupId={`token.${token.id}`}
                   transition={tokenValueTransition}
-                >
-                  <Text
-                    style={[
-                      styles.detailChange,
-                      isPositiveChange
-                        ? styles.detailChangePositive
-                        : styles.detailChangeNegative,
-                    ]}
-                  >
-                    {isPositiveChange ? '+' : ''}
-                    {token.change24h.toFixed(2)}%
-                  </Text>
-                </SharedElement>
+                 style={{ width: 100, height: 18 }} metadata={{ scale: 1 }} />
                 <WalletSection start={0.8} distance={0}>
                   <Text style={styles.periodLabel}>past 24h</Text>
                 </WalletSection>

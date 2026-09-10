@@ -34,12 +34,12 @@ export function compatible(current: InputRecord, base?: InputRecord): boolean {
 }
 
 export function headlineMetrics(mode: string) {
-  return ['ordinary', 'live'].flatMap((scenario) =>
+  return ['gallery'].flatMap((scenario) =>
     mode === 'react-profile'
       ? [
           {
             key: `${scenario}.react.renderWorkPerRunMs`,
-            label: `${scenario} · React render work (ms/run)`,
+            label: `Gallery · React render work (ms/run)`,
             scale: 1,
             unit: 'ms',
           },
@@ -47,19 +47,19 @@ export function headlineMetrics(mode: string) {
       : [
           {
             key: `android.transitionFrames[${scenario}].deadlineOverrunPercent`,
-            label: `${scenario} · frames over deadline (%)`,
+            label: `Gallery · frames over deadline (%)`,
             scale: 1,
             unit: 'pp',
           },
           {
             key: `${scenario}.forward.requestToSessionActiveMs`,
-            label: `${scenario} · open preparation (ms)`,
+            label: `Gallery · open preparation (ms)`,
             scale: 1,
             unit: 'ms',
           },
           {
             key: `${scenario}.backward.requestToSessionActiveMs`,
-            label: `${scenario} · return preparation (ms)`,
+            label: `Gallery · return preparation (ms)`,
             scale: 1,
             unit: 'ms',
           },

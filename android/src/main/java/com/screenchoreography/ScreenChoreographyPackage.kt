@@ -9,7 +9,7 @@ import com.facebook.react.uimanager.ViewManager
 
 class ScreenChoreographyViewPackage : BaseReactPackage() {
   override fun createViewManagers(reactContext: ReactApplicationContext): List<ViewManager<*, *>> {
-    return listOf(ScreenChoreographyViewManager(), ScreenChoreographySnapshotViewManager())
+    return listOf(ScreenChoreographyViewManager())
   }
 
   override fun getModule(name: String, reactContext: ReactApplicationContext): NativeModule? =

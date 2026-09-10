@@ -92,11 +92,11 @@ This gives the library a flexible public API while avoiding the most common z-or
 
 ### Hide / Reveal Handoff
 
-The provider deliberately does **not** hide real elements when a session becomes `active`. Hiding is driven by the overlay's `useLayoutEffect` callback (`handleOverlayReady(sessionId)`) and the native host presentation ack (`handleHostPresentationReady`). The second acknowledgment calls `syncHiddenElements()` only after both content and native presentation are ready. Morph-image renderers block content readiness until `Image.onLoad`; each overlay session has its own readiness gate, so a late event from a replaced session cannot release the new one. The UI visibility batch hides the originals and enables the session's overlay gate together. A 150ms safety-net inside `waitForOverlayReady` calls `syncHiddenElements()` if the combined acknowledgment is still missing.
+The provider deliberately does **not** hide real elements when a session becomes `active`. Hiding is driven by the overlay's `useLayoutEffect` callback (`handleOverlayReady(sessionId)`) and the native host presentation ack (`handleHostPresentationReady`). The second acknowledgment calls `syncHiddenElements()` only after both content and native presentation are ready. Morph-image renderers block content readiness until `Image.onLoad`; each overlay session has its own readiness gate, so a late event from a replaced session cannot release the new one. The UI visibility batch hides the originals and enables the session's stand-in layers together. Live layers bypass that readiness opacity gate because their sole native view moves into the overlay in the mounting commit; gating it would hide the only visible instance before acknowledgment. A 150ms safety-net inside `waitForOverlayReady` permits a missing native acknowledgment only when content is ready; otherwise navigation completes without choreography.
 
 `syncHiddenElements()` compares desired visibility against the registry's last scheduled values and sends only changed entries in one UI worklet. Repeated presentation acknowledgements with the same hidden set schedule no work. Comparisons do not read shared values on JS. Ordered hide/reveal batches preserve cancellation and replacement behavior; unregistering a hidden element retains its shared value, and cleanup reveals retained entries before releasing them. The presentation callbacks and 150ms safety net remain the only hide triggers.
 
-At a forward animation's endpoint, the UI runtime reveals the ordinary shared elements and marks their stand-in layers invisible before scheduling JS completion. Reverse commits disable that unconditional handoff: `ReverseTransitionHandoff` combines the animation endpoint and the navigation adapter's presentation acknowledgment in shared UI state. Whichever signal arrives last reveals the ordinary shared elements and assigns input ownership to the destination in one UI worklet. If navigation is already presented, a busy JS runtime cannot delay that endpoint handoff. JS subsequently releases navigation bookkeeping and removes the overlay. Session and animation ownership reject stale completion; reclaiming a visually completed session restores its hidden elements and stand-in layers.
+At a forward animation's endpoint, the UI runtime reveals the ordinary shared elements before scheduling JS completion. Stand-in-only sessions hide their overlay layers immediately. Mixed live/stand-in sessions retain all overlay layers until React teardown: the live view still sits above the destination until reparenting, so its companion text must remain above it too. Reverse commits disable that unconditional handoff: `ReverseTransitionHandoff` combines the animation endpoint and the navigation adapter's presentation acknowledgment in shared UI state. Whichever signal arrives last reveals the ordinary shared elements and assigns input ownership to the destination in one UI worklet. If navigation is already presented, a busy JS runtime cannot delay that endpoint handoff. JS subsequently releases navigation bookkeeping and removes the overlay. Session and animation ownership reject stale completion; reclaiming a visually completed session restores its hidden elements and stand-in layers. Timed reverse settlements and gesture cancellations complete from the owned Reanimated callback; no JavaScript deadline forces the animation to its endpoint. Readiness timeouts remain separate from animation completion.
 
 Live pairs are different: their only mounted native subtree is still inside an overlay portal until React reparents it. Their overlay layers remain visible at the endpoint until that commit. Completion visibility is therefore applied per pair, not to the whole overlay, so mixed sessions can release stand-ins without hiding live content prematurely. The session gate still hides stale overlay instances in both modes.
 
@@ -215,7 +215,7 @@ can resize independently. Existing renderer components remain supported.
 5. Target `SharedElement`s register as the destination mounts.
 6. After application readiness and target registration, `TransitionCoordinator` awaits two stable native layout passes and one coordinate batch when the preparation module is available. Otherwise it uses the legacy readiness and target measurement path.
 7. The coordinator captures `getPresentation()` for every paired element and stores frozen `sourcePresentation`/`targetPresentation` on each pair. It rechecks readiness, operation ownership, and prepared-view identities before promoting the session to `active`.
-8. `TransitionOverlay` mounts and `NativeTransitionHost` reports presentation ready. Each callback runs `syncHiddenElements()` so the originals are hidden the same frame the overlay first paints. A 150ms safety-net hides them anyway if neither callback fires.
+8. `TransitionOverlay` mounts and `NativeTransitionHost` reports presentation ready. The second acknowledgment runs `syncHiddenElements()` after both content and native presentation are ready. The 150ms fallback requires content readiness; unready content completes navigation without choreography.
 9. Pending target hiding is cleared.
 10. Reanimated drives progress from `0` to `1`.
 11. On completion, `hiddenElements` is cleared and the session is set to `null`; the overlay unmounts and originals reveal in the same commit.
@@ -368,3 +368,13 @@ The provider applies the resolved config inside a `useEffect` so toggling debug 
 - ordinary renderers operate on frozen React content rather than captured native pixels; live native state requires the explicit teleport path
 
 See [limitations-and-next-steps.md](limitations-and-next-steps.md) for the current support boundaries and roadmap.
+
+
+### Image readiness timeout
+
+Morph images hold overlay readiness until image loading completes. Releasing a child blocker waits until the layout-effect pass finishes,
+so Strict Mode cleanup/replay cannot report an unfinished image as ready. At the
+150ms handoff deadline, a missing native acknowledgment may fall back only when
+content is ready. If content is unready, forward navigation reveals the already
+pushed destination without choreography; Back performs an ordinary pop. The
+original image is not hidden in favor of an unready overlay.

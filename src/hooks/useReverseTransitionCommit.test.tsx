@@ -1,5 +1,5 @@
 import { findNodeHandle, Platform, type View } from 'react-native';
-import { makeMutable, withSpring } from 'react-native-reanimated';
+import { makeMutable, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
@@ -22,6 +22,7 @@ jest.mock('react-native-reanimated', () => ({
   },
   cancelAnimation: jest.fn(),
   withSpring: jest.fn(() => 0.5),
+  withTiming: jest.fn(() => 0.5),
 }));
 
 jest.mock('react-native-worklets', () => ({
@@ -132,7 +133,10 @@ async function mountHook({
       session = { ...session, id };
       adoptSession();
     },
-    async start(commit?: () => Promise<NavigationCommitResult>) {
+    async start(
+      commit?: () => Promise<NavigationCommitResult>,
+      duration?: number
+    ) {
       const navigation = deferred<NavigationCommitResult>();
       const navigateBack = jest.fn(commit ?? (() => navigation.promise));
       let completion!: Promise<void>;
@@ -141,6 +145,7 @@ async function mountHook({
           sessionId: session.id,
           token,
           navigateBack,
+          options: duration ? { duration } : undefined,
         });
       });
       return { completion, navigation, navigateBack };
@@ -180,6 +185,30 @@ afterEach(async () => {
 });
 
 describe('provider reverse commit integration', () => {
+  test('timed Back waits for the animation callback instead of a wall-clock fallback', async () => {
+    const harness = await mountHook({ mode: 'live' });
+    const { completion, navigation, navigateBack } = await harness.start(
+      undefined,
+      200
+    );
+    expect(withTiming).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      jest.advanceTimersByTime(1000);
+      flushRN();
+    });
+    expect(navigateBack).not.toHaveBeenCalled();
+    await act(async () => {
+      harness.progress.value = 0;
+      (withTiming as jest.Mock).mock.calls[0]![2](true);
+      flushRN();
+    });
+    expect(navigateBack).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      navigation.resolve({ removed: true, presented: true })
+    );
+    await completion;
+  });
+
   test('iOS keeps the outgoing route until the reverse endpoint without a screen snapshot', async () => {
     Platform.OS = 'ios';
     const harness = await mountHook();

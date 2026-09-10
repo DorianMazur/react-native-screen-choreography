@@ -1,8 +1,7 @@
 # Example Photography
 
-Bundled photographs from Unsplash, used as sample gallery images and fictional
-album artwork. Titles, locations, camera settings, and music metadata in these
-demos are illustrative, not metadata supplied by the photographers.
+Bundled photographs from Unsplash, used as sample gallery images.
+Titles, locations, and camera settings in these demos are illustrative, not metadata supplied by the photographers.
 
 | Asset | Source |
 | --- | --- |

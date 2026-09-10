@@ -93,7 +93,7 @@ describe('interactive ownership', () => {
     expect(ctx.navigationController.getNavigationSourceScreenId()).toBe('List');
   });
 
-  test('cancel fallback cannot write into B before React publishes it', async () => {
+  test('elapsed time cannot settle a cancelled gesture into a replacement session', async () => {
     await act(async () => {
       await interactive.beginBack();
     });
@@ -158,26 +158,22 @@ describe('interactive ownership', () => {
     expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
   });
 
-  test('replacement clears the old timer and rejects a captured gesture callback', async () => {
+  test('cancel uses no fallback timer and replacement rejects a captured gesture callback', async () => {
     await act(async () => {
       await interactive.beginBack();
     });
     const oldSetProgress = interactive.setProgress;
     const schedule = jest.spyOn(global, 'setTimeout');
-    const clear = jest.spyOn(global, 'clearTimeout');
     await act(async () => {
       interactive.cancel({ duration: 100 });
     });
-    const timerIndex = schedule.mock.calls.findIndex((call) => call[1] === 150);
-    expect(timerIndex).toBeGreaterThanOrEqual(0);
-    const timer = schedule.mock.results[timerIndex]!.value;
+    expect(schedule).not.toHaveBeenCalled();
     ctx.progressOwnership.setSession('B');
     ctx = {
       ...ctx,
       activeSession: { id: 'B' } as ChoreographyContextType['activeSession'],
     };
     await act(async () => tree.update(render()));
-    expect(clear).toHaveBeenCalledWith(timer);
     ctx.progress.value = 0.65;
     oldSetProgress(0.9);
     expect(ctx.progress.value).toBe(0.65);

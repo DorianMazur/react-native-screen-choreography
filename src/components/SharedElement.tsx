@@ -1,4 +1,6 @@
-import React, {
+import { SharedElementPresentationContext } from '../core/SharedElementPresentation';
+import type { SharedElementEndpoint } from '../core/SharedElementPresentation';
+import {
   type ReactNode,
   useRef,
   useEffect,
@@ -7,14 +9,11 @@ import React, {
   useContext,
 } from 'react';
 import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
-import Animated, {
-  useAnimatedRef,
-  useAnimatedStyle,
-} from 'react-native-reanimated';
+import Animated, { useAnimatedRef } from 'react-native-reanimated';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
   ElementPresentation,
-  LiveTransition,
+  Transition,
   SharedElementTransition,
 } from '../types';
 import {
@@ -27,42 +26,13 @@ import {
   getLiveOverlayHostName,
   getLivePortalName,
 } from '../core/liveHostNames';
-import { defaultLiveTransition } from '../transitions/makeLiveTransition';
-
-interface SharedElementTargetContextValue {
-  setTarget: (
-    node: any,
-    animatedRef: ReturnType<typeof useAnimatedRef<any>> | undefined
-  ) => void;
-}
-
-const SharedElementTargetContext = React.createContext<
-  SharedElementTargetContextValue | undefined
->(undefined);
-
-export interface SharedElementTargetProps {
-  children: React.ReactNode;
-  style?: StyleProp<ViewStyle>;
-}
+import { defaultTransition } from '../transitions/makeTransition';
 
 export interface SharedElementProps {
-  /** Unique identifier for this shared element. Must match across screens. */
-  id: string;
-  /** Group identifier. Elements in the same group transition together. */
-  groupId?: string;
-  /** Renderer defining exactly how this shared pair animates. */
-  transition: SharedElementTransition;
-  /** Children to wrap. */
-  children: React.ReactNode;
-  /** Additional style for the wrapper. */
-  style?: StyleProp<ViewStyle>;
-}
-
-export interface LiveSharedElementProps {
   id: string;
   groupId?: string;
   /** Reuse the same factory result on both live endpoints, including for back. */
-  transition?: LiveTransition;
+  transition?: Transition;
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   /** Payload layout overrides, applied after the portal's fill defaults. */
@@ -71,11 +41,11 @@ export interface LiveSharedElementProps {
   metadata?: unknown;
 }
 
-export interface LiveSharedElementTargetProps {
+export interface SharedElementTargetProps {
   id: string;
   groupId?: string;
   /** Reuse the owner's factory result for consistent forward and back motion. */
-  transition?: LiveTransition;
+  transition?: Transition;
   style?: StyleProp<ViewStyle>;
   /** Receiving host layout, independent of the measured wrapper's style. */
   hostStyle?: StyleProp<ViewStyle>;
@@ -83,7 +53,13 @@ export interface LiveSharedElementTargetProps {
   metadata?: unknown;
 }
 
-interface SharedElementRegistrationProps extends SharedElementProps {
+interface SharedElementRegistrationProps {
+  id: string;
+  groupId?: string;
+  transition: Transition;
+  children: ReactNode;
+  style?: StyleProp<ViewStyle>;
+  layoutStyle?: StyleProp<ViewStyle>;
   metadata?: unknown;
 }
 
@@ -99,21 +75,18 @@ function SharedElementRegistration({
   transition,
   children,
   style,
+  layoutStyle,
   metadata,
 }: SharedElementRegistrationProps) {
   const viewNodeRef = useRef<any>(null);
   const animatedRef = useAnimatedRef<any>();
-  const targetNodeRef = useRef<any>(null);
-  const targetAnimatedRefRef = useRef<
-    ReturnType<typeof useAnimatedRef<any>> | undefined
-  >(undefined);
   const actions = useContext(ChoreographyActionsContext);
   if (!actions) {
     throw new Error(
       'SharedElement must be used within a <ChoreographyProvider>'
     );
   }
-  const { registerElement, unregisterElement, isElementHidden } = actions;
+  const { registerElement, unregisterElement } = actions;
   const screenId = useScreenId();
 
   const flattenedStyle = useMemo(
@@ -122,8 +95,6 @@ function SharedElementRegistration({
   );
   // Latest-value refs mutated during render so getPresentation() always
   // reflects current props without forcing re-registration.
-  const childrenRef = useRef<React.ReactNode>(children);
-  childrenRef.current = children;
   const transitionRef = useRef<SharedElementTransition>(transition);
   transitionRef.current = transition;
   const styleRef = useRef<ViewStyle | undefined>(flattenedStyle);
@@ -132,7 +103,6 @@ function SharedElementRegistration({
   metadataRef.current = metadata;
   const getPresentation = useCallback<() => ElementPresentation>(
     () => ({
-      content: childrenRef.current,
       style: styleRef.current,
       transition: transitionRef.current,
       metadata: metadataRef.current,
@@ -141,22 +111,7 @@ function SharedElementRegistration({
   );
   const getTransition = useCallback(() => transitionRef.current, []);
 
-  const getNode = useCallback(
-    () => targetNodeRef.current ?? viewNodeRef.current,
-    []
-  );
-  const getAnimatedRef = useCallback(
-    () => targetAnimatedRefRef.current ?? animatedRef,
-    [animatedRef]
-  );
-  const setTarget = useCallback<SharedElementTargetContextValue['setTarget']>(
-    (node, nextAnimatedRef) => {
-      targetNodeRef.current = node;
-      targetAnimatedRefRef.current = node ? nextAnimatedRef : undefined;
-    },
-    []
-  );
-  const targetContextValue = useMemo(() => ({ setTarget }), [setTarget]);
+  const getNode = useCallback(() => viewNodeRef.current, []);
   const setRefs = useCallback(
     (node: any) => {
       viewNodeRef.current = node;
@@ -173,7 +128,6 @@ function SharedElementRegistration({
       screenId,
       ref: getNode,
       animatedRef,
-      getAnimatedRef,
       metrics: null,
       getPresentation,
       getTransition,
@@ -188,55 +142,18 @@ function SharedElementRegistration({
     screenId,
     getNode,
     animatedRef,
-    getAnimatedRef,
     getPresentation,
     getTransition,
     registerElement,
     unregisterElement,
   ]);
 
-  const hidden = isElementHidden(id, screenId, groupId);
-
-  const animatedStyle = useAnimatedStyle(() => {
-    return {
-      opacity: hidden.value ? 0 : 1,
-    };
-  });
-
   return (
-    <SharedElementTargetContext.Provider value={targetContextValue}>
-      <Animated.View
-        ref={setRefs}
-        style={[styles.wrapper, style, animatedStyle]}
-        collapsable={false}
-      >
-        {children}
-      </Animated.View>
-    </SharedElementTargetContext.Provider>
-  );
-}
-
-function SharedElementRoot(props: SharedElementProps) {
-  return <SharedElementRegistration {...props} />;
-}
-
-function SharedElementTarget({ children, style }: SharedElementTargetProps) {
-  const target = useContext(SharedElementTargetContext);
-  if (!target) {
-    throw new Error('SharedElement.Target must be nested in a <SharedElement>');
-  }
-
-  const animatedRef = useAnimatedRef<any>();
-  const setRef = useCallback(
-    (node: any) => {
-      animatedRef(node);
-      target.setTarget(node, animatedRef);
-    },
-    [animatedRef, target]
-  );
-
-  return (
-    <Animated.View ref={setRef} style={style} collapsable={false}>
+    <Animated.View
+      ref={setRefs}
+      style={[style, layoutStyle]}
+      collapsable={false}
+    >
       {children}
     </Animated.View>
   );
@@ -247,14 +164,18 @@ function LiveSharedElement({
   groupId,
   children,
   style,
-  transition = defaultLiveTransition,
+  transition = defaultTransition,
   portalStyle,
   metadata,
-}: LiveSharedElementProps) {
+}: SharedElementProps) {
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
   const screenId = useScreenId();
   const wasParticipatingRef = useRef(false);
+  const endpoints = useRef<{
+    collapsed: SharedElementEndpoint;
+    expanded: SharedElementEndpoint;
+  } | null>(null);
   const settledTargetScreenIdRef = useRef<string | null>(null);
   const session = choreography?.activeSession ?? null;
   const participates = Boolean(
@@ -273,6 +194,22 @@ function LiveSharedElement({
   let hostName: string | undefined;
   if (participates) {
     wasParticipatingRef.current = true;
+    const pair = session!.pairs.find((pair) => pair.id === id)!;
+    const source = {
+      metrics: pair.sourceMetrics,
+      metadata: pair.sourcePresentation.metadata,
+      style: pair.sourcePresentation.style,
+    };
+    const target = {
+      metrics: pair.targetMetrics,
+      metadata: pair.targetPresentation.metadata,
+      style: pair.targetPresentation.style,
+    };
+    // Retain presentation data only, never a popped screen's registration/ref.
+    endpoints.current =
+      session!.direction === 'forward'
+        ? { collapsed: source, expanded: target }
+        : { collapsed: target, expanded: source };
     hostName = getLiveOverlayHostName(
       session!.sourceScreenId,
       session!.targetScreenId,
@@ -295,12 +232,47 @@ function LiveSharedElement({
       : undefined;
   }
 
+  const initial = {
+    metrics: null,
+    metadata,
+    style: (StyleSheet.flatten(style) ?? undefined) as ViewStyle | undefined,
+  };
+  const presentation = {
+    progress: choreography!.progress,
+    transitioning: participates,
+    collapsed: endpoints.current?.collapsed ?? initial,
+    expanded: endpoints.current?.expanded ?? initial,
+    settled: settledTargetScreenIdRef.current
+      ? ('expanded' as const)
+      : ('collapsed' as const),
+  };
+  const ownerStyle = StyleSheet.flatten(style);
+  const reservedMetrics = hostName
+    ? endpoints.current?.collapsed.metrics
+    : null;
+  const flexibleHeight =
+    (ownerStyle?.flex ?? 0) > 0 || (ownerStyle?.flexGrow ?? 0) > 0;
   return (
     <SharedElementRegistration
       id={id}
       groupId={groupId}
       transition={transition}
       style={style}
+      // Reserve intrinsic layout while the native content is away. Keep this
+      // separate from the app's frozen presentation and explicit size rules.
+      layoutStyle={
+        reservedMetrics
+          ? {
+              ...(ownerStyle?.width == null || ownerStyle.width === 'auto'
+                ? { width: reservedMetrics.width }
+                : {}),
+              ...(!flexibleHeight &&
+              (ownerStyle?.height == null || ownerStyle.height === 'auto')
+                ? { height: reservedMetrics.height }
+                : {}),
+            }
+          : undefined
+      }
       metadata={metadata}
     >
       <Portal
@@ -308,7 +280,9 @@ function LiveSharedElement({
         name={getLivePortalName(screenId, id, groupId)}
         style={[styles.livePortal, portalStyle]}
       >
-        {children}
+        <SharedElementPresentationContext.Provider value={presentation}>
+          {children}
+        </SharedElementPresentationContext.Provider>
       </Portal>
     </SharedElementRegistration>
   );
@@ -318,10 +292,10 @@ function LiveSharedElementTarget({
   id,
   groupId,
   style,
-  transition = defaultLiveTransition,
+  transition = defaultTransition,
   hostStyle,
   metadata,
-}: LiveSharedElementTargetProps) {
+}: SharedElementTargetProps) {
   const screenId = useScreenId();
   return (
     <SharedElementRegistration
@@ -339,10 +313,8 @@ function LiveSharedElementTarget({
   );
 }
 
-export const SharedElement = Object.assign(SharedElementRoot, {
-  Target: SharedElementTarget,
-  Live: LiveSharedElement,
-  LiveTarget: LiveSharedElementTarget,
+export const SharedElement = Object.assign(LiveSharedElement, {
+  Target: LiveSharedElementTarget,
 });
 
 const styles = StyleSheet.create({

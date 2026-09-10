@@ -78,7 +78,7 @@ describe('TransitionCoordinator validated measurement reuse', () => {
     registry.register(
       makeElement(
         { screenId: 'detail', ref },
-        { current: { content: null, transition } }
+        { current: { metadata: null, transition } }
       )
     );
   }
@@ -87,7 +87,7 @@ describe('TransitionCoordinator validated measurement reuse', () => {
     registry.register(
       makeElement(
         { screenId: 'list', metrics, ref: refWithMetrics(sourceMetrics) },
-        { current: { content: null, transition } }
+        { current: { metadata: null, transition } }
       )
     );
   }
@@ -304,7 +304,7 @@ describe('TransitionCoordinator presentation freezing', () => {
     const liveValue = { value: 0 };
     const sourcePresentation: { current: ElementPresentation } = {
       current: {
-        content: 'source-v1',
+        metadata: 'source-v1',
         style: { backgroundColor: 'red' },
         transition,
         metadata: { revision: 1, liveValue },
@@ -312,7 +312,7 @@ describe('TransitionCoordinator presentation freezing', () => {
     };
     const targetPresentation: { current: ElementPresentation } = {
       current: {
-        content: 'target-v1',
+        metadata: 'target-v1',
         style: { backgroundColor: 'blue' },
         transition,
         metadata: { revision: 10 },
@@ -375,8 +375,8 @@ describe('TransitionCoordinator presentation freezing', () => {
     const pair = active.pairs[0]!;
 
     // Frozen presentations are stored on the pair.
-    expect(pair.sourcePresentation.content).toBe('source-v1');
-    expect(pair.targetPresentation.content).toBe('target-v1');
+    expect(pair.sourcePresentation.metadata).toBe('source-v1');
+    expect(pair.targetPresentation.metadata).toBe('target-v1');
     expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
     expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
     expect(pair.sourcePresentation.metadata).toEqual({
@@ -388,20 +388,20 @@ describe('TransitionCoordinator presentation freezing', () => {
     // Mutating the underlying SharedElement state AFTER the session started
     // must NOT affect what the overlay renders — the snapshot is frozen.
     sourcePresentation.current = {
-      content: 'source-v2',
+      metadata: 'source-v2',
       style: { backgroundColor: 'green' },
       transition,
       metadata: { revision: 2, liveValue: { value: 999 } },
     };
     targetPresentation.current = {
-      content: 'target-v2',
+      metadata: 'target-v2',
       style: { backgroundColor: 'yellow' },
       transition,
       metadata: { revision: 11 },
     };
 
-    expect(pair.sourcePresentation.content).toBe('source-v1');
-    expect(pair.targetPresentation.content).toBe('target-v1');
+    expect(pair.sourcePresentation.metadata).toBe('source-v1');
+    expect(pair.targetPresentation.metadata).toBe('target-v1');
     expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
     expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
     expect(pair.sourcePresentation.metadata).toEqual({
@@ -420,7 +420,7 @@ describe('TransitionCoordinator presentation freezing', () => {
 
   test('hidden elements are released after completeTransition', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
 
     registry.register(
@@ -469,14 +469,14 @@ describe('TransitionCoordinator presentation freezing', () => {
       mode: 'live',
     };
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition: liveTransition },
+      current: { metadata: null, transition: liveTransition },
     };
     const targetTransition: SharedElementTransition = {
       renderer: () => null,
       mode: 'standin',
     };
     const targetSnap: { current: ElementPresentation } = {
-      current: { content: null, transition: targetTransition },
+      current: { metadata: null, transition: targetTransition },
     };
 
     registry.register(
@@ -533,7 +533,7 @@ describe('TransitionCoordinator presentation freezing', () => {
       selectedTransition: SharedElementTransition
     ) => {
       const presentation = {
-        current: { content: null, transition: selectedTransition },
+        current: { metadata: null, transition: selectedTransition },
       };
       registry.register(
         makeElement(
@@ -565,7 +565,7 @@ describe('TransitionCoordinator presentation freezing', () => {
 
   test('cancelTransition also releases hidden elements', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
 
     registry.register(
@@ -643,7 +643,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
   test('pairs when the target registers after the transition starts', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
 
     registry.register(
@@ -696,7 +696,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
   test('cancelled preparation cannot reactivate after target registration', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
 
     registry.register(
@@ -739,7 +739,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
   test('cancelled preparation cannot reactivate after stable measurement', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
     const stability = deferred<Map<string, unknown>>();
     (coordinator as any).waitForStableTargetMeasurements = jest.fn(
@@ -785,7 +785,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
     'keeps the replacement session when the superseded start finishes %s',
     async (staleFinishOrder) => {
       const snap: { current: ElementPresentation } = {
-        current: { content: null, transition },
+        current: { metadata: null, transition },
       };
       const firstStability = deferred<Map<string, unknown>>();
       const secondStability = deferred<Map<string, unknown>>();
@@ -861,7 +861,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
   test('stale empty-pair cleanup cannot clear a replacement session', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
     const firstStability = deferred<Map<string, unknown>>();
     const secondStability = deferred<Map<string, unknown>>();
@@ -927,7 +927,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
   test('disposal invalidates preparation before it can activate', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
     const stability = deferred<Map<string, unknown>>();
     (coordinator as any).waitForStableTargetMeasurements = jest.fn(
@@ -970,7 +970,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
   test('discovers pair ids only from the source screen group', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
 
     registry.register(
@@ -1023,7 +1023,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
         (screenId) => (screenId.startsWith('detail') ? 'detail' : screenId)
       );
       const snap: { current: ElementPresentation } = {
-        current: { content: null, transition },
+        current: { metadata: null, transition },
       };
       const target = countingRef({
         pageX: 0,
@@ -1083,7 +1083,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
   test('stale cached target metrics fall back to fresh measurement', async () => {
     const snap: { current: ElementPresentation } = {
-      current: { content: null, transition },
+      current: { metadata: null, transition },
     };
     const target = countingRef({ pageX: 0, pageY: 0, width: 200, height: 200 });
 

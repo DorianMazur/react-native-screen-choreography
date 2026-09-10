@@ -1,4 +1,4 @@
-import type { ComponentType, ReactElement, ReactNode } from 'react';
+import type { ComponentType, ReactElement } from 'react';
 import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
 
@@ -23,7 +23,7 @@ export interface SharedElementTransitionSide {
   screenId: string;
   metrics: ElementMetrics;
   style?: ViewStyle;
-  content?: ReactNode;
+  metadata?: unknown;
   /** False for the absent endpoint of a declarative enter/exit track. */
   present?: boolean;
 }
@@ -51,33 +51,25 @@ export type SharedElementTransitionRenderer =
 export interface SharedElementTransition {
   renderer: SharedElementTransitionRenderer;
   zIndex?: number;
-  /** `live` pairs animate the real native view, so they are never hidden. */
-  mode?: 'standin' | 'live';
-  /** Declarative tracks can participate with only this semantic endpoint. */
-  unpaired?: 'collapsed' | 'expanded' | 'either';
 }
 
 declare const liveTransitionBrand: unique symbol;
 
-/** A live transition created by `makeLiveTransition`. */
-export interface LiveTransition extends SharedElementTransition {
+/** A live transition created by `makeTransition`. */
+export interface Transition extends SharedElementTransition {
   readonly [liveTransitionBrand]: true;
-  mode: 'live';
 }
 
-export interface LiveTransitionSide extends Omit<
-  SharedElementTransitionSide,
-  'content'
-> {
+export interface TransitionEndpoint extends SharedElementTransitionSide {
   metadata?: unknown;
 }
 
-export interface LiveTransitionRendererProps extends Omit<
+export interface TransitionRendererProps extends Omit<
   SharedElementTransitionRendererProps,
   'source' | 'target'
 > {
-  source: LiveTransitionSide;
-  target: LiveTransitionSide;
+  source: TransitionEndpoint;
+  target: TransitionEndpoint;
   /** The library-owned live portal host. Render it exactly once. */
   children: ReactElement;
 }
@@ -86,7 +78,6 @@ export type NodeHandleRef = React.RefObject<any> | (() => any);
 
 /** Frozen renderer input captured at session start. */
 export interface ElementPresentation {
-  content: ReactNode;
   style?: ViewStyle;
   transition: SharedElementTransition;
   metadata?: unknown;
@@ -101,7 +92,7 @@ export interface RegisteredElement {
   /** Resolves a nested measurement target without re-registering the element. */
   getAnimatedRef?: () => AnimatedRef<any> | undefined;
   metrics: ElementMetrics | null;
-  /** Captures content, style, and transition once at session start. */
+  /** Captures metadata, style, and transition once at session start. */
   getPresentation: () => ElementPresentation;
   /** Read the current pairing policy without capturing a presentation early. */
   getTransition?: () => SharedElementTransition;
@@ -126,8 +117,6 @@ export interface ElementTransitionPair {
   sourcePresentation: ElementPresentation;
   /** Frozen target renderer input captured when the session became active. */
   targetPresentation: ElementPresentation;
-  sourcePresent?: boolean;
-  targetPresent?: boolean;
 }
 
 export interface TransitionSessionData {

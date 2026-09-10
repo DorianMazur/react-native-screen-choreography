@@ -124,6 +124,7 @@ describe('ChoreographyProvider lifecycle', () => {
         controlRenders();
         return null;
       }
+
       function Consumer() {
         context = useContext(ChoreographyContext)!;
         return null;
@@ -168,7 +169,10 @@ describe('ChoreographyProvider lifecycle', () => {
             metrics,
             getPresentation: () => ({
               content: null,
-              transition: { renderer: () => null },
+              transition: {
+                renderer:
+                  () => null,
+              },
             }),
           });
         }
@@ -226,6 +230,7 @@ describe('ChoreographyProvider lifecycle', () => {
             await waiting;
           });
         }
+
         expect(ready).toHaveBeenCalledWith(true);
         expect(hidden.value).toBe(1);
         expect(writes[0]).toHaveBeenCalledTimes(1);

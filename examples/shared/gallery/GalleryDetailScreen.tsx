@@ -1,4 +1,3 @@
-import { GalleryScrim } from './GalleryScrim';
 import React, { useState } from 'react';
 import Animated, {
   interpolate,
@@ -15,12 +14,16 @@ import {
   Share,
   StatusBar,
 } from 'react-native';
-import { useChoreographyProgress, useExampleNavigation } from '../runtime';
+import {
+  SharedElement,
+  useChoreographyProgress,
+  useExampleNavigation,
+} from '../runtime';
 import { SafeAreaView } from '../runtime';
 import { AppIcon, IconButton, ScreenHeader } from '../AppChrome';
 import { theme } from '../theme';
 import { PHOTOS } from './data';
-import { galleryTransition } from './galleryTransitions';
+import { galleryHeroTransition } from './galleryTransitions';
 
 export function GalleryDetailScreen({
   photoId = 'aurora',
@@ -53,57 +56,12 @@ export function GalleryDetailScreen({
           contentContainerStyle={styles.scroll}
           showsVerticalScrollIndicator={false}
         >
-          <galleryTransition.Element
-            name="frame"
+          <SharedElement.Target
+            id="hero"
             groupId={`photo.${photo.id}`}
+            transition={galleryHeroTransition}
             style={styles.frame}
-          >
-            <View style={styles.frameInner}>
-              <galleryTransition.Element
-                name="photo"
-                groupId={`photo.${photo.id}`}
-                style={StyleSheet.absoluteFill}
-              >
-                <Image
-                  source={photo.image}
-                  resizeMode="cover"
-                  fadeDuration={0}
-                  style={StyleSheet.absoluteFill}
-                />
-              </galleryTransition.Element>
-              <GalleryScrim />
-
-              <View style={styles.heroGlyphWrap} pointerEvents="none">
-                <galleryTransition.Element
-                  name="glyph"
-                  groupId={`photo.${photo.id}`}
-                  style={styles.heroGlyphBox}
-                >
-                  <View style={styles.glyphCenter}>
-                    <AppIcon name="camera" size={21} />
-                  </View>
-                </galleryTransition.Element>
-              </View>
-
-              <View style={styles.heroMeta}>
-                <galleryTransition.Element
-                  name="title"
-                  groupId={`photo.${photo.id}`}
-                >
-                  <Text style={styles.heroTitle}>{photo.title}</Text>
-                </galleryTransition.Element>
-                <galleryTransition.Element
-                  name="location"
-                  groupId={`photo.${photo.id}`}
-                  style={styles.heroLocationSpacing}
-                >
-                  <Text numberOfLines={1} style={styles.heroLocation}>
-                    {photo.location}
-                  </Text>
-                </galleryTransition.Element>
-              </View>
-            </View>
-          </galleryTransition.Element>
+          />
 
           <Animated.View style={detailsStyle}>
             <View style={styles.section}>
@@ -185,49 +143,8 @@ const styles = StyleSheet.create({
   frame: {
     width: '100%',
     aspectRatio: 1,
-    overflow: 'hidden',
-    backgroundColor: theme.surface,
-  },
-  frameInner: {
-    flex: 1,
-    position: 'relative',
-    overflow: 'hidden',
-  },
-  heroGlyphWrap: {
-    position: 'absolute',
-    top: 18,
-    right: 18,
-  },
-  heroGlyphBox: {
-    width: 42,
-    height: 42,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  glyphCenter: {
-    ...StyleSheet.absoluteFill,
-    alignItems: 'center',
-    justifyContent: 'center',
   },
   lightbox: { flex: 1, width: '100%' },
-  heroMeta: {
-    position: 'absolute',
-    left: 24,
-    right: 24,
-    bottom: 24,
-  },
-  heroTitle: {
-    fontFamily: theme.font,
-    color: theme.text,
-    fontSize: 32,
-    fontWeight: '600',
-  },
-  heroLocationSpacing: { marginTop: 4 },
-  heroLocation: {
-    fontFamily: theme.font,
-    color: theme.text,
-    fontSize: 15,
-  },
   section: {
     marginHorizontal: 24,
     paddingVertical: 24,

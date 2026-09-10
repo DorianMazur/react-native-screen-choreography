@@ -369,3 +369,20 @@ describe('runReverseTransition ownership', () => {
     expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
   });
 });
+
+test('unready overlay falls back to one plain Back action without animating a blank image', async () => {
+  const ctx = createContext({
+    waitForOverlayReady: jest.fn(async () => false),
+  });
+  const popAction = jest.fn(async () => ({ removed: true, presented: false }));
+  await runReverseTransition({
+    ctx,
+    groupId: 'group',
+    sourceScreenId: 'list',
+    currentScreenId: 'detail',
+    popAction,
+  });
+  expect(popAction).toHaveBeenCalledTimes(1);
+  expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+  expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
+});
