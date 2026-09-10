@@ -18,47 +18,20 @@ function createOperation() {
     sessionId: 'reverse',
     sourceScreenId: 'detail',
     targetScreenId: 'home',
-    preparePresentation: jest.fn(async () => true),
     commitNavigation: jest.fn(() => navigation.promise),
     animate: jest.fn((finished: () => void) => {
       finishAnimation = finished;
     }),
     handoff: jest.fn(),
     cancel: jest.fn(),
-    releasePresentation: jest.fn(),
     isCurrent: () => true,
   };
   return { config, navigation, finishAnimation: () => finishAnimation() };
 }
 
 describe('reverse settlement ordering', () => {
-  test.each(['animation', 'navigation'] as const)(
-    'overlaps navigation and animation and waits for both when %s finishes first',
-    async (first) => {
-      const operation = createOperation();
-      const controller = new ReverseTransitionController();
-      const completed = controller.start(operation.config);
-      await Promise.resolve();
-      expect(operation.config.animate).toHaveBeenCalledTimes(1);
-      expect(operation.config.commitNavigation).toHaveBeenCalledTimes(1);
-
-      if (first === 'animation') operation.finishAnimation();
-      else operation.navigation.resolve({ removed: true, presented: true });
-      await Promise.resolve();
-      expect(operation.config.handoff).not.toHaveBeenCalled();
-
-      if (first === 'animation') {
-        operation.navigation.resolve({ removed: true, presented: true });
-      } else operation.finishAnimation();
-      await completed;
-      expect(operation.config.handoff).toHaveBeenCalledTimes(1);
-      expect(operation.config.releasePresentation).toHaveBeenCalledTimes(1);
-    }
-  );
-
-  test('does not unmount uncaptured content until its animation finishes', async () => {
+  test('does not unmount retained content until its animation finishes', async () => {
     const operation = createOperation();
-    operation.config.preparePresentation.mockResolvedValue(false);
     const controller = new ReverseTransitionController();
     const completed = controller.start(operation.config);
     await Promise.resolve();
@@ -70,20 +43,16 @@ describe('reverse settlement ordering', () => {
     expect(operation.config.handoff).toHaveBeenCalledTimes(1);
   });
 
-  test('cancels preparation without dispatching after a late capture', async () => {
-    const capture = deferred<boolean>();
+  test('cancels before navigation and ignores late animation completion', async () => {
     const operation = createOperation();
-    operation.config.preparePresentation.mockReturnValue(capture.promise);
     const controller = new ReverseTransitionController();
     const completed = controller.start(operation.config);
     expect(controller.cancelBeforeCommit('reverse')).toBe(true);
-    capture.resolve(true);
+    operation.finishAnimation();
     await completed;
-    await Promise.resolve();
-    expect(operation.config.animate).not.toHaveBeenCalled();
     expect(operation.config.commitNavigation).not.toHaveBeenCalled();
     expect(operation.config.cancel).toHaveBeenCalledTimes(1);
-    expect(operation.config.releasePresentation).toHaveBeenCalledTimes(1);
+    expect(operation.config.handoff).not.toHaveBeenCalled();
   });
 
   test('does not cancel or restore a source already removed by navigation', async () => {
@@ -91,12 +60,11 @@ describe('reverse settlement ordering', () => {
     const controller = new ReverseTransitionController();
     const completed = controller.start(operation.config);
     await Promise.resolve();
+    operation.finishAnimation();
     expect(controller.noteSourceUnmount('reverse', 'detail')).toBe(true);
     expect(controller.cancelBeforeCommit('reverse')).toBe(false);
     operation.navigation.resolve({ removed: false, presented: false });
     await Promise.resolve();
-    expect(operation.config.handoff).not.toHaveBeenCalled();
-    operation.finishAnimation();
     await completed;
     expect(operation.config.handoff).toHaveBeenCalledTimes(1);
     expect(operation.config.cancel).not.toHaveBeenCalled();
@@ -107,12 +75,11 @@ describe('reverse settlement ordering', () => {
     const controller = new ReverseTransitionController();
     const completed = controller.start(operation.config);
     await Promise.resolve();
+    operation.finishAnimation();
     operation.navigation.resolve({ removed: false, presented: false });
     await completed;
-    operation.finishAnimation();
     expect(operation.config.cancel).toHaveBeenCalledTimes(1);
     expect(operation.config.handoff).not.toHaveBeenCalled();
-    expect(operation.config.releasePresentation).toHaveBeenCalledTimes(1);
   });
 
   test('deduplicates commits and ignores callbacks belonging to a replaced session', async () => {
@@ -130,7 +97,6 @@ describe('reverse settlement ordering', () => {
     await Promise.resolve();
     expect(first.config.handoff).not.toHaveBeenCalled();
     expect(first.config.cancel).not.toHaveBeenCalled();
-    expect(first.config.releasePresentation).toHaveBeenCalledTimes(1);
     expect(controller.owns('replacement')).toBe(true);
     second.finishAnimation();
     second.navigation.resolve({ removed: true, presented: true });

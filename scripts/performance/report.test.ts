@@ -6,7 +6,7 @@ import { distribution, summarize, markdown } from './report.mts';
 function fixture(scenario: string, profile = false): InputRecord {
   return {
     schemaVersion: 1,
-    fixtureVersion: 2,
+    fixtureVersion: 4,
     runId: `${scenario}-1`,
     scenario,
     clock: 'js-performance-now',
@@ -59,13 +59,13 @@ function fixture(scenario: string, profile = false): InputRecord {
 
 function documents(profile = false): MeasurementDocument[] {
   return [
-    ...['ordinary', 'live'].flatMap((scenario) => [
+    ...['gallery'].flatMap((scenario) => [
       { file: `${scenario}.json`, data: fixture(scenario, profile) },
     ]),
     {
       file: 'native-benchmarkData.json',
       data: {
-        benchmarks: ['ordinary', 'live'].flatMap((scenario) => [
+        benchmarks: ['gallery'].flatMap((scenario) => [
           {
             name: `transitionFrames[${scenario}]`,
             metrics: { frameCount: { runs: [3, 1] } },
@@ -145,32 +145,32 @@ test('optional startup diagnostics preserve definition 3 and aggregate repeated 
   assert.equal(summary.valid, true, summary.errors.join());
   assert.equal(summary.measurementDefinitionVersion, 3);
   assert.equal(
-    summary.metrics['ordinary.forward.requestToSessionActiveMs']!.median,
+    summary.metrics['gallery.forward.requestToSessionActiveMs']!.median,
     40
   );
   assert.equal(
-    summary.metrics['ordinary.forward.requestToOverlayReadyMs']!.median,
+    summary.metrics['gallery.forward.requestToOverlayReadyMs']!.median,
     60
   );
   assert.equal(
-    summary.metrics['ordinary.forward.preparation.target-measureMs']!.median,
+    summary.metrics['gallery.forward.preparation.target-measureMs']!.median,
     12
   );
   assert.equal(
-    summary.metrics['ordinary.forward.preparation.target-measureMs']!.count,
+    summary.metrics['gallery.forward.preparation.target-measureMs']!.count,
     1
   );
   assert.equal(
-    summary.metrics['ordinary.forward.preparation.coordinatorMs']!.median,
+    summary.metrics['gallery.forward.preparation.coordinatorMs']!.median,
     30
   );
   assert.equal(
-    summary.metrics['ordinary.backward.requestToOverlayReadyMs'],
+    summary.metrics['gallery.backward.requestToOverlayReadyMs'],
     undefined
   );
   assert.equal(
-    summary.metrics['live.forward.requestToOverlayReadyMs'],
-    undefined
+    summary.metrics['gallery.forward.requestToOverlayReadyMs']!.median,
+    60
   );
   assert.match(markdown(summary), /not first presented motion/);
 });
@@ -214,11 +214,11 @@ test('invalid or missing requested startup diagnostics fail atomically', () => {
     const summary = summarize(input, options);
     assert.equal(summary.valid, false);
     assert.equal(
-      summary.metrics['ordinary.forward.requestToSessionActiveMs'],
+      summary.metrics['gallery.forward.requestToSessionActiveMs'],
       undefined
     );
     assert.equal(
-      summary.metrics['ordinary.forward.requestToOverlayReadyMs'],
+      summary.metrics['gallery.forward.requestToOverlayReadyMs'],
       undefined
     );
   }
@@ -232,21 +232,21 @@ test('overlay timeouts are counted separately and excluded from acknowledged tim
   delete journey.requestToOverlayReadyMs;
   const summary = summarize(input, options);
   assert.equal(summary.valid, true, summary.errors.join());
-  assert.deepEqual(summary.preparationDiagnostics['ordinary.forward'], {
+  assert.deepEqual(summary.preparationDiagnostics['gallery.forward'], {
     tracedJourneys: 1,
     overlayAcknowledgedJourneys: 0,
     overlayTimeoutJourneys: 1,
   });
   assert.equal(
-    summary.metrics['ordinary.forward.requestToOverlayReadyMs'],
+    summary.metrics['gallery.forward.requestToOverlayReadyMs'],
     undefined
   );
   assert.equal(
-    summary.metrics['ordinary.forward.requestToSessionActiveMs']!.median,
+    summary.metrics['gallery.forward.requestToSessionActiveMs']!.median,
     40
   );
   assert.match(markdown(summary), /Overlay timeout/);
-  assert.match(markdown(summary), /ordinary.forward \| 1 \| 0 \| 1/);
+  assert.match(markdown(summary), /gallery.forward \| 1 \| 0 \| 1/);
 
   journey.requestToOverlayReadyMs = 60;
   const invalid = summarize(input, options);
@@ -261,21 +261,20 @@ test('aggregates valid native data without inventing unsupported profiling value
   const summary = summarize(documents(), options);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
   assert.equal(
-    summary.metrics[
-      'android.transitionFrames[ordinary].deadlineOverrunPercent'
-    ]!.median,
+    summary.metrics['android.transitionFrames[gallery].deadlineOverrunPercent']!
+      .median,
     25
   );
   assert.equal(
-    summary.metrics['ordinary.native.touchToAcknowledgementMs'],
+    summary.metrics['gallery.native.touchToAcknowledgementMs'],
     undefined
   );
   assert.equal(
-    summary.metrics['ordinary.react.renderWorkPerUpdateMs'],
+    summary.metrics['gallery.react.renderWorkPerUpdateMs'],
     undefined
   );
   assert.equal(
-    summary.metrics['ordinary.forward.requestToSessionActiveMs']!.p95,
+    summary.metrics['gallery.forward.requestToSessionActiveMs']!.p95,
     null
   );
   assert.match(markdown(summary), /informational/);
@@ -287,7 +286,7 @@ test('profiling data is required only for a separate profiling artifact', () => 
     mode: 'react-profile',
   });
   assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(summary.metrics['live.react.renderWorkPerRunMs']!.median, 2);
+  assert.equal(summary.metrics['gallery.react.renderWorkPerRunMs']!.median, 2);
   assert.equal(summarize(documents(true), options).valid, false);
   const missing = documents(true);
   missing[0].data.reactProfiling.observations = [];
@@ -395,7 +394,7 @@ test('requires complete and consistent native touch acknowledgements for Android
     const summary = summarize(input, options);
     assert.equal(summary.valid, false);
     // Validation is atomic per producer: failed fixtures contribute no metrics.
-    assert.equal(summary.metrics['ordinary.payloadMountsPerRun'], undefined);
+    assert.equal(summary.metrics['gallery.payloadMountsPerRun'], undefined);
   }
 });
 
@@ -410,7 +409,7 @@ test('requires the requested number of forward and backward timing samples', () 
     /Timing journey count must match expected cycles/
   );
   assert.equal(
-    summary.metrics['ordinary.forward.requestToSessionActiveMs'],
+    summary.metrics['gallery.forward.requestToSessionActiveMs'],
     undefined
   );
 });
@@ -453,7 +452,7 @@ test('reports 20 preparation samples per direction without memory artifacts', ()
   });
   assert.equal(summary.valid, true, summary.errors.join('\n'));
   assert.equal(summary.measurementDefinitionVersion, 3);
-  for (const scenario of ['ordinary', 'live']) {
+  for (const scenario of ['gallery']) {
     for (const direction of ['forward', 'backward']) {
       assert.equal(
         summary.metrics[`${scenario}.${direction}.requestToSessionActiveMs`]!
@@ -470,8 +469,8 @@ test('reports 20 preparation samples per direction without memory artifacts', ()
 
 test('requires frame-overrun data for each scenario', () => {
   for (const missing of [
-    'transitionFrames[ordinary]',
-    'transitionFrames[live]',
+    'transitionFrames[gallery]',
+    'transitionFrames[gallery]',
   ]) {
     const input = documents();
     input.at(-1)!.data.benchmarks = input
@@ -530,7 +529,7 @@ test('rejects invalid expected counts and duplicate native artifacts', () => {
       /integer between 1 and 100/
     );
   }
-  for (const documentIndex of [2]) {
+  for (const documentIndex of [1]) {
     const input = documents();
     input.push({ ...input[documentIndex], file: 'copied-artifact.json' });
     const summary = summarize(input, options);
@@ -549,11 +548,14 @@ test('tail estimates require enough observations', () => {
   );
 });
 
-test('rejects synthetic-panel fixtures from before the gallery workload', () => {
-  const input = documents();
-  input[0]!.data.fixtureVersion = 1;
-  const summary = summarize(input, options);
-  assert.equal(summary.valid, false);
+test('rejects every fixture version before the actual Gallery workload', () => {
+  for (const fixtureVersion of [1, 2, 3]) {
+    const input = documents();
+    input[0]!.data.fixtureVersion = fixtureVersion;
+    const summary = summarize(input, options);
+    assert.equal(summary.valid, false);
+    assert.match(summary.errors.join(), /Unsupported fixture schema\/version/);
+  }
 });
 
 test('rejects unsupported benchmark platforms', () => {

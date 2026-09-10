@@ -7,7 +7,7 @@ function fixture(profiling = false, preparationTracing = false) {
   let time = 100;
   const collector = new BenchmarkCollector(
     'test-1',
-    'live',
+    'gallery',
     profiling,
     () => time,
     { preparationTracing }
@@ -88,7 +88,7 @@ test('reports same-clock durations and verifies both destination probes', () => 
 test('delayed diagnostics attach by session and preserve the original request timing', () => {
   const { collector, at } = fixture(false, true);
   completeRoundTrip(collector, at);
-  // Delivery can happen after a later request; its callback time is not a metric.
+  // Degalleryry can happen after a later request; its callback time is not a metric.
   collector.preparationTrace(preparationTrace());
   const report = collector.report();
   assert.equal(report.valid, true, report.errors.join());
@@ -289,7 +289,7 @@ test('nonfinite or backwards durations fail instead of emitting bogus numbers', 
   assert.throws(() => collector.note('bad-clock'), /finite/);
 });
 
-test('supports all 100 native timing cycles without recycling the live owner', () => {
+test('supports all 100 native timing cycles without recycling the gallery owner', () => {
   const { collector, at } = fixture();
   for (let cycle = 0; cycle < 100; cycle += 1) {
     const offset = cycle * 1500;
@@ -306,7 +306,7 @@ test('supports all 100 native timing cycles without recycling the live owner', (
   assert.ok(collector.report().errors.includes('journey-limit-exceeded'));
 });
 
-test('a live payload unmount or extra mount invalidates otherwise verified input', () => {
+test('a gallery payload unmount or extra mount invalidates otherwise verified input', () => {
   const { collector, at } = fixture();
   completeRoundTrip(collector, at);
   collector.payloadLifecycle(1, false);
@@ -316,11 +316,11 @@ test('a live payload unmount or extra mount invalidates otherwise verified input
   assert.ok(report.errors.includes('live-payload-owner-not-retained'));
 });
 
-test('a live report without an observed payload mount is invalid', () => {
+test('a gallery report without an observed payload mount is invalid', () => {
   let time = 100;
   const collector = new BenchmarkCollector(
     'missing-owner',
-    'live',
+    'gallery',
     false,
     () => time
   );

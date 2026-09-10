@@ -1,4 +1,4 @@
-import { findNodeHandle, Platform, type View } from 'react-native';
+import { Platform, type View } from 'react-native';
 import { makeMutable, withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -9,8 +9,7 @@ import {
   createBackCommit,
   type NavigationCommitResult,
 } from '../core/navigationCommit';
-import { RetainedView } from '../native/RetainedView';
-import type { ElementTransitionPair, TransitionSessionData } from '../types';
+import type { TransitionSessionData } from '../types';
 import { useReverseTransitionCommit } from './useReverseTransitionCommit';
 
 jest.mock('react-native-reanimated', () => ({
@@ -31,8 +30,6 @@ jest.mock('react-native-worklets', () => ({
   scheduleOnRN: jest.fn(),
 }));
 
-jest.mock('../native/RetainedView', () => ({ RetainedView: 'RetainedView' }));
-
 function deferred<T>() {
   let resolve!: (value: T) => void;
   const promise = new Promise<T>((resolvePromise) => {
@@ -51,10 +48,8 @@ function flushRN() {
 const trees: ReactTestRenderer[] = [];
 
 async function mountHook({
-  mode = 'standin',
   registerSource = true,
 }: {
-  mode?: 'standin' | 'live';
   registerSource?: boolean;
 } = {}) {
   const visibility = new ElementVisibilityRegistry();
@@ -78,7 +73,7 @@ async function mountHook({
     direction: 'backward',
     state: 'active',
     progress,
-    pairs: [{ transition: { mode } } as ElementTransitionPair],
+    pairs: [],
   };
   const getSession = () => session;
   const completeTransition = jest.fn();
@@ -101,7 +96,7 @@ async function mountHook({
       completeTransition,
       cancelTransition,
     });
-    return api.retainedPresentation;
+    return null;
   }
   let tree!: ReactTestRenderer;
   await act(async () => {
@@ -150,12 +145,6 @@ async function mountHook({
       });
       return { completion, navigation, navigateBack };
     },
-    async capture(success: boolean, captureId = session.id) {
-      const onCaptured = tree.root.findByType(RetainedView).props.onCaptured;
-      await act(async () => {
-        onCaptured({ nativeEvent: { captureId, success } });
-      });
-    },
     finishAnimation() {
       const onComplete = (withSpring as jest.Mock).mock.calls.at(-1)?.[2];
       if (!onComplete) throw new Error('Settlement animation has not started');
@@ -171,7 +160,6 @@ beforeEach(() => {
   Platform.OS = 'android';
   jest.useFakeTimers();
   jest.clearAllMocks();
-  jest.spyOn(require('react-native'), 'findNodeHandle').mockReturnValue(37);
 });
 
 afterEach(async () => {
@@ -185,20 +173,45 @@ afterEach(async () => {
 });
 
 describe('provider reverse commit integration', () => {
-  test('timed Back waits for the animation callback instead of a wall-clock fallback', async () => {
-    const harness = await mountHook({ mode: 'live' });
+  test.each(['ios', 'android'] as const)(
+    '%s waits for animation then removal before handing off',
+    async (platform) => {
+      Platform.OS = platform;
+      const harness = await mountHook();
+      const { completion, navigation, navigateBack } = await harness.start();
+      expect(withSpring).toHaveBeenCalledTimes(1);
+      expect(navigateBack).not.toHaveBeenCalled();
+      await act(async () => {
+        harness.finishAnimation();
+        expect(harness.interactionOwner.value).toBeNull();
+        flushRN();
+      });
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+      await act(async () =>
+        navigation.resolve({ removed: true, presented: false })
+      );
+      await completion;
+      expect(harness.interactionOwner.value).toBe('home');
+      expect(harness.visibility.handoff.value.completed).toBe(true);
+      await act(async () => flushRN());
+      expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
+      expect(harness.cancelTransition).not.toHaveBeenCalled();
+    }
+  );
+
+  test('timed Back has no wall-clock completion fallback', async () => {
+    const harness = await mountHook();
     const { completion, navigation, navigateBack } = await harness.start(
       undefined,
       200
     );
-    expect(withTiming).toHaveBeenCalledTimes(1);
     await act(async () => {
       jest.advanceTimersByTime(1000);
       flushRN();
     });
     expect(navigateBack).not.toHaveBeenCalled();
     await act(async () => {
-      harness.progress.value = 0;
       (withTiming as jest.Mock).mock.calls[0]![2](true);
       flushRN();
     });
@@ -209,292 +222,114 @@ describe('provider reverse commit integration', () => {
     await completion;
   });
 
-  test('iOS keeps the outgoing route until the reverse endpoint without a screen snapshot', async () => {
-    Platform.OS = 'ios';
+  test('route removal does not wait for native transitionEnd', async () => {
     const harness = await mountHook();
-    const { completion, navigation, navigateBack } = await harness.start();
-    expect(harness.tree.root.findAllByType(RetainedView)).toHaveLength(0);
-    expect(findNodeHandle).not.toHaveBeenCalled();
-    expect(withSpring).toHaveBeenCalledTimes(1);
-    expect(navigateBack).not.toHaveBeenCalled();
-    expect(harness.sourceHidden.value).toBe(1);
-    expect(harness.targetHidden.value).toBe(1);
-    await act(async () => {
-      harness.finishAnimation();
-      flushRN();
-    });
-    expect(navigateBack).toHaveBeenCalledTimes(1);
-    // Keep overlay ownership until navigation confirms removal as well.
-    expect(harness.visibility.handoff.value.completed).toBe(false);
-    await act(async () =>
-      navigation.resolve({ removed: true, presented: false })
-    );
-    await completion;
-    expect(harness.visibility.handoff.value.completed).toBe(true);
-    expect(harness.interactionOwner.value).toBe('home');
-    expect(harness.cancelTransition).not.toHaveBeenCalled();
-    await act(async () => flushRN());
-    expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
-  });
-
-  test.each(['standin', 'live'] as const)(
-    '%s releases input after animation and removal without native transitionEnd',
-    async (mode) => {
-      const harness = await mountHook({ mode });
-      const state = { routes: [{ key: 'home' }, { key: 'article' }] };
-      const commit = createBackCommit(
-        {
-          getState: () => state,
-          addListener: jest.fn(() => jest.fn()),
-        },
-        'article',
-        () => {
-          state.routes.pop();
-        }
-      );
-      const { completion, navigateBack } = await harness.start(commit);
-      if (mode === 'standin') await harness.capture(true);
-      expect(navigateBack).toHaveBeenCalledTimes(mode === 'standin' ? 1 : 0);
-      expect(harness.interactionOwner.value).toBeNull();
-      await act(async () => {
-        harness.finishAnimation();
-        if (mode === 'standin') {
-          expect(harness.interactionOwner.value).toBe('home');
-        }
-        flushRN();
-      });
-      await completion;
-      expect(navigateBack).toHaveBeenCalledTimes(1);
-      expect(harness.interactionOwner.value).toBe('home');
-      expect(harness.visibility.handoff.value.completed).toBe(true);
-      expect(harness.cancelTransition).not.toHaveBeenCalled();
-    }
-  );
-
-  test.each(['animation', 'navigation'] as const)(
-    'hands off on the UI runtime with RN callbacks blocked when %s finishes first',
-    async (first) => {
-      const harness = await mountHook();
-      const { completion, navigation, navigateBack } = await harness.start();
-      expect(harness.tree.root.findByType(RetainedView).props.sourceTag).toBe(
-        37
-      );
-      expect(navigateBack).not.toHaveBeenCalled();
-      expect(withSpring).not.toHaveBeenCalled();
-      await harness.capture(true);
-      expect(navigateBack).toHaveBeenCalledTimes(1);
-      expect(withSpring).toHaveBeenCalledTimes(1);
-      expect(harness.visibility.handoff.value.completed).toBe(false);
-
-      // The route is now allowed to disappear; the provider retains the work.
-      harness.unregister();
-      expect(harness.api.reverseController.owns('reverse')).toBe(true);
-      await act(async () => {
-        if (first === 'animation') {
-          harness.finishAnimation();
-        } else navigation.resolve({ removed: true, presented: true });
-      });
-      expect(harness.sourceHidden.value).toBe(1);
-      expect(harness.targetHidden.value).toBe(1);
-      expect(harness.interactionOwner.value).toBeNull();
-      expect(harness.completeTransition).not.toHaveBeenCalled();
-      expect(harness.releaseLock).not.toHaveBeenCalled();
-
-      await act(async () => {
-        if (first === 'animation') {
-          navigation.resolve({ removed: true, presented: true });
-        } else {
-          harness.finishAnimation();
-        }
-      });
-      // Even the RN animation-complete callback is still blocked. The second
-      // signal releases both visual and input ownership entirely on the UI side.
-      expect(harness.sourceHidden.value).toBe(0);
-      expect(harness.targetHidden.value).toBe(0);
-      expect(harness.interactionOwner.value).toBe('home');
-      expect(harness.visibility.handoff.value.completed).toBe(true);
-      expect(harness.completeTransition).not.toHaveBeenCalled();
-      expect(harness.navigationController.isNavigationLocked()).toBe(true);
-      expect(harness.api.reverseController.owns('reverse')).toBe(true);
-      await act(async () => flushRN());
-      await completion;
-      expect(harness.completeTransition).not.toHaveBeenCalled();
-      await act(async () => flushRN());
-      expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
-      expect(harness.navigationController.isNavigationLocked()).toBe(false);
-      expect(harness.cancelTransition).not.toHaveBeenCalled();
-      expect(harness.tree.root.findAllByType(RetainedView)).toHaveLength(0);
-    }
-  );
-
-  test.each(['failure', 'timeout'] as const)(
-    'keeps the source mounted during animation after capture %s',
-    async (failure) => {
-      const harness = await mountHook();
-      const { completion, navigation, navigateBack } = await harness.start();
-      if (failure === 'failure') await harness.capture(false);
-      else {
-        await act(async () => jest.advanceTimersByTime(150));
+    const state = { routes: [{ key: 'home' }, { key: 'article' }] };
+    const commit = createBackCommit(
+      { getState: () => state, addListener: jest.fn(() => jest.fn()) },
+      'article',
+      () => {
+        state.routes.pop();
       }
-      expect(harness.tree.root.findAllByType(RetainedView)).toHaveLength(0);
-      expect(withSpring).toHaveBeenCalledTimes(1);
-      expect(navigateBack).not.toHaveBeenCalled();
-      await act(async () => {
-        harness.finishAnimation();
-        flushRN();
-      });
-      expect(navigateBack).toHaveBeenCalledTimes(1);
-      expect(harness.interactionOwner.value).toBeNull();
-      await act(async () => {
-        navigation.resolve({ removed: true, presented: true });
-      });
-      await completion;
-      expect(harness.interactionOwner.value).toBe('home');
-      expect(harness.cancelTransition).not.toHaveBeenCalled();
-    }
-  );
-
-  test.each([
-    ['live presentation', { mode: 'live' as const }],
-    ['missing source registration', { registerSource: false }],
-  ])('falls back without capture for %s', async (_reason, options) => {
-    const harness = await mountHook(options);
-    const { completion, navigation, navigateBack } = await harness.start();
-    expect(findNodeHandle).not.toHaveBeenCalled();
-    expect(harness.tree.root.findAllByType(RetainedView)).toHaveLength(0);
-    expect(withSpring).toHaveBeenCalledTimes(1);
-    expect(navigateBack).not.toHaveBeenCalled();
+    );
+    const { completion } = await harness.start(commit);
     await act(async () => {
       harness.finishAnimation();
       flushRN();
-    });
-    expect(navigateBack).toHaveBeenCalledTimes(1);
-    await act(async () => {
-      navigation.resolve({ removed: true, presented: true });
     });
     await completion;
     expect(harness.interactionOwner.value).toBe('home');
   });
 
-  test('rejects unrelated capture IDs and stale native callbacks after replacement', async () => {
+  test('a stale animation callback cannot pop the replacement session', async () => {
     const harness = await mountHook();
     const first = await harness.start();
-    const oldCaptureCallback =
-      harness.tree.root.findByType(RetainedView).props.onCaptured;
-    await harness.capture(true, 'unrelated');
-    expect(first.navigateBack).not.toHaveBeenCalled();
-
+    const oldCallback = (withSpring as jest.Mock).mock.calls[0]![2];
     harness.replaceSession('replacement');
     const second = await harness.start();
     await first.completion;
     await act(async () => {
-      oldCaptureCallback({
-        nativeEvent: { captureId: 'reverse', success: true },
-      });
+      oldCallback(true);
+      flushRN();
     });
-    expect(harness.tree.root.findByType(RetainedView).props.captureId).toBe(
-      'replacement'
-    );
     expect(first.navigateBack).not.toHaveBeenCalled();
     expect(second.navigateBack).not.toHaveBeenCalled();
-    expect(withSpring).not.toHaveBeenCalled();
-
-    await harness.capture(true);
-    expect(second.navigateBack).toHaveBeenCalledTimes(1);
     await act(async () => {
       harness.finishAnimation();
       flushRN();
-      second.navigation.resolve({ removed: true, presented: true });
     });
-    await second.completion;
-    expect(harness.interactionOwner.value).toBe('home');
-    expect(harness.cancelTransition).not.toHaveBeenCalled();
-  });
-
-  test('late navigation acknowledgements cannot complete a newer session', async () => {
-    const harness = await mountHook();
-    const first = await harness.start();
-    await harness.capture(true);
-    harness.replaceSession('replacement');
-    const second = await harness.start();
-    await first.completion;
-    await act(async () => {
-      first.navigation.resolve({ removed: true, presented: true });
-    });
-    expect(harness.interactionOwner.value).toBeNull();
-    expect(harness.completeTransition).not.toHaveBeenCalled();
-    expect(harness.api.reverseController.owns('replacement')).toBe(true);
-
-    await harness.capture(true);
-    await act(async () => {
-      harness.finishAnimation();
-      flushRN();
-      second.navigation.resolve({ removed: true, presented: true });
-    });
+    await act(async () =>
+      second.navigation.resolve({ removed: true, presented: true })
+    );
     await second.completion;
     await act(async () => flushRN());
     expect(harness.completeTransition.mock.calls).toEqual([['replacement']]);
   });
 
-  test('provider disposal clears a native-ready gate before a late spring callback', async () => {
+  test('late navigation acknowledgement cannot complete a replacement session', async () => {
     const harness = await mountHook();
-    const { completion, navigation } = await harness.start();
-    await harness.capture(true);
-    await act(async () => {
-      navigation.resolve({ removed: true, presented: true });
-    });
-    expect(harness.interactionOwner.value).toBeNull();
-    await act(async () => harness.tree.unmount());
-    await completion;
+    const first = await harness.start();
     await act(async () => {
       harness.finishAnimation();
       flushRN();
     });
+    harness.replaceSession('replacement');
+    const second = await harness.start();
+    await first.completion;
+    await act(async () =>
+      first.navigation.resolve({ removed: true, presented: true })
+    );
     expect(harness.interactionOwner.value).toBeNull();
-    expect(harness.visibility.handoff.value.completed).toBe(false);
     expect(harness.completeTransition).not.toHaveBeenCalled();
-  });
-
-  test('observed source removal still opens the UI gate when the adapter reports stale state', async () => {
-    const harness = await mountHook();
-    const { completion, navigation } = await harness.start();
-    await harness.capture(true);
-    harness.unregister();
     await act(async () => {
       harness.finishAnimation();
       flushRN();
-      navigation.resolve({ removed: false, presented: false });
     });
-    await completion;
-    expect(harness.interactionOwner.value).toBe('home');
-    expect(harness.visibility.handoff.value.completed).toBe(true);
-    expect(harness.cancelTransition).not.toHaveBeenCalled();
+    await act(async () =>
+      second.navigation.resolve({ removed: true, presented: true })
+    );
+    await second.completion;
+    await act(async () => flushRN());
+    expect(harness.completeTransition.mock.calls).toEqual([['replacement']]);
   });
 
-  test.each(['capture', 'navigation'] as const)(
-    'provider disposal while %s is pending prevents subsequent handoff',
+  test('failed navigation cancels instead of handing off input', async () => {
+    const harness = await mountHook();
+    const { completion, navigation } = await harness.start();
+    await act(async () => {
+      harness.finishAnimation();
+      flushRN();
+    });
+    await act(async () =>
+      navigation.resolve({ removed: false, presented: false })
+    );
+    await completion;
+    expect(harness.interactionOwner.value).toBeNull();
+    expect(harness.cancelTransition).toHaveBeenCalledWith('reverse');
+  });
+
+  test.each(['animation', 'navigation'] as const)(
+    'disposal while %s is pending rejects late completion',
     async (pending) => {
       const harness = await mountHook();
       const { completion, navigation, navigateBack } = await harness.start();
-      const captureCallback =
-        harness.tree.root.findByType(RetainedView).props.onCaptured;
-      if (pending === 'navigation') await harness.capture(true);
+      if (pending === 'navigation')
+        await act(async () => {
+          harness.finishAnimation();
+          flushRN();
+        });
       await act(async () => harness.tree.unmount());
       await completion;
       await act(async () => {
-        captureCallback({
-          nativeEvent: { captureId: 'reverse', success: true },
-        });
+        harness.finishAnimation();
         navigation.resolve({ removed: true, presented: true });
-        if (pending === 'navigation') harness.finishAnimation();
         flushRN();
-        jest.advanceTimersByTime(200);
       });
-      expect(navigateBack).toHaveBeenCalledTimes(pending === 'capture' ? 0 : 1);
+      expect(navigateBack).toHaveBeenCalledTimes(
+        pending === 'navigation' ? 1 : 0
+      );
       expect(harness.completeTransition).not.toHaveBeenCalled();
-      expect(harness.cancelTransition).not.toHaveBeenCalled();
       expect(harness.interactionOwner.value).toBeNull();
-      expect(harness.api.reverseController.owns('reverse')).toBe(false);
     }
   );
 });

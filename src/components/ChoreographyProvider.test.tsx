@@ -168,10 +168,8 @@ describe('ChoreographyProvider lifecycle', () => {
             }),
             metrics,
             getPresentation: () => ({
-              content: null,
               transition: {
-                renderer:
-                  () => null,
+                renderer: () => null,
               },
             }),
           });
@@ -232,8 +230,8 @@ describe('ChoreographyProvider lifecycle', () => {
         }
 
         expect(ready).toHaveBeenCalledWith(true);
-        expect(hidden.value).toBe(1);
-        expect(writes[0]).toHaveBeenCalledTimes(1);
+        expect(hidden.value).toBe(0);
+        expect(writes[0]).not.toHaveBeenCalled();
         expect(writes[1]).not.toHaveBeenCalled();
 
         expect(controlRenders).not.toHaveBeenCalled();
@@ -245,7 +243,7 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(onTransitionEnd).toHaveBeenCalledTimes(1);
         expect(onTransitionEnd).toHaveBeenCalledWith(session);
         expect(hidden.value).toBe(0);
-        expect(writes[0]).toHaveBeenCalledTimes(2);
+        expect(writes[0]).not.toHaveBeenCalled();
         expect(writes[1]).not.toHaveBeenCalled();
       } finally {
         await act(async () => tree?.unmount());

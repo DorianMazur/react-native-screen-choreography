@@ -54,19 +54,15 @@ function rendererProps(
 }
 
 describe('makeTransition', () => {
-  test('brands live mode and defaults zIndex to 100 while retaining explicit zero', () => {
+  test('defaults zIndex to 100 while retaining explicit zero', () => {
     const Renderer = () => null;
 
     expect(makeTransition({ renderer: Renderer })).toMatchObject({
-      mode: 'live',
       zIndex: 100,
     });
-    expect(makeTransition({ renderer: Renderer, zIndex: 0 })).toMatchObject(
-      {
-        mode: 'live',
-        zIndex: 0,
-      }
-    );
+    expect(makeTransition({ renderer: Renderer, zIndex: 0 })).toMatchObject({
+      zIndex: 0,
+    });
   });
 
   test('injects the exact pair host and strips frozen presentation content', async () => {

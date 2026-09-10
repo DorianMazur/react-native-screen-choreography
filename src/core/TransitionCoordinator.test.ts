@@ -304,7 +304,6 @@ describe('TransitionCoordinator presentation freezing', () => {
     const liveValue = { value: 0 };
     const sourcePresentation: { current: ElementPresentation } = {
       current: {
-        metadata: 'source-v1',
         style: { backgroundColor: 'red' },
         transition,
         metadata: { revision: 1, liveValue },
@@ -312,7 +311,6 @@ describe('TransitionCoordinator presentation freezing', () => {
     };
     const targetPresentation: { current: ElementPresentation } = {
       current: {
-        metadata: 'target-v1',
         style: { backgroundColor: 'blue' },
         transition,
         metadata: { revision: 10 },
@@ -375,8 +373,6 @@ describe('TransitionCoordinator presentation freezing', () => {
     const pair = active.pairs[0]!;
 
     // Frozen presentations are stored on the pair.
-    expect(pair.sourcePresentation.metadata).toBe('source-v1');
-    expect(pair.targetPresentation.metadata).toBe('target-v1');
     expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
     expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
     expect(pair.sourcePresentation.metadata).toEqual({
@@ -388,20 +384,16 @@ describe('TransitionCoordinator presentation freezing', () => {
     // Mutating the underlying SharedElement state AFTER the session started
     // must NOT affect what the overlay renders — the snapshot is frozen.
     sourcePresentation.current = {
-      metadata: 'source-v2',
       style: { backgroundColor: 'green' },
       transition,
       metadata: { revision: 2, liveValue: { value: 999 } },
     };
     targetPresentation.current = {
-      metadata: 'target-v2',
       style: { backgroundColor: 'yellow' },
       transition,
       metadata: { revision: 11 },
     };
 
-    expect(pair.sourcePresentation.metadata).toBe('source-v1');
-    expect(pair.targetPresentation.metadata).toBe('target-v1');
     expect(pair.sourcePresentation.style?.backgroundColor).toBe('red');
     expect(pair.targetPresentation.style?.backgroundColor).toBe('blue');
     expect(pair.sourcePresentation.metadata).toEqual({
@@ -455,7 +447,7 @@ describe('TransitionCoordinator presentation freezing', () => {
       direction: 'forward',
     });
 
-    expect(coordinator.getHiddenElements().size).toBe(2);
+    expect(coordinator.getHiddenElements().size).toBe(0);
 
     coordinator.completeTransition();
     expect(coordinator.getActiveSession()).toBeNull();
@@ -466,14 +458,12 @@ describe('TransitionCoordinator presentation freezing', () => {
   test('live pairs are never hidden because the real view is what animates', async () => {
     const liveTransition: SharedElementTransition = {
       renderer: () => null,
-      mode: 'live',
     };
     const snap: { current: ElementPresentation } = {
       current: { metadata: null, transition: liveTransition },
     };
     const targetTransition: SharedElementTransition = {
       renderer: () => null,
-      mode: 'standin',
     };
     const targetSnap: { current: ElementPresentation } = {
       current: { metadata: null, transition: targetTransition },
@@ -522,11 +512,9 @@ describe('TransitionCoordinator presentation freezing', () => {
   test('backward pairing selects the departing detail transition', async () => {
     const listTransition: SharedElementTransition = {
       renderer: () => null,
-      mode: 'live',
     };
     const detailTransition: SharedElementTransition = {
       renderer: () => null,
-      mode: 'live',
     };
     const register = (
       screenId: string,
@@ -600,7 +588,7 @@ describe('TransitionCoordinator presentation freezing', () => {
       direction: 'forward',
     });
 
-    expect(coordinator.getHiddenElements().size).toBe(2);
+    expect(coordinator.getHiddenElements().size).toBe(0);
 
     coordinator.cancelTransition();
     expect(coordinator.getActiveSession()).toBeNull();
@@ -855,7 +843,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
       expect(secondSession?.targetScreenId).toBe('second-detail');
       expect(coordinator.getActiveSession()?.id).toBe(secondSession?.id);
-      expect(coordinator.getHiddenElements().size).toBe(2);
+      expect(coordinator.getHiddenElements().size).toBe(0);
     }
   );
 
@@ -922,7 +910,7 @@ describe('TransitionCoordinator readiness and metrics cache', () => {
 
     await expect(firstSessionPromise).resolves.toBeNull();
     expect(coordinator.getActiveSession()?.id).toBe(secondSession?.id);
-    expect(coordinator.getHiddenElements().size).toBe(2);
+    expect(coordinator.getHiddenElements().size).toBe(0);
   });
 
   test('disposal invalidates preparation before it can activate', async () => {
