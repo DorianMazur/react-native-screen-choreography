@@ -461,15 +461,6 @@ export function summarize(
         .sort(([a], [b]) => a.localeCompare(b))
         .map(([key, values]) => [key, distribution(values)])
     ),
-    notes: [
-      'Android emulator timings are diagnostics, not physical-device performance guarantees.',
-      'requestToSessionActiveMs ends at the JS active callback; it does not measure first presented motion.',
-      'Probe times include native test waiting; they are observed upper bounds, not earliest possible input readiness.',
-      'React actualDuration measures render work, not native Fabric commit time. Profiling-build timings are separate.',
-      'deadlineOverrunPercent is the fraction of captured frames past their platform deadline, not a display refresh/drop count.',
-      'Memory peaks are sampled checkpoints. Memory deltas include caches and do not prove a leak.',
-      'P95 is omitted for fewer than 20 samples. Correlated frame samples do not replace repeated independent trials.',
-    ],
   };
 }
 
@@ -485,7 +476,6 @@ export function markdown(summary: ReturnType<typeof summarize>) {
     '',
     summaryTable(summary),
     '',
-    ...summary.notes.map((note) => `- ${note}`),
     '',
   ].join('\n');
 }
