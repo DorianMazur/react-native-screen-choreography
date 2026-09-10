@@ -6,7 +6,7 @@ import { selectBaselineRun } from './post-comment.mts';
 function report() {
   return {
     schemaVersion: 1,
-    measurementDefinitionVersion: 2,
+    measurementDefinitionVersion: 3,
     fixtureVersion: 2,
     valid: true,
     platform: 'android',
@@ -18,7 +18,7 @@ function report() {
       emulator: true,
       abi: 'x86_64',
       iterations: 3,
-      memoryCycles: 3,
+      timingCycles: 3,
       reactNativeVersion: '0.83.0',
       reanimatedVersion: '4.2',
       nodeVersion: 'v24.13.0',
@@ -29,27 +29,28 @@ function report() {
         count: 3,
         median: 0,
       },
-      'ordinary.memory.retainedPssDeltaKb': { count: 1, median: -1024 },
+      'ordinary.forward.requestToSessionActiveMs': { count: 1, median: 40 },
     },
   };
 }
 
-test('shows absolute deltas including zero baselines, negative retention and unit conversion', () => {
+test('shows absolute deltas including zero baselines, negative timing changes', () => {
   const base = report();
   const current = report();
   current.metrics[
     'android.transitionFrames[ordinary].deadlineOverrunPercent'
   ].median = 5;
-  current.metrics['ordinary.memory.retainedPssDeltaKb'].median = -2048;
+  current.metrics['ordinary.forward.requestToSessionActiveMs'].median = 30;
   assert.equal(compatible(current, base), true);
   const table = summaryTable(current, base);
   assert.match(table, /0 \| 5 \| \+5 pp/);
-  assert.match(table, /-1 \| -2 \| -1 MiB/);
+  assert.match(table, /40 \| 30 \| -10 ms/);
   assert.doesNotMatch(table, /Infinity|NaN/);
 });
 
 test('requires explicit matching environment and definition metadata', () => {
   for (const field of Object.keys(report().metadata)) {
+    if (field === 'runnerImage') continue;
     const base = report();
     delete (base.metadata as Record<string, unknown>)[field];
     assert.equal(compatible(report(), base), false, field);
@@ -69,9 +70,19 @@ test('requires explicit matching environment and definition metadata', () => {
   assert.match(summaryTable(report()), /— \| 0 \| —/);
 });
 
+test('compares measurements across runner image versions or missing runner image metadata', () => {
+  const base = report();
+  const current = report();
+  current.metadata.runnerImage = 'ubuntu-2';
+  assert.equal(compatible(current, base), true);
+  assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
+  delete (base.metadata as Record<string, unknown>).runnerImage;
+  assert.equal(compatible(current, base), true);
+});
+
 test('does not display nonnumeric metrics or compare invalid collections', () => {
   const current = report();
-  current.metrics['ordinary.memory.retainedPssDeltaKb'].median = NaN;
+  current.metrics['ordinary.forward.requestToSessionActiveMs'].median = NaN;
   assert.doesNotMatch(summaryTable(current), /NaN/);
   assert.equal(compatible(current, { ...report(), valid: false }), false);
 });
@@ -108,9 +119,9 @@ test('selects only successful push runs for the exact PR base branch and commit'
 
 test('does not compare rows collected with different sample counts', () => {
   const base = report();
-  base.metrics['ordinary.memory.retainedPssDeltaKb'].count = 2;
+  base.metrics['ordinary.forward.requestToSessionActiveMs'].count = 2;
   assert.match(
     summaryTable(report(), base),
-    /retained memory \(MiB\) \| — \| -1 \| —/
+    /open preparation \(ms\) \| — \| 40 \| —/
   );
 });

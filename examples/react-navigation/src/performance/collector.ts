@@ -64,7 +64,7 @@ export interface BenchmarkReport {
 
 const MAX_SAMPLES = 4096;
 const MAX_REACT_OBSERVATIONS = 8192;
-// The native memory runner accepts 100 round trips, each containing two journeys.
+// The native timing runner accepts 100 round trips, each containing two journeys.
 const MAX_JOURNEYS = 200;
 
 /** No bridge calls or React state updates occur while collecting observations. */

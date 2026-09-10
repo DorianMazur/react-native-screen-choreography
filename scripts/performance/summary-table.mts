@@ -7,11 +7,10 @@ const comparableMetadata = [
   'emulator',
   'abi',
   'iterations',
-  'memoryCycles',
+  'timingCycles',
   'reactNativeVersion',
   'reanimatedVersion',
   'nodeVersion',
-  'runnerImage',
 ];
 
 export function compatible(current: InputRecord, base?: InputRecord): boolean {
@@ -63,12 +62,6 @@ export function headlineMetrics(mode: string) {
             label: `${scenario} · return preparation (ms)`,
             scale: 1,
             unit: 'ms',
-          },
-          {
-            key: `${scenario}.memory.retainedPssDeltaKb`,
-            label: `${scenario} · retained memory (MiB)`,
-            scale: 1 / 1024,
-            unit: 'MiB',
           },
         ]
   );

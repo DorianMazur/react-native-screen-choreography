@@ -14,8 +14,8 @@ if [[ -n "${ANDROID_HOME:-}" ]]; then export PATH="$ANDROID_HOME/platform-tools:
 if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"; fi
 command -v adb >/dev/null || { echo 'Install Android SDK platform-tools and set ANDROID_HOME.' >&2; exit 2; }
 adb get-state >/dev/null
-iterations="${PERFORMANCE_ITERATIONS:-3}"
-cycles="${PERFORMANCE_MEMORY_CYCLES:-3}"
+iterations="${PERFORMANCE_ITERATIONS:-20}"
+cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
 [[ "$iterations" =~ ^[1-9][0-9]*$ && "$cycles" =~ ^[1-9][0-9]*$ ]] || { echo 'Iteration/cycle counts must be positive integers.' >&2; exit 2; }
 [[ "$iterations" -le 100 && "$cycles" -le 100 ]] || { echo 'Iteration/cycle counts must not exceed 100.' >&2; exit 2; }
 abi="${PERFORMANCE_ABI:-$(adb shell getprop ro.product.cpu.abi | tr -d '\r')}"
@@ -25,7 +25,7 @@ output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(d
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Running %s iterations per frame case and %s memory/input cycles per scenario.\n' "$iterations" "$cycles"
+printf 'Running %s iterations per frame case and %s timing/input cycles per scenario.\n' "$iterations" "$cycles"
 echo 'Each frame iteration starts a fresh Activity before measuring transitions.'
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
@@ -43,7 +43,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   runnerImage: process.env.ImageVersion ?? 'local',
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
-  abi: process.argv[3], iterations: Number(process.argv[4]), memoryCycles: Number(process.argv[5]),
+  abi: process.argv[3], iterations: Number(process.argv[4]), timingCycles: Number(process.argv[5]),
 }, null, 2));
 NODE
 
@@ -53,7 +53,7 @@ arguments=(
   "-PreactNativeArchitectures=$abi"
   "-Pandroid.testInstrumentationRunnerArguments.performanceReactProfile=$profile"
   "-Pandroid.testInstrumentationRunnerArguments.performanceIterations=$iterations"
-  "-Pandroid.testInstrumentationRunnerArguments.performanceMemoryCycles=$cycles"
+  "-Pandroid.testInstrumentationRunnerArguments.performanceTimingCycles=$cycles"
 )
 if [[ "$emulator" == '1' ]]; then
   echo 'Emulator run: timings are diagnostic. Only the EMULATOR benchmark warning is suppressed.'
@@ -69,7 +69,7 @@ rm -rf "$native_outputs"
 status=0
 (cd examples/react-navigation/android && ./gradlew "${arguments[@]}") > >(tee "$output/gradle.log") 2>&1 || status=$?
 
-# Instrumentation copies fixture/memory data into AGP's output before test APK
+# Instrumentation copies fixture data into AGP's output before test APK
 # cleanup. Collect that single source even on failure; do not double-count it
 # through an additional post-test pull from a surviving app installation.
 if [[ -d "$native_outputs" ]]; then cp -R "$native_outputs" "$output/raw/macrobenchmark"; fi

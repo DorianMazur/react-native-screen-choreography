@@ -14,7 +14,6 @@ import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
 import java.io.File
-import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -32,7 +31,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
   private val arguments = InstrumentationRegistry.getArguments()
   private val device = UiDevice.getInstance(instrumentation)
   private val reactProfile = arguments.getString("performanceReactProfile", "false").toBoolean()
-  private val iterations = arguments.getString("performanceIterations", "3").toInt().also {
+  private val iterations = arguments.getString("performanceIterations", "20").toInt().also {
     require(it in 1..100) { "performanceIterations must be between 1 and 100" }
   }
 
@@ -58,38 +57,15 @@ class ChoreographyBenchmarks(private val scenario: String) {
   }
 
   @Test
-  fun repeatedNavigationMemoryAndInput() {
-    val cycles = arguments.getString("performanceMemoryCycles", "3").toInt().also {
-      require(it in 1..100) { "performanceMemoryCycles must be between 1 and 100" }
+  fun repeatedNavigationTimingAndInput() {
+    val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
+      require(it in 1..100) { "performanceTimingCycles must be between 1 and 100" }
     }
     device.executeShellCommand("am force-stop $APP_ID")
     instrumentation.context.startActivity(launchIntent())
     await("benchmark-ready")
-    val samples = JSONArray()
-    for (iteration in 0 until cycles) {
-      samples.put(memorySample(iteration, "baseline"))
-      click("benchmark-start")
-      await("benchmark-detail-settled")
-      click("benchmark-detail-probe")
-      await("benchmark-detail-probe-ack")
-      samples.put(memorySample(iteration, "detail"))
-      click("benchmark-back")
-      await("benchmark-list-settled")
-      click("benchmark-list-probe")
-      await("benchmark-list-probe-ack")
-      samples.put(memorySample(iteration, "after-back"))
-    }
+    repeat(cycles) { roundTrip() }
     exportRun()
-    val report = JSONObject().apply {
-      put("schemaVersion", 1)
-      put("kind", "memory")
-      put("scenario", scenario)
-      put("reactProfile", reactProfile)
-      put("clock", "android-uptime-ms")
-      put("description", "Process PSS/RSS checkpoints during repeated round trips; sampled values, not a measured continuous peak")
-      put("samples", samples)
-    }
-    writeArtifact("memory-$scenario-${SystemClock.elapsedRealtimeNanos()}.json", report.toString(2))
   }
 
   private fun roundTrip() {
@@ -123,24 +99,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
     device.executeShellCommand("ls $APP_OUTPUT_DIRECTORY")
       .lineSequence().map { it.trim() }
       .filter { it.matches(Regex("[A-Za-z0-9_.-]+\\.json")) }.toSet()
-
-  private fun memorySample(iteration: Int, phase: String): JSONObject {
-    val raw = device.executeShellCommand("dumpsys meminfo $APP_ID")
-    val pss = Regex("TOTAL PSS:\\s*(\\d+)").find(raw)?.groupValues?.get(1)?.toLong()
-    val rss = Regex("TOTAL RSS:\\s*(\\d+)").find(raw)?.groupValues?.get(1)?.toLong()
-    val capturedAt = SystemClock.uptimeMillis()
-    writeArtifact("meminfo-$scenario-$iteration-$phase-$capturedAt.txt", raw)
-    check(pss != null && rss != null) {
-      "Device did not expose TOTAL PSS and TOTAL RSS; inspect saved dumpsys output (API 31+ recommended)"
-    }
-    return JSONObject().apply {
-      put("iteration", iteration)
-      put("phase", phase)
-      put("capturedAtUptimeMs", capturedAt)
-      put("totalPssKb", pss)
-      put("totalRssKb", rss)
-    }
-  }
 
   private fun launchIntent() = Intent(Intent.ACTION_MAIN).apply {
     component = ComponentName(APP_ID, "$APP_ID.MainActivity")
