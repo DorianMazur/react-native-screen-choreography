@@ -159,7 +159,7 @@ test('nonfinite or backwards durations fail instead of emitting bogus numbers', 
   assert.throws(() => collector.note('bad-clock'), /finite/);
 });
 
-test('supports all 100 native memory cycles without recycling the live owner', () => {
+test('supports all 100 native timing cycles without recycling the live owner', () => {
   const { collector, at } = fixture();
   for (let cycle = 0; cycle < 100; cycle += 1) {
     const offset = cycle * 1500;

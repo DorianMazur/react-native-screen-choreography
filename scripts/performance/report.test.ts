@@ -57,25 +57,10 @@ function fixture(scenario: string, profile = false): InputRecord {
   };
 }
 
-function memory(scenario: string, profile = false): InputRecord {
-  return {
-    schemaVersion: 1,
-    kind: 'memory',
-    scenario,
-    reactProfile: profile,
-    samples: [
-      { iteration: 0, phase: 'baseline', totalPssKb: 1000, totalRssKb: null },
-      { iteration: 0, phase: 'detail', totalPssKb: 1500, totalRssKb: 2500 },
-      { iteration: 0, phase: 'after-back', totalPssKb: 900, totalRssKb: 1800 },
-    ],
-  };
-}
-
 function documents(profile = false): MeasurementDocument[] {
   return [
     ...['ordinary', 'live'].flatMap((scenario) => [
       { file: `${scenario}.json`, data: fixture(scenario, profile) },
-      { file: `${scenario}-memory.json`, data: memory(scenario, profile) },
     ]),
     {
       file: 'native-benchmarkData.json',
@@ -98,10 +83,10 @@ function documents(profile = false): MeasurementDocument[] {
 const options = {
   platform: 'android',
   mode: 'native-release',
-  metadata: { iterations: 2, memoryCycles: 1 },
+  metadata: { iterations: 2, timingCycles: 1 },
 };
 
-test('aggregates valid native data without inventing unsupported profiling or memory values', () => {
+test('aggregates valid native data without inventing unsupported profiling values', () => {
   const summary = summarize(documents(), options);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
   assert.equal(
@@ -114,11 +99,6 @@ test('aggregates valid native data without inventing unsupported profiling or me
     summary.metrics['ordinary.native.touchToAcknowledgementMs'],
     undefined
   );
-  assert.equal(
-    summary.metrics['ordinary.memory.retainedPssDeltaKb']!.median,
-    -100
-  );
-  assert.equal(summary.metrics['ordinary.memory.baseline.rssKb'], undefined);
   assert.equal(
     summary.metrics['ordinary.react.renderWorkPerUpdateMs'],
     undefined
@@ -179,15 +159,13 @@ test('rejects incomplete runs even if a producer incorrectly sets valid=true', (
   }
 });
 
-test('rejects absent frame collection, missing memory checkpoints and duplicate runs', () => {
+test('rejects absent frame collection and duplicate runs', () => {
   const input = documents();
   input.at(-1)!.data.benchmarks[0].sampledMetrics = {};
-  input[1].data.samples.pop();
   input.push(input[0]);
   const summary = summarize(input, options);
   assert.equal(summary.valid, false);
   assert.match(summary.errors.join(), /frame-overrun/);
-  assert.match(summary.errors.join(), /memory checkpoint/);
   assert.match(summary.errors.join(), /Duplicate run ID/);
 });
 
@@ -250,55 +228,73 @@ test('requires complete and consistent native touch acknowledgements for Android
   }
 });
 
-test('requires all memory phases once per contiguous iteration and requested cycle count', () => {
-  for (const mutate of [
-    (data: InputRecord) => {
-      data.samples.push({ ...data.samples[0] });
-    },
-    (data: InputRecord) => {
-      data.samples[2].iteration = 1;
-    },
-    (data: InputRecord) => {
-      data.samples[0].iteration = -1;
-    },
-    (data: InputRecord) => {
-      data.samples[0].iteration = 0.5;
-    },
-    (data: InputRecord) => {
-      data.samples = data.samples.map((sample: InputRecord) => ({
-        ...sample,
-        iteration: 1,
-      }));
-    },
-  ]) {
-    const input = documents();
-    mutate(input[1].data);
-    const summary = summarize(input, options);
-    assert.equal(summary.valid, false);
-    assert.equal(summary.metrics['ordinary.memory.baseline.pssKb'], undefined);
-  }
-  const wrongCycles = summarize(documents(), {
+test('requires the requested number of forward and backward timing samples', () => {
+  const summary = summarize(documents(), {
     ...options,
-    metadata: { iterations: 2, memoryCycles: 2 },
+    metadata: { iterations: 2, timingCycles: 20 },
   });
-  assert.match(wrongCycles.errors.join(), /expected cycles/);
+  assert.equal(summary.valid, false);
+  assert.match(
+    summary.errors.join(),
+    /Timing journey count must match expected cycles/
+  );
+  assert.equal(
+    summary.metrics['ordinary.forward.requestToSessionActiveMs'],
+    undefined
+  );
+});
 
-  const complete = documents();
-  for (const document of complete.filter(
-    ({ data }) => data.kind === 'memory'
+test('reports 20 preparation samples per direction without memory artifacts', () => {
+  const input = documents();
+  for (const { data } of input.filter(
+    (document) => document.data.fixtureVersion
   )) {
-    document.data.samples.push(
-      ...document.data.samples.map((sample: InputRecord) => ({
-        ...sample,
-        iteration: 1,
-      }))
+    data.journeys = Array.from({ length: 20 }, () => data.journeys).flat();
+    data.native.exportedAtUptimeMs = 41000;
+    data.native.touches = data.journeys.map((_: unknown, index: number) => ({
+      kind: 'activity-action-up',
+      eventUptimeMs: (index + 1) * 1000,
+      dispatchUptimeMs: (index + 1) * 1000 + 1,
+    }));
+    data.native.inputAcknowledgements = data.journeys.map(
+      (journey: InputRecord, index: number) => ({
+        probe: journey.probe.screen,
+        eventUptimeMs: (index + 1) * 1000,
+        nativeAckUptimeMs: (index + 1) * 1000 + 8,
+        touchToNativeAckMs: 8,
+      })
     );
   }
-  const valid = summarize(complete, {
+  for (const benchmark of input.at(-1)!.data.benchmarks) {
+    benchmark.metrics.frameCount.runs = Array(20).fill(1);
+    benchmark.sampledMetrics.frameOverrunMs.runs = Array.from(
+      { length: 20 },
+      () => [-1]
+    );
+    benchmark.sampledMetrics.frameDurationCpuMs.runs = Array.from(
+      { length: 20 },
+      () => [3]
+    );
+  }
+  const summary = summarize(input, {
     ...options,
-    metadata: { iterations: 2, memoryCycles: 2 },
+    metadata: { iterations: 20, timingCycles: 20 },
   });
-  assert.equal(valid.valid, true, valid.errors.join('\n'));
+  assert.equal(summary.valid, true, summary.errors.join('\n'));
+  assert.equal(summary.measurementDefinitionVersion, 3);
+  for (const scenario of ['ordinary', 'live']) {
+    for (const direction of ['forward', 'backward']) {
+      assert.equal(
+        summary.metrics[`${scenario}.${direction}.requestToSessionActiveMs`]!
+          .count,
+        20
+      );
+    }
+  }
+  assert.equal(
+    Object.keys(summary.metrics).some((key) => key.includes('memory')),
+    false
+  );
 });
 
 test('requires frame-overrun data for each scenario', () => {
@@ -352,26 +348,23 @@ test('validates pinned Macrobenchmark run arrays, counts, duplicate names and pe
   }
 });
 
-test('rejects invalid expected counts and duplicate native or memory artifacts', () => {
+test('rejects invalid expected counts and duplicate native artifacts', () => {
   for (const metadata of [
     { iterations: 0 },
     { iterations: 1.5 },
-    { memoryCycles: 101 },
+    { timingCycles: 101 },
   ]) {
     assert.match(
       summarize(documents(), { ...options, metadata }).errors.join(),
       /integer between 1 and 100/
     );
   }
-  for (const documentIndex of [1, 4]) {
+  for (const documentIndex of [2]) {
     const input = documents();
     input.push({ ...input[documentIndex], file: 'copied-artifact.json' });
     const summary = summarize(input, options);
     assert.equal(summary.valid, false);
-    assert.match(
-      summary.errors.join(),
-      /Duplicate (Android benchmark|memory report)/
-    );
+    assert.match(summary.errors.join(), /Duplicate Android benchmark/);
   }
 });
 

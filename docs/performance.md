@@ -42,10 +42,10 @@ yarn perf:android react-profile
 Omitting the mode selects `native-release`. Neither mode requires a running
 Metro server; both build bundled JavaScript.
 
-| Mode             | Purpose                                                                                                            |
-| ---------------- | ------------------------------------------------------------------------------------------------------------------ |
-| `native-release` | Normal production React renderer; native frame or elapsed-time, memory, lifecycle, and input observations. |
-| `react-profile`  | Production profiling renderer with React `Profiler` observations enabled. Development mode remains disabled.       |
+| Mode             | Purpose                                                                                                      |
+| ---------------- | ------------------------------------------------------------------------------------------------------------ |
+| `native-release` | Normal production React renderer; native frame or elapsed-time, lifecycle, and input observations.           |
+| `react-profile`  | Production profiling renderer with React `Profiler` observations enabled. Development mode remains disabled. |
 
 Compare ordinary and live measurements within the same mode, device, runtime,
 and dependency versions. **Do not compare elapsed timings across these modes.**
@@ -56,23 +56,24 @@ the renderer produces no timing observations; missing durations are not zeros.
 
 Install JDK 17 and the Android SDK, set `ANDROID_HOME` or `ANDROID_SDK_ROOT`, and
 connect exactly one booted device or emulator. Use Android API 31 or newer for
-the required frame-overrun and memory data. The runner builds the example's
+the required frame-overrun and preparation timing data. The runner builds the example's
 non-debuggable `benchmark` app variant and its Macrobenchmark test package.
 Use a device reserved for the run and keep animations enabled.
 
-| Variable                    | Default                                                | Meaning                                                                            |
-| --------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------- |
-| `PERFORMANCE_ITERATIONS`    | `3`                                                   | Frame measurement iterations; integer from 1 to 100.                   |
-| `PERFORMANCE_MEMORY_CYCLES` | `3`                                                   | Repeated navigation cycles for memory and input collection; integer from 1 to 100. |
-| `PERFORMANCE_ABI`           | Connected device ABI                                   | ABI compiled for the run, such as `arm64-v8a` or `x86_64`.                         |
-| `PERFORMANCE_OUTPUT`        | A timestamped directory under `artifacts/performance/` | New output directory; it must not already exist.                                   |
+| Variable                    | Default                                                | Meaning                                                                                        |
+| --------------------------- | ------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| `PERFORMANCE_ITERATIONS`    | `20`                                                   | Frame measurement iterations; integer from 1 to 100.                                           |
+| `PERFORMANCE_TIMING_CYCLES` | `20`                                                   | Repeated navigation cycles for preparation timing and input collection; integer from 1 to 100. |
+| `PERFORMANCE_ABI`           | Connected device ABI                                   | ABI compiled for the run, such as `arm64-v8a` or `x86_64`.                                     |
+| `PERFORMANCE_OUTPUT`        | A timestamped directory under `artifacts/performance/` | New output directory; it must not already exist.                                               |
 
-Local Android runs and CI default to three repetitions per case. These
-short runs are useful for checking collection and spotting large changes. Use
-more repetitions for performance comparisons:
+Local Android runs and CI default to 20 frame-test round trips and 20 timing-test
+round trips per scenario and build mode. Each preparation-time row receives 20
+samples, one per direction per timing cycle. Frame percentages aggregate captured
+frames across the 20 frame iterations. Override the counts independently:
 
 ```sh
-PERFORMANCE_ITERATIONS=20 PERFORMANCE_MEMORY_CYCLES=20 \
+PERFORMANCE_ITERATIONS=20 PERFORMANCE_TIMING_CYCLES=20 \
   PERFORMANCE_OUTPUT=artifacts/performance/android-comparison-01 \
   yarn perf:android native-release
 ```
@@ -83,46 +84,48 @@ example's old device benchmark exports and host-side additional-test outputs
 before collection so stale samples cannot make a failed run appear successful.
 
 Android runs four test cases: transition frames and repeated navigation
-memory/input for ordinary and live rendering. Startup measurements are omitted.
+timing/input for ordinary and live rendering. Startup measurements are omitted.
 Frame tests still start a fresh Activity before each measured round trip; launch
 and settling are outside the measured interval. Native compilation and installation
 still take their usual time, especially on the first run.
 
 ## Measurements and comparisons
 
-The main summary has eight rows: four measurements for ordinary and live rendering.
+The main summary has six rows: three measurements for ordinary and live rendering.
 
-| Measurement | Meaning |
-| --- | --- |
-| Frames over deadline (%) | Fraction of captured frames that miss their platform deadline during the round trip. |
-| Open preparation (ms) | Request until the forward session becomes active in JavaScript; not first visible motion. |
-| Return preparation (ms) | The same preparation interval for the backward journey. |
-| Retained memory (MiB) | Final after-back process PSS minus the first baseline. Includes caches; a positive value does not prove a leak. |
+| Measurement              | Meaning                                                                                   |
+| ------------------------ | ----------------------------------------------------------------------------------------- |
+| Frames over deadline (%) | Fraction of captured frames that miss their platform deadline during the round trip.      |
+| Open preparation (ms)    | Request until the forward session becomes active in JavaScript; not first visible motion. |
+| Return preparation (ms)  | The same preparation interval for the backward journey.                                   |
 
 React profiling has a separate, collapsed table showing render work per fixture
 run. It is not native commit time and must not be compared with release timings.
 Input acknowledgments, complete forward/back journeys, and payload lifecycle
-remain validity checks. Redundant duration, probe-latency, per-checkpoint memory,
+remain validity checks. Redundant duration, probe-latency,
 frame-duration, and mount-count distributions are no longer generated. Raw
-fixture exports, memory dumps, and Perfetto traces remain available for debugging.
+fixture exports and Perfetto traces remain available for debugging.
 
 Each run saves `report/summary.md`, `report/summary.json`, raw data, and logs.
 The PR comment shows **Base | PR / current | Change**. Changes are absolute:
-percentage points for frames, milliseconds for preparation, and MiB for memory.
-This handles zero baselines and negative memory retention without misleading
-percentage changes. Values are medians; fewer frames over deadline and lower
-preparation times are preferable, but memory deltas require interpretation.
+percentage points for frames and milliseconds for preparation.
+This handles zero baselines without misleading percentage changes. Preparation
+values are medians; fewer frames over deadline and lower preparation times are
+preferable.
 
 The publisher looks for a successful push run of the Performance workflow on
 the PR's actual base branch (`main` or `master`) at the exact base commit. It
 compares only matching fixture/measurement versions, build modes, device/API/ABI,
-iteration and memory-cycle counts, React Native/Reanimated/Node versions, and
-runner image versions. Missing, expired, invalid, or incompatible base artifacts
+frame iteration and timing-cycle counts, and React Native/Reanimated/Node versions.
+Runner image versions are recorded for diagnostics but do not gate comparisons.
+Missing, expired, invalid, or incompatible base artifacts
 produce “No compatible baseline”; they never become zeros. Local reports have
 no baseline lookup. Existing reports lack the new comparison metadata, so the
 first usable baseline requires a new base-branch run after these changes land.
+Measurement definition version 3 removes memory collection and requires the
+requested timing sample count; version 2 reports are not comparable.
 
-Three repetitions on hosted emulators give noisy diagnostics, not a performance
+Hosted emulator repetitions give noisy diagnostics, not a performance
 guarantee. No automatic regression threshold is applied. Repeat on a physical
 device before making performance claims. Collection still fails for missing
 measurements, failed journeys, unacknowledged input, lost samples, invalid units,

@@ -38,8 +38,8 @@ jobs:
         mode: [native-release, react-profile]
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/android-${{ matrix.mode }}
-      PERFORMANCE_ITERATIONS: '3'
-      PERFORMANCE_MEMORY_CYCLES: '3'
+      PERFORMANCE_ITERATIONS: '20'
+      PERFORMANCE_TIMING_CYCLES: '20'
       PERFORMANCE_ABI: x86_64
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1

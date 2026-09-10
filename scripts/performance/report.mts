@@ -229,61 +229,6 @@ function expectedCount(value: unknown, label: string) {
   return value;
 }
 
-function readMemory(
-  report: InputRecord,
-  mode: string,
-  metrics: MetricSamples,
-  expectedCycles: number | undefined
-) {
-  if (report.schemaVersion !== 1 || !SCENARIOS.includes(report.scenario)) {
-    throw new Error('Unsupported memory report');
-  }
-  if (report.reactProfile !== (mode === 'react-profile'))
-    throw new Error('Memory build mode mismatch');
-  if (!Array.isArray(report.samples) || !report.samples.length)
-    throw new Error('Empty memory report');
-  const iterations = new Map();
-  for (const sample of report.samples) {
-    if (!['baseline', 'detail', 'after-back'].includes(sample.phase))
-      throw new Error('Unknown memory checkpoint');
-    if (!Number.isInteger(sample.iteration) || sample.iteration < 0)
-      throw new Error('Invalid memory iteration');
-    const phases = iterations.get(sample.iteration) ?? new Map();
-    if (phases.has(sample.phase))
-      throw new Error('Duplicate memory checkpoint within an iteration');
-    phases.set(sample.phase, sample);
-    iterations.set(sample.iteration, phases);
-    const pss = finite(sample.totalPssKb, 'totalPssKb');
-    if (pss === 0)
-      throw new Error(
-        'Zero process footprint indicates missing memory collection'
-      );
-    // RSS availability differs by Android API. Missing is not zero.
-    if (sample.totalRssKb !== null && sample.totalRssKb !== undefined) {
-      finite(sample.totalRssKb, 'totalRssKb');
-    }
-  }
-  const count = expectedCycles ?? iterations.size;
-  if (iterations.size !== count)
-    throw new Error(
-      `Memory iteration count must match expected cycles (${count})`
-    );
-  for (let iteration = 0; iteration < count; iteration += 1) {
-    if (iterations.get(iteration)?.size !== 3) {
-      throw new Error(
-        `Missing baseline/detail/after-back memory checkpoint for iteration ${iteration}`
-      );
-    }
-  }
-  const baseline = iterations.get(0).get('baseline').totalPssKb;
-  const afterBack = iterations.get(count - 1).get('after-back').totalPssKb;
-  add(
-    metrics,
-    `${report.scenario}.memory.retainedPssDeltaKb`,
-    afterBack - baseline
-  );
-}
-
 function readMacrobenchmark(
   report: InputRecord,
   metrics: MetricSamples,
@@ -374,7 +319,6 @@ export function summarize(
   const metrics: MetricSamples = {};
   const errors = [];
   const fixtures = new Set<string>();
-  const memories = new Set<string>();
   const sources = [];
   const runIds = new Set<string>();
   const nativeBenchmarks = new Set<string>();
@@ -386,8 +330,8 @@ export function summarize(
       'Expected iterations'
     );
     expectedCycles = expectedCount(
-      metadata.memoryCycles,
-      'Expected memory cycles'
+      metadata.timingCycles,
+      'Expected timing cycles'
     );
   } catch (error) {
     errors.push(
@@ -404,16 +348,17 @@ export function summarize(
         if (runIds.has(data.runId))
           throw new Error('Duplicate run ID would double-count timings');
         readFixture(data, mode, documentMetrics);
+        if (expectedCycles !== undefined) {
+          for (const direction of ['forward', 'backward']) {
+            const key = `${data.scenario}.${direction}.requestToSessionActiveMs`;
+            if (documentMetrics[key]?.length !== expectedCycles)
+              throw new Error(
+                `Timing journey count must match expected cycles (${expectedCycles})`
+              );
+          }
+        }
         runIds.add(data.runId);
         fixtures.add(data.scenario);
-        sources.push(file);
-      } else if (data.kind === 'memory') {
-        if (memories.has(data.scenario))
-          throw new Error(
-            'Duplicate memory report would double-count checkpoints'
-          );
-        readMemory(data, mode, documentMetrics, expectedCycles);
-        memories.add(data.scenario);
         sources.push(file);
       } else if (Array.isArray(data.benchmarks)) {
         const coverage = readMacrobenchmark(
@@ -437,8 +382,6 @@ export function summarize(
   for (const scenario of SCENARIOS) {
     if (!fixtures.has(scenario))
       errors.push(`Missing valid ${scenario} fixture run`);
-    if (!memories.has(scenario))
-      errors.push(`Missing ${scenario} memory measurements`);
     if (!nativeBenchmarks.has(`transitionFrames[${scenario}]`)) {
       errors.push(
         `Missing ${scenario} native frame-overrun measurements (requires API 31+)`
@@ -447,7 +390,7 @@ export function summarize(
   }
   return {
     schemaVersion: 1,
-    measurementDefinitionVersion: 2,
+    measurementDefinitionVersion: 3,
     platform,
     mode,
     fixtureVersion: 2,

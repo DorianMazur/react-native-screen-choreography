@@ -108,9 +108,9 @@ test('keeps the headline table small and profiling collapsed', () => {
   assert.match(body, /<details><summary>React profiling/);
   assert.equal(
     body.split('\n').filter((line) => /^\| (ordinary|live)/.test(line)).length,
-    10
+    8
   );
-  assert.doesNotMatch(body, /P95|requestToProbeHandlerMs/);
+  assert.doesNotMatch(body, /P95|requestToProbeHandlerMs|retained memory/);
   const visible = body.replace(/<details>[\s\S]*?<\/details>/g, '');
   assert.doesNotMatch(visible, /\| Metric/);
   assert.ok(visible.length < 650);
