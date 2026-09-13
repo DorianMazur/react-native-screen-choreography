@@ -108,6 +108,10 @@ outgoing route remains mounted. `ReverseTransitionController` waits for the
 animation endpoint, commits navigation, and coordinates removal/presentation
 with `ReverseTransitionHandoff` before cleanup. There is no outgoing-screen
 snapshot component. Cancelling an interactive return keeps the detail route.
+Once animation completion and route removal are confirmed, the provider enqueues
+the UI input handoff and completes the session in the same JavaScript turn.
+Portal retargeting and navigation unlock do not wait for a UI-to-JavaScript
+acknowledgment. The handoff is queued before completion invalidates UI ownership.
 
 An interrupted active forward transition follows the navigation hook's explicit
 reverse path, refreshing source metrics after navigation. Progress ownership
