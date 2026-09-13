@@ -14,7 +14,8 @@ This file describes the current repository expectations for coding agents workin
 
 Use these files as the source of truth:
 
-- `README.md`: public package documentation and integration steps
+- `README.md`: package overview and entry point to documentation
+- `docs/guide/` and `docs/api/`: public integration guides and API reference
 - `docs/architecture.md`: runtime architecture and contributor-level internals
 - `examples/react-navigation/README.md`: bare React Native example setup and manual exploration guide
 - `examples/expo-router/README.md`: Expo Router example setup and integration guide
@@ -33,7 +34,7 @@ Use these files as the source of truth:
 - `src/debug/`: logger
 - `examples/react-navigation/`: bare React Native example app
 - `examples/expo-router/`: Expo Router development-build example app
-- `docs/`: developer-facing technical and integration documentation
+- `docs/`: Markdown documentation and an independent VitePress site; custom theme in `docs/.vitepress/`
 - `__tests__/`: Jest coverage for core utilities and infrastructure
 - `android/` and `ios/`: native transition host implementation
 
@@ -120,3 +121,12 @@ When debugging or extending behavior, start here:
 - contributor docs should explain current runtime behavior and extension points
 - avoid stale references to missing files or removed APIs
 - keep examples realistic and aligned with the example app in this repository
+
+## Documentation website
+
+- Run `npm ci --prefix docs` once; use `npm run dev --prefix docs` and `npm run build --prefix docs`. Native dependencies are not required.
+- Run `npm run format:check --prefix docs` for documentation formatting.
+- Treat `docs/guide/` and `docs/api/` as canonical user documentation. Keep the README concise and link to these files.
+- Update API reference headings when changing runtime exports; the docs build checks coverage against the export-only entries.
+- Preserve existing architecture and performance Markdown as single sources; the website renders these same files.
+- GitHub Actions builds and deploys `docs/.vitepress/dist/` on `main`. Keep generated output ignored; commit only documentation sources and tooling.

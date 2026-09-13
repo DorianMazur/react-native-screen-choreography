@@ -1,0 +1,22 @@
+{
+  "name": "screen-choreography-docs",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "scripts": {
+    "dev": "vitepress dev . --host 127.0.0.1",
+    "build": "npm run check && vitepress build . && node scripts/check-links.mjs",
+    "preview": "vitepress preview . --host 127.0.0.1",
+    "check": "node scripts/check-content.mjs",
+    "format": "prettier --write .",
+    "format:check": "prettier --check ."
+  },
+  "devDependencies": {
+    "prettier": "3.8.1",
+    "vitepress": "1.6.4",
+    "vue": "3.5.30"
+  },
+  "engines": {
+    "node": ">=22"
+  }
+}

@@ -1,0 +1,142 @@
+---
+title: Defining motion
+description: Compose shared geometry, local reveals, and custom motion with reusable transition definitions.
+---
+
+# Define motion once.
+
+Keep a screen's motion in one module. `defineTransition` gives shared elements and local content named roles, then exposes components that apply those roles consistently.
+
+## Start with a recipe
+
+```tsx
+// artworkTransition.ts
+import {
+  defineTransition,
+  Springs,
+} from 'react-native-screen-choreography/core';
+
+export const artwork = defineTransition({
+  motion: { spring: Springs.default },
+  shared: {
+    hero: { kind: 'bounds', radius: [24, 32], zIndex: 100 },
+    panel: { kind: 'surface', radius: [20, 28], zIndex: 90 },
+  },
+  enter: {
+    title: { during: [0.45, 0.75], translateY: 12 },
+    description: { during: [0.6, 0.95], translateY: 20 },
+  },
+  exit: {
+    caption: { during: [0.1, 0.4], translateY: -8 },
+  },
+});
+```
+
+| Recipe    | Use it for                                                                          |
+| --------- | ----------------------------------------------------------------------------------- |
+| `bounds`  | Position, size, and optional corner radius around retained content                  |
+| `surface` | Position and size plus background color, corner radius, and an expanded-side shadow |
+| `enter`   | Destination content that fades and translates in as the screen expands              |
+| `exit`    | Source content that fades and translates out as the screen expands                  |
+
+The `radius` tuple always means **collapsed, expanded**, including on back. Without it, recipes read the endpoint styles.
+
+## Place the endpoints
+
+```tsx
+// Source screen
+<artwork.Element name="hero" groupId="artwork.42" style={cardStyle}>
+  <Artwork />
+</artwork.Element>
+<artwork.Exit name="caption">
+  <Text>Open the collection</Text>
+</artwork.Exit>
+
+// Destination screen
+<artwork.Element.Target name="hero" groupId="artwork.42" style={heroStyle} />
+<artwork.Enter name="title">
+  <Text>A closer look</Text>
+</artwork.Enter>
+```
+
+Each `name` becomes an element ID. Use the same `groupId` on matching endpoints and in `transitionConfig.group`. In a list, use a group per item so each item's `hero` remains distinct.
+
+Keep `Enter` and `Exit` around ordinary screen content. Content moved through a shared-element portal retains the source's React context; animate that content with `useSharedElementPresentation` instead.
+
+## Apply timing at navigation
+
+```tsx
+void navigate(
+  'Detail',
+  { id: '42' },
+  {
+    transitionConfig: { group: 'artwork.42' },
+    ...artwork.navigationOptions,
+  }
+);
+```
+
+The definition does not launch navigation or apply its timing globally. Spread `navigationOptions` into each navigation request that should use it. `motion.duration` chooses a timing animation instead of a spring; the duration is in milliseconds.
+
+Enter and exit intervals use expansion progress, so they reverse naturally when progress moves from `1 → 0`. They are visible when the session is idle. Their built-in translations respect Reanimated's reduced-motion preference; custom renderers should make their own reduced-motion choices.
+
+## Write a custom renderer
+
+Use `makeTransition` when you need more control than a recipe. The renderer receives frozen endpoint geometry, styles, metadata, and the library-owned live host as `children`.
+
+```tsx
+import {
+  makeTransition,
+  resolveSurfaceStyle,
+  TransitionFrame,
+  type TransitionRendererProps,
+} from 'react-native-screen-choreography/core';
+
+function HeroRenderer({
+  source,
+  target,
+  progress,
+  direction,
+  zIndex,
+  children,
+}: TransitionRendererProps) {
+  return (
+    <TransitionFrame
+      sourceMetrics={source.metrics}
+      targetMetrics={target.metrics}
+      progress={progress}
+      direction={direction}
+      zIndex={zIndex}
+      sourceBorderRadius={resolveSurfaceStyle(source.style).borderRadius}
+      targetBorderRadius={resolveSurfaceStyle(target.style).borderRadius}
+    >
+      {children}
+    </TransitionFrame>
+  );
+}
+
+export const heroTransition = makeTransition({ renderer: HeroRenderer });
+```
+
+Reuse `heroTransition` on both `SharedElement` and `SharedElement.Target`, or assign it to a named `shared` recipe in `defineTransition`.
+
+::: warning Render the host exactly once
+Always render the supplied `children` exactly once throughout a session. Do not replace it with another copy of your artwork, conditionally remove it, or move it between different renderer branches during the animation.
+:::
+
+`progress` is expansion progress. `source` and `target` describe the current navigation direction. If you interpolate their metrics directly, derive `t = direction === 'backward' ? 1 - progress.value : progress.value` in a worklet. `TransitionFrame` and `TransitionSurface` already do this.
+
+## Animate inside the retained content
+
+```tsx
+const { progress, collapsed, expanded } = useSharedElementPresentation();
+const labelStyle = useAnimatedStyle(() => ({
+  transform: [
+    { scale: interpolate(progress.value, [0, 1], [1, 1.25], 'clamp') },
+  ],
+}));
+```
+
+Import the hook from the library and `useAnimatedStyle` / `interpolate` from Reanimated. Endpoint metrics are `null` before the first transition. Metadata is captured by reference at session start, so pass immutable values and narrow its `unknown` type before reading fields.
+
+For supported props and defaults, see the [transition reference](../api/transitions.md).
