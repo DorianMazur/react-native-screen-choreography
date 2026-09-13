@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import { type View } from 'react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
-import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
+import { scheduleOnUI } from 'react-native-worklets';
 import {
   animateOwnedProgress,
   type ProgressOwnership,
@@ -131,22 +131,7 @@ export function useReverseTransitionCommit({
           const result = await navigateBack();
           // Core bindings may be void; the bundled navigation adapters always
           // return the checked removal/native-presentation result.
-          const outcome = result ?? { removed: true, presented: false };
-          if (outcome.removed && current()) {
-            scheduleOnUI(() => {
-              'worklet';
-              updateReverseHandoff(
-                reverseHandoff,
-                owner,
-                handoff,
-                interactionOwner,
-                sessionId,
-                token,
-                'navigationPresented'
-              );
-            });
-          }
-          return outcome;
+          return result ?? { removed: true, presented: false };
         },
         animate: (onFinished) => {
           const onComplete = () => {
@@ -172,12 +157,7 @@ export function useReverseTransitionCommit({
           });
         },
         handoff: () => {
-          const finish = () => {
-            if (current()) {
-              navigationController.releaseNavigationLock();
-              completeTransition(sessionId);
-            }
-          };
+          if (!current()) return;
           scheduleOnUI(() => {
             'worklet';
             if (owner.value !== token) return;
@@ -192,8 +172,9 @@ export function useReverseTransitionCommit({
               token,
               'navigationPresented'
             );
-            scheduleOnRN(finish);
           });
+          navigationController.releaseNavigationLock();
+          completeTransition(sessionId);
         },
         cancel: () => cancelTransition(sessionId),
       });

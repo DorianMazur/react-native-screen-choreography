@@ -1,6 +1,6 @@
 import { Platform, type View } from 'react-native';
 import { makeMutable, withSpring, withTiming } from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
 import { NavigationSessionController } from '../core/NavigationSessionController';
@@ -25,8 +25,10 @@ jest.mock('react-native-reanimated', () => ({
 }));
 
 jest.mock('react-native-worklets', () => ({
-  scheduleOnUI: (worklet: (...args: unknown[]) => void, ...args: unknown[]) =>
-    worklet(...args),
+  scheduleOnUI: jest.fn(
+    (worklet: (...args: unknown[]) => void, ...args: unknown[]) =>
+      worklet(...args)
+  ),
   scheduleOnRN: jest.fn(),
 }));
 
@@ -118,6 +120,7 @@ async function mountHook({
     sourceHidden,
     targetHidden,
     progress,
+    progressOwnership,
     interactionOwner,
     navigationController,
     releaseLock,
@@ -194,11 +197,62 @@ describe('provider reverse commit integration', () => {
       await completion;
       expect(harness.interactionOwner.value).toBe('home');
       expect(harness.visibility.handoff.value.completed).toBe(true);
-      await act(async () => flushRN());
+      // No additional RN turn is needed to retarget the portal and unlock.
+      expect(scheduleOnRN).not.toHaveBeenCalled();
+      expect(harness.releaseLock).toHaveBeenCalledTimes(1);
       expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
       expect(harness.cancelTransition).not.toHaveBeenCalled();
     }
   );
+
+  test('source unmount evidence also completes without an extra RN turn', async () => {
+    const harness = await mountHook();
+    const { completion, navigation } = await harness.start();
+    await act(async () => {
+      harness.finishAnimation();
+      flushRN();
+      harness.unregister();
+      navigation.resolve({ removed: false, presented: false });
+    });
+    await completion;
+    expect(harness.interactionOwner.value).toBe('home');
+    expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
+    expect(harness.releaseLock).toHaveBeenCalledTimes(1);
+    expect(harness.cancelTransition).not.toHaveBeenCalled();
+    expect(scheduleOnRN).not.toHaveBeenCalled();
+  });
+
+  test('queues input handoff before session cleanup invalidates UI ownership', async () => {
+    const harness = await mountHook();
+    const { completion, navigation } = await harness.start();
+    await act(async () => {
+      harness.finishAnimation();
+      flushRN();
+    });
+    const pendingUI: (() => void)[] = [];
+    const scheduleUI = scheduleOnUI as jest.Mock;
+    const immediateUI = scheduleUI.getMockImplementation()!;
+    scheduleUI.mockImplementation((worklet, ...args) => {
+      pendingUI.push(() => worklet(...args));
+    });
+    harness.completeTransition.mockImplementation(() => {
+      harness.progressOwnership.setSession(null);
+    });
+    try {
+      await act(async () =>
+        navigation.resolve({ removed: true, presented: false })
+      );
+      await completion;
+      expect(harness.completeTransition).toHaveBeenCalledTimes(1);
+      expect(harness.interactionOwner.value).toBeNull();
+      expect(scheduleOnRN).not.toHaveBeenCalled();
+      pendingUI.forEach((worklet) => worklet());
+      expect(harness.interactionOwner.value).toBe('home');
+      expect(harness.visibility.handoff.value.completed).toBe(true);
+    } finally {
+      scheduleUI.mockImplementation(immediateUI);
+    }
+  });
 
   test('timed Back has no wall-clock completion fallback', async () => {
     const harness = await mountHook();
