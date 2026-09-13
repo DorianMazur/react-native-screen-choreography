@@ -17,13 +17,4 @@ const config = withMetroConfig(getDefaultConfig(__dirname), {
 
 config.transformer.publicPath = '/assets/?unstable_path=.';
 
-if (process.env.CHOREOGRAPHY_REACT_PROFILE === '1') {
-  const {
-    withProfilingRenderer,
-  } = require('../../scripts/performance/profiling-resolver.cjs');
-  config.resolver.resolveRequest = withProfilingRenderer(
-    config.resolver.resolveRequest
-  );
-}
-
 module.exports = config;

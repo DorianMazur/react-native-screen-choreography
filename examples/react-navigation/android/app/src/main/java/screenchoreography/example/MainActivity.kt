@@ -75,7 +75,6 @@ class MainActivity : ReactActivity() {
           if (scenario != "gallery") return null
           return Bundle().apply {
             putString("performanceScenario", scenario)
-            putBoolean("performanceReactProfile", intent.getBooleanExtra("performanceReactProfile", false))
           }
         }
       }

@@ -1,4 +1,4 @@
-import { summaryTable } from './summary-table.mts';
+import { summaryTable, startupDiagnostics } from './summary-table.mts';
 import type {
   InputRecord,
   MetricSamples,
@@ -10,7 +10,7 @@ import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
 const SCENARIOS = ['gallery'];
-const MODES = ['native-release', 'react-profile'];
+const MODES = ['native-release'];
 
 function finite(value: unknown, label: string) {
   if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) {
@@ -53,7 +53,7 @@ function readPreparationTrace(
   const trace = journey.preparationTrace;
   if (trace === undefined) {
     if (required || journey.requestToOverlayReadyMs !== undefined) {
-      throw new Error('Missing forward preparation trace');
+      throw new Error('Missing preparation trace');
     }
     return;
   }
@@ -124,12 +124,8 @@ function readPreparationTrace(
   }
 }
 
-function readFixture(
-  report: InputRecord,
-  mode: string,
-  metrics: MetricSamples
-) {
-  if (report.schemaVersion !== 1 || report.fixtureVersion !== 4) {
+function readFixture(report: InputRecord, metrics: MetricSamples) {
+  if (report.schemaVersion !== 1 || report.fixtureVersion !== 5) {
     throw new Error('Unsupported fixture schema/version');
   }
   if (!SCENARIOS.includes(report.scenario))
@@ -147,20 +143,27 @@ function readFixture(
   }
   if (report.droppedSamples !== 0)
     throw new Error('Fixture lost telemetry samples');
-  if (!Array.isArray(report.journeys) || report.journeys.length < 2) {
+  if (
+    !Array.isArray(report.journeys) ||
+    report.journeys.length < 2 ||
+    report.journeys.length % 2 !== 0
+  ) {
     throw new Error('Fixture must contain a complete forward/back round trip');
   }
   if (
     report.preparationTracing !== undefined &&
-    (report.preparationTracing?.version !== 1 ||
+    (report.preparationTracing?.version !== 2 ||
       typeof report.preparationTracing.requested !== 'boolean' ||
       !Array.isArray(report.preparationTracing.directions) ||
-      report.preparationTracing.directions.length !== 1 ||
-      report.preparationTracing.directions[0] !== 'forward')
+      report.preparationTracing.directions.length !== 2 ||
+      report.preparationTracing.directions[0] !== 'forward' ||
+      report.preparationTracing.directions[1] !== 'backward')
   )
     throw new Error('Unknown preparation tracing definition');
   const directions = new Set<string>();
-  for (const journey of report.journeys) {
+  for (const [index, journey] of report.journeys.entries()) {
+    if (journey.direction !== (index % 2 === 0 ? 'forward' : 'backward'))
+      throw new Error('Journeys must alternate forward then backward');
     if (!['forward', 'backward'].includes(journey.direction))
       throw new Error('Unknown direction');
     if (journey.failure || !journey.probe || !journey.sessionId) {
@@ -178,8 +181,7 @@ function readFixture(
     const prefix = `${report.scenario}.${journey.direction}`;
     readPreparationTrace(
       journey,
-      report.preparationTracing?.requested === true &&
-        journey.direction === 'forward',
+      report.preparationTracing?.requested === true,
       prefix,
       metrics
     );
@@ -202,33 +204,6 @@ function readFixture(
   }
   if (directions.size !== 2)
     throw new Error('Missing forward or backward journey');
-  const react = report.reactProfiling;
-  if (!react || react.requested !== (mode === 'react-profile')) {
-    throw new Error('Fixture profiling mode does not match this artifact');
-  }
-  if (!Array.isArray(react.observations))
-    throw new Error('Missing React observations array');
-  if (mode === 'react-profile') {
-    if (
-      react.supported !== true ||
-      react.status !== 'observed' ||
-      !react.observations.length
-    ) {
-      throw new Error(
-        'Profiling was requested but React emitted no timing observations'
-      );
-    }
-    let total = 0;
-    for (const observation of react.observations) {
-      total += finite(observation.actualDurationMs, 'actualDurationMs');
-      finite(observation.reactCommitTimeMs, 'React commit timestamp');
-    }
-    add(metrics, `${report.scenario}.react.renderWorkPerRunMs`, total);
-  } else if (react.supported || react.observations.length) {
-    throw new Error(
-      'Native release artifact unexpectedly contains React profiling data'
-    );
-  }
   finite(report.payloadMounts, 'payloadMounts');
   finite(report.payloadUnmounts, 'payloadUnmounts');
   if (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
@@ -322,83 +297,6 @@ function expectedCount(value: unknown, label: string) {
   return value;
 }
 
-function readMacrobenchmark(
-  report: InputRecord,
-  metrics: MetricSamples,
-  expectedIterations: number | undefined,
-  existingNames: Set<string>
-) {
-  const coverage = new Set<string>();
-  for (const benchmark of report.benchmarks) {
-    const name = String(benchmark.name ?? '');
-    const match = /^transitionFrames\[(gallery)\]$/.exec(name);
-    if (!match) throw new Error(`Unexpected Android benchmark name: ${name}`);
-    if (existingNames.has(name) || coverage.has(name))
-      throw new Error(`Duplicate Android benchmark: ${name}`);
-    for (const [key, value] of Object.entries(
-      (benchmark.metrics as Record<string, InputRecord>) ?? {}
-    )) {
-      if (!Array.isArray(value.runs) || !value.runs.length)
-        throw new Error(`Missing ${name}.${key} runs`);
-      if (
-        expectedIterations !== undefined &&
-        value.runs.length !== expectedIterations
-      ) {
-        throw new Error(
-          `${name}.${key} run count must match expected iterations (${expectedIterations})`
-        );
-      }
-      const samples = value.runs;
-      for (const sample of samples) {
-        finite(sample, `${name}.${key}`);
-      }
-    }
-    for (const [key, value] of Object.entries(
-      (benchmark.sampledMetrics as Record<string, InputRecord>) ?? {}
-    )) {
-      if (
-        !Array.isArray(value.runs) ||
-        !value.runs.length ||
-        value.runs.some((run) => !Array.isArray(run) || !run.length)
-      ) {
-        throw new Error(`Missing per-iteration ${name}.${key} samples`);
-      }
-      if (
-        expectedIterations !== undefined &&
-        value.runs.length !== expectedIterations
-      ) {
-        throw new Error(
-          `${name}.${key} run count must match expected iterations (${expectedIterations})`
-        );
-      }
-      const samples = value.runs.flat();
-      for (const sample of samples) {
-        // Negative overrun means the frame finished before its deadline.
-        if (
-          typeof sample !== 'number' ||
-          !Number.isFinite(sample) ||
-          (key !== 'frameOverrunMs' && sample < 0)
-        )
-          throw new Error(`Invalid ${key} sample`);
-      }
-      if (key === 'frameOverrunMs' && samples.length) {
-        add(
-          metrics,
-          `android.${name}.deadlineOverrunPercent`,
-          (100 * samples.filter((sample) => sample > 0).length) / samples.length
-        );
-      }
-    }
-    if (!benchmark.sampledMetrics?.frameOverrunMs?.runs?.length) {
-      throw new Error(
-        `Missing ${name} native frame-overrun measurements (requires API 31+)`
-      );
-    }
-    coverage.add(name);
-  }
-  return coverage;
-}
-
 export function summarize(
   documents: MeasurementDocument[],
   {
@@ -414,14 +312,8 @@ export function summarize(
   const fixtures = new Set<string>();
   const sources = [];
   const runIds = new Set<string>();
-  const nativeBenchmarks = new Set<string>();
-  let expectedIterations;
   let expectedCycles;
   try {
-    expectedIterations = expectedCount(
-      metadata.iterations,
-      'Expected iterations'
-    );
     expectedCycles = expectedCount(
       metadata.timingCycles,
       'Expected timing cycles'
@@ -440,7 +332,7 @@ export function summarize(
           throw new Error('Missing run ID');
         if (runIds.has(data.runId))
           throw new Error('Duplicate run ID would double-count timings');
-        readFixture(data, mode, documentMetrics);
+        readFixture(data, documentMetrics);
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
             const key = `${data.scenario}.${direction}.requestToSessionActiveMs`;
@@ -452,15 +344,6 @@ export function summarize(
         }
         runIds.add(data.runId);
         fixtures.add(data.scenario);
-        sources.push(file);
-      } else if (Array.isArray(data.benchmarks)) {
-        const coverage = readMacrobenchmark(
-          data,
-          documentMetrics,
-          expectedIterations,
-          nativeBenchmarks
-        );
-        for (const name of coverage) nativeBenchmarks.add(name);
         sources.push(file);
       }
       for (const [name, values] of Object.entries(documentMetrics)) {
@@ -475,18 +358,13 @@ export function summarize(
   for (const scenario of SCENARIOS) {
     if (!fixtures.has(scenario))
       errors.push(`Missing valid ${scenario} fixture run`);
-    if (!nativeBenchmarks.has(`transitionFrames[${scenario}]`)) {
-      errors.push(
-        `Missing ${scenario} native frame-overrun measurements (requires API 31+)`
-      );
-    }
   }
   return {
     schemaVersion: 1,
-    measurementDefinitionVersion: 3,
+    measurementDefinitionVersion: 4,
     platform,
     mode,
-    fixtureVersion: 4,
+    fixtureVersion: 5,
     policy: 'informational-performance-fail-invalid-collection',
     metadata,
     valid: errors.length === 0,
@@ -516,12 +394,12 @@ export function summarize(
   };
 }
 
-export function markdown(summary: ReturnType<typeof summarize>) {
-  const preparation = Object.entries(summary.metrics).filter(
-    ([name]) =>
-      name.includes('.preparation.') ||
-      name.endsWith('.requestToOverlayReadyMs')
-  );
+export function markdown(
+  summary: ReturnType<typeof summarize>,
+  base?: InputRecord,
+  baselineNote = 'No baseline supplied. Local runs do not fetch baselines.'
+) {
+  const diagnostics = startupDiagnostics(summary);
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
@@ -531,28 +409,11 @@ export function markdown(summary: ReturnType<typeof summarize>) {
     '',
     ...summary.errors.map((error) => `- ${error.replaceAll('\n', ' ')}`),
     '',
-    summaryTable(summary),
-    ...(preparation.length
-      ? [
-          '',
-          '### Optional startup diagnostics',
-          '',
-          'Forward overlay readiness is a JavaScript proxy, not first presented motion. Stages can nest; do not add parent and child durations. Repeated stages are summed within each journey before aggregation.',
-          '',
-          '| Journey | Traced | Overlay acknowledged | Overlay timeout |',
-          '| --- | ---: | ---: | ---: |',
-          ...Object.entries(summary.preparationDiagnostics).map(
-            ([name, counts]) =>
-              `| ${name} | ${counts.tracedJourneys} | ${counts.overlayAcknowledgedJourneys} | ${counts.overlayTimeoutJourneys} |`
-          ),
-          '',
-          '| Metric | Samples | Median (ms) | P95 (ms) |',
-          '| --- | ---: | ---: | ---: |',
-          ...preparation.map(
-            ([name, value]) =>
-              `| ${name} | ${value!.count} | ${value!.median.toFixed(2)} | ${value!.p95?.toFixed(2) ?? '—'} |`
-          ),
-        ]
+    baselineNote,
+    '',
+    summaryTable(summary, base),
+    ...(diagnostics
+      ? ['', '### Optional startup diagnostics', '', diagnostics]
       : []),
     '',
     '',

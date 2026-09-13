@@ -35,18 +35,9 @@ export interface JourneyObservation {
   failure: string | null;
 }
 
-interface ReactObservation {
-  id: string;
-  phase: string;
-  actualDurationMs: number;
-  baseDurationMs: number;
-  reactStartTimeMs: number;
-  reactCommitTimeMs: number;
-}
-
 export interface BenchmarkReport {
   schemaVersion: 1;
-  fixtureVersion: 4;
+  fixtureVersion: 5;
   runId: string;
   scenario: PerformanceScenario;
   clock: 'js-performance-now';
@@ -58,22 +49,14 @@ export interface BenchmarkReport {
   payloadMounts: number;
   payloadUnmounts: number;
   preparationTracing: {
-    version: 1;
+    version: 2;
     requested: boolean;
-    directions: ['forward'];
-  };
-  reactProfiling: {
-    requested: boolean;
-    supported: boolean;
-    status: 'not-requested' | 'requested-but-no-callbacks' | 'observed';
-    meaning: 'React-render-work-for-committed-updates-not-native-commit-time';
-    observations: ReactObservation[];
+    directions: ['forward', 'backward'];
   };
   limitations: string[];
 }
 
 const MAX_SAMPLES = 4096;
-const MAX_REACT_OBSERVATIONS = 8192;
 // The native timing runner accepts 100 round trips, each containing two journeys.
 const MAX_JOURNEYS = 200;
 
@@ -81,7 +64,6 @@ const MAX_JOURNEYS = 200;
 export class BenchmarkCollector {
   private samples: BenchmarkSample[] = [];
   private journeys: JourneyObservation[] = [];
-  private reactObservations: ReactObservation[] = [];
   private errors: string[] = [];
   private sequence = 0;
   private droppedSamples = 0;
@@ -93,7 +75,6 @@ export class BenchmarkCollector {
   constructor(
     readonly runId: string,
     readonly scenario: PerformanceScenario,
-    readonly profilingRequested: boolean,
     private readonly now: () => number,
     private readonly options: { preparationTracing?: boolean } = {}
   ) {}
@@ -325,26 +306,6 @@ export class BenchmarkCollector {
     });
   }
 
-  reactCommit(observation: ReactObservation) {
-    if (!this.profilingRequested) return;
-    if (
-      ![
-        observation.actualDurationMs,
-        observation.baseDurationMs,
-        observation.reactStartTimeMs,
-        observation.reactCommitTimeMs,
-      ].every((value) => Number.isFinite(value) && value >= 0)
-    ) {
-      this.fail('invalid-react-profiler-observation');
-      return;
-    }
-    if (this.reactObservations.length >= MAX_REACT_OBSERVATIONS) {
-      this.fail('react-profiler-observation-limit-exceeded');
-      return;
-    }
-    this.reactObservations.push({ ...observation });
-  }
-
   report(): BenchmarkReport {
     const errors = [...this.errors];
     const completeRoundTrip =
@@ -359,24 +320,16 @@ export class BenchmarkCollector {
     if (!completeRoundTrip) errors.push('incomplete-verified-round-trip');
     if (
       this.options.preparationTracing &&
-      this.journeys.some(
-        (journey) =>
-          journey.direction === 'forward' && !journey.preparationTrace
-      )
+      this.journeys.some((journey) => !journey.preparationTrace)
     )
-      errors.push('missing-forward-preparation-trace');
-    const profilingSupported =
-      this.profilingRequested && this.reactObservations.length > 0;
-    if (this.profilingRequested && !profilingSupported) {
-      errors.push('profiling-requested-but-no-profiler-callbacks');
-    }
+      errors.push('missing-preparation-trace');
     if (this.droppedSamples > 0) errors.push('sample-buffer-overflow');
     if (this.payloadMounts !== 1 || this.payloadUnmounts !== 0) {
       errors.push('live-payload-owner-not-retained');
     }
     return {
       schemaVersion: 1,
-      fixtureVersion: 4,
+      fixtureVersion: 5,
       runId: this.runId,
       scenario: this.scenario,
       clock: 'js-performance-now',
@@ -402,28 +355,13 @@ export class BenchmarkCollector {
       payloadMounts: this.payloadMounts,
       payloadUnmounts: this.payloadUnmounts,
       preparationTracing: {
-        version: 1,
+        version: 2,
         requested: this.options.preparationTracing === true,
-        directions: ['forward'],
-      },
-      reactProfiling: {
-        requested: this.profilingRequested,
-        supported: profilingSupported,
-        status: profilingSupported
-          ? 'observed'
-          : this.profilingRequested
-            ? 'requested-but-no-callbacks'
-            : 'not-requested',
-        meaning:
-          'React-render-work-for-committed-updates-not-native-commit-time',
-        observations: this.reactObservations.map((observation) => ({
-          ...observation,
-        })),
+        directions: ['forward', 'backward'],
       },
       limitations: [
         'JS callback timestamps are not native animation completion or frame presentation.',
         'Probe latency includes automation wait/polling; it is an observed successful-input upper bound.',
-        'React durations are render work, not native commit time; native timing runs disable React profiling.',
         'Payload effects count React lifecycle observations, not physical native view identity.',
       ],
     };

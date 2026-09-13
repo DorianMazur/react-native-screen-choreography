@@ -1,14 +1,11 @@
 import React, {
   createContext,
-  Profiler,
   useCallback,
   useContext,
   useEffect,
-  useLayoutEffect,
   useMemo,
   useRef,
   useState,
-  type ProfilerOnRenderCallback,
 } from 'react';
 import { NativeModules, Pressable, StyleSheet, Text, View } from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
@@ -43,7 +40,6 @@ declare const performance: { now: () => number };
 
 export interface PerformanceLaunchProps {
   performanceScenario: PerformanceScenario;
-  performanceReactProfile?: boolean;
 }
 
 type StackParams = {
@@ -190,17 +186,6 @@ function DetailScreen({ route }: { route: { params: { photoId: string } } }) {
   );
 }
 
-/** A controlled update confirms the profiling renderer is actually collecting. */
-function ProfilingCalibration() {
-  const [updated, setUpdated] = useState(false);
-  useLayoutEffect(() => setUpdated(true), []);
-  return (
-    <Text style={styles.marker}>
-      Profiling calibration {updated ? '1' : '0'}
-    </Text>
-  );
-}
-
 type UiStatus =
   | 'loading'
   | 'ready'
@@ -216,7 +201,6 @@ function createCollector(props: PerformanceLaunchProps) {
   return new BenchmarkCollector(
     `${props.performanceScenario}-${launchNonce}-${++runCounter}`,
     props.performanceScenario,
-    props.performanceReactProfile === true,
     () => performance.now(),
     { preparationTracing: true }
   );
@@ -280,20 +264,6 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
       },
     }),
     [collector, clearRequestTimer]
-  );
-
-  const onRender = useCallback<ProfilerOnRenderCallback>(
-    (id, phase, actualDuration, baseDuration, startTime, commitTime) => {
-      collector.reactCommit({
-        id,
-        phase,
-        actualDurationMs: actualDuration,
-        baseDurationMs: baseDuration,
-        reactStartTimeMs: startTime,
-        reactCommitTimeMs: commitTime,
-      });
-    },
-    [collector]
   );
 
   const exportRun = useCallback(async () => {
@@ -391,10 +361,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         <View style={styles.root}>
           <View style={styles.toolbar}>
             <Text style={styles.caption}>
-              {props.performanceScenario} ·{' '}
-              {props.performanceReactProfile
-                ? 'React profile'
-                : 'native timing'}
+              {props.performanceScenario} · native timing
             </Text>
             <Text
               testID="benchmark-run-id"
@@ -445,24 +412,13 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
                 <Marker id="benchmark-exported" />
               </>
             )}
-            {props.performanceReactProfile === true && <ProfilingCalibration />}
           </View>
           <View style={styles.navigation}>{navigator}</View>
         </View>
       </ChoreographyProvider>
     </FixtureContext.Provider>
   );
-  return (
-    <SafeAreaProvider>
-      {props.performanceReactProfile === true ? (
-        <Profiler id="benchmark-root" onRender={onRender}>
-          {content}
-        </Profiler>
-      ) : (
-        content
-      )}
-    </SafeAreaProvider>
-  );
+  return <SafeAreaProvider>{content}</SafeAreaProvider>;
 }
 
 const styles = StyleSheet.create({

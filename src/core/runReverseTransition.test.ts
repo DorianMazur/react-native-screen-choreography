@@ -386,3 +386,59 @@ test('unready overlay falls back to one plain Back action without animating a bl
   expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
   expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
 });
+
+describe('reverse preparation diagnostics', () => {
+  test.each([true, false])(
+    'reports overlay acknowledgment=%s before animation settles',
+    async (acknowledged) => {
+      jest.useFakeTimers();
+      try {
+        const onPreparationTrace = jest.fn();
+        let finish!: () => void;
+        const settling = new Promise<void>((resolve) => {
+          finish = resolve;
+        });
+        const ctx = createContext({
+          onPreparationTrace,
+          isOverlayPresented: () => acknowledged,
+          commitReverseTransition: jest.fn(() => settling),
+        });
+        const operation = runReverseTransition({
+          ctx,
+          groupId: 'group',
+          sourceScreenId: 'list',
+          currentScreenId: 'detail',
+          popAction: jest.fn(),
+        });
+        // Preparation consists of source read, coordinator and overlay awaits.
+        for (let index = 0; index < 8; index++) await Promise.resolve();
+        expect(ctx.commitReverseTransition).toHaveBeenCalledTimes(1);
+        jest.runOnlyPendingTimers();
+        expect(onPreparationTrace).toHaveBeenCalledTimes(1);
+        const trace = onPreparationTrace.mock.calls[0]![0];
+        expect(trace).toMatchObject({
+          direction: 'backward',
+          sessionId: 'reverse-session',
+          sourceScreenId: 'detail',
+          targetScreenId: 'list',
+          outcome: acknowledged ? 'overlay-ready' : 'overlay-timeout',
+        });
+        expect(
+          trace.stages.map((stage: { name: string }) => stage.name)
+        ).toEqual(
+          expect.arrayContaining([
+            'source-measure',
+            'coordinator',
+            'overlay-ready',
+          ])
+        );
+        finish();
+        await operation;
+        jest.runOnlyPendingTimers();
+        expect(onPreparationTrace).toHaveBeenCalledTimes(1);
+      } finally {
+        jest.useRealTimers();
+      }
+    }
+  );
+});

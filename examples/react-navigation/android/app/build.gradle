@@ -128,9 +128,3 @@ dependencies {
         implementation jscFlavor
     }
 }
-
-// Metro selects the production profiling renderer only for the dedicated
-// profiling run. Switching locally must invalidate the cached JS bundle.
-tasks.withType(com.facebook.react.tasks.BundleHermesCTask).configureEach {
-    inputs.property("choreographyReactProfile", providers.environmentVariable("CHOREOGRAPHY_REACT_PROFILE").orElse("0"))
-}
