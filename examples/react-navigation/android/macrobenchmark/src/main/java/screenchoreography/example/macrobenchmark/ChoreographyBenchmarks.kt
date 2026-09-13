@@ -5,9 +5,6 @@ import android.content.Intent
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.SystemClock
-import androidx.benchmark.macro.CompilationMode
-import androidx.benchmark.macro.FrameTimingMetric
-import androidx.benchmark.macro.junit4.MacrobenchmarkRule
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.StaleObjectException
@@ -16,7 +13,6 @@ import androidx.test.uiautomator.Until
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
-import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.junit.runners.Parameterized
@@ -24,38 +20,9 @@ import org.junit.runners.Parameterized
 /** Release-like fixture measurements; no timing claim is derived from automation wall time. */
 @RunWith(Parameterized::class)
 class ChoreographyBenchmarks(private val scenario: String) {
-  @get:Rule
-  val benchmarkRule = MacrobenchmarkRule()
-
   private val instrumentation = InstrumentationRegistry.getInstrumentation()
   private val arguments = InstrumentationRegistry.getArguments()
   private val device = UiDevice.getInstance(instrumentation)
-  private val reactProfile = arguments.getString("performanceReactProfile", "false").toBoolean()
-  private val iterations = arguments.getString("performanceIterations", "20").toInt().also {
-    require(it in 1..100) { "performanceIterations must be between 1 and 100" }
-  }
-
-  @Test
-  fun transitionFrames() {
-    benchmarkRule.measureRepeated(
-      packageName = APP_ID,
-      metrics = listOf(FrameTimingMetric()),
-      compilationMode = CompilationMode.None(),
-      iterations = iterations,
-      setupBlock = {
-        // CLEAR_TASK gives each measured journey a fresh Activity and React root.
-        // Launch and settling are outside the frame measurement interval.
-        startActivityAndWait(launchIntent())
-        await("benchmark-ready")
-        device.waitForIdle()
-      },
-    ) {
-      roundTrip()
-    }
-    // Macrobenchmark may stop the app during cleanup. JS/input telemetry is
-    // exported by the separate repeated-navigation test, never by this frame test.
-  }
-
   @Test
   fun repeatedNavigationTimingAndInput() {
     val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
@@ -105,7 +72,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
     addCategory(Intent.CATEGORY_LAUNCHER)
     addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TASK)
     putExtra("performanceScenario", scenario)
-    putExtra("performanceReactProfile", reactProfile)
   }
 
   private fun await(label: String) {

@@ -6,8 +6,8 @@ import { selectBaselineRun } from './post-comment.mts';
 function report() {
   return {
     schemaVersion: 1,
-    measurementDefinitionVersion: 3,
-    fixtureVersion: 4,
+    measurementDefinitionVersion: 4,
+    fixtureVersion: 5,
     valid: true,
     platform: 'android',
     mode: 'native-release',
@@ -17,7 +17,6 @@ function report() {
       apiLevel: 35,
       emulator: true,
       abi: 'x86_64',
-      iterations: 3,
       timingCycles: 3,
       reactNativeVersion: '0.83.0',
       reanimatedVersion: '4.2',
@@ -25,7 +24,7 @@ function report() {
       runnerImage: 'ubuntu-1',
     },
     metrics: {
-      'android.transitionFrames[gallery].deadlineOverrunPercent': {
+      'gallery.backward.requestToSessionActiveMs': {
         count: 3,
         median: 0,
       },
@@ -37,13 +36,11 @@ function report() {
 test('shows absolute deltas including zero baselines, negative timing changes', () => {
   const base = report();
   const current = report();
-  current.metrics[
-    'android.transitionFrames[gallery].deadlineOverrunPercent'
-  ].median = 5;
+  current.metrics['gallery.backward.requestToSessionActiveMs'].median = 5;
   current.metrics['gallery.forward.requestToSessionActiveMs'].median = 30;
   assert.equal(compatible(current, base), true);
   const table = summaryTable(current, base);
-  assert.match(table, /0 \| 5 \| \+5 pp/);
+  assert.match(table, /0 \| 5 \| \+5 ms/);
   assert.match(table, /40 \| 30 \| -10 ms/);
   assert.doesNotMatch(table, /Infinity|NaN/);
 });

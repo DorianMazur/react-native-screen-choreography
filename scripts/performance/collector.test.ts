@@ -3,15 +3,11 @@ import test from 'node:test';
 import { BenchmarkCollector } from '../../examples/react-navigation/src/performance/collector.ts';
 import type { ChoreographyPreparationTrace } from '../../src/types.ts';
 
-function fixture(profiling = false, preparationTracing = false) {
+function fixture(preparationTracing = false) {
   let time = 100;
-  const collector = new BenchmarkCollector(
-    'test-1',
-    'gallery',
-    profiling,
-    () => time,
-    { preparationTracing }
-  );
+  const collector = new BenchmarkCollector('test-1', 'gallery', () => time, {
+    preparationTracing,
+  });
   collector.payloadLifecycle(collector.allocatePayloadInstance(), true);
   return {
     collector,
@@ -43,6 +39,24 @@ function preparationTrace(): ChoreographyPreparationTrace {
         details: { ready: true },
       },
     ],
+  };
+}
+
+function backTrace(): ChoreographyPreparationTrace {
+  const trace = preparationTrace();
+  return {
+    ...trace,
+    traceId: 'trace-backward',
+    sessionId: 'back-session',
+    direction: 'backward',
+    sourceScreenId: 'detail:instance',
+    targetScreenId: 'list',
+    startedAtMs: 705,
+    completedAtMs: 760,
+    stages: trace.stages.map((stage) => ({
+      ...stage,
+      startedAtMs: stage.startedAtMs + 600,
+    })),
   };
 }
 
@@ -78,46 +92,46 @@ test('reports same-clock durations and verifies both destination probes', () => 
   assert.equal(report.journeys[0].requestToSessionEndMs, 400);
   assert.equal(report.journeys[0].probe!.sessionEndToProbeHandlerMs, 150);
   assert.equal(report.journeys[1].probe!.requestToProbeHandlerMs, 580);
-  assert.equal(report.reactProfiling.supported, false);
-  assert.deepEqual(report.reactProfiling.observations, []);
   assert.ok(
     report.samples.every((sample) => sample.clock === 'js-performance-now')
   );
 });
 
 test('delayed diagnostics attach by session and preserve the original request timing', () => {
-  const { collector, at } = fixture(false, true);
+  const { collector, at } = fixture(true);
   completeRoundTrip(collector, at);
   // Degalleryry can happen after a later request; its callback time is not a metric.
   collector.preparationTrace(preparationTrace());
+  collector.preparationTrace(backTrace());
   const report = collector.report();
   assert.equal(report.valid, true, report.errors.join());
   assert.equal(report.journeys[0].requestToSessionActiveMs, 40);
   assert.equal(report.journeys[0].requestToOverlayReadyMs, 60);
-  assert.equal(report.journeys[1].requestToOverlayReadyMs, undefined);
+  assert.equal(report.journeys[1].requestToOverlayReadyMs, 60);
   assert.equal(report.preparationTracing.requested, true);
 });
 
-test('tracing requires a forward report only when explicitly requested', () => {
+test('tracing requires both direction reports only when explicitly requested', () => {
   for (const requested of [false, true]) {
-    const { collector, at } = fixture(false, requested);
+    const { collector, at } = fixture(requested);
     completeRoundTrip(collector, at);
     const report = collector.report();
     assert.equal(report.valid, !requested);
     assert.equal(report.journeys[0].requestToOverlayReadyMs, undefined);
     assert.equal(
-      report.errors.includes('missing-forward-preparation-trace'),
+      report.errors.includes('missing-preparation-trace'),
       requested
     );
   }
 });
 
 test('an overlay timeout remains visible without fabricating an acknowledged readiness metric', () => {
-  const { collector, at } = fixture(false, true);
+  const { collector, at } = fixture(true);
   completeRoundTrip(collector, at);
   const trace = preparationTrace();
   trace.outcome = 'overlay-timeout';
   collector.preparationTrace(trace);
+  collector.preparationTrace(backTrace());
   const report = collector.report();
   assert.equal(report.valid, true, report.errors.join());
   assert.equal(report.journeys[0].requestToSessionActiveMs, 40);
@@ -152,7 +166,7 @@ test('invalid, unmatched, and duplicate traces cannot manufacture startup metric
       trace.stages[0].durationMs = 100;
     },
   ]) {
-    const { collector, at } = fixture(false, true);
+    const { collector, at } = fixture(true);
     completeRoundTrip(collector, at);
     const trace = preparationTrace();
     mutate(trace);
@@ -161,7 +175,7 @@ test('invalid, unmatched, and duplicate traces cannot manufacture startup metric
     assert.equal(report.valid, false);
     assert.equal(report.journeys[0].requestToOverlayReadyMs, undefined);
   }
-  const { collector, at } = fixture(false, true);
+  const { collector, at } = fixture(true);
   completeRoundTrip(collector, at);
   collector.preparationTrace(preparationTrace());
   collector.preparationTrace(preparationTrace());
@@ -169,7 +183,7 @@ test('invalid, unmatched, and duplicate traces cannot manufacture startup metric
 });
 
 test('trace exports and observer inputs cannot mutate retained diagnostics', () => {
-  const { collector, at } = fixture(false, true);
+  const { collector, at } = fixture(true);
   completeRoundTrip(collector, at);
   const trace = preparationTrace();
   collector.preparationTrace(trace);
@@ -222,29 +236,6 @@ test('stale session callbacks invalidate a run without filling missing metrics',
   const report = collector.report();
   assert.ok(report.errors.includes('unmatched-or-duplicate-session-end'));
   assert.equal(report.journeys[0].sessionEndJsMs, null);
-});
-
-test('requested profiling requires real callbacks; release does not invent samples', () => {
-  const { collector, at } = fixture(true);
-  completeRoundTrip(collector, at);
-  assert.equal(collector.report().valid, false);
-  assert.equal(
-    collector.report().reactProfiling.status,
-    'requested-but-no-callbacks'
-  );
-  collector.reactCommit({
-    id: 'benchmark-root',
-    phase: 'update',
-    actualDurationMs: 4,
-    baseDurationMs: 6,
-    reactStartTimeMs: 10,
-    reactCommitTimeMs: 20,
-  });
-  const report = collector.report();
-  assert.equal(report.valid, true);
-  assert.equal(report.reactProfiling.supported, true);
-  assert.equal(report.reactProfiling.observations[0].actualDurationMs, 4);
-  assert.match(report.reactProfiling.meaning, /not-native-commit-time/);
 });
 
 test('snapshot export is detached from subsequent observation changes', () => {
@@ -321,7 +312,6 @@ test('a gallery report without an observed payload mount is invalid', () => {
   const collector = new BenchmarkCollector(
     'missing-owner',
     'gallery',
-    false,
     () => time
   );
   completeRoundTrip(collector, (next: number) => {

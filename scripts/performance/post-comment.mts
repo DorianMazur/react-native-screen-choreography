@@ -8,10 +8,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const COMMENT_MARKER = '<!-- choreography-performance -->';
-const ARTIFACTS = [
-  'performance-summary-android-native-release',
-  'performance-summary-android-react-profile',
-];
+const ARTIFACTS = ['performance-summary-android-native-release'];
 
 const safe = (value: unknown) =>
   String(value)
@@ -42,9 +39,7 @@ export async function readArtifactSummary(
   if (!ARTIFACTS.includes(artifactName))
     throw new Error('Unexpected summary artifact name');
   const [, platform, mode] =
-    /^performance-summary-(android)-(native-release|react-profile)$/.exec(
-      artifactName
-    )!;
+    /^performance-summary-(android)-(native-release)$/.exec(artifactName)!;
   try {
     const summary = await loadSummary();
     if (
@@ -95,16 +90,16 @@ export function renderComment(
     `<!-- choreography-run:${run.id}:${run.run_attempt ?? 1} -->`,
     '**Android performance**',
     '',
-    `Run: **${safe(run.conclusion ?? 'unknown')}** · [reports and native traces](${run.html_url})`,
+    `Run: **${safe(run.conclusion ?? 'unknown')}** · [reports and raw measurements](${run.html_url})`,
     '',
-    `Release: **${collectionStatus(reports[ARTIFACTS[0]], 'native-release')}** · React profile: **${collectionStatus(reports[ARTIFACTS[1]], 'react-profile')}**`,
+    `Release: **${collectionStatus(reports[ARTIFACTS[0]], 'native-release')}**`,
     '',
   ];
   for (const artifactName of ARTIFACTS) {
     const report = reports[artifactName];
     const label = artifactName.replace('performance-summary-', '');
     lines.push(
-      `<details><summary>${label === 'android-react-profile' ? 'React profiling' : 'Release measurements'} · base comparison</summary>`,
+      `<details><summary>Release measurements · base comparison</summary>`,
       ''
     );
     if (!report) {
@@ -144,7 +139,7 @@ export function renderComment(
     lines.push('</details>', '');
   }
   lines.push(
-    'Informational emulator results · medians · absolute changes (pp = percentage points). [Full reports and traces](' +
+    'Informational emulator results · medians · absolute changes in milliseconds. [Full reports and measurements](' +
       run.html_url +
       ').'
   );
@@ -170,17 +165,9 @@ export function selectBaselineRun(
     .sort((a, b) => b.id - a.id)[0];
 }
 
-async function main() {
-  const event = JSON.parse(
-    await readFile(process.env.GITHUB_EVENT_PATH ?? '', 'utf8')
-  );
-  const repository = process.env.GITHUB_REPOSITORY ?? '';
-  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? ''))
-    throw new Error('Invalid repository context');
-  const token = process.env.GITHUB_TOKEN;
-  if (!token) throw new Error('Missing GitHub token');
+export function createGitHubApi(repository: string, token: string) {
   const origin = process.env.GITHUB_API_URL ?? 'https://api.github.com';
-  const api = async (
+  return async (
     route: string,
     init: { method?: string; body?: string } = {}
   ) => {
@@ -197,6 +184,103 @@ async function main() {
       throw new Error(`GitHub API returned ${response.status} for ${route}`);
     return response;
   };
+}
+
+export async function loadReports(
+  api: ReturnType<typeof createGitHubApi>,
+  runId: number
+) {
+  const { artifacts } = await (
+    await api(`/actions/runs/${runId}/artifacts?per_page=100`)
+  ).json();
+  const reports: Record<string, InputRecord> = {};
+  const directory = await mkdtemp(path.join(tmpdir(), 'choreography-comment-'));
+  try {
+    for (const artifact of artifacts) {
+      if (!ARTIFACTS.includes(artifact.name) || artifact.expired) continue;
+      reports[artifact.name] = await readArtifactSummary(
+        artifact.name,
+        async () => {
+          if (artifact.size_in_bytes > 2 * 1024 * 1024)
+            throw new Error('Summary artifact exceeds size limit');
+          const response = await api(`/actions/artifacts/${artifact.id}/zip`);
+          const zip = path.join(directory, `${artifact.id}.zip`);
+          const bytes = Buffer.from(await response.arrayBuffer());
+          if (bytes.length > 2 * 1024 * 1024)
+            throw new Error('Summary download exceeds size limit');
+          await writeFile(zip, bytes);
+          const entries = execFileSync('unzip', ['-Z1', zip], {
+            encoding: 'utf8',
+            maxBuffer: 128 * 1024,
+          })
+            .trim()
+            .split('\n');
+          const allowed = entries.filter(
+            (entry) =>
+              entry === 'summary.json' || entry === 'report/summary.json'
+          );
+          if (allowed.length !== 1)
+            throw new Error(
+              'Artifact must contain exactly one recognized summary.json'
+            );
+          // Read one bounded JSON member directly. Never extract or execute PR artifact files.
+          const text = execFileSync('unzip', ['-p', zip, allowed[0]], {
+            encoding: 'utf8',
+            maxBuffer: 2 * 1024 * 1024,
+          });
+          return JSON.parse(text);
+        }
+      );
+    }
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+  return reports;
+}
+
+export async function findBaseline(
+  api: ReturnType<typeof createGitHubApi>,
+  pr: InputRecord,
+  workflowId: number | string,
+  repository: string
+) {
+  let baseline;
+  try {
+    const query = new URLSearchParams({
+      event: 'push',
+      status: 'success',
+      branch: pr.base.ref,
+      head_sha: pr.base.sha,
+      per_page: '100',
+    });
+    const response = await (
+      await api(`/actions/workflows/${workflowId}/runs?${query}`)
+    ).json();
+    const baseRun = selectBaselineRun(
+      response.workflow_runs ?? [],
+      pr,
+      repository
+    );
+    if (baseRun)
+      baseline = { run: baseRun, reports: await loadReports(api, baseRun.id) };
+  } catch (error) {
+    console.warn(
+      `Baseline unavailable: ${error instanceof Error ? error.message : String(error)}`
+    );
+  }
+  return baseline;
+}
+
+async function main() {
+  const event = JSON.parse(
+    await readFile(process.env.GITHUB_EVENT_PATH ?? '', 'utf8')
+  );
+  const repository = process.env.GITHUB_REPOSITORY ?? '';
+  if (!/^[A-Za-z0-9_.-]+\/[A-Za-z0-9_.-]+$/.test(repository ?? ''))
+    throw new Error('Invalid repository context');
+  const token = process.env.GITHUB_TOKEN;
+  if (!token) throw new Error('Missing GitHub token');
+  const api = createGitHubApi(repository, token);
   const requestedRunId = event.workflow_run?.id;
   if (!Number.isSafeInteger(requestedRunId))
     throw new Error('Missing workflow run ID');
@@ -226,82 +310,9 @@ async function main() {
   }
   if (!current.length) return; // Never overwrite the current head with stale measurements.
 
-  const loadReports = async (runId: number) => {
-    const { artifacts } = await (
-      await api(`/actions/runs/${runId}/artifacts?per_page=100`)
-    ).json();
-    const reports: Record<string, InputRecord> = {};
-    const directory = await mkdtemp(
-      path.join(tmpdir(), 'choreography-comment-')
-    );
-    try {
-      for (const artifact of artifacts) {
-        if (!ARTIFACTS.includes(artifact.name) || artifact.expired) continue;
-        reports[artifact.name] = await readArtifactSummary(
-          artifact.name,
-          async () => {
-            if (artifact.size_in_bytes > 2 * 1024 * 1024)
-              throw new Error('Summary artifact exceeds size limit');
-            const response = await api(`/actions/artifacts/${artifact.id}/zip`);
-            const zip = path.join(directory, `${artifact.id}.zip`);
-            const bytes = Buffer.from(await response.arrayBuffer());
-            if (bytes.length > 2 * 1024 * 1024)
-              throw new Error('Summary download exceeds size limit');
-            await writeFile(zip, bytes);
-            const entries = execFileSync('unzip', ['-Z1', zip], {
-              encoding: 'utf8',
-              maxBuffer: 128 * 1024,
-            })
-              .trim()
-              .split('\n');
-            const allowed = entries.filter(
-              (entry) =>
-                entry === 'summary.json' || entry === 'report/summary.json'
-            );
-            if (allowed.length !== 1)
-              throw new Error(
-                'Artifact must contain exactly one recognized summary.json'
-              );
-            // Read one bounded JSON member directly. Never extract or execute PR artifact files.
-            const text = execFileSync('unzip', ['-p', zip, allowed[0]], {
-              encoding: 'utf8',
-              maxBuffer: 2 * 1024 * 1024,
-            });
-            return JSON.parse(text);
-          }
-        );
-      }
-    } finally {
-      await rm(directory, { recursive: true, force: true });
-    }
-    return reports;
-  };
-  const reports = await loadReports(run.id);
+  const reports = await loadReports(api, run.id);
   for (const pr of current) {
-    let baseline;
-    try {
-      const query = new URLSearchParams({
-        event: 'push',
-        status: 'success',
-        branch: pr.base.ref,
-        head_sha: pr.base.sha,
-        per_page: '100',
-      });
-      const response = await (
-        await api(`/actions/workflows/${run.workflow_id}/runs?${query}`)
-      ).json();
-      const baseRun = selectBaselineRun(
-        response.workflow_runs ?? [],
-        pr,
-        repository
-      );
-      if (baseRun)
-        baseline = { run: baseRun, reports: await loadReports(baseRun.id) };
-    } catch (error) {
-      console.warn(
-        `Baseline unavailable: ${error instanceof Error ? error.message : String(error)}`
-      );
-    }
+    const baseline = await findBaseline(api, pr, run.workflow_id, repository);
     const body = renderComment(run, reports, baseline);
     // Both heads must still match after fetching artifacts.
     const latest = await (await api(`/pulls/${pr.number}`)).json();

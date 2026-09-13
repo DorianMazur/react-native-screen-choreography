@@ -1,5 +1,6 @@
 import type { CommitBackNavigation } from './navigationCommit';
 import type { ChoreographyContextType } from './ChoreographyContext';
+import { PreparationTrace } from './preparationTrace';
 import { FAST_SPRING } from './constants';
 import type { SpringConfig } from '../types';
 import { debugLog } from '../debug/logger';
@@ -42,6 +43,17 @@ export async function runReverseTransition(
     waitForOverlayReady,
   } = ctx;
   if (!navigationController.acquireNavigationLock(currentScreenId)) return;
+  const trace = ctx.onPreparationTrace
+    ? new PreparationTrace(
+        {
+          groupId,
+          sourceScreenId: currentScreenId,
+          targetScreenId: sourceScreenId,
+          direction: 'backward',
+        },
+        ctx.onPreparationTrace
+      )
+    : undefined;
   const navigationToken = navigationController.getNavigationLockToken();
   let reverseSessionId: string | null = null;
   const preparationVersion = progressOwnership.version;
@@ -63,21 +75,26 @@ export async function runReverseTransition(
 
   try {
     debugLog('[BackIntercept] preMeasureGroup start');
+    const endSource = trace?.start('source-measure');
     await preMeasureGroup(groupId, currentScreenId);
+    endSource?.();
     if (!canContinue() || progressOwnership.version !== preparationVersion)
       return;
     debugLog('[BackIntercept] preMeasureGroup done');
 
+    const endCoordinator = trace?.start('coordinator');
     const reverseSession = await startTransition({
       groupId,
       sourceScreenId: currentScreenId,
       targetScreenId: sourceScreenId,
       direction: 'backward',
+      ...(trace ? { trace } : {}),
       onUnavailable: (sessionId) => {
         reverseSessionId = sessionId;
         commitNavigation();
       },
     });
+    endCoordinator?.();
     debugLog(
       `[BackIntercept] startTransition returned session=${reverseSession?.id ?? 'null'}`
     );
@@ -90,10 +107,15 @@ export async function runReverseTransition(
       return;
     }
     reverseSessionId = reverseSession.id;
+    trace?.setSession(reverseSession.id);
     animationToken = progressOwnership.claim(reverseSessionId);
     if (animationToken === null) return;
 
+    const endOverlay = trace?.start('overlay-ready');
     const overlayReady = await waitForOverlayReady(reverseSession.id);
+    const acknowledged =
+      overlayReady && (ctx.isOverlayPresented?.(reverseSession.id) ?? true);
+    endOverlay?.({ ready: overlayReady, acknowledged });
     if (!progressOwnership.isCurrent(animationToken, reverseSession.id)) return;
     if (!overlayReady || !canContinue()) {
       // Unready overlay content must not swallow a requested Back action.
@@ -101,6 +123,7 @@ export async function runReverseTransition(
       cancelTransition(reverseSession.id);
       return;
     }
+    trace?.finish(acknowledged ? 'overlay-ready' : 'overlay-timeout');
     await ctx.commitReverseTransition({
       sessionId: reverseSession.id,
       token: animationToken,
@@ -132,6 +155,7 @@ export async function runReverseTransition(
     }
     commitNavigation();
   } finally {
+    trace?.finish('cancelled');
     if (!reverseSessionId || !progressOwnership.isSession(reverseSessionId)) {
       navigationController.releaseNavigationLock(navigationToken);
     }

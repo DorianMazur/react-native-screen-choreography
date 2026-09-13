@@ -3,10 +3,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { distribution, summarize, markdown } from './report.mts';
 
-function fixture(scenario: string, profile = false): InputRecord {
+function fixture(scenario: string): InputRecord {
   return {
     schemaVersion: 1,
-    fixtureVersion: 4,
+    fixtureVersion: 5,
     runId: `${scenario}-1`,
     scenario,
     clock: 'js-performance-now',
@@ -29,14 +29,6 @@ function fixture(scenario: string, profile = false): InputRecord {
         sessionEndToProbeHandlerMs: 70,
       },
     })),
-    reactProfiling: {
-      requested: profile,
-      supported: profile,
-      status: profile ? 'observed' : 'not-requested',
-      observations: profile
-        ? [{ actualDurationMs: 2, reactCommitTimeMs: 900 }]
-        : [],
-    },
     native: {
       platform: 'android',
       clock: 'android-uptime-ms',
@@ -57,40 +49,21 @@ function fixture(scenario: string, profile = false): InputRecord {
   };
 }
 
-function documents(profile = false): MeasurementDocument[] {
-  return [
-    ...['gallery'].flatMap((scenario) => [
-      { file: `${scenario}.json`, data: fixture(scenario, profile) },
-    ]),
-    {
-      file: 'native-benchmarkData.json',
-      data: {
-        benchmarks: ['gallery'].flatMap((scenario) => [
-          {
-            name: `transitionFrames[${scenario}]`,
-            metrics: { frameCount: { runs: [3, 1] } },
-            sampledMetrics: {
-              frameOverrunMs: { runs: [[-5, -2, 3], [-1]] },
-              frameDurationCpuMs: { runs: [[3, 5, 19], [9]] },
-            },
-          },
-        ]),
-      },
-    },
-  ];
+function documents(): MeasurementDocument[] {
+  return [{ file: 'gallery.json', data: fixture('gallery') }];
 }
 
 const options = {
   platform: 'android',
   mode: 'native-release',
-  metadata: { iterations: 2, timingCycles: 1 },
+  metadata: { timingCycles: 1 },
 };
 
 function withPreparationTrace(data: InputRecord) {
   data.preparationTracing = {
-    version: 1,
+    version: 2,
     requested: true,
-    directions: ['forward'],
+    directions: ['forward', 'backward'],
   };
   Object.assign(data.journeys[0], {
     requestJsMs: 100,
@@ -136,14 +109,26 @@ function withPreparationTrace(data: InputRecord) {
       ],
     },
   });
+  const forward = data.journeys[0];
+  Object.assign(data.journeys[1], {
+    requestJsMs: 100,
+    sessionActiveJsMs: 140,
+    requestToOverlayReadyMs: 60,
+    preparationTrace: {
+      ...forward.preparationTrace,
+      direction: 'backward',
+      sessionId: 'session-backward',
+      traceId: 'trace-backward',
+    },
+  });
 }
 
-test('optional startup diagnostics preserve definition 3 and aggregate repeated stages per journey', () => {
+test('optional startup diagnostics use definition 4 and aggregate repeated stages per journey', () => {
   const input = documents();
   withPreparationTrace(input[0].data);
   const summary = summarize(input, options);
   assert.equal(summary.valid, true, summary.errors.join());
-  assert.equal(summary.measurementDefinitionVersion, 3);
+  assert.equal(summary.measurementDefinitionVersion, 4);
   assert.equal(
     summary.metrics['gallery.forward.requestToSessionActiveMs']!.median,
     40
@@ -165,8 +150,8 @@ test('optional startup diagnostics preserve definition 3 and aggregate repeated 
     30
   );
   assert.equal(
-    summary.metrics['gallery.backward.requestToOverlayReadyMs'],
-    undefined
+    summary.metrics['gallery.backward.requestToOverlayReadyMs']!.median,
+    60
   );
   assert.equal(
     summary.metrics['gallery.forward.requestToOverlayReadyMs']!.median,
@@ -257,14 +242,9 @@ test('overlay timeouts are counted separately and excluded from acknowledged tim
   );
 });
 
-test('aggregates valid native data without inventing unsupported profiling values', () => {
+test('aggregates native timing data without frame or render metrics', () => {
   const summary = summarize(documents(), options);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(
-    summary.metrics['android.transitionFrames[gallery].deadlineOverrunPercent']!
-      .median,
-    25
-  );
   assert.equal(
     summary.metrics['gallery.native.touchToAcknowledgementMs'],
     undefined
@@ -278,22 +258,11 @@ test('aggregates valid native data without inventing unsupported profiling value
     null
   );
   assert.match(markdown(summary), /informational/);
-});
-
-test('profiling data is required only for a separate profiling artifact', () => {
-  const summary = summarize(documents(true), {
-    ...options,
-    mode: 'react-profile',
-  });
-  assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(summary.metrics['gallery.react.renderWorkPerRunMs']!.median, 2);
-  assert.equal(summarize(documents(true), options).valid, false);
-  const missing = documents(true);
-  missing[0].data.reactProfiling.observations = [];
   assert.match(
-    summarize(missing, { ...options, mode: 'react-profile' }).errors.join(),
-    /no timing observations/
+    markdown(summary),
+    /\| Metric \| Base \| PR \/ current \| Change \|/
   );
+  assert.match(markdown(summary), /No baseline supplied/);
 });
 
 test('rejects incomplete runs even if a producer incorrectly sets valid=true', () => {
@@ -329,13 +298,11 @@ test('rejects incomplete runs even if a producer incorrectly sets valid=true', (
   }
 });
 
-test('rejects absent frame collection and duplicate runs', () => {
+test('rejects duplicate fixture runs', () => {
   const input = documents();
-  input.at(-1)!.data.benchmarks[0].sampledMetrics = {};
   input.push(input[0]);
   const summary = summarize(input, options);
   assert.equal(summary.valid, false);
-  assert.match(summary.errors.join(), /frame-overrun/);
   assert.match(summary.errors.join(), /Duplicate run ID/);
 });
 
@@ -401,7 +368,7 @@ test('requires complete and consistent native touch acknowledgements for Android
 test('requires the requested number of forward and backward timing samples', () => {
   const summary = summarize(documents(), {
     ...options,
-    metadata: { iterations: 2, timingCycles: 20 },
+    metadata: { timingCycles: 20 },
   });
   assert.equal(summary.valid, false);
   assert.match(
@@ -414,12 +381,15 @@ test('requires the requested number of forward and backward timing samples', () 
   );
 });
 
-test('reports 20 preparation samples per direction without memory artifacts', () => {
+test('reports 20 round trips with preparation traces in both directions', () => {
   const input = documents();
+  withPreparationTrace(input[0].data);
   for (const { data } of input.filter(
     (document) => document.data.fixtureVersion
   )) {
-    data.journeys = Array.from({ length: 20 }, () => data.journeys).flat();
+    data.journeys = Array.from({ length: 20 }, () =>
+      structuredClone(data.journeys)
+    ).flat();
     data.native.exportedAtUptimeMs = 41000;
     data.native.touches = data.journeys.map((_: unknown, index: number) => ({
       kind: 'activity-action-up',
@@ -435,27 +405,26 @@ test('reports 20 preparation samples per direction without memory artifacts', ()
       })
     );
   }
-  for (const benchmark of input.at(-1)!.data.benchmarks) {
-    benchmark.metrics.frameCount.runs = Array(20).fill(1);
-    benchmark.sampledMetrics.frameOverrunMs.runs = Array.from(
-      { length: 20 },
-      () => [-1]
-    );
-    benchmark.sampledMetrics.frameDurationCpuMs.runs = Array.from(
-      { length: 20 },
-      () => [3]
-    );
-  }
   const summary = summarize(input, {
     ...options,
-    metadata: { iterations: 20, timingCycles: 20 },
+    metadata: { timingCycles: 20 },
   });
   assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(summary.measurementDefinitionVersion, 3);
+  assert.equal(summary.measurementDefinitionVersion, 4);
   for (const scenario of ['gallery']) {
     for (const direction of ['forward', 'backward']) {
       assert.equal(
         summary.metrics[`${scenario}.${direction}.requestToSessionActiveMs`]!
+          .count,
+        20
+      );
+      assert.equal(
+        summary.preparationDiagnostics[`${scenario}.${direction}`]
+          .tracedJourneys,
+        20
+      );
+      assert.equal(
+        summary.metrics[`${scenario}.${direction}.preparation.overlay-readyMs`]!
           .count,
         20
       );
@@ -467,61 +436,10 @@ test('reports 20 preparation samples per direction without memory artifacts', ()
   );
 });
 
-test('requires frame-overrun data for each scenario', () => {
-  for (const missing of [
-    'transitionFrames[gallery]',
-    'transitionFrames[gallery]',
-  ]) {
-    const input = documents();
-    input.at(-1)!.data.benchmarks = input
-      .at(-1)!
-      .data.benchmarks.filter(({ name }: { name: string }) => name !== missing);
-    const summary = summarize(input, options);
-    assert.equal(summary.valid, false, missing);
-    assert.match(summary.errors.join(), /Missing .* native/);
-  }
-});
-
-test('validates pinned Macrobenchmark run arrays, counts, duplicate names and per-frame values', () => {
-  for (const mutate of [
-    (data: InputRecord) => {
-      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs = [[1], []];
-    },
-    (data: InputRecord) => {
-      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs = [-1, 1];
-    },
-    (data: InputRecord) => {
-      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs = [[-1]];
-    },
-    (data: InputRecord) => {
-      data.benchmarks[0].sampledMetrics.frameDurationCpuMs.runs[0][0] = -1;
-    },
-    (data: InputRecord) => {
-      data.benchmarks[0].sampledMetrics.frameOverrunMs.runs[0][0] =
-        Number.POSITIVE_INFINITY;
-    },
-    (data: InputRecord) => {
-      data.benchmarks.push(data.benchmarks[0]);
-    },
-    (data: InputRecord) => {
-      data.benchmarks[0].name = 'roundTrip';
-    },
-  ]) {
-    const input = documents();
-    mutate(input.at(-1)!.data);
-    const summary = summarize(input, options);
-    assert.equal(summary.valid, false);
-    assert.equal(
-      Object.keys(summary.metrics).some((key) => key.startsWith('android.')),
-      false
-    );
-  }
-});
-
-test('rejects invalid expected counts and duplicate native artifacts', () => {
+test('rejects invalid expected counts and duplicate fixture artifacts', () => {
   for (const metadata of [
-    { iterations: 0 },
-    { iterations: 1.5 },
+    { timingCycles: 0 },
+    { timingCycles: 1.5 },
     { timingCycles: 101 },
   ]) {
     assert.match(
@@ -529,12 +447,12 @@ test('rejects invalid expected counts and duplicate native artifacts', () => {
       /integer between 1 and 100/
     );
   }
-  for (const documentIndex of [1]) {
+  for (const documentIndex of [0]) {
     const input = documents();
     input.push({ ...input[documentIndex], file: 'copied-artifact.json' });
     const summary = summarize(input, options);
     assert.equal(summary.valid, false);
-    assert.match(summary.errors.join(), /Duplicate Android benchmark/);
+    assert.match(summary.errors.join(), /Duplicate run ID/);
   }
 });
 
@@ -549,7 +467,7 @@ test('tail estimates require enough observations', () => {
 });
 
 test('rejects every fixture version before the actual Gallery workload', () => {
-  for (const fixtureVersion of [1, 2, 3]) {
+  for (const fixtureVersion of [1, 2, 3, 4]) {
     const input = documents();
     input[0]!.data.fixtureVersion = fixtureVersion;
     const summary = summarize(input, options);
