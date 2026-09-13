@@ -13,8 +13,7 @@ sidebar: false
 
 # See the motion.
 
-Real transitions, recorded in the native examples. Play a demo, then explore the code behind it.
-Recordings start only when you choose to play them.
+Real transitions, recorded in the native examples. Watch the demos, then explore the code behind them.
 
 </div>
 

@@ -1,10 +1,8 @@
 <script setup>
-import { ref } from 'vue';
 import gallery from '../../../Gallery_demo_new.gif';
 import wallet from '../../../Wallet_demo_new.gif';
 import setup from '../../../Wallet_Setup_demo.gif';
 
-const active = ref(null);
 const demos = [
   {
     id: 'gallery',
@@ -41,23 +39,9 @@ const demos = [
     <article v-for="demo in demos" :key="demo.id" class="ch-demo-card">
       <div class="ch-recording">
         <img
-          v-if="active === demo.id"
           :src="demo.src"
           :alt="`${demo.name} native app recording, showing forward and return shared element transitions`"
         />
-        <div v-else class="ch-recording-cover">
-          <span class="ch-recording-symbol" aria-hidden="true">◈</span
-          ><span>{{ demo.name }}</span
-          ><span>NATIVE APP RECORDING</span>
-        </div>
-        <button
-          class="ch-recording-button"
-          :aria-pressed="active === demo.id"
-          @click="active = active === demo.id ? null : demo.id"
-        >
-          {{ active === demo.id ? 'Stop recording' : 'Play recording' }}
-          <span aria-hidden="true">{{ active === demo.id ? '■' : '▶' }}</span>
-        </button>
       </div>
       <h2 :id="demo.id">{{ demo.name }}</h2>
       <p class="ch-demo-label">{{ demo.label }}</p>

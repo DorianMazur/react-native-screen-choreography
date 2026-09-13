@@ -23,10 +23,6 @@ const photos = [
 
 <template>
   <div class="ch-preview">
-    <div class="ch-preview-heading">
-      <span>THE GALLERY EXAMPLE</span>
-      <span class="ch-demo-badge"><span /> INTERACTIVE</span>
-    </div>
     <div
       class="ch-motion-stage gallery-stage"
       :class="{ 'is-expanded': expanded }"
@@ -131,12 +127,6 @@ const photos = [
           <strong>Aurora</strong><span>Tromsø, Norway</span>
         </div>
       </div>
-      <span class="ch-endpoint ch-endpoint-source"
-        >GALLERY <span>01</span></span
-      >
-      <span class="ch-endpoint ch-endpoint-target"
-        >PHOTO DETAIL <span>02</span></span
-      >
     </div>
     <div class="ch-preview-controls">
       <button

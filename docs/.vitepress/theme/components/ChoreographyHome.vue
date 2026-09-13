@@ -95,41 +95,11 @@ onUnmounted(() => clearTimeout(copyTimer));
       <GalleryPreview />
     </section>
 
-    <div class="ch-compatibility">
-      <span>ONE CONTINUOUS EXPERIENCE</span>
-      <div>
-        <span>React Navigation</span><span class="ch-plus">+</span
-        ><span>Expo Router</span><span class="ch-divider" /><span
-          >iOS & Android</span
-        >
-      </div>
-      <a :href="withBase('/guide/installation.html#compatibility')"
-        >Fabric · Reanimated 4 <span aria-hidden="true">↗</span></a
-      >
-    </div>
-
-    <section class="ch-principles" aria-labelledby="principles-title">
-      <div class="ch-section-heading">
-        <p class="ch-kicker">THE IDEA IS SIMPLE</p>
-        <h2 id="principles-title">
-          The screen changes.<br /><span>The connection stays.</span>
-        </h2>
-        <p>
-          A photo becomes a hero. A card opens into a story.<br
-            class="ch-desktop-break"
-          />
-          Keep the context that makes a transition feel natural.
-        </p>
-      </div>
+    <section class="ch-principles" aria-label="Transition capabilities">
       <div class="ch-feature-grid">
         <article>
-          <span class="ch-feature-number">01 / CONTINUITY</span
-          ><svg viewBox="0 0 64 48" aria-hidden="true">
-            <rect x="3" y="15" width="22" height="27" rx="5" />
-            <rect x="36" y="4" width="25" height="34" rx="5" />
-            <path d="M19 13Q34-3 47 3M40 1l8 2-3 7" />
-          </svg>
-          <h3>One element. Still alive.</h3>
+          <span class="ch-feature-number">01 / CONTINUITY</span>
+          <h2>One element. Still alive.</h2>
           <p>
             Your content moves between screens as one retained native subtree.
             Its state and React context stay with it.
@@ -142,14 +112,8 @@ onUnmounted(() => clearTimeout(copyTimer));
           >
         </article>
         <article>
-          <span class="ch-feature-number">02 / COORDINATION</span
-          ><svg viewBox="0 0 64 48" aria-hidden="true">
-            <path d="M4 12h56M4 24h56M4 36h56" />
-            <rect x="11" y="8" width="20" height="8" rx="4" />
-            <rect x="23" y="20" width="25" height="8" rx="4" />
-            <rect x="37" y="32" width="20" height="8" rx="4" />
-          </svg>
-          <h3>Many parts. One rhythm.</h3>
+          <span class="ch-feature-number">02 / COORDINATION</span>
+          <h2>Many parts. One rhythm.</h2>
           <p>
             Pair shared elements with local reveals and exits. Define how they
             move together with one progress value.
@@ -159,13 +123,8 @@ onUnmounted(() => clearTimeout(copyTimer));
           >
         </article>
         <article>
-          <span class="ch-feature-number">03 / CONTROL</span
-          ><svg viewBox="0 0 64 48" aria-hidden="true">
-            <path d="M5 36C19 36 15 11 33 11s13 25 26 25" />
-            <circle cx="32" cy="11" r="5" />
-            <path d="m52 30 7 6-8 5" />
-          </svg>
-          <h3>Forward. Back. Your call.</h3>
+          <span class="ch-feature-number">03 / CONTROL</span>
+          <h2>Forward. Back. Your call.</h2>
           <p>
             Drive a return with gesture progress. Finish it, cancel it, or let
             velocity and a threshold decide.
@@ -224,18 +183,6 @@ onUnmounted(() => clearTimeout(copyTimer));
           >
         </div>
       </div>
-    </section>
-
-    <section class="ch-next" aria-labelledby="next-title">
-      <div>
-        <p class="ch-kicker">YOUR NEXT GREAT TRANSITION</p>
-        <h2 id="next-title">Start with a single element.</h2>
-      </div>
-      <a
-        class="ch-button ch-button-primary"
-        :href="withBase('/guide/installation.html')"
-        >Let’s build it <span aria-hidden="true">↗</span></a
-      >
     </section>
   </div>
 </template>

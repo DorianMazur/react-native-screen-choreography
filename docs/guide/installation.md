@@ -24,16 +24,12 @@ These are the package's declared peer ranges, not a guarantee that every combina
 
 The bare example uses **React Native 0.83**; the Expo Router example uses **Expo SDK 57** (React Native 0.86.3). Both use React 19 and Reanimated 4. Check the [Reanimated compatibility table](https://docs.swmansion.com/react-native-reanimated/docs/guides/compatibility/) when selecting versions for an existing app.
 
-::: warning Native builds required
-The legacy React Native architecture and Expo Go are unsupported. Expo apps need a development build containing the native overlay host.
-:::
-
 ## React Navigation
 
 From your app directory:
 
 ```bash
-npm install react-native-screen-choreography@0.5.0
+npm install react-native-screen-choreography
 npm install react-native-reanimated react-native-worklets react-native-teleport
 npm install @react-navigation/native @react-navigation/native-stack
 npm install react-native-screens react-native-safe-area-context
@@ -70,7 +66,7 @@ Continue to the [quick start](./quick-start.md).
 Start with an Expo Router project whose SDK satisfies the peer requirements above. Let Expo select its compatible native dependency versions:
 
 ```bash
-npm install react-native-screen-choreography@0.5.0 react-native-teleport
+npm install react-native-screen-choreography react-native-teleport
 npx expo install react-native-reanimated react-native-worklets
 npx expo install react-native-screens react-native-safe-area-context expo-dev-client
 npx expo install --check
@@ -98,7 +94,3 @@ Continue to the [Expo Router guide](./expo-router.md).
 | `react-native-screen-choreography/core`        | Shared, navigator-independent components and transition definitions |
 
 Both integration entries re-export the shared API. Keep `ChoreographyScreen` and navigation hooks on the entry matching your router. The `/core` entry does not include a screen wrapper or navigation adapter.
-
-## After an upgrade
-
-Rebuild the native app after changing the library or its native dependencies. A Metro reload cannot install the overlay host or update native preparation code. Keep the native binary and JavaScript dependencies in sync.

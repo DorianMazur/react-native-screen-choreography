@@ -28,7 +28,6 @@
   --vp-code-block-bg: #fffefa;
   --vp-code-font-size: 13px;
   --ch-accent: #b74420;
-  --ch-accent-bright: #df5a2c;
   --ch-heading: #252622;
   --ch-paper: #fffefa;
   --ch-stage: #efeee9;
@@ -292,6 +291,8 @@
   width: fit-content;
   max-width: 100%;
   color: var(--vp-c-text-2);
+  background: var(--ch-stage);
+  border-radius: 6px;
 }
 .ch-install code {
   font-size: 11px;
@@ -301,6 +302,8 @@
 .ch-prompt {
   font-size: 12px;
   color: var(--ch-accent);
+  margin-left: 10px;
+  user-select: none;
 }
 .ch-install button {
   width: 36px;
@@ -377,24 +380,6 @@
   width: 100%;
   height: 100%;
 }
-.ch-endpoint {
-  position: absolute;
-  bottom: 3%;
-  font-size: 1.2cqw;
-  font-weight: 600;
-  letter-spacing: 0.9px;
-  color: var(--ch-muted);
-}
-.ch-endpoint span {
-  margin-left: 7px;
-  color: var(--ch-accent);
-}
-.ch-endpoint-source {
-  left: 4.5%;
-}
-.ch-endpoint-target {
-  left: 54%;
-}
 .ch-preview-controls {
   display: flex;
   align-items: center;
@@ -465,47 +450,8 @@
   clip-path: inset(50%);
   white-space: nowrap;
 }
-.ch-compatibility {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 22px;
-  padding: 25px 0;
-  border-top: 1px solid var(--vp-c-divider);
-  border-bottom: 1px solid var(--vp-c-divider);
-  font-size: 10px;
-  color: var(--ch-muted);
-}
-.ch-compatibility > span {
-  font-size: 8px;
-  letter-spacing: 1.4px;
-  font-weight: 550;
-}
-.ch-compatibility > div {
-  display: flex;
-  align-items: center;
-  gap: 16px;
-  font-size: 12px;
-  font-weight: 550;
-  color: var(--vp-c-text-1);
-}
-.ch-compatibility .ch-plus {
-  color: var(--vp-c-text-3);
-  font-weight: 400;
-}
-.ch-divider {
-  height: 15px;
-  width: 1px;
-  background: var(--vp-c-divider);
-}
-.ch-compatibility a {
-  font-size: 9px;
-}
-.ch-compatibility a span {
-  padding-left: 7px;
-}
 .ch-principles {
-  padding: 77px 0 76px;
+  padding: 28px 0 44px;
 }
 .ch-kicker {
   font-size: 9px;
@@ -514,75 +460,44 @@
   color: var(--ch-accent);
   margin-bottom: 19px;
 }
-.ch-section-heading {
-  display: grid;
-  grid-template-columns: 1fr 1fr;
-  align-items: end;
-  column-gap: 40px;
-}
-.ch-section-heading .ch-kicker {
-  grid-column: 1 / -1;
-}
-.ch-section-heading h2 {
-  font-size: 39px;
-  line-height: 1.2;
-  letter-spacing: -1.8px;
-  font-weight: 500;
-}
-.ch-section-heading h2 span {
-  color: var(--vp-c-text-3);
-}
-.ch-section-heading > p:last-child {
-  font-size: 13px;
-  line-height: 1.9;
-  color: var(--vp-c-text-2);
-  padding-bottom: 3px;
-  max-width: 390px;
-  justify-self: end;
-}
 .ch-feature-grid {
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
-  gap: 34px;
-  margin-top: 52px;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 40px;
 }
 .ch-feature-grid article {
-  border-top: 1px solid var(--vp-c-divider);
-  padding-top: 17px;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
 }
 .ch-feature-number {
   display: block;
-  font-size: 8px;
+  font-size: 9px;
   letter-spacing: 1.15px;
   color: var(--ch-muted);
 }
-.ch-feature-grid svg {
-  width: 57px;
-  height: 48px;
-  margin: 30px 0 18px;
-  fill: var(--vp-c-bg);
-  stroke: var(--ch-accent);
-  stroke-width: 1.2;
-}
-.ch-feature-grid h3 {
+.ch-feature-grid h2 {
   font-size: 18px;
   font-weight: 520;
   letter-spacing: -0.5px;
-  margin-bottom: 12px;
+  line-height: 1.35;
+  margin: 10px 0 12px;
 }
 .ch-feature-grid p {
-  font-size: 12px;
-  line-height: 1.9;
+  font-size: 13px;
+  line-height: 1.75;
+  margin: 0;
   color: var(--vp-c-text-2);
   max-width: 300px;
 }
 .ch-feature-grid a {
-  display: flex;
-  justify-content: space-between;
-  max-width: 285px;
-  font-size: 11px;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
   font-weight: 550;
-  margin-top: 23px;
+  margin-top: auto;
+  padding-top: 18px;
 }
 .ch-feature-grid a span {
   font-size: 15px;
@@ -686,25 +601,8 @@
 .ch-code-footer a span {
   margin-left: 8px;
 }
-.ch-next {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border-top: 1px solid var(--vp-c-divider);
-  padding: 48px 0 54px;
-  gap: 24px;
-}
-.ch-next .ch-kicker {
-  margin-bottom: 12px;
-}
-.ch-next h2 {
-  font-size: 29px;
-  letter-spacing: -1.1px;
-  font-weight: 500;
-  line-height: 1.25;
-}
 
-/* Native recording gallery: media is loaded only on explicit playback. */
+/* Native recording gallery */
 .ch-examples-page {
   max-width: 1248px;
   margin: auto;
@@ -747,52 +645,6 @@
   width: 100%;
   height: 100%;
   object-fit: contain;
-  padding-bottom: 52px;
-}
-.ch-recording-cover {
-  display: flex;
-  align-items: center;
-  flex-direction: column;
-  gap: 17px;
-  padding-bottom: 40px;
-}
-.ch-recording-symbol {
-  color: var(--ch-accent);
-  font-size: 58px;
-  line-height: 1;
-  font-family: Georgia, serif;
-}
-.ch-recording-cover > span:nth-child(2) {
-  font-family: Georgia, serif;
-  font-size: 29px;
-  letter-spacing: -0.9px;
-}
-.ch-recording-cover > span:last-child {
-  font-size: 7px;
-  letter-spacing: 1.3px;
-  color: var(--ch-muted);
-}
-.ch-recording-button {
-  position: absolute;
-  bottom: 13px;
-  left: 10%;
-  width: 80%;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  border: 1px solid var(--vp-c-divider);
-  border-radius: 6px;
-  padding: 11px 13px;
-  background: var(--vp-c-bg);
-  color: var(--vp-c-text-1);
-  font-size: 11px;
-}
-.ch-recording-button:hover {
-  border-color: var(--ch-accent);
-}
-.ch-recording-button span {
-  color: var(--ch-accent);
-  font-size: 9px;
 }
 .ch-demo-card h2 {
   font-size: 23px;
@@ -846,9 +698,6 @@
   }
   .ch-install code {
     font-size: 9px;
-  }
-  .ch-compatibility > span {
-    display: none;
   }
   .ch-recipe {
     gap: 35px;
@@ -939,60 +788,12 @@
   .ch-preview-note {
     font-size: 8px;
   }
-  .ch-compatibility {
-    gap: 14px;
-    justify-content: center;
-    flex-wrap: wrap;
-    padding: 20px 0;
-  }
-  .ch-compatibility > div {
-    font-size: 10px;
-    gap: 12px;
-  }
-  .ch-compatibility > a {
-    font-size: 9px;
-  }
   .ch-principles {
-    padding: 48px 0;
-  }
-  .ch-section-heading {
-    grid-template-columns: 1fr;
-  }
-  .ch-section-heading h2 {
-    font-size: 33px;
-    letter-spacing: -1.4px;
-  }
-  .ch-section-heading > p:last-child {
-    justify-self: start;
-    margin-top: 20px;
-    font-size: 12px;
+    padding: 24px 0 36px;
   }
   .ch-feature-grid {
     grid-template-columns: 1fr;
-    gap: 30px;
-    margin-top: 32px;
-  }
-  .ch-feature-grid article {
-    position: relative;
-    padding-top: 16px;
-  }
-  .ch-feature-grid svg {
-    position: absolute;
-    top: 38px;
-    right: 8px;
-    margin: 0;
-    width: 44px;
-  }
-  .ch-feature-grid h3 {
-    margin-top: 25px;
-    padding-right: 60px;
-  }
-  .ch-feature-grid p {
-    max-width: 90%;
-  }
-  .ch-feature-grid a {
-    max-width: none;
-    margin-top: 15px;
+    gap: 28px;
   }
   .ch-recipe {
     grid-template-columns: 1fr;
@@ -1016,15 +817,6 @@
   }
   .ch-code-footer {
     font-size: 7px;
-  }
-  .ch-next {
-    flex-direction: column;
-    align-items: flex-start;
-    padding: 36px 0 42px;
-    gap: 22px;
-  }
-  .ch-next h2 {
-    font-size: 27px;
   }
   .ch-examples-page {
     padding: 36px 24px;
