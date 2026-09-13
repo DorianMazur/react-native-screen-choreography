@@ -1,110 +1,114 @@
 # Performance measurements
 
-The Android benchmark runs the actual shared Gallery example with the normal
-production React renderer. Each cycle opens Aurora, verifies a native touch on
-the detail screen, returns to the list, and verifies another native touch there.
-The default is **20 consecutive forward → backward cycles**, producing 20
-preparation samples in each direction from one Activity launch.
+The suite measures one real journey: **open Aurora in the Gallery example, then return to the list**. It uses the example's shared photo, gradient, icon, text, navigation, and animation—not a synthetic workload.
 
-There is one build mode, `native-release`. React profiling and the separate
-frame-deadline benchmark are removed. The live photo owner must remain mounted
-through all cycles. Lightbox, scrolling, sharing, and gesture cancellation are
-outside this benchmark's scope.
+Use the reports to compare changes under the same conditions. Confirm findings before making performance claims.
+
+## Read the report
+
+Each run produces two main metrics. Lower is better.
+
+| Metric                  | What it tells you                                                                               |
+| ----------------------- | ----------------------------------------------------------------------------------------------- |
+| Open preparation (ms)   | Median time from the navigation request until the forward session becomes active in JavaScript. |
+| Return preparation (ms) | The same preparation interval for the return journey.                                           |
+
+**Preparation is not time to first visible motion.** The suite does not measure app startup, scrolling, lightbox, sharing, or interactive cancellation. Memory is not collected.
+
+Reports also verify complete forward/back journeys, input acknowledgments, and that the selected hero stays mounted. Missing measurements, lost samples, failed journeys, invalid units, or missing requested preparation traces fail collection; missing values never become zeros. There is no automatic performance-regression threshold.
 
 ## Run locally
 
-Use the Node version in `.nvmrc`, pinned Yarn, JDK 17, Android SDK, and one booted
-Android device or emulator. Set `ANDROID_HOME` or `ANDROID_SDK_ROOT`. CI uses API
-35. Keep system animations enabled.
+Use the Node version in `.nvmrc` and the repository's pinned Yarn version. You need **JDK 17**, the Android SDK with `ANDROID_HOME` or `ANDROID_SDK_ROOT` set, and **one booted Android device or emulator on API 29+ (CI uses API 35)**. Keep animations enabled and the device free of other work.
+
+From the repository root:
 
 ```sh
 yarn install --immutable
-yarn test:performance
 yarn perf:android native-release
 ```
 
-The mode argument is optional. The runner builds bundled JavaScript and the
-non-debuggable `benchmark` app variant; Metro need not be running. It executes
-one instrumentation test, `repeatedNavigationTimingAndInput`, in the existing
-`macrobenchmark` module. This test uses UiAutomator to inject real device touches.
+The runner builds and installs the non-debuggable benchmark app and test package with bundled JavaScript. **No Metro server is needed.** The first native build can take a while.
 
-`test:performance` checks collectors, report validation, baseline selection,
-and comment formatting. It does not run a device. Run `yarn typecheck` and
-`yarn lint` for static checks.
+The only mode is **`native-release`**, which uses the normal production React renderer. The mode argument is optional; `yarn perf:android` runs the same benchmark.
 
-| Variable | Default | Meaning |
-| --- | --- | --- |
-| `PERFORMANCE_TIMING_CYCLES` | `20` | Complete forward/back cycles; integer from 1 to 100. |
-| `PERFORMANCE_ABI` | Device ABI | ABI to compile, such as `arm64-v8a` or `x86_64`. |
-| `PERFORMANCE_OUTPUT` | Timestamped directory under `artifacts/performance/` | Must be a new directory. |
+By default, one run performs **20 consecutive forward → backward timing/input cycles** from one Activity launch. Each cycle verifies a native touch on the detail screen and on the returned list. Each preparation row gets 20 samples, with detailed traces in both directions. There is no separate frame-measurement run or React profiling build.
+
+Results go to a new timestamped folder under `artifacts/performance/`: start with **`report/summary.md`**. The folder also contains `summary.json` under `report/`, raw exports, metadata, and logs.
+
+<details>
+<summary>Change run options or check the tooling</summary>
+
+| Environment variable        | Default                     | Purpose                                      |
+| --------------------------- | --------------------------- | -------------------------------------------- |
+| `PERFORMANCE_TIMING_CYCLES` | `20`                        | Timing/input cycles, from 1 to 100.          |
+| `PERFORMANCE_ABI`           | Connected device ABI        | Limit the compiled ABI, such as `arm64-v8a`. |
+| `PERFORMANCE_OUTPUT`        | Timestamped artifact folder | Output directory; it must not already exist. |
 
 ```sh
-PERFORMANCE_TIMING_CYCLES=20 \
-  PERFORMANCE_OUTPUT=artifacts/performance/android-comparison-01 \
-  yarn perf:android
+PERFORMANCE_TIMING_CYCLES=10 \
+  yarn perf:android native-release
 ```
 
-The runner clears previous fixture exports and instrumentation additional outputs
-before collecting, so old data cannot make a failed run look successful. It saves
-raw fixture JSON, build logs, logcat, metadata, and `report/summary.json` and
-`report/summary.md`. It no longer collects frame-timing Perfetto traces.
+`yarn test:performance` checks collectors, report validation, baseline selection, and PR comment handling. It **does not collect device measurements**. `yarn typecheck` checks the scripts and library types.
 
-## Measurements
+The runner clears this example's old benchmark exports before collection to avoid stale results. The existing `macrobenchmark` module now runs one UiAutomator instrumentation test, `repeatedNavigationTimingAndInput`, without frame-timing collection.
 
-| Headline metric | Meaning |
-| --- | --- |
-| Open preparation (ms) | Forward request until the session becomes active in JavaScript. |
-| Return preparation (ms) | Backward request until the session becomes active in JavaScript. |
+</details>
 
-These are medians, not first visible motion or handoff latency. Input probes and
-payload lifecycle observations validate successful journeys. Their raw timestamps
-remain in exported JSON; probe delays include automation wait/polling and must
-not be interpreted as exact time-to-interactive.
+## Compare a pull request
 
-Workflow summaries and PR comments show **Base | PR / current | Change**.
-Changes are absolute milliseconds. A missing or incompatible baseline is
-explicitly identified, and its values remain unavailable rather than zero.
+Workflow summaries and PR comments show **Base | PR / current | Change**. Changes are absolute **milliseconds**, rather than percentage changes.
 
-Workflow summaries also include optional startup diagnostics for **both**
-`gallery.forward` and `gallery.backward`: stage sample counts, medians, P95 when
-at least 20 samples exist, and overlay acknowledgment/timeout counts. PR comments
-include only the two headline preparation metrics, with no startup diagnostics.
+The baseline must be a successful Performance run at the PR's **exact base commit** on its base branch. Comparisons require matching scenario/measurement versions, mode, device/API/ABI, sample counts, and React Native, Reanimated, and Node versions.
 
-`onPreparationTrace` measures source measurement, coordinator preparation,
-applicable target measurement/readiness stages, and overlay readiness. Back uses
-the still-mounted list endpoint, so it does not have the forward screen-mount
-stages. Request-to-overlay-ready is a JavaScript proxy, not first presented motion.
-Nested stages must not be added together; repeated stages are summed within each
-journey. Timeout journeys retain their stage timings and timeout count but do not
-contribute an acknowledged request-to-overlay-ready value.
+Missing, expired, invalid, or incompatible artifacts show **“No compatible baseline.”** Local runs do not look up a baseline. Push workflow summaries compare against the branch tip before the push; manual runs without a baseline commit explain that comparison is unavailable.
 
-The benchmark enables tracing. Missing or invalid traces in either direction,
-missing input acknowledgments, wrong journey order, or a cycle-count mismatch
-invalidate collection. Traces attach by session ID even if delivered after a
-later request starts. Observer work is deferred until preparation returns.
+Current reports use Gallery fixture version **5**, measurement definition version **4**, and preparation-tracing version **2**. Older reports are not comparable. A successful base-branch run using the current definitions is required before Base and Change values are available.
 
-## Baselines and CI
+## CI and pull-request comments
 
-The Performance workflow runs one native-release job. For PRs, both its summary
-and the later comment publisher fetch a successful push run at the exact PR base
-commit and branch. Push summaries compare against the branch tip before that
-push. Manual runs without a baseline commit explain that comparison is unavailable.
+The [Performance workflow](../.github/workflows/performance.yml) runs one native-release benchmark job on PRs to `main`, pushes to `main`, and manual dispatch. **Performance CI is Android-only**; check iOS transitions locally after native iOS changes and before releases.
 
-Baseline compatibility requires matching fixture and measurement versions,
-platform, build mode, device/API/ABI, cycle count, and React Native, Reanimated,
-and Node versions. Rows also require matching sample counts. Runner image
-versions are recorded for diagnosis but are not a compatibility gate. A missing,
-expired, failed, or incompatible report never becomes a zero baseline.
+- **Find results:** workflow job summaries and one updated bot comment per PR. The comment contains only the two headline preparation metrics. Workflow summaries also include detailed startup diagnostics for both directions.
+- **Download artifacts:** compact summaries remain for **30 days**; raw data and logs for **7 days**.
+- **Collection failures:** the comment includes failed runs and missing baselines. Older PR-head results do not replace current results.
 
-Reports now use fixture version **5**, measurement definition **4**, and
-preparation-tracing version **2**. Older reports are intentionally incompatible;
-a new successful base-branch run is required before comparisons are available.
+<details>
+<summary>If PR comments are missing</summary>
 
-The PR-comment workflow runs trusted default-branch code with comment-write
-permission. It reads bounded JSON artifacts without extracting or executing PR
-code. It updates only the current open PR head and rechecks the base/head before
-posting. Publisher changes take effect after merging to the default branch;
-this PR cannot change the trusted publisher used for its own comment.
+The [comment workflow](../.github/workflows/performance-comment.yml) and its trusted [`post-comment.mts`](../scripts/performance/post-comment.mts) must already be merged into the default branch. Adding them in a PR alone does not activate comments for that PR. Changes to the publisher also take effect only after merging to the default branch: until then, a PR can produce new benchmark data while the bot still renders the old comment format. Actions must have the required permissions; fork runs may need maintainer approval.
 
-A passing run means collection and validation succeeded. Emulator performance
-numbers remain informational; there is no latency regression threshold.
+Benchmark jobs have read-only repository permissions. The separate publisher reads bounded summary JSON and does not execute PR code with its comment-writing token.
+
+</details>
+
+## Optional startup diagnostics
+
+Use `ChoreographyProvider`'s **`onPreparationTrace`** to investigate slow forward or backward preparation. The benchmark enables it for both directions and adds a separate diagnostic table in the workflow summary without changing the main metrics. PR comments omit this table. Apps without the callback do not buffer traces.
+
+<details>
+<summary>What traces mean and how to compare them</summary>
+
+Forward traces break down source measurement, navigation/target resolution, screen readiness, applicable Android frame waiting, coordinator preparation, and overlay readiness. Backward traces cover source measurement, coordinator preparation, and overlay readiness against the still-mounted list endpoint; they do not include forward screen-mount stages. Coordinator stages include registration, native preparation, cache validation, measurement, and pairing.
+
+- Timestamps use JavaScript `performance.now()`. Observations are buffered and delivered after preparation, without React updates or logging during a stage.
+- Repeated stages are summed within each journey before calculating medians or P95. Parent and child stages can overlap—**do not add them together**.
+- `requestToOverlayReadyMs` ends when JavaScript observes both overlay acknowledgments. It excludes deferred observer delivery and is a readiness proxy, **not first presented motion**.
+- `overlay-timeout` traces retain stage timings but omit that readiness value. Reports show traced, acknowledged, and timed-out counts. A timeout alone does not discard otherwise valid navigation or its original preparation sample.
+- Tracing covers both `gallery.forward` and `gallery.backward`. Cancellation, unavailable targets, and failures have separate outcomes. Absent optional traces produce no numbers; missing or invalid traces in either direction fail collection when tracing was requested. P95 is shown only when a metric has at least 20 samples; timeout journeys do not contribute an acknowledged readiness value.
+
+Compare equally instrumented runs on the same device: tracing adds clock-read and buffering overhead.
+
+</details>
+
+<details>
+<summary>Extending the native benchmark</summary>
+
+The [fixture](../examples/react-navigation/src/performance/PerformanceApp.tsx) waits for the image to load, two JavaScript animation frames, and Android's fully-drawn acknowledgment before exposing `benchmark-ready`. Automation uses **native touches** on the real Gallery controls; calling JavaScript handlers directly is not a valid measurement.
+
+The [Android tests](../examples/react-navigation/android/macrobenchmark/src/main/java/screenchoreography/example/macrobenchmark/ChoreographyBenchmarks.kt) define the control sequence: open Aurora → detail settled → detail input acknowledged → back → list settled → list input acknowledged. The test repeats this sequence for the configured number of cycles, then exports once. Manual resets must produce a new run ID and readiness acknowledgment. Failed or unfinished runs remain failures.
+
+Exports are buffered during navigation and written afterward. The [native bridge](../examples/react-navigation/android/app/src/main/java/screenchoreography/example/ChoreographyBenchmark.kt) provides durable export via `finishRun`, input acknowledgment, and fully-drawn reporting. The optional `recordSample` fallback has no durable-write acknowledgment. Native timestamps stay in their own clock domain.
+
+</details>

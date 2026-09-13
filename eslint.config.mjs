@@ -38,6 +38,7 @@ export default defineConfig([
       '**/ios/Pods/',
       '**/ios/build/',
       'artifacts/performance/',
+      'docs/', // Independent VitePress package; checked by the docs workflow.
     ],
   },
 ]);
