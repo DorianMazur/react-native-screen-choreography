@@ -7,6 +7,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.SystemClock
 import android.view.View
+import android.view.ViewGroupOverlay
 import com.facebook.react.views.view.ReactViewGroup
 
 class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
@@ -18,6 +19,10 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private var pendingPresentationAck = false
   // Host-only teardown frame; this never captures or reaches a shared element.
   private var dismissalFrame: Bitmap? = null
+  private var probingDismissalContent = false
+  private var foundDismissalChild = false
+  private var usesViewOverlay = false
+  private val dismissalProbeCanvas by lazy { Canvas() }
   private val mainHandler = Handler(Looper.getMainLooper())
 
   init {
@@ -45,6 +50,12 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
       if (w > 0 && h > 0) {
         try {
+          if (!hasDismissalContent()) {
+            dismissalRequestId += 1
+            alpha = 0f
+            visibility = View.INVISIBLE
+            return
+          }
           val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
           val canvas = Canvas(bmp)
           super.dispatchDraw(canvas)
@@ -106,6 +117,33 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
         }
       }
     }
+  }
+
+  override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
+    if (probingDismissalContent) {
+      foundDismissalChild = true
+      return false
+    }
+    return super.drawChild(canvas, child, drawingTime)
+  }
+
+  override fun getOverlay(): ViewGroupOverlay {
+    usesViewOverlay = true
+    return super.getOverlay()
+  }
+
+  private fun hasDismissalContent(): Boolean {
+    if (childCount > 0 || background != null || foreground != null || layoutAnimation != null || usesViewOverlay) {
+      return true
+    }
+    foundDismissalChild = false
+    probingDismissalContent = true
+    try {
+      super.dispatchDraw(dismissalProbeCanvas)
+    } finally {
+      probingDismissalContent = false
+    }
+    return foundDismissalChild
   }
 
   override fun onAttachedToWindow() {
