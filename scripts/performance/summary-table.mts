@@ -73,7 +73,11 @@ export function summaryTable(report: InputRecord, base?: InputRecord) {
 }
 
 /** Render bounded, validated diagnostic values from untrusted PR artifacts. */
-export function startupDiagnostics(report: InputRecord): string {
+export function startupDiagnostics(
+  report: InputRecord,
+  base?: InputRecord
+): string {
+  const compare = compatible(report, base);
   const preparation = Object.entries(report.metrics ?? {})
     .filter(
       ([name, metric]) =>
@@ -117,11 +121,16 @@ export function startupDiagnostics(report: InputRecord): string {
           '',
         ]
       : []),
-    '| Metric | Samples | Median (ms) | P95 (ms) |',
-    '| --- | ---: | ---: | ---: |',
-    ...preparation.map(
-      ([name, metric]) =>
-        `| ${name} | ${number(metric.count, true)} | ${number(metric.median)} | ${number(metric.p95)} |`
-    ),
+    '| Metric | Samples | Base median (ms) | PR / current median (ms) | Change | P95 (ms) |',
+    '| --- | ---: | ---: | ---: | ---: | ---: |',
+    ...preparation.map(([name, metric]) => {
+      const previous =
+        compare && metric.count === base?.metrics?.[name]?.count
+          ? value(base, name, 1)
+          : null;
+      const baseline = previous !== null && previous >= 0 ? previous : null;
+      const delta = baseline === null ? null : metric.median - baseline;
+      return `| ${name} | ${number(metric.count, true)} | ${number(baseline)} | ${number(metric.median)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(2)} ms`} | ${number(metric.p95)} |`;
+    }),
   ].join('\n');
 }

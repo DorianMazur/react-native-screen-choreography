@@ -1,6 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compatible, summaryTable } from './summary-table.mts';
+import {
+  compatible,
+  startupDiagnostics,
+  summaryTable,
+} from './summary-table.mts';
+import type { InputRecord } from './types.ts';
 import { selectBaselineRun } from './post-comment.mts';
 
 function report() {
@@ -121,4 +126,34 @@ test('does not compare rows collected with different sample counts', () => {
     summaryTable(report(), base),
     /open preparation \(ms\) \| — \| 40 \| —/
   );
+});
+
+test('diagnostics compare zero baselines and omit unavailable or incompatible comparisons', () => {
+  const key = 'gallery.backward.preparation.coordinatorMs';
+  const current: InputRecord = report();
+  current.metrics[key] = { count: 3, median: 5, p95: 10 };
+  const base = structuredClone(current);
+  base.metrics[key].median = 0;
+  assert.match(
+    startupDiagnostics(current, base),
+    /coordinatorMs \| 3 \| 0.00 \| 5.00 \| \+5.00 ms \| 10.00/
+  );
+  for (const candidate of [
+    undefined,
+    { ...base, valid: false },
+    { ...base, fixtureVersion: 999 },
+    { ...base, metrics: {} },
+    ...[
+      { count: 2, median: 0 },
+      { count: 3, median: -1 },
+      { count: 3, median: NaN },
+      { count: 3, median: Infinity },
+      { count: 3, median: '0' },
+    ].map((metric) => ({ ...base, metrics: { [key]: metric } })),
+  ]) {
+    assert.match(
+      startupDiagnostics(current, candidate),
+      /coordinatorMs \| 3 \| — \| 5.00 \| — \| 10.00/
+    );
+  }
 });

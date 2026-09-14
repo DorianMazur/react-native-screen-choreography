@@ -399,7 +399,7 @@ export function markdown(
   base?: InputRecord,
   baselineNote = 'No baseline supplied. Local runs do not fetch baselines.'
 ) {
-  const diagnostics = startupDiagnostics(summary);
+  const diagnostics = startupDiagnostics(summary, base);
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
