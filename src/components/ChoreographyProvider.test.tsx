@@ -109,6 +109,8 @@ describe('ChoreographyProvider lifecycle', () => {
     [true, 'native'],
     [false, 'timeout'],
     [true, 'timeout'],
+    [false, 'refresh-before-native'],
+    [false, 'refresh-after-native'],
   ] as const)(
     'publishes and completes sessions with StrictMode=%s and readiness=%s',
     async (strict, readiness) => {
@@ -151,6 +153,7 @@ describe('ChoreographyProvider lifecycle', () => {
         const initialSettle = settle;
         controlRenders.mockClear();
         const metrics = { pageX: 10, pageY: 20, width: 100, height: 100 };
+        let measuredX = 10;
         for (const screenId of ['list', 'detail']) {
           context.registerElement({
             id: 'card',
@@ -164,7 +167,7 @@ describe('ChoreographyProvider lifecycle', () => {
                   width: number,
                   height: number
                 ) => void
-              ) => callback(10, 20, 100, 100),
+              ) => callback(measuredX, 20, 100, 100),
             }),
             metrics,
             getPresentation: () => ({
@@ -212,13 +215,33 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(context.isOverlayPresented!(sessionId)).toBe(false);
         const ready = jest.fn();
         const waiting = context.waitForOverlayReady(sessionId).then(ready);
-        if (readiness === 'native') {
+        if (readiness !== 'timeout') {
+          const refreshMetrics = async () => {
+            measuredX = 30;
+            await act(async () => {
+              await context.refreshActiveSessionMetrics('source');
+            });
+            expect(context.activeSession!.pairs[0]!.sourceMetrics.pageX).toBe(
+              30
+            );
+            session = context.activeSession;
+          };
+          if (readiness === 'refresh-before-native') {
+            await refreshMetrics();
+          }
           await act(async () => {
             const host = tree!.root.findByType(NativeTransitionHost);
             host.props.onPresentationReady();
             host.props.onPresentationReady();
             await waiting;
           });
+          if (readiness === 'refresh-after-native') {
+            await refreshMetrics();
+          }
+          expect(context.isOverlayPresented!(sessionId)).toBe(true);
+          await expect(context.waitForOverlayReady(sessionId)).resolves.toBe(
+            true
+          );
         } else {
           await act(async () => jest.advanceTimersByTimeAsync(149));
           expect(hidden.value).toBe(0);

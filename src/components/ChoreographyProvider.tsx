@@ -230,8 +230,17 @@ export function ChoreographyProvider({
       if (previousSession && previousSession.id !== session?.id) {
         settleOverlayWaiters(previousSession.id, false);
       }
-      hostPresentedSessionIdRef.current = null;
-      overlayContentReadySessionIdRef.current = null;
+      // Measurement refreshes republish the same active session. Neither the
+      // native host's active prop nor the overlay's readiness effect changes,
+      // so clearing their acknowledgements here would wait for events that
+      // will never be emitted again.
+      if (
+        previousSession?.id !== session?.id ||
+        previousSession?.state !== session?.state
+      ) {
+        hostPresentedSessionIdRef.current = null;
+        overlayContentReadySessionIdRef.current = null;
+      }
 
       if (!session) {
         navigationController.releaseNavigationLock();
