@@ -4,11 +4,19 @@ on:
   pull_request:
     paths:
       - 'docs/**'
+      - 'package.json'
+      - 'yarn.lock'
+      - '.yarnrc.yml'
+      - '.yarn/**'
       - '.github/workflows/docs.yml'
   push:
     branches: [main]
     paths:
       - 'docs/**'
+      - 'package.json'
+      - 'yarn.lock'
+      - '.yarnrc.yml'
+      - '.yarn/**'
       - '.github/workflows/docs.yml'
   workflow_dispatch:
 
@@ -34,17 +42,20 @@ jobs:
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
           node-version: 22
-          cache: npm
-          cache-dependency-path: docs/package-lock.json
+
+      - name: Enable Corepack
+        run: corepack enable
 
       - name: Install documentation dependencies
-        run: npm ci --prefix docs
+        run: yarn workspaces focus screen-choreography-docs
+        env:
+          YARN_ENABLE_IMMUTABLE_INSTALLS: true
 
       - name: Check and build documentation
-        run: npm run build --prefix docs
+        run: yarn docs:build
 
       - name: Check documentation formatting
-        run: npm run format:check --prefix docs
+        run: yarn workspace screen-choreography-docs format:check
 
       - name: Upload the GitHub Pages artifact
         if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'

@@ -54,9 +54,9 @@
     "typecheck": "tsc && tsc -p scripts/performance/tsconfig.json",
     "lint": "eslint \"**/*.{js,ts,tsx,mts}\"",
     "lint:fix": "eslint \"**/*.{js,ts,tsx,mts}\" --fix",
-    "docs:dev": "npm run dev --prefix docs",
-    "docs:build": "npm run build --prefix docs",
-    "docs:preview": "npm run preview --prefix docs"
+    "docs:dev": "yarn workspace screen-choreography-docs dev",
+    "docs:build": "yarn workspace screen-choreography-docs build",
+    "docs:preview": "yarn workspace screen-choreography-docs preview"
   },
   "keywords": [
     "react-native",
@@ -84,7 +84,7 @@
   "bugs": {
     "url": "https://github.com/DorianMazur/react-native-screen-choreography/issues"
   },
-  "homepage": "https://github.com/DorianMazur/react-native-screen-choreography#readme",
+  "homepage": "https://screen-choreography.dev",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
     "tag": "latest"
@@ -144,6 +144,7 @@
     }
   },
   "workspaces": [
+    "docs",
     "examples/*"
   ],
   "engines": {

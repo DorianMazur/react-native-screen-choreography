@@ -1,6 +1,5 @@
 node_modules/
 .vitepress/cache/
 .vitepress/dist/
-package-lock.json
 architecture.md
 performance.md

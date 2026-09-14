@@ -34,7 +34,7 @@ Use these files as the source of truth:
 - `src/debug/`: logger
 - `examples/react-navigation/`: bare React Native example app
 - `examples/expo-router/`: Expo Router development-build example app
-- `docs/`: Markdown documentation and an independent VitePress site; custom theme in `docs/.vitepress/`
+- `docs/`: Markdown documentation and a VitePress site in a Yarn workspace; custom theme in `docs/.vitepress/`
 - `__tests__/`: Jest coverage for core utilities and infrastructure
 - `android/` and `ios/`: native transition host implementation
 
@@ -124,8 +124,8 @@ When debugging or extending behavior, start here:
 
 ## Documentation website
 
-- Run `npm ci --prefix docs` once; use `npm run dev --prefix docs` and `npm run build --prefix docs`. Native dependencies are not required.
-- Run `npm run format:check --prefix docs` for documentation formatting.
+- Run `yarn install` once; use `yarn docs:dev` and `yarn docs:build`. For documentation-only work, `yarn workspaces focus screen-choreography-docs` installs only the docs dependencies; native builds are not required.
+- Run `yarn workspace screen-choreography-docs format:check` for documentation formatting.
 - Treat `docs/guide/` and `docs/api/` as canonical user documentation. Keep the README concise and link to these files.
 - Update API reference headings when changing runtime exports; the docs build checks coverage against the export-only entries.
 - Preserve existing architecture and performance Markdown as single sources; the website renders these same files.

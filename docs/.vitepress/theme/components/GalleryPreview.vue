@@ -51,7 +51,6 @@ const photos = [
         </defs>
       </svg>
       <div class="gallery-screen gallery-source">
-        <div class="gallery-status"><span>9:41</span><span>••• ▰</span></div>
         <div class="gallery-nav"><span>←</span> Gallery</div>
         <div class="gallery-heading">
           <div class="gallery-eyebrow">THE FIELD JOURNAL</div>
@@ -82,7 +81,6 @@ const photos = [
       </div>
 
       <div class="gallery-screen gallery-target">
-        <div class="gallery-status"><span>9:41</span><span>••• ▰</span></div>
         <div class="gallery-nav"><span>←</span> Field notes</div>
         <div class="gallery-target-slot" />
         <div class="gallery-details">
@@ -212,17 +210,6 @@ const photos = [
   top: var(--gallery-target-y);
   width: var(--gallery-target-w);
   height: var(--gallery-target-h);
-}
-.gallery-status {
-  position: absolute;
-  top: 3%;
-  left: 7%;
-  right: 7%;
-  display: flex;
-  justify-content: space-between;
-  font-size: 1.15cqw;
-  font-weight: 600;
-  line-height: 1;
 }
 .gallery-nav {
   position: absolute;
@@ -419,9 +406,13 @@ const photos = [
   top: calc(17% + var(--gallery-target-w));
   left: 7%;
   right: 7%;
+}
+.gallery-target .gallery-nav,
+.gallery-details {
   opacity: 0.18;
   transition: opacity 500ms 180ms;
 }
+.is-expanded .gallery-target .gallery-nav,
 .is-expanded .gallery-details {
   opacity: 1;
 }

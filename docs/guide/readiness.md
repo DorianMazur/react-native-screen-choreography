@@ -5,7 +5,7 @@ description: Give shared targets stable geometry before animation and reveal sup
 
 # Give the destination a moment.
 
-A transition needs mounted, measurable endpoints. `ChoreographyScreen` waits for its layout before declaring readiness. Use an application gate when the destination's important geometry still depends on data, images, or fonts.
+A transition needs mounted, measurable endpoints. `ChoreographyScreen` waits for its layout before declaring readiness. Use its `ready` prop when the destination's layout also depends on data, images, or fonts.
 
 ## Prefer a screen-level gate
 
@@ -21,7 +21,7 @@ function DetailScreen() {
 }
 ```
 
-`ready` defaults to `true`. Setting it to `true` does not skip layout checks; it opens an additional gate. Keep the wrapper mounted while readiness changes.
+`ready` defaults to `true`. Set it to `false` to hold preparation, then back to `true` when your content is ready. Layout checks still apply. Keep the wrapper mounted while readiness changes.
 
 Give empty targets explicit dimensions or a layout that resolves to nonzero bounds. An empty `SharedElement.Target` has no intrinsic content size before the owner arrives.
 
@@ -31,7 +31,7 @@ Readiness is a short preparation gate, not an unlimited wait for network request
 
 ## Let a child hold readiness
 
-`useChoreographyBlocker()` gives a child component an `acquire()` function. Each call returns an idempotent release function. All acquired blockers must release before the screen can become ready.
+`useChoreographyBlocker()` gives a child component an `acquire()` function. Each call holds readiness and returns a release function that is safe to call more than once. Release every blocker before the screen can become ready.
 
 ```tsx
 import { useLayoutEffect, type ReactNode } from 'react';

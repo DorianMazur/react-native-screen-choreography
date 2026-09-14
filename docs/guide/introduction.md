@@ -5,8 +5,6 @@ description: Bring screens together with one retained element and one shared ani
 
 # A transition is more than a moving card.
 
-A card opens. Its artwork grows into a hero. The title moves with it. Supporting content arrives a moment later. Everything belongs to the same movement.
-
 Screen Choreography coordinates shared elements and companion content across React Native screens. A single Reanimated progress value drives the motion, while a native overlay presents it above the navigator.
 
 ## One element, three places

@@ -35,8 +35,6 @@ npm install @react-navigation/native @react-navigation/native-stack
 npm install react-native-screens react-native-safe-area-context
 ```
 
-`react-native-safe-area-context` belongs to the navigation setup. Keep dependencies you already have at versions compatible with your app.
-
 Add the Worklets Babel plugin **last** in your existing plugins list:
 
 ```js

@@ -5,7 +5,7 @@ description: Resolve missing pairs, startup flashes, native build issues, and un
 
 # Find the missing connection.
 
-Most integration issues come from identity, layout, or competing screen animations. Start with the complete [quick start](./quick-start.md) and compare the configuration around your transition.
+Most integration issues come from mismatched IDs, layout, or competing screen animations. Compare your setup with the complete [quick start](./quick-start.md).
 
 ## Navigation happens without a transition
 
@@ -19,7 +19,7 @@ Check these connections in order:
 
 For Expo Router, `targetScreenId` must match the destination wrapper's `screenId`. For React Navigation, use a `screenId` matching the route name. Internally, adapters distinguish route instances by route key.
 
-A direct entry or deep link has no shared source owner. Provide normal destination content for that application state; an empty target alone does not create content.
+When a deep link opens the destination without a source owner, render fallback content there. An empty target alone does not create content.
 
 ## “No valid pairs found”
 

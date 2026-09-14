@@ -3,7 +3,7 @@ title: Quick start
 description: Build a complete card-to-detail transition with React Navigation and one live shared element.
 ---
 
-# Your first choreography
+# Your first transition
 
 Build a card that expands into a detail screen, then returns to its original place. The artwork is mounted once, on the source screen.
 
@@ -11,7 +11,7 @@ Complete [installation](./installation.md) first. This example uses React Naviga
 
 ## A complete two-screen app
 
-Place this in `App.tsx` in a configured React Native app. The colored artwork is self-contained, so there are no image assets to download.
+Place this in your app's `App.tsx`. The example draws its own artwork, so there are no image assets to download.
 
 ```tsx
 import React from 'react';
@@ -170,7 +170,7 @@ const styles = StyleSheet.create({
 
 The provider stays mounted above the navigator. Each route uses a stable, explicit `screenId` matching its route name; the adapter tracks the actual route instance internally.
 
-Both endpoints share the role `hero` and the group `artwork.sunrise`. The source `Element` owns the artwork. The empty `Element.Target` supplies a measurable destination rectangle. Its explicit height matters: an empty target cannot derive height from content that has not arrived yet.
+Both endpoints share the role `hero` and the group `artwork.sunrise`. The source `Element` owns the artwork. The empty `Element.Target` defines its destination bounds. Give it an explicit height because it has no content to determine its size before the artwork arrives.
 
 Navigation receives the same group. Without `transitionConfig.group`, the adapter performs ordinary navigation. The detail's `Enter` wrapper follows expansion progress and reverses with the transition.
 
