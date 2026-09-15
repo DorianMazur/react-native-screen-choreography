@@ -28,6 +28,7 @@ export type {
   ScreenRole,
   SessionPhase,
   TransitionDirection,
+  ScreenFadeConfig,
 } from '../core/screenVisibility';
 export type {
   ChoreographyPreparationStage,

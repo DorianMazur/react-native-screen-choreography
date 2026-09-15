@@ -80,6 +80,24 @@ The definition does not launch navigation or apply its timing globally. Spread `
 
 Enter and exit intervals use expansion progress, so they reverse naturally when progress moves from `1 → 0`. They are visible when the session is idle. Their built-in translations respect Reanimated's reduced-motion preference; custom renderers should make their own reduced-motion choices.
 
+## Configure the whole-screen fade
+
+`ChoreographyScreen` also fades the whole screen, independently of the recipe's `Enter` and `Exit` content. Its default interval is `[0, 0.4]` in expansion progress. To change that interval, apply matching settings to the list and detail wrappers:
+
+```tsx
+<ChoreographyScreen screenId="Gallery" screenFade={{ during: [0.2, 0.7] }}>
+  <GalleryContent />
+</ChoreographyScreen>
+
+<ChoreographyScreen screenId="GalleryDetail" screenFade={{ during: [0.2, 0.7] }}>
+  <GalleryDetailContent />
+</ChoreographyScreen>
+```
+
+Use `screenFade={false}` on each screen whose content you want to choreograph without a parent fade. Preparation still hides the incoming screen until it is ready for the transition, and input blocking remains active. With no screen fade, opaque backgrounds can obscure the underlying screen, so coordinate backgrounds and content visibility in your design.
+
+The interval reverses automatically on Back; there is no separate backward interval. See [`ScreenFadeConfig`](../api/components.md#screenfadeconfig) for details.
+
 ## Write a custom renderer
 
 Use `makeTransition` when you need more control than a recipe. The renderer receives frozen endpoint geometry, styles, metadata, and the library-owned live host as `children`.

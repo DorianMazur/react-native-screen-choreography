@@ -3,6 +3,7 @@ import {
   getScreenRole,
   getSessionPhase,
   shouldBlockInteraction,
+  validateScreenFade,
 } from './screenVisibility';
 import type { TransitionSessionData } from '../types';
 
@@ -70,6 +71,48 @@ describe('getSessionPhase', () => {
 });
 
 describe('deriveScreenOpacity', () => {
+  it('retraces custom screen fades and clamps spring overshoot', () => {
+    const fade = { during: [0.2, 0.8] as const };
+    for (const [progress, opacity] of [
+      [-0.1, 0],
+      [0.2, 0],
+      [0.5, 0.5],
+      [0.8, 1],
+      [1.1, 1],
+    ]) {
+      expect(
+        deriveScreenOpacity('forward', 'target', 'active', progress!, fade)
+      ).toBeCloseTo(opacity!);
+      expect(
+        deriveScreenOpacity('backward', 'source', 'active', progress!, fade)
+      ).toBeCloseTo(opacity!);
+      expect(
+        deriveScreenOpacity('forward', 'source', 'active', progress!, fade)
+      ).toBeCloseTo(1 - opacity!);
+      expect(
+        deriveScreenOpacity('backward', 'target', 'active', progress!, fade)
+      ).toBeCloseTo(1 - opacity!);
+    }
+  });
+
+  it('disables decorative opacity without disabling preparation gates', () => {
+    for (const direction of ['forward', 'backward'] as const) {
+      for (const role of ['source', 'target'] as const) {
+        for (const progress of [0, 0.2, 0.8, 1]) {
+          expect(
+            deriveScreenOpacity(direction, role, 'active', progress, false)
+          ).toBe(1);
+        }
+      }
+    }
+    expect(
+      deriveScreenOpacity('forward', 'target', 'preparing', 0, false)
+    ).toBe(0);
+    expect(
+      deriveScreenOpacity('backward', 'target', 'preparing', 1, false)
+    ).toBe(1);
+  });
+
   it('keeps inactive screens fully visible', () => {
     expect(deriveScreenOpacity('forward', 'inactive', 'active', 0.5)).toBe(1);
     expect(deriveScreenOpacity('backward', 'inactive', 'active', 0.5)).toBe(1);
@@ -176,6 +219,19 @@ describe('deriveScreenOpacity', () => {
       );
     expect(reopening).toEqual(closing.reverse());
   });
+});
+
+test.each([
+  [-0.1, 0.4],
+  [0.4, 1.1],
+  [0.4, 0.4],
+  [0.8, 0.2],
+  [NaN, 1],
+  [0, Infinity],
+] as const)('rejects invalid screen fade interval [%s, %s]', (start, end) => {
+  expect(() => validateScreenFade({ during: [start, end] })).toThrow(
+    'Screen fade intervals'
+  );
 });
 
 describe('shouldBlockInteraction', () => {
