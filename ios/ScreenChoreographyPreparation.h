@@ -3,7 +3,7 @@
 
 NS_ASSUME_NONNULL_BEGIN
 
-@interface ScreenChoreographyPreparation : NSObject <NativeChoreographyPreparationSpec, RCTInvalidating>
+@interface ScreenChoreographyPreparation : NativeChoreographyPreparationSpecBase <NativeChoreographyPreparationSpec, RCTInvalidating>
 @end
 
 NS_ASSUME_NONNULL_END

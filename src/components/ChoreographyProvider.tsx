@@ -736,6 +736,7 @@ export function ChoreographyProvider({
               >
                 <NativeTransitionHost
                   active={Boolean(isOverlayActive && activeSession)}
+                  sessionId={activeSession?.id ?? null}
                   onPresentationReady={handleHostPresentationReady}
                 >
                   <TransitionOverlay

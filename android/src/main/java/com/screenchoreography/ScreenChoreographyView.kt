@@ -11,9 +11,10 @@ import android.view.ViewGroupOverlay
 import com.facebook.react.views.view.ReactViewGroup
 
 class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
-  var onPresentationReady: ((Double) -> Unit)? = null
+  var onPresentationReady: ((String, Double) -> Unit)? = null
 
   private var active = false
+  private var presentationSessionId = ""
   private var presentationRequestId = 0
   private var dismissalRequestId = 0
   private var pendingPresentationAck = false
@@ -33,6 +34,16 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     visibility = View.INVISIBLE
     // dispatchDraw needs to run even when the view group has no background.
     setWillNotDraw(false)
+  }
+
+  fun setPresentationSessionId(value: String) {
+    if (presentationSessionId == value) return
+    presentationSessionId = value
+    // React can batch an interruption's inactive/active updates. A new
+    // session must request its own draw acknowledgement even if active stays true.
+    presentationRequestId += 1
+    pendingPresentationAck = false
+    if (active) schedulePresentationReady()
   }
 
   fun setActive(value: Boolean) {
@@ -109,11 +120,12 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     if (pendingPresentationAck && active) {
       pendingPresentationAck = false
       val requestId = presentationRequestId
+      val sessionId = presentationSessionId
       // Post so the callback runs after this frame's draw traversal has
       // fully completed, not in the middle of it.
       mainHandler.post {
         if (active && requestId == presentationRequestId && windowToken != null) {
-          onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble())
+          onPresentationReady?.invoke(sessionId, SystemClock.uptimeMillis().toDouble())
         }
       }
     }

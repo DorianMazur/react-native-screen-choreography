@@ -31,10 +31,15 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
 
   public override fun createViewInstance(context: ThemedReactContext): ScreenChoreographyView {
     val view = ScreenChoreographyView(context)
-    view.onPresentationReady = { timestamp ->
-      val eventDispatcher = UIManagerHelper.getEventDispatcherForReactTag(context, view.id)
-      val surfaceId = UIManagerHelper.getSurfaceId(context)
-      eventDispatcher?.dispatchEvent(PresentationReadyEvent(surfaceId, view.id, timestamp))
+    view.onPresentationReady = { sessionId, timestamp ->
+      val delivered = sessionId.isNotEmpty() &&
+        context.getNativeModule(ScreenChoreographyPreparationModule::class.java)
+          ?.emitOverlayPresented(sessionId, timestamp) == true
+      if (!delivered) {
+        val eventDispatcher = UIManagerHelper.getEventDispatcherForReactTag(context, view.id)
+        val surfaceId = UIManagerHelper.getSurfaceId(context)
+        eventDispatcher?.dispatchEvent(PresentationReadyEvent(surfaceId, view.id, timestamp))
+      }
     }
     return view
   }
@@ -42,6 +47,11 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
   @ReactProp(name = "active", defaultBoolean = false)
   override fun setActive(view: ScreenChoreographyView?, active: Boolean) {
     view?.setActive(active)
+  }
+
+  @ReactProp(name = "presentationSessionId")
+  override fun setPresentationSessionId(view: ScreenChoreographyView?, value: String?) {
+    view?.setPresentationSessionId(value ?: "")
   }
 
   override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any>? {
