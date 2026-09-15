@@ -69,13 +69,15 @@ interface MakeTransitionOptions {
 }
 ```
 
-Renderer props include `id`, `groupId`, `progress`, `direction`, `zIndex`, `source`, `target`, and `children`. Each endpoint provides `screenId`, measured `metrics`, optional `style`, and `metadata?: unknown`.
+Renderer props include `id`, `groupId`, `progress`, `direction`, `zIndex`, `source`, `target`, `anchors`, and `children`. Each endpoint provides `screenId`, measured `metrics`, optional `style`, and `metadata?: unknown`.
 
 Render `children` **exactly once**, continuously through the session. It is the library-owned portal host, not a second content component. Source and target presentations are captured at session start; metadata is captured by reference.
 
 `progress` is expansion progress (`0` collapsed, `1` expanded). Source and target follow navigation direction. Convert to `direction === 'backward' ? 1 - progress.value : progress.value` when interpolating from source metrics to target metrics directly.
 
-The exported renderer type includes optional `anchors`; the 0.5.0 `makeTransition` adapter does not forward them. Use the supplied endpoint metrics for custom renderer geometry.
+`anchors` is a read-only map keyed by element ID containing only the current session's matched elements (including the renderer's own element). Each `TransitionAnchor` contains `collapsed` and `expanded` rectangles with `pageX`, `pageY`, `width`, and `height`. These names always mean expansion endpoints, including on back: collapsed is the forward source / backward target; expanded is the forward target / backward source. Interpolate these endpoints using expansion `progress` directly.
+
+Anchors update together with renderer endpoint metrics when the session's measurements refresh. They contain geometry only, with no native refs, registrations, styles, metadata, or React content. Optional or unmatched elements have no entry; guard lookups such as `anchors?.artwork` before using them. The prop remains optional for renderers invoked outside the overlay.
 
 ## `TransitionFrame`
 
