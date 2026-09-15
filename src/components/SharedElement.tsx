@@ -9,7 +9,10 @@ import {
   useContext,
 } from 'react';
 import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
-import Animated, { useAnimatedRef } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedRef,
+  useDerivedValue,
+} from 'react-native-reanimated';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
   ElementPresentation,
@@ -237,14 +240,20 @@ function LiveSharedElement({
     metadata,
     style: (StyleSheet.flatten(style) ?? undefined) as ViewStyle | undefined,
   };
+  const progress = choreography!.progress;
+  const settled = settledTargetScreenIdRef.current
+    ? ('expanded' as const)
+    : ('collapsed' as const);
+  const presentationProgress = useDerivedValue(() =>
+    participates ? progress.value : settled === 'expanded' ? 1 : 0
+  );
   const presentation = {
-    progress: choreography!.progress,
+    progress,
+    presentationProgress,
     transitioning: participates,
     collapsed: endpoints.current?.collapsed ?? initial,
     expanded: endpoints.current?.expanded ?? initial,
-    settled: settledTargetScreenIdRef.current
-      ? ('expanded' as const)
-      : ('collapsed' as const),
+    settled,
   };
   const ownerStyle = StyleSheet.flatten(style);
   const reservedMetrics = hostName
