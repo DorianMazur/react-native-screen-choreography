@@ -25,6 +25,15 @@ class ScreenChoreographyPreparationModule(
   private val requests = mutableMapOf<String, LayoutRequest>()
   @Volatile private var invalidated = false
 
+  fun emitOverlayPresented(sessionId: String, timestamp: Double): Boolean {
+    if (invalidated) return false
+    emitOnOverlayPresented(Arguments.createMap().apply {
+      putString("sessionId", sessionId)
+      putDouble("timestamp", timestamp)
+    })
+    return true
+  }
+
   override fun awaitLayout(
     requestId: String,
     screenTag: Double,
