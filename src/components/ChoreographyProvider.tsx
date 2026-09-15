@@ -9,7 +9,6 @@ import React, {
 } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import { useSharedValue, type SharedValue } from 'react-native-reanimated';
-import { FullWindowOverlay } from 'react-native-screens';
 import { PortalProvider } from 'react-native-teleport';
 import type {
   ChoreographyDebugConfig,
@@ -54,7 +53,7 @@ function TransitionHostPortal({
   children: React.ReactNode;
 }) {
   if (Platform.OS === 'ios') {
-    return <FullWindowOverlay>{children}</FullWindowOverlay>;
+    return <>{children}</>;
   }
 
   return (

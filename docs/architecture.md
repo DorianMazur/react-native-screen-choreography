@@ -85,6 +85,20 @@ start hiding or moving content based only on an eager session-activation callbac
 The native host's dismissal protection is separate from the removed outgoing
 screen capture implementation.
 
+### iOS window ownership and accessibility
+
+`ScreenChoreographyView` stays mounted as a Fabric-owned anchor for the provider's
+lifetime. Its native window container is attached only while presenting a
+transition or finishing the native dismissal handoff. Live React children mount
+into that container; the anchor itself never moves out of its React parent.
+The host-only dismissal snapshot remains separate from those live children.
+
+The container uses the anchor's actual `UIWindow`. If a native full-screen modal
+temporarily detaches an ancestor, it can keep using that anchor's last known
+window while the anchor remains mounted. Removing or recycling the anchor clears
+this association and removes the container. Deferred presentation and dismissal
+callbacks are invalidated across interruption and recycling.
+
 Screen opacity and input gating are defined in `screenVisibility.ts`, from
 (direction, role, phase, progress). Expansion progress is 0 at the list and 1 at
 the detail, including during a return. A plain outer view applies the pending
