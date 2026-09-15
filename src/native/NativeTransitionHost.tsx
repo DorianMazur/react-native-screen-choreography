@@ -1,5 +1,5 @@
 import React from 'react';
-import { Platform, StyleSheet } from 'react-native';
+import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import NativeScreenChoreographyView from './ScreenChoreographyViewNativeComponent';
 import NativePreparation from './NativeChoreographyPreparation';
 
@@ -16,6 +16,7 @@ export function NativeTransitionHost({
   children,
   onPresentationReady,
 }: NativeTransitionHostProps) {
+  const { width, height } = useWindowDimensions();
   const useModuleEvents =
     Platform.OS === 'android' &&
     typeof NativePreparation?.onOverlayPresented === 'function';
@@ -42,7 +43,11 @@ export function NativeTransitionHost({
       presentationSessionId={useModuleEvents && active ? (sessionId ?? '') : ''}
       collapsable={false}
       pointerEvents={active ? 'box-none' : 'none'}
-      style={styles.host}
+      style={
+        Platform.OS === 'ios'
+          ? [styles.windowHost, { width, height }]
+          : styles.host
+      }
       onPresentationReady={handlePresentationReady}
     >
       {children}
@@ -51,6 +56,11 @@ export function NativeTransitionHost({
 }
 
 const styles = StyleSheet.create({
+  windowHost: {
+    position: 'absolute',
+    top: 0,
+    left: 0,
+  },
   host: {
     ...StyleSheet.absoluteFill,
   },

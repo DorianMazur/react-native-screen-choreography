@@ -1,5 +1,7 @@
 import React, { StrictMode, useContext } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Platform } from 'react-native';
+import { FullWindowOverlay } from 'react-native-screens';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
@@ -21,7 +23,9 @@ jest.mock('react-native-reanimated', () => {
 });
 
 jest.mock('react-native-screens', () => ({
-  FullWindowOverlay: ({ children }: { children: React.ReactNode }) => children,
+  FullWindowOverlay: jest.fn(
+    ({ children }: { children: React.ReactNode }) => children
+  ),
 }));
 
 jest.mock('react-native-teleport', () => ({
@@ -34,6 +38,17 @@ jest.mock(
 );
 
 describe('ChoreographyProvider lifecycle', () => {
+  const originalPlatform = Platform.OS;
+
+  beforeEach(() => {
+    Platform.OS = 'ios';
+    jest.mocked(FullWindowOverlay).mockClear();
+  });
+
+  afterEach(() => {
+    Platform.OS = originalPlatform;
+  });
+
   test('unregistering the preparation source invalidates its dispatch and queue', async () => {
     let context!: ChoreographyContextType;
     let navigation!: ReturnType<typeof useChoreographyNavigator>;
@@ -105,13 +120,15 @@ describe('ChoreographyProvider lifecycle', () => {
   });
 
   test.each([
-    [false, 'native'],
-    [true, 'native'],
-    [false, 'timeout'],
-    [true, 'timeout'],
+    [false, 'native', 'complete'],
+    [true, 'native', 'complete'],
+    [false, 'timeout', 'complete'],
+    [true, 'timeout', 'complete'],
+    [false, 'native', 'cancel'],
+    [true, 'native', 'cancel'],
   ] as const)(
-    'publishes and completes sessions with StrictMode=%s and readiness=%s',
-    async (strict, readiness) => {
+    'keeps the host mounted with StrictMode=%s, readiness=%s, outcome=%s',
+    async (strict, readiness, outcome) => {
       jest.useFakeTimers();
       let context!: ChoreographyContextType;
       let tree: ReactTestRenderer | undefined;
@@ -148,6 +165,11 @@ describe('ChoreographyProvider lifecycle', () => {
           );
         });
 
+        const persistentHost = tree!.root.findByType(NativeTransitionHost);
+        const persistentNativeView = tree!.root.findByType(
+          'ScreenChoreographyView' as React.ElementType
+        );
+        expect(persistentHost.props.active).toBe(false);
         const initialSettle = settle;
         controlRenders.mockClear();
         const metrics = { pageX: 10, pageY: 20, width: 100, height: 100 };
@@ -201,6 +223,13 @@ describe('ChoreographyProvider lifecycle', () => {
 
         expect(session).not.toBeNull();
         expect(context.activeSession).toBe(session);
+        expect(tree!.root.findByType(NativeTransitionHost)).toBe(
+          persistentHost
+        );
+        expect(persistentHost.props.active).toBe(true);
+        expect(
+          tree!.root.findByType('ScreenChoreographyView' as React.ElementType)
+        ).toBe(persistentNativeView);
         const sessionId = context.activeSession!.id;
         expect(context.progressOwnership.isSession(sessionId)).toBe(true);
         expect(onTransitionStart).toHaveBeenCalledTimes(1);
@@ -236,9 +265,23 @@ describe('ChoreographyProvider lifecycle', () => {
 
         expect(controlRenders).not.toHaveBeenCalled();
         expect(settle).toBe(initialSettle);
-        await act(async () => initialSettle());
+        await act(async () => {
+          if (outcome === 'cancel') {
+            context.cancelTransition(sessionId);
+          } else {
+            initialSettle();
+          }
+        });
 
         expect(context.activeSession).toBeNull();
+        expect(tree!.root.findByType(NativeTransitionHost)).toBe(
+          persistentHost
+        );
+        expect(persistentHost.props.active).toBe(false);
+        expect(
+          tree!.root.findByType('ScreenChoreographyView' as React.ElementType)
+        ).toBe(persistentNativeView);
+        expect(FullWindowOverlay).not.toHaveBeenCalled();
         expect(context.progressOwnership.hasSession).toBe(false);
         expect(onTransitionEnd).toHaveBeenCalledTimes(1);
         expect(onTransitionEnd).toHaveBeenCalledWith(session);
