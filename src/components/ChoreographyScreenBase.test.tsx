@@ -5,7 +5,10 @@ import {
   type ChoreographyActionsType,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
-import { ChoreographyScreenBase } from './ChoreographyScreenBase';
+import {
+  ChoreographyScreenBase,
+  type ChoreographyScreenProps,
+} from './ChoreographyScreenBase';
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -42,13 +45,18 @@ function createContext() {
 async function mountScreen(
   context: ChoreographyContextType,
   screenId: string,
-  actions: ChoreographyActionsType | null = null
+  actions: ChoreographyActionsType | null = null,
+  screenFade?: ChoreographyScreenProps['screenFade']
 ) {
   let tree!: ReactTestRenderer;
   const render = (ready = true) => (
     <ChoreographyContext.Provider value={context}>
       <ChoreographyActionsContext.Provider value={actions}>
-        <ChoreographyScreenBase screenId={screenId} ready={ready}>
+        <ChoreographyScreenBase
+          screenId={screenId}
+          ready={ready}
+          screenFade={screenFade}
+        >
           {null}
         </ChoreographyScreenBase>
       </ChoreographyActionsContext.Provider>
@@ -66,6 +74,33 @@ async function mountScreen(
     update: (ready: boolean) => tree.update(render(ready)),
   };
 }
+
+test.each(['pending', 'preparing'] as const)(
+  'disabling screen fade preserves the forward %s visibility and input gate',
+  async (phase) => {
+    const context = createContext();
+    context.activeSession!.direction = 'forward';
+    if (phase === 'pending') {
+      context.activeSession = null;
+      context.pendingTargetScreenId = 'home';
+    } else context.activeSession!.state = 'preparing';
+    const screen = await mountScreen(context, 'home', null, false);
+    expect(screen.outer().props.style).toContainEqual({ opacity: 0 });
+    expect(screen.outer().props.pointerEvents).toBe('none');
+  }
+);
+
+test('applies custom fade and disabled fade through the screen wrapper', async () => {
+  const context = createContext();
+  context.progress.value = 0.5;
+  const custom = await mountScreen(context, 'detail', null, {
+    during: [0.2, 0.8],
+  });
+  expect(custom.inner().props.style[1].opacity).toBeCloseTo(0.5);
+  const disabled = await mountScreen(context, 'detail', null, false);
+  expect(disabled.inner().props.style[1].opacity).toBe(1);
+  expect(disabled.inner().props.animatedProps.pointerEvents).toBe('none');
+});
 
 test('releases only the reverse destination before React session cleanup', async () => {
   const context = createContext();
