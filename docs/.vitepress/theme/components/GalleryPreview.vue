@@ -9,8 +9,6 @@ import forest from '../../../../examples/shared/assets/photos/forest.jpg';
 import rooftops from '../../../../examples/shared/assets/photos/rooftops.jpg';
 
 const expanded = ref(false);
-// Keep these labels and the Aurora detail in sync with examples/shared/gallery/data.ts.
-// Import its images directly; the native module itself depends on React Native.
 const photos = [
   { title: 'Aurora', location: 'Tromsø, Norway', image: aurora },
   { title: 'Dunes', location: 'Erg Chebbi, Morocco', image: dunes },
@@ -189,6 +187,7 @@ const photos = [
 }
 .gallery-screen {
   position: absolute;
+  z-index: 0;
   overflow: hidden;
   border-radius: 2.8cqw;
   background: var(--gallery-bg);
@@ -345,6 +344,7 @@ const photos = [
 }
 .gallery-hero {
   position: absolute;
+  z-index: 1;
   left: var(--gallery-owner-x);
   top: var(--gallery-owner-y);
   width: var(--gallery-owner-w);
