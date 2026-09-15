@@ -15,6 +15,10 @@ import {
 import { ScreenIdContext } from '../core/screenIdContext';
 import { makeTransition } from '../transitions/makeTransition';
 import { SharedElement } from './SharedElement';
+import {
+  useSharedElementPresentation,
+  type SharedElementPresentation,
+} from '../core/SharedElementPresentation';
 
 jest.mock('react-native-reanimated', () => {
   const { useRef } = jest.requireActual('react');
@@ -102,10 +106,115 @@ function makeContexts() {
 function choreography(
   activeSession: TransitionSessionData | null
 ): ChoreographyContextType {
-  return { activeSession } as ChoreographyContextType;
+  return { activeSession, progress: { value: 0 } } as ChoreographyContextType;
 }
 
 describe('SharedElement live endpoints', () => {
+  test('retains owner progress across settlement, cancellation, and unrelated sessions', async () => {
+    const state = makeContexts();
+    const progress = { value: 0 } as ChoreographyContextType['progress'];
+    let presentation!: SharedElementPresentation;
+    let tree!: ReactTestRenderer;
+    function Content() {
+      presentation = useSharedElementPresentation();
+      return null;
+    }
+    const render = (activeSession: TransitionSessionData | null) => (
+      <ChoreographyActionsContext.Provider value={state.actions}>
+        <ChoreographyContext.Provider
+          value={{ ...choreography(activeSession), progress }}
+        >
+          <ScreenIdContext.Provider value="list">
+            <SharedElement id="player" groupId="media">
+              <Content />
+            </SharedElement>
+          </ScreenIdContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const update = async (active: TransitionSessionData | null) => {
+      await act(async () => tree.update(render(active)));
+      // Compatibility: consumers still receive the exact provider clock.
+      expect(presentation.progress).toBe(progress);
+    };
+    const expectProgress = (value: number) =>
+      expect(presentation.presentationProgress.value).toBe(value);
+    const unrelated = {
+      ...session('list', 'other-detail'),
+      groupId: 'other',
+    };
+
+    try {
+      await act(async () => {
+        tree = create(render(null));
+      });
+      expectProgress(0);
+      await update(unrelated);
+      progress.value = 0.6;
+      expectProgress(0);
+
+      await update(session('list', 'detail'));
+      for (const value of [0, 0.4, 1]) {
+        progress.value = value;
+        expectProgress(value);
+      }
+      state.settle('detail');
+      await update(null);
+      expectProgress(1);
+      await update(unrelated);
+      progress.value = 0.2;
+      expectProgress(1);
+      state.settle('other-detail');
+      await update(null);
+      expectProgress(1);
+
+      // A different element in the same group must not drive this owner.
+      await update({
+        ...session('list', 'detail'),
+        pairs: session('list', 'detail').pairs.map((pair) => ({
+          ...pair,
+          id: 'other-player',
+        })),
+      });
+      progress.value = 0.7;
+      expectProgress(1);
+
+      await update(session('detail', 'list', 'backward'));
+      progress.value = 0.3;
+      expectProgress(0.3);
+      // Cancel back: retained content stays expanded.
+      state.settle('detail');
+      await update(null);
+      expectProgress(1);
+
+      await update(session('detail', 'list', 'backward'));
+      progress.value = 0;
+      state.settle('list');
+      await update(null);
+      expectProgress(0);
+
+      await update(session('list', 'detail'));
+      progress.value = 0.6;
+      // Rapid reversal continues to follow the same expansion clock.
+      await update(session('detail', 'list', 'backward'));
+      expectProgress(0.6);
+      state.settle('list');
+      await update(null);
+      expectProgress(0);
+
+      await update(session('list', 'detail'));
+      progress.value = 0.4;
+      // Cancel forward: retained content returns to collapsed.
+      state.settle('list');
+      await update(null);
+      expectProgress(0);
+      expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+      expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
+
   test('uses the default transition and applies endpoint portal and host styles', async () => {
     const state = makeContexts();
     let tree!: ReactTestRenderer;
