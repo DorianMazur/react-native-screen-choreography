@@ -23,7 +23,7 @@ Real transitions, recorded in the native examples. Watch the demos, then explore
 
 ## Make it yours
 
-Gallery, Wallet, and Wallet setup share their screen implementations between both example apps. They use module-scoped `defineTransition` recipes, one retained owner per shared role, and local companion reveals.
+Both example apps use the same shared demo screens and transition implementations. They use module-scoped `defineTransition` recipes, one retained owner per shared role, and local companion reveals.
 
 - **React Navigation:** follow the [bare example setup](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/react-navigation/README.md) to install dependencies, build, and run on iOS or Android.
 - **Expo Router:** follow the [Expo example setup](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/expo-router/README.md). Use a native development build; Expo Go does not include this library’s native host.

@@ -20,18 +20,18 @@ const demos = [
     color: theme.gallery.accent,
   },
   {
+    route: 'TripsList',
+    title: 'Trips',
+    subtitle: 'Your next adventure',
+    icon: 'cloud',
+    color: theme.trips.accent,
+  },
+  {
     route: 'TokenList',
     title: 'Wallet',
     subtitle: 'Demo portfolio',
     icon: 'wallet',
     color: theme.wallet.accent,
-  },
-  {
-    route: 'WalletSetup',
-    title: 'Wallet setup',
-    subtitle: 'Make yourself at home',
-    icon: 'wallet',
-    color: theme.success,
   },
 ] as const;
 

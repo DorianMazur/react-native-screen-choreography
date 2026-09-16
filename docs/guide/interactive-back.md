@@ -46,6 +46,8 @@ function releaseDrag(normalizedVelocity: number) {
 
 While a gesture owns the return, its source screen stays visible and accepts touches, including at gesture progress `1`. Use a transparent source background if the screen underneath should show through. Keep the gesture responder on a stationary screen view: shared content moves into a non-interactive overlay, and retained content keeps its original React ancestry. Call `finish()` only after any custom docking animation has reached its destination, or `cancel()` to restore the detail.
 
+The Trips example demonstrates a long press that collapses the photo into a freely movable card, then springs it into its original slot on release.
+
 `beginBack()` is asynchronous, and its success updates React state. Build gesture callbacks from the latest render and gate updates with `isActive`; do not keep a callback created before preparation or assume the immediately preceding render has the new progress ownership token.
 
 ## Respect the JavaScript boundary

@@ -1,14 +1,13 @@
 # Example App
 
-This example app exposes the shared gallery, wallet, and wallet-setup demos through React Navigation.
+This app runs the [shared demos](../shared) through React Navigation. See the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and source links.
 
 ## What It Demonstrates
 
-- one live Gallery hero owned by the list and reparented into the detail target: photo, title, subtitle, camera icon, and gradient share one derived frame; fixed image/text layouts use transforms instead of image reloads or text crossfades
-- declarative shared roles and section reveals in the Wallet demo
-- a retained Wallet setup panel with persistent controls and expanding background
+- retained content owned by the source screen and reparented into the detail target, with child layout driven by shared progress
+- declarative shared roles and section reveals
 - icon handoff with shared bounds interpolation
-- live component transitions with custom wallet value motion
+- live component transitions with custom internal motion
 - early settle handling when detail interaction starts mid-transition
 - staged reveal of detail content
 - fast push-pop-push interruption handling
@@ -57,31 +56,22 @@ yarn start
 
 - `src/App.tsx` for navigator configuration
 - `src/ExampleScreen.tsx` for the React Navigation adapter used by shared screens
-- `../shared/wallet/TokenListScreen.tsx` for forward navigation and transition config
-- `../shared/wallet/TokenDetailScreen.tsx` for companion animations and reverse navigation
-- `../shared/wallet/TokenRow.tsx` for shared element structure on the list row
+- [Shared demo source](../shared) for screen implementations, transition recipes, and retained components
 
-The Expo Router app imports those same files. Only navigator setup, destination mapping, and dynamic route parameter extraction remain app-specific.
+The Expo Router app imports the same shared implementations. Only navigator setup, destination mapping, and dynamic route parameter extraction remain app-specific.
 
 ## What To Test Manually
 
-- tap a token and verify the forward transition starts immediately
+- tap an item and verify the forward transition starts immediately
 - press back after the detail settles and verify a visible reverse animation
 - start scrolling during an active detail transition and verify `settleTransition()` snaps cleanly to the detail endpoint
-- go back quickly and tap a different token once
+- go back quickly and tap a different item once
 - repeat push-pop cycles to check for flashes, dropped reverses, or large startup delays
 
 ## Transition definitions
 
-All three demos use `defineTransition` from the shared core API:
+Transition recipes live alongside their screens in [the shared source](../shared) and use `defineTransition` from the shared core API.
 
-| Demo | Definition | Live content |
-| --- | --- | --- |
-| Gallery | `../shared/gallery/galleryTransitions.tsx` | One hero plus a local detail reveal |
-| Wallet | `../shared/wallet/walletTransitions.tsx` | Five named logo/text/value roles plus staged detail sections |
-| Wallet setup | `../shared/wallet-setup/setupTransitions.tsx` | One panel containing persistent buttons and artwork |
-
-The definitions coordinate endpoints and local section reveals. Image cropping,
-text scaling, and the setup panel's internal motion stay inside their retained
+The definitions coordinate endpoints and local section reveals. Internal layout and visual changes stay inside retained
 components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
 ordinary screen content, not to content hosted on another route.

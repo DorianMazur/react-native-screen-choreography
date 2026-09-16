@@ -5,6 +5,7 @@ import React, {
   useRef,
   useState,
 } from 'react';
+import type { useInteractiveTransition } from 'react-native-screen-choreography';
 import type { ChoreographyNavigationOptions } from 'react-native-screen-choreography/core';
 
 export {
@@ -19,12 +20,12 @@ export {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 
-export type DemoListScreenId = 'GalleryList' | 'TokenList' | 'WalletSetup';
+export type DemoListScreenId = 'GalleryList' | 'TripsList' | 'TokenList';
 
 export type DemoDetailDestination =
   | { screen: 'GalleryDetail'; params: { photoId: string } }
-  | { screen: 'TokenDetail'; params: { tokenId: string } }
-  | { screen: 'WalletExisting'; params?: undefined };
+  | { screen: 'TripsDetail'; params: { tripId: string } }
+  | { screen: 'TokenDetail'; params: { tokenId: string } };
 
 export interface ExampleNavigation {
   open: (screen: DemoListScreenId) => void;
@@ -40,13 +41,18 @@ export type DemoScreenId =
   | DemoListScreenId
   | DemoDetailDestination['screen'];
 
+type ExampleInteractive = ReturnType<typeof useInteractiveTransition>;
+const InteractiveContext = createContext<ExampleInteractive | null>(null);
+
 const NavigationContext = createContext<ExampleNavigation | null>(null);
 
 export function ExampleBindings({
   navigation,
+  interactive,
   children,
 }: {
   navigation: ExampleNavigation;
+  interactive?: ExampleInteractive;
   children: React.ReactNode;
 }) {
   const navigationRef = useRef(navigation);
@@ -61,7 +67,9 @@ export function ExampleBindings({
 
   return (
     <NavigationContext.Provider value={commands}>
-      {children}
+      <InteractiveContext.Provider value={interactive ?? null}>
+        {children}
+      </InteractiveContext.Provider>
     </NavigationContext.Provider>
   );
 }
@@ -73,4 +81,11 @@ export function useExampleNavigation(): ExampleNavigation {
       'Shared screens must be rendered inside an app ExampleScreen.'
     );
   return navigation;
+}
+
+export function useExampleInteractiveTransition(): ExampleInteractive {
+  const interactive = useContext(InteractiveContext);
+  if (!interactive)
+    throw new Error('Missing ExampleScreen interactive bindings.');
+  return interactive;
 }
