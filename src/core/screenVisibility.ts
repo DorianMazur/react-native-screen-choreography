@@ -13,8 +13,6 @@ export type TransitionDirection = 'forward' | 'backward';
 
 export type ScreenFadeConfig = false | { during: readonly [number, number] };
 
-const DEFAULT_SCREEN_FADE = { during: [0, 0.4] as const };
-
 export function validateScreenFade(screenFade: ScreenFadeConfig): void {
   if (screenFade === false) return;
   const range = screenFade.during;
@@ -76,7 +74,7 @@ export function deriveScreenOpacity(
   role: ScreenRole,
   phase: SessionPhase,
   progressValue: number,
-  screenFade: ScreenFadeConfig = DEFAULT_SCREEN_FADE
+  screenFade?: ScreenFadeConfig
 ): number {
   'worklet';
   if (
@@ -96,7 +94,7 @@ export function deriveScreenOpacity(
   if (screenFade === false) return 1;
   const isExpandedScreen =
     direction === 'forward' ? role === 'target' : role === 'source';
-  const [start, end] = screenFade.during;
+  const [start, end] = screenFade?.during ?? [0, 0.4];
   const expandedOpacity = Math.max(
     0,
     Math.min(1, (progressValue - start) / (end - start))
