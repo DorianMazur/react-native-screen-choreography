@@ -23,6 +23,9 @@ export interface ChoreographyScreenProps {
   children: React.ReactNode;
   /** Additional app readiness gate applied after the screen has laid out. */
   ready?: boolean;
+  /** Allow touches on the arriving screen during active motion. Preparation
+   * and the outgoing screen remain blocked. Defaults to true. */
+  allowInteractionDuringTransition?: boolean;
   /**
    * Keep this screen at full opacity during a session instead of
    * cross-fading it with the other endpoint. Use it on the source screen
@@ -38,6 +41,7 @@ export function ChoreographyScreenBase({
   children,
   ready = true,
   keepVisible = false,
+  allowInteractionDuringTransition = true,
 }: ChoreographyScreenProps & { instanceId?: string; isFocused?: boolean }) {
   const screenId = instanceId ?? screenName;
   const choreography = useContext(ChoreographyContext);
@@ -80,14 +84,36 @@ export function ChoreographyScreenBase({
   }, [direction, role, phase, progress, keepVisible]);
 
   const blockInteraction =
-    isPendingTarget || shouldBlockInteraction(role, phase);
+    isPendingTarget ||
+    shouldBlockInteraction(role, phase, allowInteractionDuringTransition);
   const interactionOwner = choreography?.interactionOwner;
-  const interactionProps = useAnimatedProps(() => ({
-    pointerEvents:
-      blockInteraction && interactionOwner?.value !== screenId
-        ? ('none' as const)
-        : ('auto' as const),
-  }));
+  const reverseHandoff = choreography?.reverseHandoff;
+  const progressOwner = choreography?.progressOwnership?.owner;
+  const sessionId = session?.id;
+  const interactionProps = useAnimatedProps(() => {
+    const returning = reverseHandoff?.value;
+    const isReturnTarget = Boolean(
+      returning &&
+      returning.sessionId === sessionId &&
+      returning.token === progressOwner?.value &&
+      returning.navigationPresented &&
+      returning.targetScreenId === screenId
+    );
+    const blocked =
+      isPendingTarget ||
+      shouldBlockInteraction(
+        role,
+        phase,
+        allowInteractionDuringTransition,
+        isReturnTarget
+      );
+    return {
+      pointerEvents:
+        blocked && interactionOwner?.value !== screenId
+          ? ('none' as const)
+          : ('auto' as const),
+    };
+  });
   const setScreenReady = actions?.setScreenReady;
   const unregisterScreen = actions?.unregisterScreen;
   const registerScreenPresentation = actions?.registerScreenPresentation;

@@ -82,8 +82,18 @@ export function deriveScreenOpacity(
 
 export function shouldBlockInteraction(
   role: ScreenRole,
-  phase: SessionPhase
+  phase: SessionPhase,
+  allowInteractionDuringTransition = true,
+  isReturnTarget = false
 ): boolean {
+  'worklet';
   if (role === 'inactive') return false;
-  return phase === 'preparing' || phase === 'active';
+  return (
+    phase === 'preparing' ||
+    (phase === 'active' &&
+      !(
+        (role === 'target' || isReturnTarget) &&
+        allowInteractionDuringTransition
+      ))
+  );
 }

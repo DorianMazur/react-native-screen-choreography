@@ -539,6 +539,8 @@ export function ChoreographyProvider({
   const getActiveSession = useCallback(() => activeSessionRef.current, []);
   const {
     reverseController,
+    reverseHandoff,
+    interruptibleReturnSessionId,
     commitReverseTransition,
     registerScreenPresentation: registerReverseScreenPresentation,
   } = useReverseTransitionCommit({
@@ -679,6 +681,8 @@ export function ChoreographyProvider({
       progressOwnership,
       navigationController,
       reverseController,
+      reverseHandoff,
+      interruptibleReturnSessionId,
       commitReverseTransition,
       interactionOwner,
       preMeasureGroup,
@@ -710,6 +714,8 @@ export function ChoreographyProvider({
       progressOwnership,
       navigationController,
       reverseController,
+      reverseHandoff,
+      interruptibleReturnSessionId,
       commitReverseTransition,
       interactionOwner,
       preMeasureGroup,

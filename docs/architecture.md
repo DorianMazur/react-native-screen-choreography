@@ -118,19 +118,29 @@ Do not treat that bookkeeping as a reason to add snapshot render paths.
 5. At completion, retarget content to its endpoint and release the overlay/session.
 
 After a settled forward transition, Back prepares a reverse session while the
-outgoing route remains mounted. `ReverseTransitionController` waits for the
-animation endpoint, commits navigation, and coordinates removal/presentation
-with `ReverseTransitionHandoff` before cleanup. There is no outgoing-screen
+outgoing route remains mounted. During committed settlement, a UI-thread reaction
+asks `ReverseTransitionController` to remove the outgoing route once expansion
+progress reaches 0.25. This is remaining expansion, not elapsed animation time;
+the threshold starts dismissal and does not itself confirm input readiness.
+Retained content stays in the overlay until the spring finishes. After confirmed
+route removal, a new navigation tap can finish that remaining motion immediately;
+it does not wait for the spring's settling tail. Exact animation completion also
+commits navigation if the earlier reaction has not run. There is no outgoing-screen
 snapshot component. Cancelling an interactive return keeps the detail route.
 Once animation completion and route removal are confirmed, the provider enqueues
 the UI input handoff and completes the session in the same JavaScript turn.
 Portal retargeting and navigation unlock do not wait for a UI-to-JavaScript
 acknowledgment. The handoff is queued before completion invalidates UI ownership.
 
-An interrupted active forward transition follows the navigation hook's explicit
-reverse path, refreshing source metrics after navigation. Progress ownership
+An interrupted active forward transition refreshes its source metrics and uses
+the same return controller, with the original source as its return destination.
+Confirmed removal enables that destination's input when interaction during
+transitions is allowed. It also wakes queued navigation, including when focus
+arrives before the removal result. The remaining animation still owns the
+overlay until completion or a new navigation tap. Progress ownership
 rejects callbacks from replaced animations. JavaScript timers do not force
-animation completion; Reanimated's completion callback owns that decision.
+animation completion; Reanimated's completion callback or an explicit navigation
+interruption owns that decision.
 
 Navigation lineage records source route identity, group, and requested spring.
 Removal interception routes hardware and navigator Back through the same reverse

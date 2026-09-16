@@ -184,11 +184,12 @@ describe('shouldBlockInteraction', () => {
     expect(shouldBlockInteraction('inactive', 'preparing')).toBe(false);
   });
 
-  it('blocks participating screens during preparing or active', () => {
+  it('blocks preparation and the active source, but allows the active target by default', () => {
     expect(shouldBlockInteraction('source', 'preparing')).toBe(true);
     expect(shouldBlockInteraction('source', 'active')).toBe(true);
     expect(shouldBlockInteraction('target', 'preparing')).toBe(true);
-    expect(shouldBlockInteraction('target', 'active')).toBe(true);
+    expect(shouldBlockInteraction('target', 'active')).toBe(false);
+    expect(shouldBlockInteraction('target', 'active', false)).toBe(true);
   });
 
   it('does not block once the session is winding down', () => {

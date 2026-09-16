@@ -197,21 +197,13 @@ describe.each(['forward', 'backward'] as const)(
         context.progress.value = 0.6;
         const { navigation } = await mount(context, 'detail-route');
         await act(async () => navigation.goBack({ spring: override }));
-        if (direction === 'forward') {
-          expect(mockedWithSpring).toHaveBeenCalledWith(
-            0,
-            override ?? customSpring,
-            expect.any(Function)
-          );
-        } else {
-          expect(context.commitReverseTransition).toHaveBeenCalledWith({
-            sessionId: 'session',
-            token: expect.any(Number),
-            navigateBack: expect.any(Function),
-            options: { spring: override ?? customSpring, duration: undefined },
-          });
-          expect(mockedWithSpring).not.toHaveBeenCalled();
-        }
+        expect(context.commitReverseTransition).toHaveBeenCalledWith({
+          sessionId: 'session',
+          token: expect.any(Number),
+          navigateBack: expect.any(Function),
+          options: { spring: override ?? customSpring, duration: undefined },
+        });
+        expect(mockedWithSpring).not.toHaveBeenCalled();
       }
     );
   }

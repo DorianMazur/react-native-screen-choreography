@@ -63,10 +63,13 @@ Identifies a screen and coordinates its readiness, visibility, removal handling,
   children: ReactNode;
   ready?: boolean; // default: true
   keepVisible?: boolean; // default: false
+  allowInteractionDuringTransition?: boolean; // default: true
 }
 ```
 
 Use a stable application label for `screenId`. For React Navigation, match the route name; for Expo Router, match `targetScreenId` on navigation requests. Adapters use the actual route key internally to distinguish multiple instances.
+
+`allowInteractionDuringTransition` defaults to `true` and lets the arriving screen receive touches during active motion, for example so a back button can interrupt an opening transition. Set it to `false` to block the arriving screen until the transition completes. Preparation and the outgoing screen remain blocked. Shared content in the native overlay remains non-interactive; place the back button’s touch target on the destination screen. Other destination controls should disable themselves while transitioning if they are not safe to use.
 
 `ready` adds an application gate after the screen lays out. It does not replace layout readiness. Readiness also waits for acquired blockers. See [readiness](../guide/readiness.md).
 
