@@ -133,7 +133,7 @@ test('opening retains a copy of its custom spring on the resolved route instance
   );
 });
 
-test.each([undefined, customSpring])(
+test.each([undefined, customSpring, { duration: 2000, dampingRatio: 1 }])(
   'native Back delegates the recorded spring (%j) and navigation to the provider',
   async (spring) => {
     const context = createContext();

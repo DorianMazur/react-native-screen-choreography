@@ -7,7 +7,7 @@ import {
 import { ChoreographyContext } from '../core/ChoreographyContext';
 import type { CommitBackNavigation } from '../core/navigationCommit';
 import { debugLog } from '../debug/logger';
-import { FAST_SPRING } from '../core/constants';
+import { resolveSpringConfig } from '../core/constants';
 import {
   resolveInteractiveTransitionOutcome,
   toInteractiveSessionProgress,
@@ -248,8 +248,7 @@ export function useInteractiveTransitionNavigator({
         target,
         duration: options.duration,
         spring: {
-          ...FAST_SPRING,
-          ...options.spring,
+          ...resolveSpringConfig(options.spring),
           ...(options.velocity === undefined
             ? {}
             : { velocity: -options.velocity }),

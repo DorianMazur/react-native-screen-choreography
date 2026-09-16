@@ -13,7 +13,7 @@ import {
 import { ReverseTransitionController } from '../core/ReverseTransitionController';
 import type { NavigationSessionController } from '../core/NavigationSessionController';
 import type { CommitBackNavigation } from '../core/navigationCommit';
-import { FAST_SPRING } from '../core/constants';
+import { resolveSpringConfig } from '../core/constants';
 import type {
   InteractiveTransitionSettleOptions,
   TransitionSessionData,
@@ -144,8 +144,7 @@ export function useReverseTransitionCommit({
             progress,
             target: 0,
             spring: {
-              ...FAST_SPRING,
-              ...options.spring,
+              ...resolveSpringConfig(options.spring),
               ...(options.velocity === undefined
                 ? {}
                 : { velocity: -options.velocity }),

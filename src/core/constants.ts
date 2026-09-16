@@ -66,3 +66,16 @@ export const Easings = {
   /** Sharp ease-out for quick actions */
   sharp: Easing.out(Easing.quad),
 } as const;
+
+/** Duration-based springs must not inherit physics-only stiffness/damping. */
+export function resolveSpringConfig(spring?: SpringConfig): SpringConfig {
+  if (spring?.duration !== undefined || spring?.dampingRatio !== undefined) {
+    return { ...spring };
+  }
+  return {
+    ...FAST_SPRING,
+    ...spring,
+    duration: undefined,
+    dampingRatio: undefined,
+  };
+}
