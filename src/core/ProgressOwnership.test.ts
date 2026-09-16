@@ -1,6 +1,10 @@
 import { withSpring } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { animateOwnedProgress, ProgressOwnership } from './ProgressOwnership';
+import {
+  animateOwnedProgress,
+  ProgressOwnership,
+  setOwnedProgress,
+} from './ProgressOwnership';
 import { ElementVisibilityRegistry } from './ElementVisibilityRegistry';
 
 jest.mock('react-native-reanimated', () => ({
@@ -14,6 +18,14 @@ jest.mock('react-native-worklets', () => ({
     worklet(...args),
   scheduleOnRN: jest.fn(),
 }));
+
+function flushRN() {
+  const pending = [...(scheduleOnRN as jest.Mock).mock.calls];
+  (scheduleOnRN as jest.Mock).mockClear();
+  for (const [callback, ...args] of pending) callback(...args);
+}
+
+beforeEach(() => jest.clearAllMocks());
 
 describe('provider progress ownership', () => {
   test.each([0, 1])(
@@ -49,7 +61,9 @@ describe('provider progress ownership', () => {
       expect(destination.value).toBe(0);
       expect(visibility.handoff.value.completed).toBe(true);
       expect(onComplete).not.toHaveBeenCalled();
-      expect(scheduleOnRN).toHaveBeenCalledWith(onComplete, token, 'A');
+      flushRN();
+      expect(onComplete).toHaveBeenCalledWith(token, 'A');
+      expect(onComplete).toHaveBeenCalledTimes(1);
     }
   );
 
@@ -111,5 +125,80 @@ describe('provider progress ownership', () => {
     expect(ownership.isCurrent(token, 'A')).toBe(true);
     ownership.claim('A');
     expect(ownership.isCurrent(token, 'A')).toBe(false);
+  });
+
+  test.each(['animation', 'assignment'] as const)(
+    '%s callbacks from providers with equal tokens are delivered independently and only once',
+    (kind) => {
+      const start = () => {
+        const progress = { value: 0.5 } as ProgressOwnership['owner'];
+        const ownership = new ProgressOwnership(
+          { value: 0 } as ProgressOwnership['owner'],
+          progress
+        );
+        ownership.setSession('same-session');
+        const token = ownership.claim('same-session')!;
+        const onComplete = jest.fn();
+        if (kind === 'animation') {
+          animateOwnedProgress({
+            ownership,
+            token,
+            sessionId: 'same-session',
+            progress,
+            target: 1,
+            spring: {},
+            onComplete,
+          });
+          (withSpring as jest.Mock).mock.calls.at(-1)![2](true);
+        } else {
+          setOwnedProgress(
+            ownership,
+            token,
+            'same-session',
+            progress,
+            1,
+            onComplete
+          );
+        }
+        return { ownership, token, onComplete };
+      };
+      const first = start();
+      const second = start();
+      expect(first.token).toBe(second.token);
+      const pending = [...(scheduleOnRN as jest.Mock).mock.calls];
+      flushRN();
+      pending.forEach(([callback, ...args]) => callback(...args));
+      expect(first.onComplete).toHaveBeenCalledTimes(1);
+      expect(second.onComplete).toHaveBeenCalledTimes(1);
+      expect(first.onComplete).toHaveBeenCalledWith(
+        first.token,
+        'same-session'
+      );
+      expect(second.onComplete).toHaveBeenCalledWith(
+        second.token,
+        'same-session'
+      );
+    }
+  );
+
+  test('invalidating one provider rejects its queued completion without cancelling another provider', () => {
+    const start = (sessionId: string) => {
+      const progress = { value: 0.5 } as ProgressOwnership['owner'];
+      const ownership = new ProgressOwnership(
+        { value: 0 } as ProgressOwnership['owner'],
+        progress
+      );
+      ownership.setSession(sessionId);
+      const token = ownership.claim(sessionId)!;
+      const onComplete = jest.fn();
+      setOwnedProgress(ownership, token, sessionId, progress, 1, onComplete);
+      return { ownership, token, onComplete };
+    };
+    const first = start('A');
+    const second = start('B');
+    first.ownership.invalidate();
+    flushRN();
+    expect(first.onComplete).not.toHaveBeenCalled();
+    expect(second.onComplete).toHaveBeenCalledWith(second.token, 'B');
   });
 });
