@@ -42,13 +42,18 @@ function createContext() {
 async function mountScreen(
   context: ChoreographyContextType,
   screenId: string,
-  actions: ChoreographyActionsType | null = null
+  actions: ChoreographyActionsType | null = null,
+  keepVisible = false
 ) {
   let tree!: ReactTestRenderer;
   const render = (ready = true) => (
     <ChoreographyContext.Provider value={context}>
       <ChoreographyActionsContext.Provider value={actions}>
-        <ChoreographyScreenBase screenId={screenId} ready={ready}>
+        <ChoreographyScreenBase
+          screenId={screenId}
+          ready={ready}
+          keepVisible={keepVisible}
+        >
           {null}
         </ChoreographyScreenBase>
       </ChoreographyActionsContext.Provider>
@@ -63,6 +68,13 @@ async function mountScreen(
     outer: () => tree.root.findAll((node) => Boolean(node.props.onLayout))[0]!,
     inner: () =>
       tree.root.findAll((node) => Boolean(node.props.animatedProps))[0]!,
+    opacity: () => {
+      const style = tree.root.findAll((node) =>
+        Boolean(node.props.animatedProps)
+      )[0]!.props.style;
+      return (Array.isArray(style) ? Object.assign({}, ...style) : style)
+        .opacity as number;
+    },
     update: (ready: boolean) => tree.update(render(ready)),
   };
 }
@@ -109,4 +121,14 @@ test('keeps presentation registration stable when readiness changes', async () =
   expect(unregister).not.toHaveBeenCalled();
   await act(async () => screen.tree.unmount());
   expect(unregister).toHaveBeenCalledTimes(1);
+});
+
+test('keepVisible holds the cross-faded endpoint at full opacity', async () => {
+  const context = createContext();
+  context.progress.value = 0.4;
+  const fading = await mountScreen(context, 'home');
+  const kept = await mountScreen(context, 'home', null, true);
+  expect(fading.opacity()).toBe(0);
+  expect(kept.opacity()).toBe(1);
+  expect(kept.inner().props.animatedProps.pointerEvents).toBe('none');
 });

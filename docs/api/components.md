@@ -62,12 +62,15 @@ Identifies a screen and coordinates its readiness, visibility, removal handling,
   screenId: string;
   children: ReactNode;
   ready?: boolean; // default: true
+  keepVisible?: boolean; // default: false
 }
 ```
 
 Use a stable application label for `screenId`. For React Navigation, match the route name; for Expo Router, match `targetScreenId` on navigation requests. Adapters use the actual route key internally to distinguish multiple instances.
 
 `ready` adds an application gate after the screen lays out. It does not replace layout readiness. Readiness also waits for acquired blockers. See [readiness](../guide/readiness.md).
+
+`keepVisible` keeps the screen at full opacity while a session runs instead of cross-fading it with the other endpoint. Set it on the source screen when the destination is transparent and the source is its backdrop, for example a preview presented over the list it came from. It does not change readiness, interaction blocking, or the pre-activation gate on a forward destination.
 
 The wrapper handles eligible single-route back removal for reverse choreography. Multi-route resets and removals outside the recorded return path are not equivalent to a shared reverse transition.
 

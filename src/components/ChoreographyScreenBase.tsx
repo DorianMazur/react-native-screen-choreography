@@ -23,6 +23,12 @@ export interface ChoreographyScreenProps {
   children: React.ReactNode;
   /** Additional app readiness gate applied after the screen has laid out. */
   ready?: boolean;
+  /**
+   * Keep this screen at full opacity during a session instead of
+   * cross-fading it with the other endpoint. Use it on the source screen
+   * when the destination is transparent and the source is its backdrop.
+   */
+  keepVisible?: boolean;
 }
 
 export function ChoreographyScreenBase({
@@ -31,6 +37,7 @@ export function ChoreographyScreenBase({
   isFocused = true,
   children,
   ready = true,
+  keepVisible = false,
 }: ChoreographyScreenProps & { instanceId?: string; isFocused?: boolean }) {
   const screenId = instanceId ?? screenName;
   const choreography = useContext(ChoreographyContext);
@@ -65,8 +72,12 @@ export function ChoreographyScreenBase({
 
   const revealStyle = useAnimatedStyle(() => {
     const value = progress?.value ?? 0;
-    return { opacity: deriveScreenOpacity(direction, role, phase, value) };
-  }, [direction, role, phase, progress]);
+    return {
+      opacity: keepVisible
+        ? 1
+        : deriveScreenOpacity(direction, role, phase, value),
+    };
+  }, [direction, role, phase, progress, keepVisible]);
 
   const blockInteraction =
     isPendingTarget || shouldBlockInteraction(role, phase);
