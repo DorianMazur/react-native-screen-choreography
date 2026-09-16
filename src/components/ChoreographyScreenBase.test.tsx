@@ -39,6 +39,24 @@ function createContext() {
   } as unknown as ChoreographyContextType;
 }
 
+test('keeps both responder gates open for a held source during preparation', async () => {
+  const context = createContext();
+  context.interactiveScreenId = 'detail';
+  context.activeSession!.state = 'preparing';
+  const source = await mountScreen(context, 'detail');
+  const target = await mountScreen(context, 'home');
+  expect(source.outer().props.pointerEvents).toBe('box-none');
+  expect(source.inner().props.animatedProps.pointerEvents).toBe('auto');
+  expect(source.opacity()).toBe(1);
+  expect(target.outer().props.pointerEvents).toBe('none');
+
+  context.activeSession!.state = 'active';
+  context.progress.value = 0;
+  await act(async () => source.update(true));
+  expect(source.inner().props.animatedProps.pointerEvents).toBe('auto');
+  expect(source.opacity()).toBe(1);
+});
+
 async function mountScreen(
   context: ChoreographyContextType,
   screenId: string,

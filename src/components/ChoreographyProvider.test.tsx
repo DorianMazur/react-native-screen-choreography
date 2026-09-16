@@ -49,6 +49,98 @@ describe('ChoreographyProvider lifecycle', () => {
     Platform.OS = originalPlatform;
   });
 
+  test.each(['forward', 'backward'] as const)(
+    'scrolling the return destination settles a %s session only after removal',
+    async (direction) => {
+      jest.useFakeTimers();
+      let context!: ChoreographyContextType;
+      const controls: Record<string, () => void> = {};
+      function Controls({ screenId }: { screenId: string }) {
+        context = useContext(ChoreographyContext)!;
+        controls[screenId] = useChoreographyControls().settleTransition;
+        return null;
+      }
+      let tree!: ReactTestRenderer;
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider>
+              {['list', 'detail'].map((screenId) => (
+                <ScreenIdContext.Provider key={screenId} value={screenId}>
+                  <Controls screenId={screenId} />
+                </ScreenIdContext.Provider>
+              ))}
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: { pageX: 24, pageY: 200, width: 320, height: 450 },
+            ref: () => ({
+              measureInWindow: (callback: (...args: number[]) => void) =>
+                callback(24, 200, 320, 450),
+            }),
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        await act(async () => {
+          const preparing = context.startTransition({
+            groupId: 'group',
+            direction,
+            sourceScreenId: direction === 'forward' ? 'list' : 'detail',
+            targetScreenId: direction === 'forward' ? 'detail' : 'list',
+          });
+          await jest.runAllTimersAsync();
+          await preparing;
+        });
+        const sessionId = context.activeSession!.id;
+        let removed!: (result: {
+          removed: boolean;
+          presented: boolean;
+        }) => void;
+        const settleToTarget = jest.fn(() => {
+          context.progress.value = 0;
+        });
+        const handoff = jest.fn(() => context.completeTransition(sessionId));
+        const completion = context.reverseController.start({
+          sessionId,
+          sourceScreenId: 'detail',
+          targetScreenId: 'list',
+          isCurrent: () => context.progressOwnership.isSession(sessionId),
+          commitNavigation: () =>
+            new Promise((resolve) => {
+              removed = resolve;
+            }),
+          animate: () => {},
+          settleToTarget,
+          handoff,
+          cancel: jest.fn(),
+        });
+        context.progress.value = 0.2;
+        context.reverseController.commitNearEndpoint(sessionId);
+        await act(async () => controls.list!());
+        expect(settleToTarget).not.toHaveBeenCalled();
+        await act(async () => removed({ removed: true, presented: true }));
+        await act(async () => controls.detail!());
+        expect(settleToTarget).not.toHaveBeenCalled();
+        await act(async () => controls.list!());
+        await completion;
+        expect(settleToTarget).toHaveBeenCalledTimes(1);
+        expect(handoff).toHaveBeenCalledTimes(1);
+        expect(context.progress.value).toBe(0);
+        expect(context.activeSession).toBeNull();
+        await act(async () => controls.list!());
+        expect(handoff).toHaveBeenCalledTimes(1);
+      } finally {
+        await act(async () => tree?.unmount());
+        jest.useRealTimers();
+      }
+    }
+  );
+
   test('unregistering the preparation source invalidates its dispatch and queue', async () => {
     let context!: ChoreographyContextType;
     let navigation!: ReturnType<typeof useChoreographyNavigator>;

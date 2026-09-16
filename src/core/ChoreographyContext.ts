@@ -96,6 +96,8 @@ export interface ChoreographyContextType {
   interruptibleReturnSessionId: string | null;
   commitReverseTransition: (request: ReverseCommitRequest) => Promise<void>;
   interactionOwner: SharedValue<string | null>;
+  interactiveScreenId: string | null;
+  setInteractiveScreen: (screenId: string, active: boolean) => void;
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;

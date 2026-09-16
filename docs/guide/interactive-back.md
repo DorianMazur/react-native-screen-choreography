@@ -42,6 +42,10 @@ function releaseDrag(normalizedVelocity: number) {
 
 `beginBack()` uses the group and source recorded by a successful choreography navigation. You may pass `{ group, targetScreenId }` explicitly. A `null` result means no session was acquired: for example, another transition owns progress, return information is missing, or preparation could not complete.
 
+`beginBack()` can take over an active opening transition on the same destination: it completes that opening before preparing the return. Unrelated transitions remain protected.
+
+While a gesture owns the return, its source screen stays visible and accepts touches, including at gesture progress `1`. Use a transparent source background if the screen underneath should show through. Keep the gesture responder on a stationary screen view: shared content moves into a non-interactive overlay, and retained content keeps its original React ancestry. Call `finish()` only after any custom docking animation has reached its destination, or `cancel()` to restore the detail.
+
 `beginBack()` is asynchronous, and its success updates React state. Build gesture callbacks from the latest render and gate updates with `isActive`; do not keep a callback created before preparation or assume the immediately preceding render has the new progress ownership token.
 
 ## Respect the JavaScript boundary

@@ -70,6 +70,20 @@ describe('getSessionPhase', () => {
 });
 
 describe('deriveScreenOpacity', () => {
+  it('keeps a gesture source visible through preparation and a fully collapsed hold', () => {
+    for (const direction of ['forward', 'backward'] as const) {
+      for (const phase of ['preparing', 'active'] as const) {
+        for (const progress of [0, 0.2, 1]) {
+          expect(
+            deriveScreenOpacity(direction, 'source', phase, progress, true)
+          ).toBe(1);
+        }
+      }
+    }
+    expect(deriveScreenOpacity('forward', 'target', 'preparing', 0, true)).toBe(
+      0
+    );
+  });
   it('keeps inactive screens fully visible', () => {
     expect(deriveScreenOpacity('forward', 'inactive', 'active', 0.5)).toBe(1);
     expect(deriveScreenOpacity('backward', 'inactive', 'active', 0.5)).toBe(1);
@@ -179,6 +193,16 @@ describe('deriveScreenOpacity', () => {
 });
 
 describe('shouldBlockInteraction', () => {
+  it('preserves the gesture responder without unlocking preparing targets', () => {
+    for (const phase of ['preparing', 'active'] as const) {
+      expect(shouldBlockInteraction('source', phase, false, false, true)).toBe(
+        false
+      );
+    }
+    expect(
+      shouldBlockInteraction('target', 'preparing', true, false, true)
+    ).toBe(true);
+  });
   it('never blocks inactive screens', () => {
     expect(shouldBlockInteraction('inactive', 'active')).toBe(false);
     expect(shouldBlockInteraction('inactive', 'preparing')).toBe(false);

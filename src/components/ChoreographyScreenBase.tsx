@@ -24,7 +24,8 @@ export interface ChoreographyScreenProps {
   /** Additional app readiness gate applied after the screen has laid out. */
   ready?: boolean;
   /** Allow touches on the arriving screen during active motion. Preparation
-   * and the outgoing screen remain blocked. Defaults to true. */
+   * and the outgoing screen remain blocked except for an explicitly owned
+   * interactive gesture. Defaults to true. */
   allowInteractionDuringTransition?: boolean;
   /**
    * Keep this screen at full opacity during a session instead of
@@ -61,6 +62,8 @@ export function ChoreographyScreenBase({
       choreography?.pendingSourceScreenId !== screenId &&
       isFocused);
   const role = getScreenRole(session, screenId);
+  const isInteractiveSource =
+    role === 'source' && choreography?.interactiveScreenId === screenId;
   const phase = getSessionPhase(
     session,
     isPendingTarget ? screenId : null,
@@ -79,13 +82,25 @@ export function ChoreographyScreenBase({
     return {
       opacity: keepVisible
         ? 1
-        : deriveScreenOpacity(direction, role, phase, value),
+        : deriveScreenOpacity(
+            direction,
+            role,
+            phase,
+            value,
+            isInteractiveSource
+          ),
     };
-  }, [direction, role, phase, progress, keepVisible]);
+  }, [direction, role, phase, progress, keepVisible, isInteractiveSource]);
 
   const blockInteraction =
     isPendingTarget ||
-    shouldBlockInteraction(role, phase, allowInteractionDuringTransition);
+    shouldBlockInteraction(
+      role,
+      phase,
+      allowInteractionDuringTransition,
+      false,
+      isInteractiveSource
+    );
   const interactionOwner = choreography?.interactionOwner;
   const reverseHandoff = choreography?.reverseHandoff;
   const progressOwner = choreography?.progressOwnership?.owner;
@@ -105,7 +120,8 @@ export function ChoreographyScreenBase({
         role,
         phase,
         allowInteractionDuringTransition,
-        isReturnTarget
+        isReturnTarget,
+        isInteractiveSource
       );
     return {
       pointerEvents:
@@ -175,7 +191,8 @@ export function ChoreographyScreenBase({
         onLayout={handleLayout}
         style={[styles.container, { opacity: staticOpacity }]}
         pointerEvents={
-          isPendingTarget || (role !== 'inactive' && phase === 'preparing')
+          isPendingTarget ||
+          (role !== 'inactive' && phase === 'preparing' && !isInteractiveSource)
             ? 'none'
             : 'box-none'
         }
