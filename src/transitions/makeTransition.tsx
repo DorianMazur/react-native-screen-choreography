@@ -35,7 +35,6 @@ export interface MakeTransitionOptions {
 }
 
 /**
- * Adapts custom motion while the library owns the sole live portal host.
  * Create outside render or memoize, and reuse on both live endpoints.
  */
 export function makeTransition({
@@ -50,6 +49,7 @@ export function makeTransition({
     zIndex: rendererZIndex,
     source,
     target,
+    anchors,
   }: TransitionAdapterRendererProps) {
     const sourceSide = {
       screenId: source.screenId,
@@ -71,6 +71,7 @@ export function makeTransition({
         progress={progress}
         direction={direction}
         zIndex={rendererZIndex}
+        anchors={anchors}
         source={sourceSide}
         target={targetSide}
       >

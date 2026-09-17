@@ -38,8 +38,8 @@ export interface SharedElementTransitionSide {
 }
 
 export interface TransitionAnchor {
-  collapsed: ElementMetrics;
-  expanded: ElementMetrics;
+  readonly collapsed: Readonly<ElementMetrics>;
+  readonly expanded: Readonly<ElementMetrics>;
 }
 
 export interface SharedElementTransitionRendererProps {
@@ -50,8 +50,12 @@ export interface SharedElementTransitionRendererProps {
   zIndex: number;
   source: SharedElementTransitionSide;
   target: SharedElementTransitionSide;
-  /** Frozen geometry for relative motion; never contains React content. */
-  anchors?: Readonly<Record<string, TransitionAnchor>>;
+  /**
+   * Current session's matched geometry, keyed by element ID. Collapsed/expanded
+   * are independent of navigation direction and update with rendered metrics.
+   * Unmatched IDs are absent. Contains no registrations, refs, or React content.
+   */
+  anchors?: Readonly<Partial<Record<string, TransitionAnchor>>>;
 }
 
 export type SharedElementTransitionRenderer =
