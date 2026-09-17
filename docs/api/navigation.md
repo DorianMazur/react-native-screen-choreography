@@ -52,7 +52,7 @@ interface ChoreographyNavigationOptions {
 
 Forward navigation defaults to `Springs.default`. A positive `duration` selects a timing animation in milliseconds with cubic ease-out. Keep timing values finite and positive.
 
-Reverse behavior uses stored navigation lineage and the screen removal adapter. The forward spring is remembered; forward `duration` is not. In 0.5.0, `goBack` options are applied on active-session paths, and ordinary idle route removal uses the stored spring. Do not assume a `goBack({ duration })` override controls every return path.
+Reverse behavior uses stored navigation lineage and the screen removal adapter. The forward spring is remembered; forward `duration` is not.
 
 See [quick start](../guide/quick-start.md) for the required stack setup.
 

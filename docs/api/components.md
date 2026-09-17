@@ -50,7 +50,7 @@ type ChoreographyDebugConfig =
     };
 ```
 
-Object configuration defaults to level `info`. Identical consecutive messages are coalesced unless `logEveryFrame` is `true`. In 0.5.0, `categories` is declared in the type but the provider does not apply category filtering; use `level` to control verbosity.
+Object configuration defaults to level `info`. Identical consecutive messages are coalesced unless `logEveryFrame` is `true`.
 
 ## `ChoreographyScreen`
 

@@ -25,10 +25,6 @@ function DetailScreen() {
 
 Give empty targets explicit dimensions or a layout that resolves to nonzero bounds. An empty `SharedElement.Target` has no intrinsic content size before the owner arrives.
 
-::: tip Preload the expensive work
-Readiness is a short preparation gate, not an unlimited wait for network requests. In 0.5.0, the screen-readiness wait is bounded to 700 ms. Prefetch data and reserve geometry before navigation when possible; prepare a usable loading or error state when it is not.
-:::
-
 ## Let a child hold readiness
 
 `useChoreographyBlocker()` gives a child component an `acquire()` function. Each call holds readiness and returns a release function that is safe to call more than once. Release every blocker before the screen can become ready.

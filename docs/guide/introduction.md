@@ -59,7 +59,7 @@ Custom back gestures expose a separate **gesture progress**: `0` means an untouc
 
 Use Screen Choreography for coordinated card-to-detail transitions on **iOS and Android with Fabric**. React Navigation's native stack and Expo Router's native stack are the documented integrations.
 
-The current version is **0.5.0**. It is pre-1.0, and minor releases may introduce breaking changes. Native-stack swipe progress is not connected automatically; custom gesture control is available through a hook. Shared elements must be mounted and measurable when a session is prepared.
+The current version is pre-1.0, and minor releases may introduce breaking changes. Native-stack swipe progress is not connected automatically; custom gesture control is available through a hook. Shared elements must be mounted and measurable when a session is prepared.
 
 ## Start building
 
