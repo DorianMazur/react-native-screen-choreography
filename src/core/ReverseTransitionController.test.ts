@@ -22,6 +22,7 @@ function createOperation() {
     animate: jest.fn((finished: () => void) => {
       finishAnimation = finished;
     }),
+    settleToTarget: jest.fn(),
     handoff: jest.fn(),
     cancel: jest.fn(),
     isCurrent: () => true,
@@ -30,7 +31,42 @@ function createOperation() {
 }
 
 describe('reverse settlement ordering', () => {
-  test('does not unmount retained content until its animation finishes', async () => {
+  test('can remove the faded route before settlement without handing off content', async () => {
+    const operation = createOperation();
+    const controller = new ReverseTransitionController();
+    const completed = controller.start(operation.config);
+    controller.commitNearEndpoint('reverse');
+    controller.commitNearEndpoint('reverse');
+    expect(operation.config.commitNavigation).toHaveBeenCalledTimes(1);
+    expect(controller.canInterrupt('reverse')).toBe(false);
+    operation.navigation.resolve({ removed: true, presented: false });
+    await Promise.resolve();
+    expect(controller.canInterrupt('reverse')).toBe(true);
+    expect(operation.config.handoff).not.toHaveBeenCalled();
+    operation.finishAnimation();
+    await completed;
+    expect(operation.config.handoff).toHaveBeenCalledTimes(1);
+  });
+
+  test('a new tap finishes only an accepted return and ignores its late spring callback', async () => {
+    const operation = createOperation();
+    const controller = new ReverseTransitionController();
+    const completed = controller.start(operation.config);
+    expect(controller.finishImmediately('reverse')).toBe(false);
+    controller.commitNearEndpoint('reverse');
+    operation.navigation.resolve({ removed: true, presented: false });
+    await Promise.resolve();
+    expect(controller.finishImmediately('stale')).toBe(false);
+    expect(controller.finishImmediately('reverse')).toBe(true);
+    await completed;
+    expect(operation.config.settleToTarget).toHaveBeenCalledTimes(1);
+    expect(operation.config.handoff).toHaveBeenCalledTimes(1);
+    operation.finishAnimation();
+    expect(operation.config.handoff).toHaveBeenCalledTimes(1);
+    expect(controller.owns('reverse')).toBe(false);
+  });
+
+  test('animation completion commits if no earlier progress signal arrives', async () => {
     const operation = createOperation();
     const controller = new ReverseTransitionController();
     const completed = controller.start(operation.config);

@@ -13,20 +13,25 @@ import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
 import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
+
 import {
-  WalletSetupScreen,
-  WalletExistingScreen,
-} from '../../shared/wallet-setup/WalletSetupScreens';
+  TripsListScreen,
+  TripsDetailScreen,
+} from '../../shared/trips/TripsScreens';
 
 const Stack = createNativeStackNavigator<ExampleStackParams>();
 const LandingRoute = withExampleScreen('Landing', LandingScreen);
 const GalleryListRoute = withExampleScreen('GalleryList', GalleryListScreen);
-const TokenListRoute = withExampleScreen('TokenList', TokenListScreen);
-const WalletSetupRoute = withExampleScreen('WalletSetup', WalletSetupScreen);
-const WalletExistingRoute = withExampleScreen(
-  'WalletExisting',
-  WalletExistingScreen
+const TripsListRoute = withExampleScreen('TripsList', TripsListScreen);
+const TripsDetailRoute = withExampleScreen(
+  'TripsDetail',
+  function TripsDetailRoute({
+    route,
+  }: NativeStackScreenProps<ExampleStackParams, 'TripsDetail'>) {
+    return <TripsDetailScreen tripId={route.params?.tripId} />;
+  }
 );
+const TokenListRoute = withExampleScreen('TokenList', TokenListScreen);
 
 const navTheme = {
   ...DefaultTheme,
@@ -86,17 +91,17 @@ export default function App() {
               options={detailOptions}
             />
 
+            <Stack.Screen name="TripsList" component={TripsListRoute} />
+            <Stack.Screen
+              name="TripsDetail"
+              component={TripsDetailRoute}
+              options={detailOptions}
+            />
+
             <Stack.Screen name="TokenList" component={TokenListRoute} />
             <Stack.Screen
               name="TokenDetail"
               component={TokenDetailRoute}
-              options={detailOptions}
-            />
-
-            <Stack.Screen name="WalletSetup" component={WalletSetupRoute} />
-            <Stack.Screen
-              name="WalletExisting"
-              component={WalletExistingRoute}
               options={detailOptions}
             />
           </Stack.Navigator>

@@ -23,6 +23,16 @@ export interface ChoreographyScreenProps {
   children: React.ReactNode;
   /** Additional app readiness gate applied after the screen has laid out. */
   ready?: boolean;
+  /** Allow touches on the arriving screen during active motion. Preparation
+   * and the outgoing screen remain blocked except for an explicitly owned
+   * interactive gesture. Defaults to true. */
+  allowInteractionDuringTransition?: boolean;
+  /**
+   * Keep this screen at full opacity during a session instead of
+   * cross-fading it with the other endpoint. Use it on the source screen
+   * when the destination is transparent and the source is its backdrop.
+   */
+  keepVisible?: boolean;
 }
 
 export function ChoreographyScreenBase({
@@ -31,6 +41,8 @@ export function ChoreographyScreenBase({
   isFocused = true,
   children,
   ready = true,
+  keepVisible = false,
+  allowInteractionDuringTransition = true,
 }: ChoreographyScreenProps & { instanceId?: string; isFocused?: boolean }) {
   const screenId = instanceId ?? screenName;
   const choreography = useContext(ChoreographyContext);
@@ -50,6 +62,8 @@ export function ChoreographyScreenBase({
       choreography?.pendingSourceScreenId !== screenId &&
       isFocused);
   const role = getScreenRole(session, screenId);
+  const isInteractiveSource =
+    role === 'source' && choreography?.interactiveScreenId === screenId;
   const phase = getSessionPhase(
     session,
     isPendingTarget ? screenId : null,
@@ -65,18 +79,57 @@ export function ChoreographyScreenBase({
 
   const revealStyle = useAnimatedStyle(() => {
     const value = progress?.value ?? 0;
-    return { opacity: deriveScreenOpacity(direction, role, phase, value) };
-  }, [direction, role, phase, progress]);
+    return {
+      opacity: keepVisible
+        ? 1
+        : deriveScreenOpacity(
+            direction,
+            role,
+            phase,
+            value,
+            isInteractiveSource
+          ),
+    };
+  }, [direction, role, phase, progress, keepVisible, isInteractiveSource]);
 
   const blockInteraction =
-    isPendingTarget || shouldBlockInteraction(role, phase);
+    isPendingTarget ||
+    shouldBlockInteraction(
+      role,
+      phase,
+      allowInteractionDuringTransition,
+      false,
+      isInteractiveSource
+    );
   const interactionOwner = choreography?.interactionOwner;
-  const interactionProps = useAnimatedProps(() => ({
-    pointerEvents:
-      blockInteraction && interactionOwner?.value !== screenId
-        ? ('none' as const)
-        : ('auto' as const),
-  }));
+  const reverseHandoff = choreography?.reverseHandoff;
+  const progressOwner = choreography?.progressOwnership?.owner;
+  const sessionId = session?.id;
+  const interactionProps = useAnimatedProps(() => {
+    const returning = reverseHandoff?.value;
+    const isReturnTarget = Boolean(
+      returning &&
+      returning.sessionId === sessionId &&
+      returning.token === progressOwner?.value &&
+      returning.navigationPresented &&
+      returning.targetScreenId === screenId
+    );
+    const blocked =
+      isPendingTarget ||
+      shouldBlockInteraction(
+        role,
+        phase,
+        allowInteractionDuringTransition,
+        isReturnTarget,
+        isInteractiveSource
+      );
+    return {
+      pointerEvents:
+        blocked && interactionOwner?.value !== screenId
+          ? ('none' as const)
+          : ('auto' as const),
+    };
+  });
   const setScreenReady = actions?.setScreenReady;
   const unregisterScreen = actions?.unregisterScreen;
   const registerScreenPresentation = actions?.registerScreenPresentation;
@@ -138,7 +191,8 @@ export function ChoreographyScreenBase({
         onLayout={handleLayout}
         style={[styles.container, { opacity: staticOpacity }]}
         pointerEvents={
-          isPendingTarget || (role !== 'inactive' && phase === 'preparing')
+          isPendingTarget ||
+          (role !== 'inactive' && phase === 'preparing' && !isInteractiveSource)
             ? 'none'
             : 'box-none'
         }

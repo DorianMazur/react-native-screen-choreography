@@ -1,7 +1,7 @@
 <script setup>
 import gallery from '../../../Gallery_demo_new.gif';
+import trips from '../../../Trips.gif';
 import wallet from '../../../Wallet_demo_new.gif';
-import setup from '../../../Wallet_Setup_demo.gif';
 
 const demos = [
   {
@@ -14,6 +14,15 @@ const demos = [
       'One retained photo, with image, gradient, icon, and text following the same frame.',
   },
   {
+    id: 'trips',
+    name: 'Trips',
+    label: 'A trip opens into a scene.',
+    src: trips,
+    path: 'trips',
+    description:
+      'A retained photo scene expands from its card into the trip detail screen.',
+  },
+  {
     id: 'wallet',
     name: 'Wallet',
     label: 'All the details, together.',
@@ -21,15 +30,6 @@ const demos = [
     path: 'wallet',
     description:
       'Multiple shared roles move together as companion sections reveal on the detail screen.',
-  },
-  {
-    id: 'setup',
-    name: 'Wallet setup',
-    label: 'A panel with somewhere to go.',
-    src: setup,
-    path: 'wallet-setup',
-    description:
-      'A shared panel keeps its content alive while expanding into the next step.',
   },
 ];
 </script>

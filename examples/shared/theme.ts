@@ -26,6 +26,10 @@ export const theme = {
     accent: '#D4F77D',
     glow: 'rgba(212, 247, 125, 0.12)',
   },
+  trips: {
+    accent: '#F1CA81',
+    glow: 'rgba(241, 202, 129, 0.12)',
+  },
   gallery: {
     accent: '#E6B9AB',
     glow: 'rgba(230, 185, 171, 0.12)',

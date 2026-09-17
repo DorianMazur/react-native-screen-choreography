@@ -6,6 +6,7 @@ import {
 } from '../core/ChoreographyContext';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
+import { ReverseTransitionController } from '../core/ReverseTransitionController';
 import { useChoreographyNavigator } from './useChoreographyNavigation';
 
 jest.mock('react-native-reanimated', () => ({
@@ -151,6 +152,115 @@ test('queued replay survives focus changes and only its source instance dispatch
   }
 });
 
+test('a tap queued during removal replays as soon as the return is interruptible, despite the settling lock', async () => {
+  const frames: Array<(timestamp: number) => void> = [];
+  const raf = jest
+    .spyOn(global, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+  const progress = { value: 0.2 } as ChoreographyContextType['progress'];
+  const ownership = new ProgressOwnership(
+    { value: 0 } as ChoreographyContextType['progress'],
+    progress
+  );
+  ownership.setSession('return');
+  const controller = new NavigationSessionController();
+  controller.acquireNavigationLock('detail');
+  const reverse = new ReverseTransitionController();
+  let resolveRemoval!: (result: {
+    removed: boolean;
+    presented: boolean;
+  }) => void;
+  const completion = reverse.start({
+    sessionId: 'return',
+    sourceScreenId: 'detail',
+    targetScreenId: 'list',
+    commitNavigation: () =>
+      new Promise((resolve) => {
+        resolveRemoval = resolve;
+      }),
+    animate: () => {},
+    settleToTarget: jest.fn(),
+    cancel: jest.fn(),
+    handoff: () => {
+      ownership.setSession(null);
+      controller.releaseNavigationLock();
+    },
+    isCurrent: () => ownership.isSession('return'),
+  });
+  reverse.commitNearEndpoint('return');
+  const dispatchNavigation = jest.fn();
+  const ctx = {
+    progress,
+    progressOwnership: ownership,
+    navigationController: controller,
+    reverseController: reverse,
+    interruptibleReturnSessionId: null,
+    activeSession: {
+      id: 'return',
+      sourceScreenId: 'detail',
+      targetScreenId: 'list',
+      direction: 'backward',
+      state: 'active',
+    },
+    pendingTargetScreenId: null,
+    preMeasureGroup: jest.fn(async () => {}),
+    setPendingTargetScreen: jest.fn(),
+    waitForScreenReady: jest.fn(async () => false),
+  } as unknown as ChoreographyContextType;
+  let navigation!: ReturnType<typeof useChoreographyNavigator>;
+  function Caller() {
+    navigation = useChoreographyNavigator({
+      currentScreenId: 'list',
+      isFocused: true,
+      goBack: jest.fn(),
+    });
+    return null;
+  }
+  const render = () => (
+    <ChoreographyContext.Provider value={{ ...ctx }}>
+      <Caller />
+    </ChoreographyContext.Provider>
+  );
+  let tree!: ReactTestRenderer;
+  try {
+    await act(async () => {
+      tree = create(render());
+    });
+    await act(async () =>
+      navigation.navigate({
+        targetScreenId: 'detail',
+        dispatchNavigation,
+        options: { transitionConfig: { group: 'group' } },
+      })
+    );
+    expect(dispatchNavigation).not.toHaveBeenCalled();
+    expect(controller.peekQueuedNavigation()).not.toBeNull();
+    await act(async () => {
+      resolveRemoval({ removed: true, presented: false });
+    });
+    expect(controller.isNavigationLocked()).toBe(true);
+    await act(async () => {
+      ctx.interruptibleReturnSessionId = 'return';
+      tree.update(render());
+    });
+    while (frames.length) {
+      await act(async () => {
+        frames.splice(0).forEach((frame) => frame(0));
+      });
+    }
+    await completion;
+    expect(dispatchNavigation).toHaveBeenCalledTimes(1);
+    expect(controller.peekQueuedNavigation()).toBeNull();
+  } finally {
+    await act(async () => tree?.unmount());
+    reverse.dispose();
+    raf.mockRestore();
+  }
+});
+
 describe('Back preparation ownership', () => {
   test('Back from an unrelated route does not claim another route transition', async () => {
     const progress = { value: 0.5 } as ChoreographyContextType['progress'];
@@ -200,7 +310,7 @@ describe('Back preparation ownership', () => {
     }
   });
 
-  test.each(['frame', 'measurement', 'final frame'])(
+  test.each(['frame', 'measurement'])(
     'replacement at %s cannot schedule or complete stale work',
     async (boundary) => {
       const frames: Array<(timestamp: number) => void> = [];
@@ -238,6 +348,7 @@ describe('Back preparation ownership', () => {
         ),
         completeTransition: jest.fn(),
         cancelTransition: jest.fn(),
+        commitReverseTransition: jest.fn(),
       } as unknown as ChoreographyContextType;
       let navigation!: ReturnType<typeof useChoreographyNavigator>;
       function Harness() {
@@ -260,7 +371,7 @@ describe('Back preparation ownership', () => {
       await act(async () => {
         pending = navigation.goBack();
       });
-      expect(navigateBack).toHaveBeenCalledTimes(1);
+      expect(navigateBack).not.toHaveBeenCalled();
       const replace = () => {
         progressOwnership.setSession('B');
         progress.value = 0.65;
@@ -275,7 +386,6 @@ describe('Back preparation ownership', () => {
           resolveMetrics();
           await pending;
         });
-      if (boundary === 'final frame') replace();
       await act(async () => {
         frames.splice(0).forEach((callback) => callback(0));
         await pending;
@@ -284,7 +394,8 @@ describe('Back preparation ownership', () => {
       expect(withSpring).not.toHaveBeenCalled();
       expect(ctx.completeTransition).not.toHaveBeenCalled();
       expect(ctx.cancelTransition).not.toHaveBeenCalled();
-      expect(navigateBack).toHaveBeenCalledTimes(1);
+      expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+      expect(navigateBack).not.toHaveBeenCalled();
       await act(async () => tree.unmount());
       raf.mockRestore();
     }

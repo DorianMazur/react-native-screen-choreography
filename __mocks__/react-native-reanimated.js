@@ -1,8 +1,14 @@
 // Minimal mock for react-native-reanimated in tests
 module.exports = {
   useSharedValue: (initial) => ({ value: initial }),
+  useDerivedValue: (fn) => ({
+    get value() {
+      return fn();
+    },
+  }),
   useAnimatedStyle: (fn) => fn(),
   useAnimatedProps: (fn) => fn(),
+  useAnimatedReaction: jest.fn(),
   makeMutable: (initial) => ({ value: initial }),
   withSpring: (toValue) => toValue,
   withTiming: (toValue) => toValue,

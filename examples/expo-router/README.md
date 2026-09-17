@@ -3,10 +3,10 @@
 This Expo SDK 57 development-build app demonstrates `react-native-screen-choreography` with:
 
 - Expo Router's native `Stack`
-- the same gallery, wallet, and wallet-setup demos as the React Navigation example
-- one live Gallery hero owned by the list and reparented into the detail target: photo, title, subtitle, camera icon, and gradient share one derived frame; fixed image/text layouts use transforms instead of image reloads or text crossfades
+- the same [shared demos](../shared) as the React Navigation example; see the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and source links
+- retained content owned by the source screen and reparented into the detail target, with child layout driven by shared progress
 - shared screens, data, transition renderers, and styles from `examples/shared`
-- thin typed dynamic route adapters such as `/gallery/[photoId]`
+- thin typed dynamic route adapters
 - explicit `ChoreographyScreen` identity
 - provider-owned reverse-transition lineage, without private URL parameters
 - no conditional imports or React Navigation modules in the Expo bundle graph
@@ -41,15 +41,8 @@ Keep `animation: 'none'` and transparent stack content so the choreography overl
 
 ## Transition definitions
 
-All three demos use `defineTransition` from the shared core API:
+Transition recipes live alongside their screens in [the shared source](../shared) and use `defineTransition` from the shared core API.
 
-| Demo | Definition | Live content |
-| --- | --- | --- |
-| Gallery | `../shared/gallery/galleryTransitions.tsx` | One hero plus a local detail reveal |
-| Wallet | `../shared/wallet/walletTransitions.tsx` | Five named logo/text/value roles plus staged detail sections |
-| Wallet setup | `../shared/wallet-setup/setupTransitions.tsx` | One panel containing persistent buttons and artwork |
-
-The definitions coordinate endpoints and local section reveals. Image cropping,
-text scaling, and the setup panel's internal motion stay inside their retained
+The definitions coordinate endpoints and local section reveals. Internal layout and visual changes stay inside retained
 components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
 ordinary screen content, not to content hosted on another route.

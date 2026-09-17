@@ -13,9 +13,25 @@ import {
   type VisibilityHandoff,
 } from './ElementVisibilityRegistry';
 
+// Keep callbacks alive until delivery: the worklet's remote-function registry
+// holds weak references. Only this stable dispatcher crosses back to JS.
+// IDs are global because animation tokens are local to each provider.
+type Completion = (token: number, sessionId: string) => void;
+let nextCompletionId = 0;
+const completions = new Map<
+  number,
+  { callback: Completion; token: number; sessionId: string }
+>();
+function dispatchCompletion(id: number): void {
+  const completion = completions.get(id);
+  completions.delete(id);
+  completion?.callback(completion.token, completion.sessionId);
+}
+
 export class ProgressOwnership {
   private generation = 0;
   private sessionId: string | null = null;
+  private completionId: number | null = null;
 
   constructor(
     readonly owner: SharedValue<number>,
@@ -38,6 +54,9 @@ export class ProgressOwnership {
   }
 
   invalidate(): void {
+    // Cancel only this provider's callback, including one already queued on JS.
+    if (this.completionId !== null) completions.delete(this.completionId);
+    this.completionId = null;
     const token = ++this.generation;
     const { owner, progress } = this;
     scheduleOnUI(() => {
@@ -68,6 +87,18 @@ export class ProgressOwnership {
   isCurrent(token: number, sessionId: string): boolean {
     return this.generation === token && this.isSession(sessionId);
   }
+
+  retainCompletion(
+    token: number,
+    sessionId: string,
+    callback: Completion
+  ): number {
+    if (this.completionId !== null) completions.delete(this.completionId);
+    const id = ++nextCompletionId;
+    completions.set(id, { callback, token, sessionId });
+    this.completionId = id;
+    return id;
+  }
 }
 
 export function setOwnedProgress(
@@ -80,14 +111,17 @@ export function setOwnedProgress(
 ): void {
   if (!ownership.isCurrent(token, sessionId)) return;
   const { owner, handoff } = ownership;
+  const completionId = onComplete
+    ? ownership.retainCompletion(token, sessionId, onComplete)
+    : null;
   scheduleOnUI(() => {
     'worklet';
     if (owner.value !== token) return;
     progress.value = value;
-    if (onComplete) {
+    if (completionId !== null) {
       if (value === 0 || value === 1)
         finishVisibilityHandoff(handoff, sessionId);
-      scheduleOnRN(onComplete, token, sessionId);
+      scheduleOnRN(dispatchCompletion, completionId);
     }
   });
 }
@@ -119,6 +153,7 @@ export function animateOwnedProgress({
 }): void {
   if (!ownership.isCurrent(token, sessionId)) return;
   const { owner, handoff } = ownership;
+  const completionId = ownership.retainCompletion(token, sessionId, onComplete);
   scheduleOnUI(() => {
     'worklet';
     if (owner.value !== token) return;
@@ -129,7 +164,7 @@ export function animateOwnedProgress({
           finishVisibilityHandoff(handoff, sessionId);
         }
         onCompleteUI?.();
-        scheduleOnRN(onComplete, token, sessionId);
+        scheduleOnRN(dispatchCompletion, completionId);
       }
     };
     progress.value = duration
