@@ -22,7 +22,7 @@ export function NativeTransitionHost({
     <NativeScreenChoreographyView
       active={active}
       collapsable={false}
-      pointerEvents={active ? 'box-none' : 'none'}
+      pointerEvents="none"
       style={
         Platform.OS === 'ios'
           ? [styles.windowHost, { width, height }]

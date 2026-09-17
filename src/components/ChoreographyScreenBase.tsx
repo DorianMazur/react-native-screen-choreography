@@ -27,9 +27,11 @@ export interface ChoreographyScreenProps {
   ready?: boolean;
   /** Decorative screen fade in expansion progress. Defaults to [0, 0.4]. */
   screenFade?: ScreenFadeConfig;
-  /** Allow touches on the arriving screen during active motion. Preparation
-   * and the outgoing screen remain blocked except for an explicitly owned
-   * interactive gesture. Defaults to true. */
+  /** Allow touches when this screen is arriving, on iOS and Android. Defaults
+   * to true. Set false to defer all arriving-screen touches until completion;
+   * prefer disabling individual controls when only those need to wait.
+   * Preparation and the outgoing screen remain blocked except for an explicitly
+   * owned gesture. This does not enable overlay touches or prevent navigation. */
   allowInteractionDuringTransition?: boolean;
   /**
    * Keep this screen at full opacity during a session instead of

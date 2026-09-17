@@ -86,6 +86,10 @@ Animation waits for those readiness signals, with a bounded safety path. Do not
 start hiding or moving content based only on an eager session-activation callback.
 The native host's dismissal protection is separate from the removed outgoing
 screen capture implementation.
+Both native hosts exclude themselves and their children from touch hit testing.
+On Android this is enforced in `ScreenChoreographyView`, since its custom
+`ViewGroupManager` does not apply the JSX `pointerEvents` prop. This lets the
+destination accept input while the overlay finishes its remaining motion.
 
 ### iOS window ownership and accessibility
 

@@ -8,6 +8,7 @@ import android.os.Looper
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroupOverlay
+import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.views.view.ReactViewGroup
 
 class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
@@ -29,6 +30,10 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     clipChildren = false
     clipToPadding = false
     isClickable = false
+    // ViewGroupManager does not apply ReactViewManager's pointerEvents prop.
+    // Keep this visual-only host out of RN hit testing, including its children,
+    // so the destination can receive input while retained content settles.
+    pointerEvents = PointerEvents.NONE
     alpha = 0f
     visibility = View.INVISIBLE
     // dispatchDraw needs to run even when the view group has no background.
