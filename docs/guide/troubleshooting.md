@@ -64,7 +64,7 @@ For bare React Native, configure `react-native-worklets/plugin` last in Babel's 
 
 ## Gesture updates have no effect
 
-Wait for `beginBack()` and use callbacks from the render where `isActive` is true. Only `setProgress` is a worklet. Schedule the other lifecycle methods on JavaScript, and normalize both translation and velocity. Follow [interactive back](./interactive-back.md).
+Use `useInteractiveGestureLifecycle` to buffer movement and releases while preparation is pending. For direct control, await `beginBack()` and use its session-bound handle; only the handle's `setProgress` is a worklet. Keep the gesture responder on the destination screen, outside retained content that moves into the non-interactive overlay. Follow [interactive back](./interactive-back.md).
 
 ## Turn on diagnostics
 

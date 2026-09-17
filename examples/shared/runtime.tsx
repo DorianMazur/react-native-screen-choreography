@@ -5,8 +5,12 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import type { useInteractiveTransition } from 'react-native-screen-choreography';
-import type { ChoreographyNavigationOptions } from 'react-native-screen-choreography/core';
+import type {
+  ChoreographyNavigationOptions,
+  InteractiveGestureController,
+  InteractiveTransitionHandle,
+  InteractiveTransitionDecisionOptions,
+} from 'react-native-screen-choreography/core';
 
 export {
   Springs,
@@ -41,7 +45,11 @@ export type DemoScreenId =
   | DemoListScreenId
   | DemoDetailDestination['screen'];
 
-type ExampleInteractive = ReturnType<typeof useInteractiveTransition>;
+type ExampleInteractive = InteractiveGestureController &
+  Omit<InteractiveTransitionHandle, 'id'> & {
+    isActive: boolean;
+    settle(options?: InteractiveTransitionDecisionOptions): void;
+  };
 const InteractiveContext = createContext<ExampleInteractive | null>(null);
 
 const NavigationContext = createContext<ExampleNavigation | null>(null);

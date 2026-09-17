@@ -199,6 +199,8 @@ export interface InteractiveBackOptions {
   group?: string;
   /** Screen being returned to. Defaults to the route metadata. */
   targetScreenId?: string;
+  /** Cancels preparation only; use the returned handle to cancel an active gesture. */
+  signal?: AbortSignal;
 }
 
 export interface InteractiveTransitionSettleOptions {
@@ -219,6 +221,15 @@ export interface InteractiveTransitionSession {
   id: string;
   /** Gesture progress: 0 is untouched detail, 1 is a completed back. */
   progress: SharedValue<number>;
+}
+
+export interface InteractiveTransitionHandle extends InteractiveTransitionSession {
+  /** Worklet-compatible; available immediately when beginBack resolves. */
+  setProgress(value: number): void;
+  /** Complete this session's Back navigation. Call on the React Native runtime. */
+  finish(options?: InteractiveTransitionSettleOptions): void;
+  /** Return this session to its starting screen. Call on the React Native runtime. */
+  cancel(options?: InteractiveTransitionSettleOptions): void;
 }
 
 export type ChoreographyDebugLevel = 'error' | 'warn' | 'info' | 'trace';

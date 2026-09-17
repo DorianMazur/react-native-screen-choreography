@@ -12,6 +12,7 @@ import { TokenRow } from './TokenRow';
 import { TOKENS } from './data';
 import { formatMoney, walletTheme as theme } from './walletTheme';
 import { WalletIconButton } from './WalletIcon';
+import { walletTransition } from './walletTransitions';
 
 const portfolioValue = TOKENS.reduce((total, token) => total + token.value, 0);
 const previousValue = TOKENS.reduce(
@@ -138,7 +139,10 @@ export function TokenListScreen() {
             onPress={() =>
               navigate(
                 { screen: 'TokenDetail', params: { tokenId: item.id } },
-                { transitionConfig: { group: `token.${item.id}` } }
+                {
+                  ...walletTransition.navigationOptions,
+                  transitionConfig: { group: `token.${item.id}` },
+                }
               )
             }
           />

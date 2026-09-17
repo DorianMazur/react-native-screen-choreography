@@ -3,11 +3,9 @@ import { View, Text, Pressable, StyleSheet } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
-  useDerivedValue,
   useReducedMotion,
   type SharedValue,
 } from 'react-native-reanimated';
-import { useChoreographyProgress } from '../runtime';
 import { formatMoney, walletTheme as theme } from './walletTheme';
 import type { Token } from './data';
 
@@ -34,25 +32,24 @@ const startLabels = {
 
 export function PriceHistory({
   token,
+  expansion,
   onInteract,
 }: {
   token: Token;
+  expansion: SharedValue<number>;
   onInteract: () => void;
 }) {
   const [period, setPeriod] = useState<(typeof periods)[number]>('1D');
-  const {
-    progress,
-    phase,
-    direction: transitionDirection,
-  } = useChoreographyProgress();
   const reduceMotion = useReducedMotion();
-  const expansion = useDerivedValue(() =>
-    phase === 'idle'
-      ? 1
-      : phase === 'preparing' && transitionDirection !== 'backward'
-        ? 0
-        : progress.value
-  );
+  const chartStyle = useAnimatedStyle(() => {
+    const reveal = interpolate(expansion.value, [0.42, 0.76], [0, 1], 'clamp');
+    return {
+      opacity: reveal,
+      transform: [
+        { scaleY: reduceMotion ? 1 : reveal * reveal * (3 - 2 * reveal) },
+      ],
+    };
+  });
   const values = samples[period];
   const extent = period === '1D' ? 0.04 : period === '1W' ? 0.12 : 0.24;
   const direction = token.change24h >= 0 ? 1 : -1;
@@ -80,18 +77,23 @@ export function PriceHistory({
             style={[styles.gridline, { top: `${position * 100}%` }]}
           />
         ))}
-        {prices.map((price, index) => (
-          <View key={index} style={styles.track}>
-            <PriceBar
-              index={index}
-              count={prices.length}
-              height={20 + ((price - low) / (high - low || 1)) * 76}
-              color={direction > 0 ? theme.accent : theme.negative}
-              expansion={expansion}
-              reduceMotion={reduceMotion}
-            />
-          </View>
-        ))}
+        <Animated.View style={[styles.bars, chartStyle]}>
+          {prices.map((price, index) => (
+            <View key={index} style={styles.track}>
+              <View
+                style={[
+                  styles.bar,
+                  {
+                    height: `${20 + ((price - low) / (high - low || 1)) * 76}%`,
+                    backgroundColor:
+                      direction > 0 ? theme.accent : theme.negative,
+                    opacity: 0.45 + (index / (prices.length - 1)) * 0.55,
+                  },
+                ]}
+              />
+            </View>
+          ))}
+        </Animated.View>
       </View>
       <View style={styles.axis}>
         <Text style={styles.label}>{startLabels[period]}</Text>
@@ -133,48 +135,6 @@ export function PriceHistory({
   );
 }
 
-function PriceBar({
-  index,
-  count,
-  height,
-  color,
-  expansion,
-  reduceMotion,
-}: {
-  index: number;
-  count: number;
-  height: number;
-  color: string;
-  expansion: SharedValue<number>;
-  reduceMotion: boolean;
-}) {
-  const position = index / Math.max(1, count - 1);
-  const animatedStyle = useAnimatedStyle(() => {
-    const start = 0.42 + (reduceMotion ? 0 : position * 0.34);
-    const reveal = interpolate(
-      expansion.value,
-      [start, start + (reduceMotion ? 0.3 : 0.2)],
-      [0, 1],
-      'clamp'
-    );
-    const growth = reveal * reveal * (3 - 2 * reveal);
-    return {
-      opacity: reveal * (0.45 + position * 0.55),
-      transform: [{ scaleY: reduceMotion ? 1 : growth }],
-    };
-  });
-
-  return (
-    <Animated.View
-      style={[
-        styles.bar,
-        { height: `${height}%`, backgroundColor: color },
-        animatedStyle,
-      ]}
-    />
-  );
-}
-
 const styles = StyleSheet.create({
   container: { paddingHorizontal: 24, paddingTop: 8, paddingBottom: 24 },
   heading: {
@@ -183,7 +143,14 @@ const styles = StyleSheet.create({
     marginBottom: 24,
   },
   label: { fontFamily: theme.font, fontSize: 10, color: theme.secondary },
-  chart: { height: 138, flexDirection: 'row', gap: 5, alignItems: 'flex-end' },
+  chart: { height: 138 },
+  bars: {
+    ...StyleSheet.absoluteFillObject,
+    flexDirection: 'row',
+    gap: 5,
+    alignItems: 'flex-end',
+    transformOrigin: 'bottom',
+  },
   gridline: {
     position: 'absolute',
     left: 0,
@@ -196,7 +163,6 @@ const styles = StyleSheet.create({
     width: '100%',
     borderTopLeftRadius: 2,
     borderTopRightRadius: 2,
-    transformOrigin: 'bottom',
   },
   axis: {
     marginTop: 10,

@@ -49,12 +49,20 @@ export type {
   ChoreographyNavigationLineage,
   InteractiveBackOptions,
   InteractiveTransitionSession,
+  InteractiveTransitionHandle,
   InteractiveTransitionSettleOptions,
   InteractiveTransitionDecisionOptions,
   ChoreographyDebugConfig,
   ChoreographyDebugLevel,
   ChoreographyDebugCategory,
 } from '../types';
+
+export {
+  useInteractiveGestureLifecycle,
+  type InteractiveGestureController,
+  type InteractiveGestureOptions,
+  type InteractiveGestureRelease,
+} from '../hooks/useInteractiveGestureLifecycle';
 
 export {
   useSharedElementPresentation,

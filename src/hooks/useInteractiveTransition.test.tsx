@@ -7,6 +7,10 @@ import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ScreenIdContext } from '../core/screenIdContext';
 import { useInteractiveTransitionNavigator } from './useInteractiveTransition';
+import type {
+  InteractiveTransitionHandle,
+  TransitionSessionData,
+} from '../types';
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -19,6 +23,16 @@ jest.mock('react-native-reanimated', () => ({
 }));
 
 type Interactive = ReturnType<typeof useInteractiveTransitionNavigator>;
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (error: Error) => void;
+  const promise = new Promise<T>((res, rej) => {
+    resolve = res;
+    reject = rej;
+  });
+  return { promise, resolve, reject };
+}
 
 describe('interactive ownership', () => {
   let tree: ReactTestRenderer;
@@ -39,6 +53,23 @@ describe('interactive ownership', () => {
         </ScreenIdContext.Provider>
       </ChoreographyContext.Provider>
     );
+  }
+
+  function publishSession(id: string): TransitionSessionData {
+    const session: TransitionSessionData = {
+      id,
+      groupId: 'group',
+      sourceScreenId: 'Detail',
+      targetScreenId: 'List',
+      direction: 'backward',
+      state: 'active',
+      pairs: [],
+      progress: ctx.progress,
+    };
+    ctx.progressOwnership.setSession(id);
+    ctx.navigationController.setActiveSession(session);
+    ctx.activeSession = session;
+    return session;
   }
 
   beforeEach(async () => {
@@ -69,12 +100,17 @@ describe('interactive ownership', () => {
       }),
       preMeasureGroup: jest.fn(async () => {}),
       startTransition: jest.fn(async () => {
-        progressOwnership.setSession('A');
-        return { id: 'A' };
+        return publishSession('A');
       }),
       waitForOverlayReady: jest.fn(async () => true),
       completeTransition: jest.fn(),
-      cancelTransition: jest.fn(),
+      cancelTransition: jest.fn((sessionId: string) => {
+        if (!progressOwnership.isSession(sessionId)) return;
+        progressOwnership.setSession(null);
+        ctx.navigationController.setActiveSession(null);
+        ctx.navigationController.releaseNavigationLock();
+        ctx.activeSession = null;
+      }),
     } as unknown as ChoreographyContextType;
     await act(async () => {
       tree = create(render());
@@ -273,5 +309,253 @@ describe('interactive ownership', () => {
       await preparation;
     });
     expect(ctx.startTransition).not.toHaveBeenCalled();
+  });
+
+  test('a returned handle can update progress before React publishes new hook callbacks', async () => {
+    const previousSetProgress = interactive.setProgress;
+    await act(async () => {
+      const handle = await interactive.beginBack();
+      expect(handle).not.toBeNull();
+      previousSetProgress(0.6);
+      expect(ctx.progress.value).toBe(1);
+      handle!.setProgress(0.6);
+      expect(ctx.progress.value).toBeCloseTo(0.4);
+    });
+  });
+
+  test('settlement consumes the handle and rejects duplicate or late commands', async () => {
+    let handle!: InteractiveTransitionHandle;
+    await act(async () => {
+      handle = (await interactive.beginBack())!;
+      handle.finish({ velocity: 0.8 });
+      handle.cancel();
+      handle.finish();
+      handle.setProgress(0.9);
+    });
+    expect(ctx.commitReverseTransition).toHaveBeenCalledTimes(1);
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(ctx.progress.value).toBe(1);
+  });
+
+  test('a stale handle cannot cancel, finish, or update a replacement session', async () => {
+    let handle!: InteractiveTransitionHandle;
+    await act(async () => {
+      handle = (await interactive.beginBack())!;
+    });
+    publishSession('B');
+    await act(async () => tree.update(render()));
+    const replacementToken = ctx.progressOwnership.version;
+    ctx.progress.value = 0.65;
+    await act(async () => {
+      handle.setProgress(0.9);
+      handle.cancel();
+      handle.finish();
+    });
+    expect(ctx.progress.value).toBe(0.65);
+    expect(ctx.progressOwnership.version).toBe(replacementToken);
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+  });
+
+  test('a pre-aborted request never acquires navigation ownership', async () => {
+    const controller = new AbortController();
+    controller.abort();
+    expect(
+      await interactive.beginBack({ signal: controller.signal })
+    ).toBeNull();
+    expect(ctx.preMeasureGroup).not.toHaveBeenCalled();
+    expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+  });
+
+  test.each(['measurement', 'session', 'overlay'] as const)(
+    'abort during %s cancels only its preparation and releases its lock',
+    async (stage) => {
+      const controller = new AbortController();
+      const gate = deferred<void>();
+      if (stage === 'measurement') {
+        ctx.preMeasureGroup = jest.fn(() => gate.promise);
+      } else if (stage === 'session') {
+        ctx.startTransition = jest.fn(async () => {
+          const session = publishSession('A');
+          await gate.promise;
+          return session;
+        });
+      } else {
+        ctx.waitForOverlayReady = jest.fn(async () => {
+          await gate.promise;
+          return true;
+        });
+      }
+      await act(async () => tree.update(render()));
+      let pending!: ReturnType<Interactive['beginBack']>;
+      await act(async () => {
+        pending = interactive.beginBack({ signal: controller.signal });
+      });
+      expect(ctx.navigationController.isNavigationLocked()).toBe(true);
+      await act(async () => controller.abort());
+      expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+      if (stage === 'measurement') {
+        expect(ctx.cancelTransition).not.toHaveBeenCalled();
+      } else {
+        expect(ctx.cancelTransition).toHaveBeenCalledTimes(1);
+        expect(ctx.cancelTransition).toHaveBeenCalledWith('A');
+      }
+      await act(async () => {
+        gate.resolve();
+        expect(await pending).toBeNull();
+      });
+      expect(ctx.progressOwnership.hasSession).toBe(false);
+      expect(interactive.isActive).toBe(false);
+      expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+    }
+  );
+
+  test('a cancelled old measurement cannot unlock or invalidate a newer preparation', async () => {
+    const controller = new AbortController();
+    const first = deferred<void>();
+    const second = deferred<void>();
+    ctx.preMeasureGroup = jest
+      .fn()
+      .mockImplementationOnce(() => first.promise)
+      .mockImplementationOnce(() => second.promise);
+    await act(async () => tree.update(render()));
+    let oldRequest!: ReturnType<Interactive['beginBack']>;
+    let newRequest!: ReturnType<Interactive['beginBack']>;
+    await act(async () => {
+      oldRequest = interactive.beginBack({ signal: controller.signal });
+      controller.abort();
+      newRequest = interactive.beginBack();
+    });
+    const replacementToken = ctx.progressOwnership.version;
+    await act(async () => {
+      first.resolve();
+      expect(await oldRequest).toBeNull();
+    });
+    expect(ctx.navigationController.isNavigationLocked()).toBe(true);
+    expect(ctx.progressOwnership.version).toBe(replacementToken);
+    expect(ctx.startTransition).not.toHaveBeenCalled();
+    await act(async () => {
+      second.resolve();
+      expect(await newRequest).not.toBeNull();
+    });
+  });
+
+  test('a cancelled late session result cannot cancel a newer gesture', async () => {
+    const controller = new AbortController();
+    const gate = deferred<void>();
+    ctx.startTransition = jest
+      .fn()
+      .mockImplementationOnce(async () => {
+        const session = publishSession('A');
+        await gate.promise;
+        return session;
+      })
+      .mockImplementationOnce(async () => publishSession('B'));
+    await act(async () => tree.update(render()));
+    let oldRequest!: ReturnType<Interactive['beginBack']>;
+    let replacement!: InteractiveTransitionHandle;
+    await act(async () => {
+      oldRequest = interactive.beginBack({ signal: controller.signal });
+    });
+    await act(async () => {
+      controller.abort();
+      replacement = (await interactive.beginBack())!;
+    });
+    const replacementToken = ctx.progressOwnership.version;
+    await act(async () => {
+      gate.resolve();
+      expect(await oldRequest).toBeNull();
+      replacement.setProgress(0.7);
+    });
+    expect(replacement.id).toBe('B');
+    expect(ctx.progress.value).toBeCloseTo(0.3);
+    expect(ctx.progressOwnership.version).toBe(replacementToken);
+    expect(ctx.navigationController.isNavigationLocked()).toBe(true);
+    expect(ctx.cancelTransition).toHaveBeenCalledTimes(1);
+    expect(ctx.cancelTransition).toHaveBeenCalledWith('A');
+  });
+
+  test('a stale handle cannot invalidate a newer request before it has a session', async () => {
+    let handle!: InteractiveTransitionHandle;
+    await act(async () => {
+      handle = (await interactive.beginBack())!;
+    });
+    ctx.cancelTransition('A');
+    await act(async () => tree.update(render()));
+    const gate = deferred<void>();
+    ctx.preMeasureGroup = jest.fn(() => gate.promise);
+    ctx.startTransition = jest.fn(async () => publishSession('B'));
+    await act(async () => tree.update(render()));
+    let pending!: ReturnType<Interactive['beginBack']>;
+    await act(async () => {
+      pending = interactive.beginBack();
+      handle.cancel();
+      handle.finish();
+    });
+    expect(ctx.navigationController.isNavigationLocked()).toBe(true);
+    await act(async () => {
+      gate.resolve();
+      expect((await pending)?.id).toBe('B');
+    });
+  });
+
+  test.each(['session', 'overlay'] as const)(
+    'rejection during %s cleans up its partially prepared session',
+    async (stage) => {
+      const error = new Error('native readiness failed');
+      if (stage === 'session') {
+        ctx.startTransition = jest.fn(async () => {
+          publishSession('A');
+          throw error;
+        });
+      } else {
+        ctx.waitForOverlayReady = jest.fn(async () => {
+          throw error;
+        });
+      }
+      await act(async () => tree.update(render()));
+      await act(async () => {
+        await expect(interactive.beginBack()).rejects.toBe(error);
+      });
+      expect(ctx.cancelTransition).toHaveBeenCalledWith('A');
+      expect(ctx.progressOwnership.hasSession).toBe(false);
+      expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+      expect(interactive.isActive).toBe(false);
+    }
+  );
+
+  test('abort listener is detached once preparation returns its handle', async () => {
+    const controller = new AbortController();
+    const remove = jest.spyOn(controller.signal, 'removeEventListener');
+    let handle!: InteractiveTransitionHandle;
+    await act(async () => {
+      handle = (await interactive.beginBack({ signal: controller.signal }))!;
+      controller.abort();
+      handle.setProgress(0.4);
+    });
+    expect(remove).toHaveBeenCalledWith('abort', expect.any(Function));
+    expect(ctx.progress.value).toBeCloseTo(0.6);
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(interactive.isActive).toBe(true);
+  });
+
+  test('abort during overlay readiness does not cancel a provider-owned reverse commit', async () => {
+    const controller = new AbortController();
+    const gate = deferred<boolean>();
+    ctx.waitForOverlayReady = jest.fn(() => gate.promise);
+    await act(async () => tree.update(render()));
+    let pending!: ReturnType<Interactive['beginBack']>;
+    await act(async () => {
+      pending = interactive.beginBack({ signal: controller.signal });
+    });
+    await act(async () => {
+      interactive.finish();
+      controller.abort();
+      gate.resolve(true);
+      expect(await pending).toBeNull();
+    });
+    expect(ctx.commitReverseTransition).toHaveBeenCalledTimes(1);
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(ctx.navigationController.isNavigationLocked()).toBe(true);
   });
 });

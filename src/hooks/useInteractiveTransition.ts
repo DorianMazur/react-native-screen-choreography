@@ -16,7 +16,7 @@ import { useScreenId } from '../core/screenIdContext';
 import type {
   InteractiveBackOptions,
   InteractiveTransitionDecisionOptions,
-  InteractiveTransitionSession,
+  InteractiveTransitionHandle,
   InteractiveTransitionSettleOptions,
 } from '../types';
 
@@ -59,12 +59,14 @@ export function useInteractiveTransitionNavigator({
   const sessionIdRef = useRef<string | null>(null);
   const beginTokenRef = useRef(0);
   const preparingRef = useRef(false);
+  const cancelPreparationRef = useRef<(() => void) | null>(null);
   const [isActive, setIsActive] = useState(false);
   const [gestureToken, setGestureToken] = useState(0);
   const { owner } = progressOwnership;
 
   useEffect(
     () => () => {
+      cancelPreparationRef.current?.();
       beginTokenRef.current += 1;
       preparingRef.current = false;
       setInteractiveScreen(screenId, false);
@@ -98,131 +100,6 @@ export function useInteractiveTransitionNavigator({
     [gestureToken, owner, progress]
   );
 
-  const beginBack = useCallback(
-    async (
-      options: InteractiveBackOptions = {}
-    ): Promise<InteractiveTransitionSession | null> => {
-      if (preparingRef.current || sessionIdRef.current) {
-        return null;
-      }
-
-      if (progressOwnership.hasSession) {
-        const opening = navigationController.getActiveSession();
-        if (
-          opening?.direction !== 'forward' ||
-          opening.state !== 'active' ||
-          opening.targetScreenId !== screenId
-        )
-          return null;
-        const token = progressOwnership.claim(opening.id);
-        if (token === null) return null;
-        setOwnedProgress(progressOwnership, token, opening.id, progress, 1);
-        completeTransition(opening.id);
-      }
-
-      const lineage = getNavigationLineage(screenId);
-      const params = routeParams ?? {};
-      const groupId =
-        options.group ??
-        lineage?.groupId ??
-        (params._choreographyGroup as string | undefined);
-      const targetScreenHint =
-        options.targetScreenId ??
-        lineage?.sourceScreenId ??
-        (params._choreographySourceScreen as string | undefined);
-      const targetScreenId =
-        targetScreenHint && resolveScreenId
-          ? resolveScreenId(targetScreenHint, lineage?.sourceScreenId)
-          : targetScreenHint;
-
-      if (!groupId || !targetScreenId) {
-        return null;
-      }
-
-      if (!navigationController.acquireNavigationLock(screenId)) return null;
-      const navigationToken = navigationController.getNavigationLockToken();
-      preparingRef.current = true;
-      setInteractiveScreen(screenId, true);
-      beginTokenRef.current += 1;
-      const beginToken = beginTokenRef.current;
-      progressOwnership.invalidate();
-      const preparationVersion = progressOwnership.version;
-
-      try {
-        await preMeasureGroup(groupId, screenId);
-        if (
-          beginTokenRef.current !== beginToken ||
-          progressOwnership.version !== preparationVersion
-        )
-          return null;
-        const session = await startTransition({
-          groupId,
-          sourceScreenId: screenId,
-          targetScreenId,
-          direction: 'backward',
-        });
-
-        if (!session) {
-          return null;
-        }
-
-        if (beginTokenRef.current !== beginToken) {
-          cancelTransition(session.id);
-          return null;
-        }
-
-        const token = progressOwnership.claim(session.id);
-        if (token === null) return null;
-
-        sessionIdRef.current = session.id;
-        const overlayReady = await waitForOverlayReady(session.id);
-        if (!progressOwnership.isCurrent(token, session.id)) return null;
-        if (!overlayReady || beginTokenRef.current !== beginToken) {
-          if (sessionIdRef.current === session.id) {
-            sessionIdRef.current = null;
-          }
-          cancelTransition(session.id);
-          return null;
-        }
-
-        if (sessionIdRef.current !== session.id) {
-          return null;
-        }
-
-        setOwnedProgress(progressOwnership, token, session.id, progress, 1);
-        setGestureToken(token);
-        setIsActive(true);
-        return { id: session.id, progress: gestureProgress };
-      } finally {
-        if (!sessionIdRef.current) {
-          if (beginTokenRef.current === beginToken) {
-            setInteractiveScreen(screenId, false);
-          }
-          navigationController.releaseNavigationLock(navigationToken);
-        }
-        if (beginTokenRef.current === beginToken) {
-          preparingRef.current = false;
-        }
-      }
-    },
-    [
-      cancelTransition,
-      completeTransition,
-      setInteractiveScreen,
-      getNavigationLineage,
-      navigationController,
-      gestureProgress,
-      preMeasureGroup,
-      progress,
-      progressOwnership,
-      routeParams,
-      resolveScreenId,
-      screenId,
-      startTransition,
-      waitForOverlayReady,
-    ]
-  );
-
   const cancelOnRN = useCallback(
     (token: number, sessionId: string) => {
       if (
@@ -240,9 +117,20 @@ export function useInteractiveTransitionNavigator({
   );
 
   const animateSettlement = useCallback(
-    (target: 0 | 1, options: InteractiveTransitionSettleOptions) => {
+    (
+      target: 0 | 1,
+      options: InteractiveTransitionSettleOptions,
+      expected?: { sessionId: string; token: number }
+    ) => {
       const sessionId = sessionIdRef.current;
-      if (!sessionId || reverseController.owns(sessionId)) return;
+      if (
+        !sessionId ||
+        reverseController.owns(sessionId) ||
+        (expected &&
+          (sessionId !== expected.sessionId ||
+            !progressOwnership.isCurrent(expected.token, expected.sessionId)))
+      )
+        return;
       const token = progressOwnership.claim(sessionId);
       if (token === null) return;
       setInteractiveScreen(screenId, false);
@@ -289,6 +177,207 @@ export function useInteractiveTransitionNavigator({
     ]
   );
 
+  const beginBack = useCallback(
+    async (
+      options: InteractiveBackOptions = {}
+    ): Promise<InteractiveTransitionHandle | null> => {
+      const { signal } = options;
+      if (signal?.aborted || preparingRef.current || sessionIdRef.current) {
+        return null;
+      }
+
+      if (progressOwnership.hasSession) {
+        const opening = navigationController.getActiveSession();
+        if (
+          opening?.direction !== 'forward' ||
+          opening.state !== 'active' ||
+          opening.targetScreenId !== screenId
+        )
+          return null;
+        const token = progressOwnership.claim(opening.id);
+        if (token === null) return null;
+        setOwnedProgress(progressOwnership, token, opening.id, progress, 1);
+        completeTransition(opening.id);
+      }
+
+      const lineage = getNavigationLineage(screenId);
+      const params = routeParams ?? {};
+      const groupId =
+        options.group ??
+        lineage?.groupId ??
+        (params._choreographyGroup as string | undefined);
+      const targetScreenHint =
+        options.targetScreenId ??
+        lineage?.sourceScreenId ??
+        (params._choreographySourceScreen as string | undefined);
+      const targetScreenId =
+        targetScreenHint && resolveScreenId
+          ? resolveScreenId(targetScreenHint, lineage?.sourceScreenId)
+          : targetScreenHint;
+
+      if (!groupId || !targetScreenId) return null;
+      if (!navigationController.acquireNavigationLock(screenId)) return null;
+      const navigationToken = navigationController.getNavigationLockToken();
+      preparingRef.current = true;
+      setInteractiveScreen(screenId, true);
+      const beginToken = ++beginTokenRef.current;
+      progressOwnership.invalidate();
+      const preparationVersion = progressOwnership.version;
+      let preparationSessionId: string | null = null;
+      let preparationOwner: number | null = null;
+      let startedTransition = false;
+      let returnedHandle = false;
+      const isCurrent = () =>
+        beginTokenRef.current === beginToken && !signal?.aborted;
+
+      // startTransition publishes its measuring session synchronously, before
+      // awaiting native readiness. Retain that identity even if it later rejects.
+      const capturePreparingSession = () => {
+        if (
+          !startedTransition ||
+          preparationSessionId ||
+          beginTokenRef.current !== beginToken ||
+          navigationController.getNavigationLockToken() !== navigationToken
+        )
+          return;
+        const session = navigationController.getActiveSession();
+        if (
+          session?.sourceScreenId === screenId &&
+          session.targetScreenId === targetScreenId &&
+          session.groupId === groupId &&
+          session.direction === 'backward'
+        ) {
+          preparationSessionId = session.id;
+          preparationOwner = progressOwnership.version;
+        }
+      };
+      const cancelPreparingSession = () => {
+        const sessionId = preparationSessionId;
+        if (
+          !sessionId ||
+          reverseController.owns(sessionId) ||
+          !progressOwnership.isSession(sessionId) ||
+          (preparationOwner !== null &&
+            !progressOwnership.isCurrent(preparationOwner, sessionId))
+        )
+          return;
+        if (sessionIdRef.current === sessionId) sessionIdRef.current = null;
+        cancelTransition(sessionId);
+      };
+      const releasePreparationLock = () => {
+        if (
+          !preparationSessionId ||
+          !reverseController.owns(preparationSessionId)
+        )
+          navigationController.releaseNavigationLock(navigationToken);
+      };
+      const cancelPreparation = () => {
+        if (beginTokenRef.current !== beginToken) return;
+        capturePreparingSession();
+        if (
+          !preparationSessionId ||
+          !reverseController.owns(preparationSessionId)
+        )
+          setInteractiveScreen(screenId, false);
+        beginTokenRef.current += 1;
+        preparingRef.current = false;
+        cancelPreparingSession();
+        releasePreparationLock();
+      };
+      cancelPreparationRef.current = cancelPreparation;
+      signal?.addEventListener('abort', cancelPreparation, { once: true });
+
+      try {
+        await preMeasureGroup(groupId, screenId);
+        if (!isCurrent() || progressOwnership.version !== preparationVersion)
+          return null;
+        startedTransition = true;
+        const pendingSession = startTransition({
+          groupId,
+          sourceScreenId: screenId,
+          targetScreenId,
+          direction: 'backward',
+        });
+        capturePreparingSession();
+        const session = await pendingSession;
+        if (!session) return null;
+        if (!preparationSessionId) {
+          preparationSessionId = session.id;
+          preparationOwner = progressOwnership.isSession(session.id)
+            ? progressOwnership.version
+            : null;
+        }
+        if (!isCurrent()) return null;
+
+        const token = progressOwnership.claim(session.id);
+        if (token === null) return null;
+        preparationOwner = token;
+        sessionIdRef.current = session.id;
+        const overlayReady = await waitForOverlayReady(session.id);
+        if (
+          !isCurrent() ||
+          !overlayReady ||
+          !progressOwnership.isCurrent(token, session.id) ||
+          sessionIdRef.current !== session.id
+        )
+          return null;
+
+        const sessionId = session.id;
+        setOwnedProgress(progressOwnership, token, sessionId, progress, 1);
+        setGestureToken(token);
+        setIsActive(true);
+        returnedHandle = true;
+        return {
+          id: sessionId,
+          progress: gestureProgress,
+          setProgress: (value: number) => {
+            'worklet';
+            if (owner.value !== token) return;
+            progress.value = toInteractiveSessionProgress(value);
+          },
+          finish: (settlement = {}) =>
+            animateSettlement(0, settlement, { sessionId, token }),
+          cancel: (settlement = {}) =>
+            animateSettlement(1, settlement, { sessionId, token }),
+        };
+      } catch (error) {
+        capturePreparingSession();
+        if (!isCurrent()) return null;
+        throw error;
+      } finally {
+        signal?.removeEventListener('abort', cancelPreparation);
+        if (cancelPreparationRef.current === cancelPreparation)
+          cancelPreparationRef.current = null;
+        if (!returnedHandle) {
+          cancelPreparingSession();
+          if (beginTokenRef.current === beginToken && !sessionIdRef.current)
+            setInteractiveScreen(screenId, false);
+          releasePreparationLock();
+        }
+        if (beginTokenRef.current === beginToken) preparingRef.current = false;
+      }
+    },
+    [
+      animateSettlement,
+      cancelTransition,
+      completeTransition,
+      setInteractiveScreen,
+      getNavigationLineage,
+      navigationController,
+      gestureProgress,
+      owner,
+      preMeasureGroup,
+      progress,
+      progressOwnership,
+      reverseController,
+      routeParams,
+      resolveScreenId,
+      screenId,
+      startTransition,
+      waitForOverlayReady,
+    ]
+  );
+
   const finish = useCallback(
     (options: InteractiveTransitionSettleOptions = {}) =>
       animateSettlement(0, options),
@@ -297,6 +386,7 @@ export function useInteractiveTransitionNavigator({
 
   const cancel = useCallback(
     (options: InteractiveTransitionSettleOptions = {}) => {
+      cancelPreparationRef.current?.();
       beginTokenRef.current += 1;
       preparingRef.current = false;
       setInteractiveScreen(screenId, false);
