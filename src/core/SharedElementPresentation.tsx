@@ -1,5 +1,5 @@
 import { createContext, useContext } from 'react';
-import type { SharedValue } from 'react-native-reanimated';
+import type { DerivedValue, SharedValue } from 'react-native-reanimated';
 import type { ElementPresentation, ElementMetrics } from '../types';
 
 export interface SharedElementEndpoint {
@@ -9,8 +9,13 @@ export interface SharedElementEndpoint {
 }
 
 export interface SharedElementPresentation {
-  /** One UI-thread clock; 0 is collapsed and 1 is expanded. */
+  /** Provider-wide expansion clock; other elements and groups also drive it. */
   progress: SharedValue<number>;
+  /**
+   * This owner's expansion: follows progress while participating, otherwise
+   * stays at 0 (collapsed/source) or 1 (expanded/destination).
+   */
+  presentationProgress: DerivedValue<number>;
   transitioning: boolean;
   collapsed: SharedElementEndpoint;
   expanded: SharedElementEndpoint;

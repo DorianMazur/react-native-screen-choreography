@@ -129,10 +129,17 @@ Always render the supplied `children` exactly once throughout a session. Do not 
 ## Animate inside the retained content
 
 ```tsx
-const { progress, collapsed, expanded } = useSharedElementPresentation();
+const { presentationProgress } = useSharedElementPresentation();
 const labelStyle = useAnimatedStyle(() => ({
   transform: [
-    { scale: interpolate(progress.value, [0, 1], [1, 1.25], 'clamp') },
+    {
+      scale: interpolate(
+        presentationProgress.value,
+        [0, 1],
+        [1, 1.25],
+        'clamp'
+      ),
+    },
   ],
 }));
 ```

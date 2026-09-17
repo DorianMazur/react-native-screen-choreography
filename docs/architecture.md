@@ -39,8 +39,10 @@ scale can still require the application to reconsider intrinsic layout.
 `useSharedElementPresentation` exposes canonical collapsed/expanded endpoint
 metrics, styles, metadata, shared expansion progress, and the settled endpoint.
 Owners retain endpoint data, not whole pairs or references to popped screens.
-Initial metrics are null. Retained descendants use `settled` outside transitions
-because the global progress can subsequently belong to a different group.
+Initial metrics are null. The owner derives `presentationProgress` from its
+participation and settled endpoint: it follows the shared clock during its own
+transition and holds 0 or 1 otherwise. The existing `progress` remains the global
+clock, which can subsequently belong to a different group.
 
 ## Pairing and frozen presentations
 

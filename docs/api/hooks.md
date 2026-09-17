@@ -61,6 +61,7 @@ useSharedElementPresentation(): SharedElementPresentation;
 
 interface SharedElementPresentation {
   progress: SharedValue<number>;
+  presentationProgress: DerivedValue<number>;
   transitioning: boolean;
   collapsed: SharedElementEndpoint;
   expanded: SharedElementEndpoint;
@@ -74,7 +75,7 @@ interface SharedElementEndpoint {
 }
 ```
 
-`progress` is expansion progress. `transitioning` identifies active participation by this owner. `settled` identifies its resting endpoint when no motion is active. Before the first transition, metrics are `null` and the initial endpoint presentation comes from the owner.
+`progress` is the provider-wide expansion clock; it remains unchanged for compatibility and can be driven by another element or group. `presentationProgress` is a read-only Reanimated derived value belonging to this retained owner: it follows `progress` during participation, stays at `0` when settled at the original source (collapsed), and stays at `1` when settled at the destination (expanded). Unrelated transitions leave it unchanged. Backward transitions run from `1` to `0`; cancellation returns it to the endpoint where the element settles. `transitioning` identifies active participation by this owner. `settled` identifies its resting endpoint when no motion is active. Before the first transition, metrics are `null` and the initial endpoint presentation comes from the owner.
 
 This hook does not change React ownership. The retained component still uses the original source context; use these explicit endpoints for its visual adaptation. Narrow `metadata` before reading it and keep metadata objects immutable during a session.
 
