@@ -224,7 +224,7 @@ export function ChoreographyScreenBase({
             collapsable={false}
             style={styles.container}
           >
-            <ChoreographyProgressProvider>
+            <ChoreographyProgressProvider isPendingTarget={isPendingTarget}>
               {children}
             </ChoreographyProgressProvider>
           </View>

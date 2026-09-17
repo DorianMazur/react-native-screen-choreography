@@ -7,18 +7,17 @@ import type {
 } from '../types';
 import { defineTransition } from './defineTransition';
 import { makeTransition } from './makeTransition';
+import { ChoreographyControlsContext } from '../core/ChoreographyContext';
+import { ChoreographyProgressContext } from '../core/ChoreographyProgressContext';
+import type {
+  SessionPhase,
+  TransitionDirection,
+} from '../core/screenVisibility';
 
 const mockProgress = { value: 0 } as SharedValue<number>;
-let mockPhase = 'active';
-let mockDirection = 'forward';
+let mockPhase: SessionPhase = 'active';
+let mockDirection: TransitionDirection = 'forward';
 let mockReducedMotion = false;
-jest.mock('../hooks/useChoreographyProgress', () => ({
-  useChoreographyProgress: () => ({
-    progress: mockProgress,
-    phase: mockPhase,
-    direction: mockDirection,
-  }),
-}));
 jest.mock('../components/SharedElement', () => ({
   SharedElement: Object.assign(
     (props: object) => {
@@ -43,10 +42,31 @@ jest.mock('react-native-reanimated', () => ({
 }));
 
 const trees: ReactTestRenderer[] = [];
+function withProviders(element: React.ReactElement) {
+  return (
+    <ChoreographyControlsContext.Provider
+      value={{ progress: mockProgress, settleTransition: jest.fn() }}
+    >
+      <ChoreographyProgressContext.Provider
+        value={{
+          isActive: mockPhase !== 'idle',
+          isPendingTarget: false,
+          role: 'target',
+          phase: mockPhase,
+          direction: mockDirection,
+          groupId: 'photo',
+          sessionId: 'session',
+        }}
+      >
+        {element}
+      </ChoreographyProgressContext.Provider>
+    </ChoreographyControlsContext.Provider>
+  );
+}
 async function mount(element: React.ReactElement) {
   let tree!: ReactTestRenderer;
   await act(async () => {
-    tree = create(element);
+    tree = create(withProviders(element));
   });
   trees.push(tree);
   return tree;
@@ -89,9 +109,11 @@ test('owner and empty target bind the same named transition', async () => {
   const transition = owner.props.transition;
   await act(async () =>
     tree.update(
-      <definition.Element name="hero" groupId="photo">
-        Updated
-      </definition.Element>
+      withProviders(
+        <definition.Element name="hero" groupId="photo">
+          Updated
+        </definition.Element>
+      )
     )
   );
   expect(
@@ -148,7 +170,7 @@ test.each(['bounds', 'surface'] as const)(
       width: 190,
       height: 250,
     });
-    await act(async () => tree.update(render('backward')));
+    await act(async () => tree.update(withProviders(render('backward'))));
     expect(
       tree.root.findAllByType('PortalHost' as React.ElementType)
     ).toHaveLength(1);
@@ -160,7 +182,7 @@ test.each(['bounds', 'surface'] as const)(
       height: 250,
     });
     mockProgress.value = 0;
-    await act(async () => tree.update(render('backward')));
+    await act(async () => tree.update(withProviders(render('backward'))));
     expect(frame()).toMatchObject({
       left: 10,
       top: 100,
@@ -184,7 +206,7 @@ test('enter and exit are reversible local motion with no shared registration', a
   const tree = await mount(render());
   for (const progress of [0, 0.5, 1, 0.5, 0]) {
     mockProgress.value = progress;
-    await act(async () => tree.update(render()));
+    await act(async () => tree.update(withProviders(render())));
     const [enter, exit] = tree.root
       .findAllByType('Animated.View' as React.ElementType)
       .map((node) => StyleSheet.flatten(node.props.style));
@@ -198,7 +220,7 @@ test('enter and exit are reversible local motion with no shared registration', a
     );
   }
   mockPhase = 'idle';
-  await act(async () => tree.update(render()));
+  await act(async () => tree.update(withProviders(render())));
   for (const node of tree.root.findAllByType(
     'Animated.View' as React.ElementType
   )) {
@@ -313,7 +335,10 @@ test('reduced motion retains the fade but removes reveal translation', async () 
     StyleSheet.flatten(
       tree.root.findByType('Animated.View' as React.ElementType).props.style
     )
-  ).toMatchObject({ opacity: 0.5, transform: [{ translateY: 0 }] });
+  ).toMatchObject({
+    opacity: 0.5,
+    transform: [{ translateY: 0 }, { translateX: 0 }, { scale: 1 }],
+  });
 });
 
 test('separate groups reuse role motion without losing endpoint metadata', async () => {

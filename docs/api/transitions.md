@@ -35,8 +35,11 @@ interface SharedMotionRecipe {
 }
 
 interface RevealRecipe {
-  during?: readonly [number, number];
+  during?: readonly [number, number]; // Window for the whole group.
+  stagger?: number; // Progress offset between items; defaults to 0.
+  translateX?: number;
   translateY?: number;
+  scale?: number; // Hidden scale; defaults to 1.
 }
 ```
 
@@ -44,15 +47,23 @@ At least one role is required. Role names cannot be empty. Radius values must be
 
 The result contains:
 
-| Member              | Props / behavior                                                              |
-| ------------------- | ----------------------------------------------------------------------------- |
-| `Element`           | Owner props, with a typed `name` replacing `id` and `transition`              |
-| `Element.Target`    | Target props, with the same typed `name`                                      |
-| `Enter`             | `{ name, children, style? }`; local content reveals as expansion increases    |
-| `Exit`              | `{ name, children, style? }`; local content disappears as expansion increases |
-| `navigationOptions` | Readonly motion options to spread into navigation requests                    |
+| Member              | Props / behavior                                                                     |
+| ------------------- | ------------------------------------------------------------------------------------ |
+| `Element`           | Owner props, with a typed `name` replacing `id` and `transition`                     |
+| `Element.Target`    | Target props, with the same typed `name`                                             |
+| `Enter`             | `{ name, children, style?, index?, count?, scope? }`; reveals as expansion increases |
+| `Exit`              | Same props as `Enter`; disappears as expansion increases                             |
+| `navigationOptions` | Readonly motion options to spread into navigation requests                           |
 
-Default enter interval: `[0.55, 0.9]`. Default exit interval: `[0.1, 0.4]`. Translation defaults to `0`, and reveals are visible when idle. Reduced motion disables their translation; opacity remains progress-driven. Shared recipes default to `zIndex: 100` through the transition factory.
+Default enter interval: `[0.55, 0.9]`. Default exit interval: `[0.1, 0.4]`. Translations default to `0`; hidden scale defaults to `1`. The visible endpoint always has zero translation and scale `1`. Reduced motion disables both translation and scale; opacity remains progress-driven. Shared recipes default to `zIndex: 100` through the transition factory.
+
+`index` defaults to `0` and `count` to `1`. For a dynamic list, pass each item's current index and the list length. Each component owns its hooks, so inserting, removing, and reordering keyed items is supported. `during` is the whole group's interval. The effective stagger is `min(stagger, (end - start) / count)`; the remaining interval is each item's animation duration. This compresses excessive staggering so all items finish by `end`. Forward expansion starts lower indices first; reversing progress reverses the sequence. Changes to index or count immediately recompute the interval.
+
+`count` must be a positive safe integer and `index` an integer in `[0, count)`. An empty list simply renders no reveal components. Translations must be finite; scale and stagger must be finite and nonnegative. Definitions capture their recipes at creation.
+
+`scope` defaults to `'screen'`: the reveal follows the enclosing screen only when it participates in a transition, and is fully visible while idle or inactive. Incoming screens prepare from their starting endpoint even before they have a session role. Use `scope="presentation"` inside a retained `SharedElement` owner: the reveal follows that owner's `presentationProgress`, including its resting endpoint, independently of other groups. Presentation enter content stays hidden when collapsed; presentation exit content stays hidden when expanded. This scope requires an owner and does not change React ownership.
+
+Reveals animate opacity and transforms only. They keep children mounted and do not change touch or accessibility behavior. They own the wrapper's opacity and transform; put additional transforms on a nested view. For the same behavior on an existing animated view, use [`useRevealStyle`](./hooks.md#userevealstyle).
 
 See [defining motion](../guide/transitions.md) for placement and context guidance.
 

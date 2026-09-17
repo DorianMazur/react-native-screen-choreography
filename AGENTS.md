@@ -51,7 +51,7 @@ Current important exports include:
 - `useChoreographyRouter` from the `react-native-screen-choreography/expo-router` subpath
 - `useChoreographyProgress`
 - `useLatchedReveal`
-- `useStaggeredReveal`
+- `useRevealStyle`
 - transition factories: `defineTransition`, `makeTransition`; retained layout: `useSharedElementPresentation`
 - transition primitives: `TransitionSurface`, `TransitionFrame`, `resolveSurfaceStyle`;
 - debug helpers: `setDebugEnabled`

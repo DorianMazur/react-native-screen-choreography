@@ -61,7 +61,62 @@ The `radius` tuple always means **collapsed, expanded**, including on back. With
 
 Each `name` becomes an element ID. Use the same `groupId` on matching endpoints and in `transitionConfig.group`. In a list, use a group per item so each item's `hero` remains distinct.
 
-Keep `Enter` and `Exit` around ordinary screen content. Content moved through a shared-element portal retains the source's React context; animate that content with `useSharedElementPresentation` instead.
+`Enter` and `Exit` default to ordinary screen content. They remain visible when the screen is idle or unrelated to the current transition. For content inside a retained shared owner, use `scope="presentation"` as shown below.
+
+## Reveal a dynamic list
+
+Define one role, then give each keyed item its index and the current list length:
+
+```tsx
+const details = defineTransition({
+  enter: {
+    row: { during: [0.5, 0.95], stagger: 0.06, translateX: 12, scale: 0.96 },
+  },
+});
+
+function DetailRows({ items }) {
+  return items.map((item, index) => (
+    <details.Enter key={item.id} name="row" index={index} count={items.length}>
+      <Text>{item.title}</Text>
+    </details.Enter>
+  ));
+}
+```
+
+Each reveal owns its hooks, so the list can grow, shrink, or reorder. An empty list renders no reveals. `stagger` is measured in expansion progress, not milliseconds. `during` covers the whole group; excessive staggering compresses to fit, and every item reaches its endpoint by the end of the interval. Index or count changes immediately adjust the intervals. Back reverses the order naturally.
+
+For an existing animated component, call [`useRevealStyle`](../api/hooks.md#userevealstyle) inside each item's component instead.
+
+## Reveal inside retained content
+
+Content moved through a portal keeps the source route's React context. Opt into the owner's progress explicitly:
+
+```tsx
+const card = defineTransition({
+  shared: { hero: { kind: 'bounds' } },
+  enter: { details: { during: [0.4, 0.85], translateY: 16 } },
+  exit: { caption: { during: [0.1, 0.35] } },
+});
+
+function RetainedCard() {
+  return (
+    <>
+      <card.Exit name="caption" scope="presentation">
+        <Text>Tap to explore</Text>
+      </card.Exit>
+      <card.Enter name="details" scope="presentation">
+        <Text>Expanded details</Text>
+      </card.Enter>
+    </>
+  );
+}
+
+<card.Element name="hero" groupId="card.42">
+  <RetainedCard />
+</card.Element>;
+```
+
+Presentation reveals use the owner's `presentationProgress`: expanded details stay hidden on collapsed cards, including while another card animates, and the caption stays hidden when expanded. Use `useSharedElementPresentation` for custom geometry or to control mounting, touches, and accessibility. Reveal wrappers keep children mounted and only animate opacity and transforms.
 
 ## Apply timing at navigation
 
@@ -78,7 +133,7 @@ void navigate(
 
 The definition does not launch navigation or apply its timing globally. Spread `navigationOptions` into each navigation request that should use it. `motion.duration` chooses a timing animation instead of a spring; the duration is in milliseconds.
 
-Enter and exit intervals use expansion progress, so they reverse naturally when progress moves from `1 → 0`. They are visible when the session is idle. Their built-in translations respect Reanimated's reduced-motion preference; custom renderers should make their own reduced-motion choices.
+Enter and exit intervals use expansion progress, so they reverse naturally when progress moves from `1 → 0`. Screen-scoped reveals are visible when idle; presentation-scoped reveals retain their endpoint visibility. Their built-in translations and scale respect Reanimated's reduced-motion preference; custom renderers should make their own reduced-motion choices.
 
 ## Configure the whole-screen fade
 

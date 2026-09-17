@@ -17,6 +17,7 @@ const {
   backdropStyle,
   settleTransition,
   isActive,
+  isPendingTarget,
   role,
   phase,
   direction,
@@ -25,16 +26,17 @@ const {
 } = useChoreographyProgress();
 ```
 
-| Value                  | Type / meaning                                                                     |
-| ---------------------- | ---------------------------------------------------------------------------------- |
-| `progress`             | `SharedValue<number>`; `0` collapsed, `1` expanded                                 |
-| `backdropStyle`        | Animated opacity from `0` to `0.5` over progress `[0, 0.3]`                        |
-| `settleTransition`     | `() => void`; settles in favor of the calling screen                               |
-| `isActive`             | `boolean`; a session exists, including preparation / settlement states             |
-| `role`                 | `'source' \| 'target' \| 'inactive'`, relative to the current navigation direction |
-| `phase`                | `'idle' \| 'preparing' \| 'active' \| 'completing' \| 'cancelling'`                |
-| `direction`            | `'forward' \| 'backward' \| null`                                                  |
-| `groupId`, `sessionId` | `string \| null`                                                                   |
+| Value                  | Type / meaning                                                                       |
+| ---------------------- | ------------------------------------------------------------------------------------ |
+| `progress`             | `SharedValue<number>`; `0` collapsed, `1` expanded                                   |
+| `backdropStyle`        | Animated opacity from `0` to `0.5` over progress `[0, 0.3]`                          |
+| `settleTransition`     | `() => void`; settles in favor of the calling screen                                 |
+| `isActive`             | `boolean`; a session exists, including preparation / settlement states               |
+| `isPendingTarget`      | `boolean`; this screen is the pending destination, even before a session role exists |
+| `role`                 | `'source' \| 'target' \| 'inactive'`, relative to the current navigation direction   |
+| `phase`                | `'idle' \| 'preparing' \| 'active' \| 'completing' \| 'cancelling'`                  |
+| `direction`            | `'forward' \| 'backward' \| null`                                                    |
+| `groupId`, `sessionId` | `string \| null`                                                                     |
 
 Read `progress.value` inside Reanimated worklets for frame-by-frame motion. `isActive` is not a synonym for `phase === 'active'`. A pending target can have phase `preparing` before a session exists.
 
@@ -107,43 +109,54 @@ The gate opens when progress reaches `startProgress`. It latches for that reveal
 
 It does not animate the mounted content and should not delay mounting shared targets that must be measured. Use a named `Enter` role for an animated reveal.
 
-## `useStaggeredReveal`
+## `useRevealStyle`
 
-Creates progress-driven opacity and vertical-translation styles for a fixed set of items.
-
-```ts
-const { getItemStyle, progress } = useStaggeredReveal(itemCount, {
-  startProgress: 0.7,
-  endProgress: 1,
-  stagger: 0.05,
-  translateY: 16,
-});
-```
-
-All configuration fields are optional; the values above are the defaults. `stagger` is a progress offset between items, not milliseconds. `getItemStyle(index)` returns an animated style, and `progress` is the expansion shared value.
-
-::: warning Keep calls in a stable order
-In 0.5.0, `getItemStyle` calls a React hook internally. Call it an unconditional, fixed number of times in a component; do not call it in a variable-length list or event handler. For dynamic content, prefer separately mounted components with declarative `Enter` roles or their own `useAnimatedStyle`.
-:::
+Returns a Reanimated opacity/transform style for one mounted item. It shares the recipe and scoping behavior of declarative `Enter` and `Exit` components.
 
 ```tsx
-const { getItemStyle } = useStaggeredReveal(2);
-const titleStyle = getItemStyle(0);
-const bodyStyle = getItemStyle(1);
+import Animated from 'react-native-reanimated';
+import { useRevealStyle } from 'react-native-screen-choreography/core';
 
-return (
-  <>
-    <Animated.View style={titleStyle}>
-      <Title />
+function RevealedRow({ item, index, count }) {
+  const style = useRevealStyle(
+    { during: [0.55, 0.95], stagger: 0.05, translateY: 16, scale: 0.96 },
+    { index, count }
+  );
+  return (
+    <Animated.View style={style}>
+      <Row item={item} />
     </Animated.View>
-    <Animated.View style={bodyStyle}>
-      <Description />
-    </Animated.View>
-  </>
-);
+  );
+}
+
+// Each keyed child owns its hooks. The list can grow, shrink, or reorder.
+items.map((item, index) => (
+  <RevealedRow key={item.id} item={item} index={index} count={items.length} />
+));
 ```
 
-The helper is driven directly by progress and does not add an idle visibility override or a reduced-motion translation override. For ordinary readable idle content and built-in reduced-motion handling, use [`defineTransition`](./transitions.md#definetransition) reveals.
+```ts
+useRevealStyle(recipe?: RevealRecipe, options?: RevealOptions);
+
+interface RevealOptions {
+  mode?: 'enter' | 'exit'; // 'enter'
+  scope?: 'screen' | 'presentation'; // 'screen'
+  index?: number; // 0
+  count?: number; // 1
+}
+```
+
+`RevealRecipe` accepts `during`, `stagger`, `translateX`, `translateY`, and `scale`; see [reveal recipes](./transitions.md#definetransition) for defaults, interval calculation, and validation. Unlike the legacy stagger helper, staggering and translation default to zero. `mode: 'exit'` reverses opacity and uses the default exit interval `[0.1, 0.4]` instead of the enter interval `[0.55, 0.9]`.
+
+Screen scope leaves idle and unrelated screens visible. Presentation scope requires a retained owner and follows its resting collapsed/expanded endpoint as well as transitions. Reduced motion removes translation and scale, preserving opacity. The hook does not mount/unmount children or manage touches and accessibility.
+
+Call this hook unconditionally inside each item component, not inside the parent's `.map()` or an event handler. Use declarative `Enter`/`Exit` directly in a map when an additional wrapper is convenient.
+
+### Migrating the removed stagger helper
+
+`useStaggeredReveal` and its `getItemStyle` callback have been removed. Replace them with `useRevealStyle` inside each item's component, or declarative `Enter`/`Exit` with `index` and `count`.
+
+Replace `startProgress`/`endProgress` with `during: [startProgress, endProgress]` and pass `stagger` and `translateY` explicitly. The old defaults correspond to `{ during: [0.7, 1], stagger: 0.05, translateY: 16 }`. The new API keeps the entire stagger within `during`, so a long list may have tighter spacing. It also keeps idle/unrelated screen content visible and respects reduced motion. For direct access to the expansion clock previously returned by the helper, use `useChoreographyProgress`.
 
 ## `setDebugEnabled`
 

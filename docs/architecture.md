@@ -162,7 +162,7 @@ checks. Keep provider cleanup independent of an outgoing route's lifetime.
 
 `useChoreographyProgress` subscribes to screen-visible session state.
 `useChoreographyControls` provides a stable screen-qualified settle callback.
-`useLatchedReveal` and `useStaggeredReveal` build on shared progress.
+`useLatchedReveal` builds on shared progress. `useRevealStyle` and named `Enter`/`Exit` components scope reveals to the participating screen or an explicitly selected retained presentation. Each list item owns its hooks; stagger intervals fit within the configured group window.
 `useInteractiveTransition` exposes gesture-normalized progress (0 at detail,
 1 at completed return), velocity-aware settlement, and cancellation; it does not
 subscribe to native-stack's built-in swipe gesture.

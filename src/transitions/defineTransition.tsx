@@ -1,16 +1,12 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { StyleProp, ViewStyle } from 'react-native';
-import Animated, {
-  interpolate,
-  useAnimatedStyle,
-  useReducedMotion,
-} from 'react-native-reanimated';
+import Animated from 'react-native-reanimated';
 import {
   SharedElement,
   type SharedElementProps,
   type SharedElementTargetProps,
 } from '../components/SharedElement';
-import { useChoreographyProgress } from '../hooks/useChoreographyProgress';
+import { useRevealStyle } from '../hooks/useRevealStyle';
 import { TransitionFrame } from '../standin/TransitionFrame';
 import { TransitionSurface } from '../standin/TransitionSurface';
 import { resolveSurfaceStyle } from '../standin/resolveSurfaceStyle';
@@ -20,6 +16,13 @@ import type {
   TransitionRendererProps,
 } from '../types';
 import { makeTransition } from './makeTransition';
+import {
+  resolveRevealRecipe,
+  type RevealRecipe,
+  type RevealOptions,
+} from './reveal';
+
+export type { RevealRecipe } from './reveal';
 
 type Motion = Pick<ChoreographyNavigationOptions, 'spring' | 'duration'>;
 export interface SharedMotionRecipe {
@@ -27,12 +30,6 @@ export interface SharedMotionRecipe {
   /** Canonical collapsed/expanded corner radii. Omit to use endpoint styles. */
   radius?: readonly [number, number];
   zIndex?: number;
-}
-export interface RevealRecipe {
-  /** Expansion-progress interval, increasing from 0 to 1. */
-  during?: readonly [number, number];
-  /** Offset while hidden; the visible endpoint always has zero offset. */
-  translateY?: number;
 }
 type SharedRecipes = Record<string, SharedMotionRecipe | Transition>;
 type RevealRecipes = Record<string, RevealRecipe>;
@@ -54,7 +51,9 @@ export type TransitionTargetProps<Name extends string = string> = Omit<
   SharedElementTargetProps,
   'id' | 'transition'
 > & { name: Name };
-export interface TransitionRevealProps<Name extends string = string> {
+export interface TransitionRevealProps<
+  Name extends string = string,
+> extends Omit<RevealOptions, 'mode'> {
   name: Name;
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
@@ -71,19 +70,6 @@ export interface DefinedTransition<
   Exit: ComponentType<TransitionRevealProps<Exit>>;
   /** Spread into forward/Back navigation options to request the same motion. */
   navigationOptions: Readonly<Motion>;
-}
-
-function checkedRange(range: readonly [number, number]) {
-  if (
-    range.length !== 2 ||
-    !range.every(Number.isFinite) ||
-    range[0] < 0 ||
-    range[1] > 1 ||
-    range[0] >= range[1]
-  ) {
-    throw new Error('Reveal intervals must increase within [0, 1].');
-  }
-  return Object.freeze([...range]) as readonly [number, number];
 }
 
 function sharedMotion(recipe: SharedMotionRecipe | Transition): Transition {
@@ -153,48 +139,18 @@ function revealComponent<Names extends string>(
   recipes: RevealRecipes,
   entering: boolean
 ): ComponentType<TransitionRevealProps<Names>> {
+  const mode = entering ? 'enter' : 'exit';
   const frozen = new Map(
     Object.entries(recipes).map(([name, recipe]) => {
       if (!name.trim()) throw new Error('Transition roles must not be empty.');
-      const translateY = recipe.translateY ?? 0;
-      if (!Number.isFinite(translateY))
-        throw new Error('Reveal translation must be finite.');
-      return [
-        name,
-        {
-          during: checkedRange(
-            recipe.during ?? (entering ? [0.55, 0.9] : [0.1, 0.4])
-          ),
-          translateY,
-        },
-      ];
+      return [name, resolveRevealRecipe(recipe, mode)];
     })
   );
-  return function Reveal({ name, children, style }) {
+  return function Reveal({ name, children, style, scope, index, count }) {
     const recipe = frozen.get(name);
     if (!recipe)
       throw new Error(`Unknown ${entering ? 'enter' : 'exit'} role "${name}".`);
-    const { progress, phase, direction } = useChoreographyProgress();
-    const reduceMotion = useReducedMotion();
-    const motion = useAnimatedStyle(() => {
-      const amount = interpolate(
-        phase === 'preparing'
-          ? direction === 'backward'
-            ? 1
-            : 0
-          : progress.value,
-        [...recipe.during],
-        entering ? [0, 1] : [1, 0],
-        'clamp'
-      );
-      const visible = phase === 'idle' ? 1 : amount;
-      return {
-        opacity: visible,
-        transform: [
-          { translateY: reduceMotion ? 0 : (1 - visible) * recipe.translateY },
-        ],
-      };
-    });
+    const motion = useRevealStyle(recipe, { mode, scope, index, count });
     return <Animated.View style={[style, motion]}>{children}</Animated.View>;
   };
 }

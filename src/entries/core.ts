@@ -20,8 +20,8 @@ export {
   useChoreographyControls,
   useChoreographyProgress,
   useLatchedReveal,
-  useStaggeredReveal,
 } from '../hooks/useChoreographyProgress';
+export { useRevealStyle, type RevealOptions } from '../hooks/useRevealStyle';
 export { Springs, Easings } from '../core/constants';
 export { setDebugEnabled } from '../debug/logger';
 export type {
