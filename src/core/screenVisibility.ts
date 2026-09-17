@@ -11,6 +11,21 @@ export type SessionPhase =
 
 export type TransitionDirection = 'forward' | 'backward';
 
+export type ScreenFadeConfig = { during: readonly [number, number] };
+
+export function validateScreenFade(screenFade: ScreenFadeConfig): void {
+  const range = screenFade.during;
+  if (
+    range.length !== 2 ||
+    !range.every(Number.isFinite) ||
+    range[0] < 0 ||
+    range[1] > 1 ||
+    range[0] >= range[1]
+  ) {
+    throw new Error('Screen fade intervals must increase within [0, 1].');
+  }
+}
+
 export function getScreenRole(
   session: TransitionSessionData | null,
   screenId: string
@@ -58,6 +73,7 @@ export function deriveScreenOpacity(
   role: ScreenRole,
   phase: SessionPhase,
   progressValue: number,
+  screenFade?: ScreenFadeConfig,
   isInteractiveSource = false
 ): number {
   'worklet';
@@ -78,7 +94,11 @@ export function deriveScreenOpacity(
   }
   const isExpandedScreen =
     direction === 'forward' ? role === 'target' : role === 'source';
-  const expandedOpacity = Math.max(0, Math.min(1, progressValue / 0.4));
+  const [start, end] = screenFade?.during ?? [0, 0.4];
+  const expandedOpacity = Math.max(
+    0,
+    Math.min(1, (progressValue - start) / (end - start))
+  );
   return isExpandedScreen ? expandedOpacity : 1 - expandedOpacity;
 }
 

@@ -57,11 +57,11 @@ Object configuration defaults to level `info`. Identical consecutive messages ar
 Identifies a screen and coordinates its readiness, visibility, removal handling, and screen-scoped progress context. Available only from the integration entries.
 
 ```ts
-// Prop shape; derive with ComponentProps when importing a named type is needed.
 {
   screenId: string;
   children: ReactNode;
   ready?: boolean; // default: true
+  screenFade?: { during: readonly [number, number] }; // default: [0, 0.4]
   keepVisible?: boolean; // default: false
   allowInteractionDuringTransition?: boolean; // default: true
 }
@@ -73,9 +73,25 @@ Use a stable application label for `screenId`. For React Navigation, match the r
 
 `ready` adds an application gate after the screen lays out. It does not replace layout readiness. Readiness also waits for acquired blockers. See [readiness](../guide/readiness.md).
 
-`keepVisible` keeps the screen at full opacity while a session runs instead of cross-fading it with the other endpoint. Set it on the source screen when the destination is transparent and the source is its backdrop, for example a preview presented over the list it came from. It does not change readiness, interaction blocking, or the pre-activation gate on a forward destination.
+`keepVisible` keeps the screen at full opacity while a session runs instead of cross-fading it with the other endpoint. Set it on the source screen when the destination is transparent and the source is its backdrop, for example a preview presented over the list it came from. It takes precedence over `screenFade`. It does not change readiness, interaction blocking, or the pre-activation gate on a forward destination.
 
 The wrapper handles eligible single-route back removal for reverse choreography. Multi-route resets and removals outside the recorded return path are not equivalent to a shared reverse transition.
+
+### `ScreenFadeConfig`
+
+The `screenFade` prop controls the decorative opacity of this screen during an active transition. The type is exported from both integration entries and the core entry.
+
+- Omit it to keep the default expansion-progress interval `[0, 0.4]`.
+- Pass `{ during: [0.2, 0.7] }` to choose another interval. Both values must be finite and satisfy `0 <= start < end <= 1`.
+- Use the separate `keepVisible` prop to keep the screen opaque and choreograph its content yourself.
+
+Expansion progress is `0` at the collapsed screen and `1` at the expanded screen. The expanded screen fades in across the interval; the collapsed screen fades out. Returning traverses the same interval in reverse. Values outside the interval are clamped. These values are progress positions, not elapsed-time fractions.
+
+Each screen configures its own opacity. Use the same interval on both screens for a complementary crossfade. Disabling the fade on one screen does not disable it on the other. A screen's opacity multiplies its children's opacity, so it can limit the visibility of `Enter` and `Exit` content. With fading disabled, an opaque screen background can cover the screen underneath; choose backgrounds and content reveals to suit the design.
+
+An explicitly owned gesture source stays fully visible regardless of the fade interval until finish or cancel.
+
+This setting does not change readiness, the pending/preparing visibility gates, interaction blocking, or shared-element overlay motion.
 
 ## `SharedElement`
 

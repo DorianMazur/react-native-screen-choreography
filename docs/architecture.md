@@ -106,6 +106,11 @@ Screen opacity and input gating are defined in `screenVisibility.ts`, from
 the detail, including during a return. A plain outer view applies the pending
 or preparing-target visibility gate before Reanimated's initial style commit;
 this avoids an Android mount flash. Active motion runs on the animated inner view.
+The per-screen `screenFade` prop configures only that active decorative opacity:
+it defaults to the expansion interval `[0, 0.4]` and accepts a custom increasing
+interval within `[0, 1]`. The separate `keepVisible` prop overrides the fade to
+keep the screen opaque. Preparation visibility and input gates remain independent
+of these settings.
 
 The provider still contains visibility-registry bookkeeping used by its lifecycle
 and progress handoff. Live owners do not register duplicate-content hiding styles.

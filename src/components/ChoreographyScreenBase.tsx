@@ -16,6 +16,8 @@ import {
   getScreenRole,
   getSessionPhase,
   shouldBlockInteraction,
+  validateScreenFade,
+  type ScreenFadeConfig,
 } from '../core/screenVisibility';
 
 export interface ChoreographyScreenProps {
@@ -23,6 +25,8 @@ export interface ChoreographyScreenProps {
   children: React.ReactNode;
   /** Additional app readiness gate applied after the screen has laid out. */
   ready?: boolean;
+  /** Decorative screen fade in expansion progress. Defaults to [0, 0.4]. */
+  screenFade?: ScreenFadeConfig;
   /** Allow touches on the arriving screen during active motion. Preparation
    * and the outgoing screen remain blocked except for an explicitly owned
    * interactive gesture. Defaults to true. */
@@ -41,10 +45,12 @@ export function ChoreographyScreenBase({
   isFocused = true,
   children,
   ready = true,
+  screenFade,
   keepVisible = false,
   allowInteractionDuringTransition = true,
 }: ChoreographyScreenProps & { instanceId?: string; isFocused?: boolean }) {
   const screenId = instanceId ?? screenName;
+  if (screenFade !== undefined) validateScreenFade(screenFade);
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
   const presentationRef = useRef<React.ComponentRef<typeof View> | null>(null);
@@ -87,10 +93,19 @@ export function ChoreographyScreenBase({
             role,
             phase,
             value,
+            screenFade,
             isInteractiveSource
           ),
     };
-  }, [direction, role, phase, progress, keepVisible, isInteractiveSource]);
+  }, [
+    direction,
+    role,
+    phase,
+    progress,
+    screenFade,
+    keepVisible,
+    isInteractiveSource,
+  ]);
 
   const blockInteraction =
     isPendingTarget ||
