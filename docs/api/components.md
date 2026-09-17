@@ -61,13 +61,19 @@ Identifies a screen and coordinates its readiness, visibility, removal handling,
   screenId: string;
   children: ReactNode;
   ready?: boolean; // default: true
-  screenFade?: false | { during: readonly [number, number] }; // default: [0, 0.4]
+  screenFade?: { during: readonly [number, number] }; // default: [0, 0.4]
+  keepVisible?: boolean; // default: false
+  allowInteractionDuringTransition?: boolean; // default: true
 }
 ```
 
 Use a stable application label for `screenId`. For React Navigation, match the route name; for Expo Router, match `targetScreenId` on navigation requests. Adapters use the actual route key internally to distinguish multiple instances.
 
+`allowInteractionDuringTransition` defaults to `true` and lets the arriving screen receive touches during active motion, for example so a back button can interrupt an opening transition. Set it to `false` to block the arriving screen until the transition completes. Preparation and the outgoing screen remain blocked unless that source is explicitly driving a gesture with `useInteractiveTransition`. A gesture source keeps its visibility and input until finish or cancel, so collapsing the shared content does not terminate the held touch. Shared content in the native overlay remains non-interactive; place the back button’s touch target on the destination screen. Other destination controls should disable themselves while transitioning if they are not safe to use.
+
 `ready` adds an application gate after the screen lays out. It does not replace layout readiness. Readiness also waits for acquired blockers. See [readiness](../guide/readiness.md).
+
+`keepVisible` keeps the screen at full opacity while a session runs instead of cross-fading it with the other endpoint. Set it on the source screen when the destination is transparent and the source is its backdrop, for example a preview presented over the list it came from. It takes precedence over `screenFade`. It does not change readiness, interaction blocking, or the pre-activation gate on a forward destination.
 
 The wrapper handles eligible single-route back removal for reverse choreography. Multi-route resets and removals outside the recorded return path are not equivalent to a shared reverse transition.
 
@@ -77,11 +83,13 @@ The `screenFade` prop controls the decorative opacity of this screen during an a
 
 - Omit it to keep the default expansion-progress interval `[0, 0.4]`.
 - Pass `{ during: [0.2, 0.7] }` to choose another interval. Both values must be finite and satisfy `0 <= start < end <= 1`.
-- Pass `false` to keep the screen opaque during active motion and choreograph its content yourself.
+- Use the separate `keepVisible` prop to keep the screen opaque and choreograph its content yourself.
 
 Expansion progress is `0` at the collapsed screen and `1` at the expanded screen. The expanded screen fades in across the interval; the collapsed screen fades out. Returning traverses the same interval in reverse. Values outside the interval are clamped. These values are progress positions, not elapsed-time fractions.
 
 Each screen configures its own opacity. Use the same interval on both screens for a complementary crossfade. Disabling the fade on one screen does not disable it on the other. A screen's opacity multiplies its children's opacity, so it can limit the visibility of `Enter` and `Exit` content. With fading disabled, an opaque screen background can cover the screen underneath; choose backgrounds and content reveals to suit the design.
+
+An explicitly owned gesture source stays fully visible regardless of the fade interval until finish or cancel.
 
 This setting does not change readiness, the pending/preparing visibility gates, interaction blocking, or shared-element overlay motion.
 

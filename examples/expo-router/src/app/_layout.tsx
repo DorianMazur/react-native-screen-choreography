@@ -35,7 +35,7 @@ export default function RootLayout() {
         >
           <Stack.Screen name="index" />
           <Stack.Screen
-            name="wallet-setup/existing"
+            name="gallery/[photoId]"
             options={{
               presentation: 'containedTransparentModal',
               contentStyle: { backgroundColor: 'transparent' },
@@ -43,7 +43,7 @@ export default function RootLayout() {
             }}
           />
           <Stack.Screen
-            name="gallery/[photoId]"
+            name="trips/[tripId]"
             options={{
               presentation: 'containedTransparentModal',
               contentStyle: { backgroundColor: 'transparent' },

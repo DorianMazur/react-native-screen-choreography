@@ -9,11 +9,11 @@ Choreograph shared elements, companion reveals, and custom back gestures with on
 > **Pre-1.0:** the public API is converging, but minor versions can introduce breaking changes.
 
 <p align="center">
-  <img src="docs/Gallery_demo_new.gif" width="200" alt="Gallery shared element transition recording" />
+  <img src="docs/Gallery_demo_new.gif" width="200" />
   &nbsp;
-  <img src="docs/Wallet_demo_new.gif" width="200" alt="Wallet multi-element transition recording" />
+  <img src="docs/Trips.gif" width="200" />
   &nbsp;
-  <img src="docs/Wallet_Setup_demo.gif" width="200" alt="Wallet setup panel transition recording" />
+  <img src="docs/Wallet_demo_new.gif" width="200" />
 </p>
 
 ## One owner. One receiving target.
@@ -64,7 +64,7 @@ Contributor material: [runtime architecture](https://screen-choreography.dev/arc
 
 ## Example apps
 
-Gallery, Wallet, and Wallet setup share their screen implementations and module-scoped `defineTransition` recipes across both integrations.
+Both integrations use the same shared demo screens and module-scoped `defineTransition` recipes. Browse the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and links to their source.
 
 - [React Navigation example setup](examples/react-navigation/README.md)
 - [Expo Router example setup](examples/expo-router/README.md)

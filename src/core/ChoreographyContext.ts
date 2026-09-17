@@ -5,6 +5,7 @@ import type { NavigationSessionController } from './NavigationSessionController'
 import type { SharedValue } from 'react-native-reanimated';
 import type { View } from 'react-native';
 import type { ReverseTransitionController } from './ReverseTransitionController';
+import type { ReverseHandoffState } from './ReverseTransitionHandoff';
 import type { ReverseCommitRequest } from '../hooks/useReverseTransitionCommit';
 import type {
   ChoreographyDebugConfig,
@@ -91,8 +92,12 @@ export interface ChoreographyContextType {
   progressOwnership: ProgressOwnership;
   navigationController: NavigationSessionController;
   reverseController: ReverseTransitionController;
+  reverseHandoff: SharedValue<ReverseHandoffState | null>;
+  interruptibleReturnSessionId: string | null;
   commitReverseTransition: (request: ReverseCommitRequest) => Promise<void>;
   interactionOwner: SharedValue<string | null>;
+  interactiveScreenId: string | null;
+  setInteractiveScreen: (screenId: string, active: boolean) => void;
   preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;

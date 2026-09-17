@@ -61,6 +61,7 @@ describe('interactive ownership', () => {
         committedSessions.add(sessionId);
       }),
       activeSession: null,
+      setInteractiveScreen: jest.fn(),
       getNavigationLineage: () => ({
         groupId: 'group',
         sourceScreenId: 'List',
@@ -91,6 +92,80 @@ describe('interactive ownership', () => {
     expect(await interactive.beginBack()).toBeNull();
     expect(ctx.preMeasureGroup).not.toHaveBeenCalled();
     expect(ctx.navigationController.getNavigationSourceScreenId()).toBe('List');
+  });
+
+  test('holds source input from preparation until settlement', async () => {
+    await act(async () => {
+      await interactive.beginBack();
+    });
+    expect(ctx.setInteractiveScreen).toHaveBeenLastCalledWith('Detail', true);
+    interactive.setProgress(1);
+    expect(ctx.progress.value).toBe(0);
+    expect(ctx.setInteractiveScreen).toHaveBeenLastCalledWith('Detail', true);
+    await act(async () => interactive.finish());
+    expect(ctx.setInteractiveScreen).toHaveBeenLastCalledWith('Detail', false);
+  });
+
+  test('can grab the arriving screen before its forward spring settles', async () => {
+    const opening = {
+      id: 'opening',
+      direction: 'forward',
+      state: 'active',
+      targetScreenId: 'Detail',
+    } as NonNullable<ChoreographyContextType['activeSession']>;
+    ctx.navigationController.setActiveSession(opening);
+    ctx.navigationController.acquireNavigationLock('List');
+    ctx.progressOwnership.setSession(opening.id);
+    ctx.progress.value = 0.98;
+    ctx.completeTransition = jest.fn(() => {
+      ctx.progressOwnership.setSession(null);
+      ctx.navigationController.releaseNavigationLock();
+      ctx.navigationController.setActiveSession(null);
+    });
+    await act(async () => tree.update(render()));
+    await act(async () => {
+      expect(await interactive.beginBack()).not.toBeNull();
+    });
+    expect(ctx.completeTransition).toHaveBeenCalledWith('opening');
+    expect(ctx.startTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ direction: 'backward' })
+    );
+  });
+
+  test('does not interrupt an unrelated active transition', async () => {
+    ctx.navigationController.setActiveSession({
+      id: 'other',
+      direction: 'forward',
+      state: 'active',
+      targetScreenId: 'Other',
+    } as NonNullable<ChoreographyContextType['activeSession']>);
+    ctx.progressOwnership.setSession('other');
+    expect(await interactive.beginBack()).toBeNull();
+    expect(ctx.completeTransition).not.toHaveBeenCalled();
+    expect(ctx.setInteractiveScreen).not.toHaveBeenCalled();
+  });
+
+  test('cancellation while waiting for the overlay cannot activate a stale gesture', async () => {
+    let ready!: (value: boolean) => void;
+    ctx.waitForOverlayReady = jest.fn(
+      () =>
+        new Promise<boolean>((resolve) => {
+          ready = resolve;
+        })
+    );
+    await act(async () => tree.update(render()));
+    let pending!: ReturnType<Interactive['beginBack']>;
+    await act(async () => {
+      pending = interactive.beginBack();
+    });
+    await act(async () => interactive.cancel({ duration: 1 }));
+    await act(async () => {
+      ready(true);
+      expect(await pending).toBeNull();
+    });
+    expect(interactive.isActive).toBe(false);
+    expect(ctx.setInteractiveScreen).toHaveBeenLastCalledWith('Detail', false);
+    expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
   });
 
   test('elapsed time cannot settle a cancelled gesture into a replacement session', async () => {

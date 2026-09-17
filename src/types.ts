@@ -2,15 +2,26 @@ import type { ComponentType, ReactElement } from 'react';
 import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
 
-export interface SpringConfig {
-  damping?: number;
+export type SpringConfig = {
   mass?: number;
-  stiffness?: number;
   velocity?: number;
   overshootClamping?: boolean;
   restDisplacementThreshold?: number;
   restSpeedThreshold?: number;
-}
+} & (
+  | {
+      damping?: number;
+      stiffness?: number;
+      duration?: never;
+      dampingRatio?: never;
+    }
+  | {
+      duration?: number;
+      dampingRatio?: number;
+      damping?: never;
+      stiffness?: never;
+    }
+);
 
 export interface ElementMetrics {
   pageX: number;

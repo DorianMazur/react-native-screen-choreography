@@ -1,3 +1,5 @@
+import { debugTrace } from '../debug/logger';
+
 export interface ReverseNavigationResult {
   removed: boolean;
   presented: boolean;
@@ -8,7 +10,9 @@ export interface ReverseTransitionConfig {
   sourceScreenId: string;
   targetScreenId: string;
   commitNavigation: () => Promise<ReverseNavigationResult>;
+  onNavigationRemoved?: () => void;
   animate: (onFinished: () => void) => void;
+  settleToTarget: () => void;
   handoff: () => void;
   cancel: () => void;
   isCurrent: () => boolean;
@@ -31,6 +35,30 @@ export class ReverseTransitionController {
 
   owns(sessionId: string): boolean {
     return this.operation?.config.sessionId === sessionId;
+  }
+
+  /** Remove the faded outgoing route while retained content finishes settling. */
+  commitNearEndpoint(sessionId: string): void {
+    const operation = this.operation;
+    if (operation?.config.sessionId === sessionId) this.commit(operation);
+  }
+
+  canInterrupt(sessionId: string): boolean {
+    const operation = this.operation;
+    return Boolean(
+      operation?.config.sessionId === sessionId &&
+      operation.navigationResult?.removed &&
+      this.isCurrent(operation)
+    );
+  }
+
+  finishImmediately(sessionId: string): boolean {
+    if (!this.canInterrupt(sessionId)) return false;
+    const operation = this.operation!;
+    operation.config.settleToTarget();
+    operation.animationFinished = true;
+    this.completeIfReady(operation);
+    return true;
   }
 
   expectsSourceUnmount(sessionId: string, screenId: string): boolean {
@@ -121,6 +149,9 @@ export class ReverseTransitionController {
   private async commit(operation: ReverseOperation): Promise<void> {
     if (!this.isCurrent(operation) || operation.navigationStarted) return;
     operation.navigationStarted = true;
+    debugTrace(
+      `[ReverseCommit] removing route session=${operation.config.sessionId}`
+    );
     try {
       operation.navigationResult = await operation.config.commitNavigation();
     } catch {
@@ -130,12 +161,16 @@ export class ReverseTransitionController {
       };
     }
     if (!this.isCurrent(operation)) return;
+    debugTrace(
+      `[ReverseCommit] navigation result session=${operation.config.sessionId} removed=${operation.navigationResult.removed}`
+    );
 
     if (operation.sourceUnmounted) operation.navigationResult.removed = true;
     if (!operation.navigationResult.removed) {
       this.finish(operation, 'cancel');
       return;
     }
+    operation.config.onNavigationRemoved?.();
     this.completeIfReady(operation);
   }
 

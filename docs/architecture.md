@@ -39,8 +39,10 @@ scale can still require the application to reconsider intrinsic layout.
 `useSharedElementPresentation` exposes canonical collapsed/expanded endpoint
 metrics, styles, metadata, shared expansion progress, and the settled endpoint.
 Owners retain endpoint data, not whole pairs or references to popped screens.
-Initial metrics are null. Retained descendants use `settled` outside transitions
-because the global progress can subsequently belong to a different group.
+Initial metrics are null. The owner derives `presentationProgress` from its
+participation and settled endpoint: it follows the shared clock during its own
+transition and holds 0 or 1 otherwise. The existing `progress` remains the global
+clock, which can subsequently belong to a different group.
 
 ## Pairing and frozen presentations
 
@@ -105,9 +107,10 @@ the detail, including during a return. A plain outer view applies the pending
 or preparing-target visibility gate before Reanimated's initial style commit;
 this avoids an Android mount flash. Active motion runs on the animated inner view.
 The per-screen `screenFade` prop configures only that active decorative opacity:
-it defaults to the expansion interval `[0, 0.4]`, accepts a custom increasing
-interval within `[0, 1]`, or disables the fade with `false`. Preparation visibility
-and input gates remain independent of this setting.
+it defaults to the expansion interval `[0, 0.4]` and accepts a custom increasing
+interval within `[0, 1]`. The separate `keepVisible` prop overrides the fade to
+keep the screen opaque. Preparation visibility and input gates remain independent
+of these settings.
 
 The provider still contains visibility-registry bookkeeping used by its lifecycle
 and progress handoff. Live owners do not register duplicate-content hiding styles.
@@ -122,19 +125,29 @@ Do not treat that bookkeeping as a reason to add snapshot render paths.
 5. At completion, retarget content to its endpoint and release the overlay/session.
 
 After a settled forward transition, Back prepares a reverse session while the
-outgoing route remains mounted. `ReverseTransitionController` waits for the
-animation endpoint, commits navigation, and coordinates removal/presentation
-with `ReverseTransitionHandoff` before cleanup. There is no outgoing-screen
+outgoing route remains mounted. During committed settlement, a UI-thread reaction
+asks `ReverseTransitionController` to remove the outgoing route once expansion
+progress reaches 0.25. This is remaining expansion, not elapsed animation time;
+the threshold starts dismissal and does not itself confirm input readiness.
+Retained content stays in the overlay until the spring finishes. After confirmed
+route removal, a new navigation tap can finish that remaining motion immediately;
+it does not wait for the spring's settling tail. Exact animation completion also
+commits navigation if the earlier reaction has not run. There is no outgoing-screen
 snapshot component. Cancelling an interactive return keeps the detail route.
 Once animation completion and route removal are confirmed, the provider enqueues
 the UI input handoff and completes the session in the same JavaScript turn.
 Portal retargeting and navigation unlock do not wait for a UI-to-JavaScript
 acknowledgment. The handoff is queued before completion invalidates UI ownership.
 
-An interrupted active forward transition follows the navigation hook's explicit
-reverse path, refreshing source metrics after navigation. Progress ownership
+An interrupted active forward transition refreshes its source metrics and uses
+the same return controller, with the original source as its return destination.
+Confirmed removal enables that destination's input when interaction during
+transitions is allowed. It also wakes queued navigation, including when focus
+arrives before the removal result. The remaining animation still owns the
+overlay until completion or a new navigation tap. Progress ownership
 rejects callbacks from replaced animations. JavaScript timers do not force
-animation completion; Reanimated's completion callback owns that decision.
+animation completion; Reanimated's completion callback or an explicit navigation
+interruption owns that decision.
 
 Navigation lineage records source route identity, group, and requested spring.
 Removal interception routes hardware and navigator Back through the same reverse
@@ -163,8 +176,7 @@ registry. Use preparation traces to distinguish time before animation from
 animation duration. Test rapid interruption, repeated return, layout changes,
 and missing endpoint handling when modifying lifecycle code.
 
-Gallery, Wallet, and Wallet setup share screen implementations between the two
-example apps. The Android performance workload mounts the actual Gallery screens;
+The two example apps share screen implementations and transition recipes. The Android performance workload mounts the actual Gallery screens;
 it does not compare synthetic default/custom rendering modes.
 
 ## Declarative composition
@@ -177,8 +189,8 @@ coordinator at session start.
 
 Enter/exit roles render local animated views driven by screen progress. They do
 not participate in pair discovery or overlay readiness. There are no unpaired
-tracks or copied image/text recipes. All examples use this layer: Gallery for its hero and details, Wallet for five
-shared roles and staged sections, and Wallet setup for its single panel.
+tracks or copied image/text recipes. The shared examples demonstrate how to
+combine retained content, named shared roles, and local section reveals.
 Reveals use direction-specific preparation endpoints and suppress translation
 under reduced-motion settings. They read screen state, so retained descendants
 continue to use `useSharedElementPresentation` for their own internal motion.

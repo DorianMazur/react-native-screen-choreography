@@ -11,10 +11,9 @@ export type SessionPhase =
 
 export type TransitionDirection = 'forward' | 'backward';
 
-export type ScreenFadeConfig = false | { during: readonly [number, number] };
+export type ScreenFadeConfig = { during: readonly [number, number] };
 
 export function validateScreenFade(screenFade: ScreenFadeConfig): void {
-  if (screenFade === false) return;
   const range = screenFade.during;
   if (
     range.length !== 2 ||
@@ -74,9 +73,11 @@ export function deriveScreenOpacity(
   role: ScreenRole,
   phase: SessionPhase,
   progressValue: number,
-  screenFade?: ScreenFadeConfig
+  screenFade?: ScreenFadeConfig,
+  isInteractiveSource = false
 ): number {
   'worklet';
+  if (role === 'source' && isInteractiveSource) return 1;
   if (
     role === 'inactive' ||
     phase === 'idle' ||
@@ -91,7 +92,6 @@ export function deriveScreenOpacity(
     }
     return 1;
   }
-  if (screenFade === false) return 1;
   const isExpandedScreen =
     direction === 'forward' ? role === 'target' : role === 'source';
   const [start, end] = screenFade?.during ?? [0, 0.4];
@@ -104,8 +104,20 @@ export function deriveScreenOpacity(
 
 export function shouldBlockInteraction(
   role: ScreenRole,
-  phase: SessionPhase
+  phase: SessionPhase,
+  allowInteractionDuringTransition = true,
+  isReturnTarget = false,
+  isInteractiveSource = false
 ): boolean {
+  'worklet';
+  if (role === 'source' && isInteractiveSource) return false;
   if (role === 'inactive') return false;
-  return phase === 'preparing' || phase === 'active';
+  return (
+    phase === 'preparing' ||
+    (phase === 'active' &&
+      !(
+        (role === 'target' || isReturnTarget) &&
+        allowInteractionDuringTransition
+      ))
+  );
 }

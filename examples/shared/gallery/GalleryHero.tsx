@@ -24,7 +24,7 @@ export function GalleryHero({
   observation?: GalleryObservation;
 }) {
   useEffect(() => observation?.mounted(photo.id), [observation, photo.id]);
-  const { progress, transitioning, settled, collapsed, expanded } =
+  const { presentationProgress, collapsed, expanded } =
     useSharedElementPresentation();
   const from = {
     width: collapsed.metrics?.width ?? initialWidth,
@@ -37,11 +37,7 @@ export function GalleryHero({
     expansion: 1,
   };
   const frame = useDerivedValue(() =>
-    interpolateHero(
-      from,
-      to,
-      transitioning ? progress.value : settled === 'expanded' ? 1 : 0
-    )
+    interpolateHero(from, to, presentationProgress.value)
   );
   const frameStyle = useAnimatedStyle(() => ({
     width: frame.value.width,

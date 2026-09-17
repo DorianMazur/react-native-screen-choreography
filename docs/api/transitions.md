@@ -137,7 +137,15 @@ Reusable `SpringConfig` presets:
 | `fast`    | 28      | 1    | 400       |
 | `gentle`  | 28      | 1    | 180       |
 
-`default` and `fast` also set overshoot clamping and rest thresholds of `0.001`. Supported fields are `damping`, `mass`, `stiffness`, `velocity`, `overshootClamping`, `restDisplacementThreshold`, and `restSpeedThreshold`. All are optional.
+`default` and `fast` also set overshoot clamping and rest thresholds of `0.001`.
+
+`SpringConfig` supports either a physics spring with `stiffness` and `damping`, or a duration-based spring with `duration` and `dampingRatio`. Do not mix these two sets of fields. Both forms also accept `mass`, `velocity`, `overshootClamping`, `restDisplacementThreshold`, and `restSpeedThreshold`. All fields are optional.
+
+```ts
+const motion = { spring: { duration: 800, dampingRatio: 1 } };
+```
+
+Duration-based springs are preserved during return and interactive settlement without adding physics-only defaults. `spring.duration` configures a spring; the separate top-level `duration` option selects a timing animation.
 
 ## `Easings`
 

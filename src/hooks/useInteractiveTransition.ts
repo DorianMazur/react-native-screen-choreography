@@ -7,7 +7,7 @@ import {
 import { ChoreographyContext } from '../core/ChoreographyContext';
 import type { CommitBackNavigation } from '../core/navigationCommit';
 import { debugLog } from '../debug/logger';
-import { FAST_SPRING } from '../core/constants';
+import { resolveSpringConfig } from '../core/constants';
 import {
   resolveInteractiveTransitionOutcome,
   toInteractiveSessionProgress,
@@ -51,6 +51,8 @@ export function useInteractiveTransitionNavigator({
     startTransition,
     waitForOverlayReady,
     cancelTransition,
+    completeTransition,
+    setInteractiveScreen,
     getNavigationLineage,
     resolveScreenId,
   } = choreography;
@@ -65,23 +67,25 @@ export function useInteractiveTransitionNavigator({
     () => () => {
       beginTokenRef.current += 1;
       preparingRef.current = false;
+      setInteractiveScreen(screenId, false);
       const sessionId = sessionIdRef.current;
       sessionIdRef.current = null;
       if (sessionId && !reverseController.owns(sessionId)) {
         cancelTransition(sessionId);
       }
     },
-    [cancelTransition, reverseController]
+    [cancelTransition, reverseController, screenId, setInteractiveScreen]
   );
 
   useEffect(() => {
     const sessionId = sessionIdRef.current;
     if (sessionId && activeSession?.id !== sessionId) {
       sessionIdRef.current = null;
+      setInteractiveScreen(screenId, false);
       setGestureToken(0);
       setIsActive(false);
     }
-  }, [activeSession]);
+  }, [activeSession, screenId, setInteractiveScreen]);
 
   const gestureProgress = useDerivedValue(() => 1 - progress.value);
 
@@ -98,12 +102,22 @@ export function useInteractiveTransitionNavigator({
     async (
       options: InteractiveBackOptions = {}
     ): Promise<InteractiveTransitionSession | null> => {
-      if (
-        preparingRef.current ||
-        sessionIdRef.current ||
-        progressOwnership.hasSession
-      ) {
+      if (preparingRef.current || sessionIdRef.current) {
         return null;
+      }
+
+      if (progressOwnership.hasSession) {
+        const opening = navigationController.getActiveSession();
+        if (
+          opening?.direction !== 'forward' ||
+          opening.state !== 'active' ||
+          opening.targetScreenId !== screenId
+        )
+          return null;
+        const token = progressOwnership.claim(opening.id);
+        if (token === null) return null;
+        setOwnedProgress(progressOwnership, token, opening.id, progress, 1);
+        completeTransition(opening.id);
       }
 
       const lineage = getNavigationLineage(screenId);
@@ -128,6 +142,7 @@ export function useInteractiveTransitionNavigator({
       if (!navigationController.acquireNavigationLock(screenId)) return null;
       const navigationToken = navigationController.getNavigationLockToken();
       preparingRef.current = true;
+      setInteractiveScreen(screenId, true);
       beginTokenRef.current += 1;
       const beginToken = beginTokenRef.current;
       progressOwnership.invalidate();
@@ -162,7 +177,7 @@ export function useInteractiveTransitionNavigator({
         sessionIdRef.current = session.id;
         const overlayReady = await waitForOverlayReady(session.id);
         if (!progressOwnership.isCurrent(token, session.id)) return null;
-        if (!overlayReady) {
+        if (!overlayReady || beginTokenRef.current !== beginToken) {
           if (sessionIdRef.current === session.id) {
             sessionIdRef.current = null;
           }
@@ -180,6 +195,9 @@ export function useInteractiveTransitionNavigator({
         return { id: session.id, progress: gestureProgress };
       } finally {
         if (!sessionIdRef.current) {
+          if (beginTokenRef.current === beginToken) {
+            setInteractiveScreen(screenId, false);
+          }
           navigationController.releaseNavigationLock(navigationToken);
         }
         if (beginTokenRef.current === beginToken) {
@@ -189,6 +207,8 @@ export function useInteractiveTransitionNavigator({
     },
     [
       cancelTransition,
+      completeTransition,
+      setInteractiveScreen,
       getNavigationLineage,
       navigationController,
       gestureProgress,
@@ -225,6 +245,7 @@ export function useInteractiveTransitionNavigator({
       if (!sessionId || reverseController.owns(sessionId)) return;
       const token = progressOwnership.claim(sessionId);
       if (token === null) return;
+      setInteractiveScreen(screenId, false);
       if (target === 0) {
         // The provider retains the source and owns completion across route unmount.
         setGestureToken(0);
@@ -248,8 +269,7 @@ export function useInteractiveTransitionNavigator({
         target,
         duration: options.duration,
         spring: {
-          ...FAST_SPRING,
-          ...options.spring,
+          ...resolveSpringConfig(options.spring),
           ...(options.velocity === undefined
             ? {}
             : { velocity: -options.velocity }),
@@ -264,6 +284,8 @@ export function useInteractiveTransitionNavigator({
       progress,
       progressOwnership,
       reverseController,
+      screenId,
+      setInteractiveScreen,
     ]
   );
 
@@ -277,9 +299,10 @@ export function useInteractiveTransitionNavigator({
     (options: InteractiveTransitionSettleOptions = {}) => {
       beginTokenRef.current += 1;
       preparingRef.current = false;
+      setInteractiveScreen(screenId, false);
       animateSettlement(1, options);
     },
-    [animateSettlement]
+    [animateSettlement, screenId, setInteractiveScreen]
   );
 
   const settle = useCallback(

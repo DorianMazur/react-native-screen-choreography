@@ -71,6 +71,28 @@ describe('getSessionPhase', () => {
 });
 
 describe('deriveScreenOpacity', () => {
+  it('keeps a gesture source visible even with a custom fade or a collapsed hold', () => {
+    for (const direction of ['forward', 'backward'] as const) {
+      for (const phase of ['preparing', 'active'] as const) {
+        for (const progress of [0, 0.2, 1]) {
+          expect(
+            deriveScreenOpacity(
+              direction,
+              'source',
+              phase,
+              progress,
+              { during: [0.2, 0.8] },
+              true
+            )
+          ).toBe(1);
+        }
+      }
+    }
+    expect(
+      deriveScreenOpacity('forward', 'target', 'preparing', 0, undefined, true)
+    ).toBe(0);
+  });
+
   it('retraces custom screen fades and clamps spring overshoot', () => {
     const fade = { during: [0.2, 0.8] as const };
     for (const [progress, opacity] of [
@@ -93,24 +115,6 @@ describe('deriveScreenOpacity', () => {
         deriveScreenOpacity('backward', 'target', 'active', progress!, fade)
       ).toBeCloseTo(1 - opacity!);
     }
-  });
-
-  it('disables decorative opacity without disabling preparation gates', () => {
-    for (const direction of ['forward', 'backward'] as const) {
-      for (const role of ['source', 'target'] as const) {
-        for (const progress of [0, 0.2, 0.8, 1]) {
-          expect(
-            deriveScreenOpacity(direction, role, 'active', progress, false)
-          ).toBe(1);
-        }
-      }
-    }
-    expect(
-      deriveScreenOpacity('forward', 'target', 'preparing', 0, false)
-    ).toBe(0);
-    expect(
-      deriveScreenOpacity('backward', 'target', 'preparing', 1, false)
-    ).toBe(1);
   });
 
   it('keeps inactive screens fully visible', () => {
@@ -235,16 +239,27 @@ test.each([
 });
 
 describe('shouldBlockInteraction', () => {
+  it('preserves the gesture responder without unlocking preparing targets', () => {
+    for (const phase of ['preparing', 'active'] as const) {
+      expect(shouldBlockInteraction('source', phase, false, false, true)).toBe(
+        false
+      );
+    }
+    expect(
+      shouldBlockInteraction('target', 'preparing', true, false, true)
+    ).toBe(true);
+  });
   it('never blocks inactive screens', () => {
     expect(shouldBlockInteraction('inactive', 'active')).toBe(false);
     expect(shouldBlockInteraction('inactive', 'preparing')).toBe(false);
   });
 
-  it('blocks participating screens during preparing or active', () => {
+  it('blocks preparation and the active source, but allows the active target by default', () => {
     expect(shouldBlockInteraction('source', 'preparing')).toBe(true);
     expect(shouldBlockInteraction('source', 'active')).toBe(true);
     expect(shouldBlockInteraction('target', 'preparing')).toBe(true);
-    expect(shouldBlockInteraction('target', 'active')).toBe(true);
+    expect(shouldBlockInteraction('target', 'active')).toBe(false);
+    expect(shouldBlockInteraction('target', 'active', false)).toBe(true);
   });
 
   it('does not block once the session is winding down', () => {

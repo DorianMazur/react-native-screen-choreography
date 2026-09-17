@@ -94,7 +94,7 @@ Enter and exit intervals use expansion progress, so they reverse naturally when 
 </ChoreographyScreen>
 ```
 
-Use `screenFade={false}` on each screen whose content you want to choreograph without a parent fade. Preparation still hides the incoming screen until it is ready for the transition, and input blocking remains active. With no screen fade, opaque backgrounds can obscure the underlying screen, so coordinate backgrounds and content visibility in your design.
+Use `keepVisible` on each screen whose content you want to choreograph without a parent fade. Preparation still hides the incoming screen until it is ready for the transition, and input blocking remains active. With no screen fade, opaque backgrounds can obscure the underlying screen, so coordinate backgrounds and content visibility in your design.
 
 The interval reverses automatically on Back; there is no separate backward interval. See [`ScreenFadeConfig`](../api/components.md#screenfadeconfig) for details.
 
@@ -147,10 +147,17 @@ Always render the supplied `children` exactly once throughout a session. Do not 
 ## Animate inside the retained content
 
 ```tsx
-const { progress, collapsed, expanded } = useSharedElementPresentation();
+const { presentationProgress } = useSharedElementPresentation();
 const labelStyle = useAnimatedStyle(() => ({
   transform: [
-    { scale: interpolate(progress.value, [0, 1], [1, 1.25], 'clamp') },
+    {
+      scale: interpolate(
+        presentationProgress.value,
+        [0, 1],
+        [1, 1.25],
+        'clamp'
+      ),
+    },
   ],
 }));
 ```

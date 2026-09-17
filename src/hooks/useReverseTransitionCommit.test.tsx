@@ -1,5 +1,10 @@
 import { Platform, type View } from 'react-native';
-import { makeMutable, withSpring, withTiming } from 'react-native-reanimated';
+import {
+  makeMutable,
+  useAnimatedReaction,
+  withSpring,
+  withTiming,
+} from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
@@ -51,8 +56,10 @@ const trees: ReactTestRenderer[] = [];
 
 async function mountHook({
   registerSource = true,
+  direction = 'backward',
 }: {
   registerSource?: boolean;
+  direction?: 'forward' | 'backward';
 } = {}) {
   const visibility = new ElementVisibilityRegistry();
   const sourceHidden = visibility.get('source', false);
@@ -70,9 +77,9 @@ async function mountHook({
   let session: TransitionSessionData = {
     id: 'reverse',
     groupId: 'group',
-    sourceScreenId: 'article',
-    targetScreenId: 'home',
-    direction: 'backward',
+    sourceScreenId: direction === 'forward' ? 'home' : 'article',
+    targetScreenId: direction === 'forward' ? 'article' : 'home',
+    direction,
     state: 'active',
     progress,
     pairs: [],
@@ -176,6 +183,51 @@ afterEach(async () => {
 });
 
 describe('provider reverse commit integration', () => {
+  test.each(['forward', 'backward'] as const)(
+    '%s return accepts a new tap in the final 25% before the spring completes',
+    async (direction) => {
+      const harness = await mountHook({ direction });
+      const { completion, navigation, navigateBack } = await harness.start();
+      const [prepare, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
+        -1
+      )!;
+      harness.progress.value = 0.251;
+      expect(prepare()).toBeNull();
+      harness.progress.value = 0.25;
+      await act(async () => {
+        react(prepare(), null);
+        flushRN();
+      });
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+      await act(async () =>
+        navigation.resolve({ removed: true, presented: false })
+      );
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+      expect(harness.completeTransition).not.toHaveBeenCalled();
+      expect(harness.api.reverseHandoff.value?.navigationPresented).toBe(true);
+      expect(harness.api.reverseHandoff.value?.targetScreenId).toBe('home');
+      expect(harness.api.interruptibleReturnSessionId).toBe('reverse');
+      const finishTransition =
+        direction === 'forward'
+          ? harness.cancelTransition
+          : harness.completeTransition;
+      await act(async () => {
+        expect(harness.api.reverseController.finishImmediately('reverse')).toBe(
+          true
+        );
+      });
+      await completion;
+      expect(harness.progress.value).toBe(0);
+      expect(harness.interactionOwner.value).toBe('home');
+      expect(finishTransition).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        harness.finishAnimation();
+        flushRN();
+      });
+      expect(finishTransition).toHaveBeenCalledTimes(1);
+    }
+  );
+
   test.each(['ios', 'android'] as const)(
     '%s waits for animation then removal before handing off',
     async (platform) => {
@@ -347,20 +399,31 @@ describe('provider reverse commit integration', () => {
     expect(harness.completeTransition.mock.calls).toEqual([['replacement']]);
   });
 
-  test('failed navigation cancels instead of handing off input', async () => {
-    const harness = await mountHook();
-    const { completion, navigation } = await harness.start();
-    await act(async () => {
-      harness.finishAnimation();
-      flushRN();
-    });
-    await act(async () =>
-      navigation.resolve({ removed: false, presented: false })
-    );
-    await completion;
-    expect(harness.interactionOwner.value).toBeNull();
-    expect(harness.cancelTransition).toHaveBeenCalledWith('reverse');
-  });
+  test.each(['forward', 'backward'] as const)(
+    'failed %s return restores the detail instead of handing off input',
+    async (direction) => {
+      const harness = await mountHook({ direction });
+      const { completion, navigation } = await harness.start();
+      await act(async () => {
+        harness.finishAnimation();
+        flushRN();
+      });
+      await act(async () =>
+        navigation.resolve({ removed: false, presented: false })
+      );
+      await completion;
+      expect(harness.interactionOwner.value).toBeNull();
+      expect(harness.api.interruptibleReturnSessionId).toBeNull();
+      if (direction === 'forward') {
+        expect(harness.progress.value).toBe(1);
+        expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
+        expect(harness.cancelTransition).not.toHaveBeenCalled();
+      } else {
+        expect(harness.cancelTransition).toHaveBeenCalledWith('reverse');
+        expect(harness.completeTransition).not.toHaveBeenCalled();
+      }
+    }
+  );
 
   test.each(['animation', 'navigation'] as const)(
     'disposal while %s is pending rejects late completion',

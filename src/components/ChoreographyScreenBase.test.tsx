@@ -42,10 +42,30 @@ function createContext() {
   } as unknown as ChoreographyContextType;
 }
 
+test('keeps both responder gates open for a held source during preparation', async () => {
+  const context = createContext();
+  context.interactiveScreenId = 'detail';
+  context.activeSession!.state = 'preparing';
+  const source = await mountScreen(context, 'detail');
+  const target = await mountScreen(context, 'home');
+  expect(source.outer().props.pointerEvents).toBe('box-none');
+  expect(source.inner().props.animatedProps.pointerEvents).toBe('auto');
+  expect(source.opacity()).toBe(1);
+  expect(target.outer().props.pointerEvents).toBe('none');
+
+  context.activeSession!.state = 'active';
+  context.progress.value = 0;
+  await act(async () => source.update(true));
+  expect(source.inner().props.animatedProps.pointerEvents).toBe('auto');
+  expect(source.opacity()).toBe(1);
+});
+
 async function mountScreen(
   context: ChoreographyContextType,
   screenId: string,
   actions: ChoreographyActionsType | null = null,
+  allowInteractionDuringTransition?: boolean,
+  keepVisible = false,
   screenFade?: ChoreographyScreenProps['screenFade']
 ) {
   let tree!: ReactTestRenderer;
@@ -56,6 +76,8 @@ async function mountScreen(
           screenId={screenId}
           ready={ready}
           screenFade={screenFade}
+          keepVisible={keepVisible}
+          allowInteractionDuringTransition={allowInteractionDuringTransition}
         >
           {null}
         </ChoreographyScreenBase>
@@ -71,12 +93,19 @@ async function mountScreen(
     outer: () => tree.root.findAll((node) => Boolean(node.props.onLayout))[0]!,
     inner: () =>
       tree.root.findAll((node) => Boolean(node.props.animatedProps))[0]!,
+    opacity: () => {
+      const style = tree.root.findAll((node) =>
+        Boolean(node.props.animatedProps)
+      )[0]!.props.style;
+      return (Array.isArray(style) ? Object.assign({}, ...style) : style)
+        .opacity as number;
+    },
     update: (ready: boolean) => tree.update(render(ready)),
   };
 }
 
 test.each(['pending', 'preparing'] as const)(
-  'disabling screen fade preserves the forward %s visibility and input gate',
+  'keepVisible preserves the forward %s visibility and input gate',
   async (phase) => {
     const context = createContext();
     context.activeSession!.direction = 'forward';
@@ -84,27 +113,27 @@ test.each(['pending', 'preparing'] as const)(
       context.activeSession = null;
       context.pendingTargetScreenId = 'home';
     } else context.activeSession!.state = 'preparing';
-    const screen = await mountScreen(context, 'home', null, false);
+    const screen = await mountScreen(context, 'home', null, undefined, true);
     expect(screen.outer().props.style).toContainEqual({ opacity: 0 });
     expect(screen.outer().props.pointerEvents).toBe('none');
   }
 );
 
-test('applies custom fade and disabled fade through the screen wrapper', async () => {
+test('applies custom fade and keepVisible through the screen wrapper', async () => {
   const context = createContext();
   context.progress.value = 0.5;
-  const custom = await mountScreen(context, 'detail', null, {
+  const custom = await mountScreen(context, 'detail', null, undefined, false, {
     during: [0.2, 0.8],
   });
   expect(custom.inner().props.style[1].opacity).toBeCloseTo(0.5);
-  const disabled = await mountScreen(context, 'detail', null, false);
+  const disabled = await mountScreen(context, 'detail', null, undefined, true);
   expect(disabled.inner().props.style[1].opacity).toBe(1);
   expect(disabled.inner().props.animatedProps.pointerEvents).toBe('none');
 });
 
 test('releases only the reverse destination before React session cleanup', async () => {
   const context = createContext();
-  const destination = await mountScreen(context, 'home');
+  const destination = await mountScreen(context, 'home', null, false);
   const outgoing = await mountScreen(context, 'detail');
   expect(destination.outer().props.pointerEvents).toBe('box-none');
   expect(destination.inner().props.animatedProps.pointerEvents).toBe('none');
@@ -115,6 +144,38 @@ test('releases only the reverse destination before React session cleanup', async
   expect(context.activeSession?.state).toBe('active');
   expect(destination.inner().props.animatedProps.pointerEvents).toBe('auto');
   expect(outgoing.inner().props.animatedProps.pointerEvents).toBe('none');
+});
+
+test('an interrupted forward return unlocks the original source only after removal, respecting opt-out', async () => {
+  const context = createContext();
+  context.activeSession = {
+    ...context.activeSession!,
+    direction: 'forward',
+    sourceScreenId: 'home',
+    targetScreenId: 'detail',
+  };
+  context.progressOwnership = {
+    owner: { value: 3 },
+  } as ChoreographyContextType['progressOwnership'];
+  context.reverseHandoff = {
+    value: {
+      sessionId: 'reverse',
+      token: 3,
+      targetScreenId: 'home',
+      animationFinished: false,
+      navigationPresented: false,
+      completed: false,
+    },
+  } as ChoreographyContextType['reverseHandoff'];
+  const destination = await mountScreen(context, 'home');
+  const optedOut = await mountScreen(context, 'home', null, false);
+  expect(destination.inner().props.animatedProps.pointerEvents).toBe('none');
+  context.reverseHandoff.value!.navigationPresented = true;
+  expect(destination.inner().props.animatedProps.pointerEvents).toBe('auto');
+  expect(optedOut.inner().props.animatedProps.pointerEvents).toBe('none');
+
+  context.progressOwnership.owner.value = 4;
+  expect(destination.inner().props.animatedProps.pointerEvents).toBe('none');
 });
 
 test.each(['pending', 'preparing'] as const)(
@@ -144,4 +205,34 @@ test('keeps presentation registration stable when readiness changes', async () =
   expect(unregister).not.toHaveBeenCalled();
   await act(async () => screen.tree.unmount());
   expect(unregister).toHaveBeenCalledTimes(1);
+});
+
+test('the default unlocks only the active arriving screen, never preparation or the outgoing screen', async () => {
+  const context = createContext();
+  const destination = await mountScreen(context, 'home');
+  const source = await mountScreen(context, 'detail');
+  expect(destination.inner().props.pointerEvents).toBe('auto');
+  expect(destination.inner().props.animatedProps.pointerEvents).toBe('auto');
+  expect(source.inner().props.animatedProps.pointerEvents).toBe('none');
+  context.pendingTargetScreenId = 'home';
+  await act(async () => destination.update(true));
+  expect(destination.outer().props.pointerEvents).toBe('none');
+  expect(destination.inner().props.animatedProps.pointerEvents).toBe('none');
+  context.pendingTargetScreenId = null;
+  context.activeSession!.state = 'preparing';
+  await act(async () => destination.update(true));
+  expect(destination.outer().props.pointerEvents).toBe('none');
+  expect(destination.inner().props.animatedProps.pointerEvents).toBe('none');
+});
+
+test('keepVisible holds the cross-faded endpoint at full opacity', async () => {
+  const context = createContext();
+  context.progress.value = 0.4;
+  const fading = await mountScreen(context, 'home');
+  const kept = await mountScreen(context, 'home', null, false, true, {
+    during: [0.2, 0.8],
+  });
+  expect(fading.opacity()).toBe(0);
+  expect(kept.opacity()).toBe(1);
+  expect(kept.inner().props.animatedProps.pointerEvents).toBe('none');
 });

@@ -28,8 +28,9 @@ test('screen opacity runs in an isolated UI runtime with omitted and explicit fa
   expect(opacity('backward', 'target', 'active', 0.2, undefined)).toBeCloseTo(
     0.5
   );
-  expect(opacity('forward', 'target', 'preparing', 0, false)).toBe(0);
-  expect(opacity('forward', 'target', 'active', 0, false)).toBe(1);
+  expect(
+    opacity('forward', 'target', 'preparing', 0, { during: [0.2, 0.8] })
+  ).toBe(0);
   expect(
     opacity('backward', 'source', 'active', 0.5, { during: [0.2, 0.8] })
   ).toBeCloseTo(0.5);

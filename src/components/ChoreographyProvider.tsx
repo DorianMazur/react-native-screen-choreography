@@ -112,6 +112,17 @@ export function ChoreographyProvider({
   const progress = useSharedValue(0);
   const progressOwner = useSharedValue(0);
   const interactionOwner = useSharedValue<string | null>(null);
+  const [interactiveScreenId, setInteractiveScreenId] = useState<string | null>(
+    null
+  );
+  const setInteractiveScreen = useCallback(
+    (screenId: string, active: boolean) => {
+      setInteractiveScreenId((current) =>
+        active ? screenId : current === screenId ? null : current
+      );
+    },
+    []
+  );
   const [visibilityRegistry] = useState(() => new ElementVisibilityRegistry());
   const [progressOwnership] = useState(
     () =>
@@ -233,6 +244,7 @@ export function ChoreographyProvider({
       overlayContentReadySessionIdRef.current = null;
 
       if (!session) {
+        setInteractiveScreenId(null);
         navigationController.releaseNavigationLock();
         if (previousSession) {
           onTransitionEndRef.current?.(previousSession);
@@ -539,6 +551,8 @@ export function ChoreographyProvider({
   const getActiveSession = useCallback(() => activeSessionRef.current, []);
   const {
     reverseController,
+    reverseHandoff,
+    interruptibleReturnSessionId,
     commitReverseTransition,
     registerScreenPresentation: registerReverseScreenPresentation,
   } = useReverseTransitionCommit({
@@ -602,12 +616,17 @@ export function ChoreographyProvider({
       const session = activeSessionRef.current;
       const role = getScreenRole(session, screenId);
       if (!session || role === 'inactive') return;
-      if (reverseController.owns(session.id)) return;
+      const expanded =
+        session.direction === 'forward' ? role === 'target' : role === 'source';
+      if (reverseController.owns(session.id)) {
+        // Scrolling the returning screen must move the real element, not leave
+        // its overlay at the frozen destination. Wait for confirmed removal.
+        if (!expanded) reverseController.finishImmediately(session.id);
+        return;
+      }
       const sessionId = session.id;
       const token = progressOwnership.claim(sessionId);
       if (token === null) return;
-      const expanded =
-        session.direction === 'forward' ? role === 'target' : role === 'source';
       setOwnedProgress(
         progressOwnership,
         token,
@@ -679,8 +698,12 @@ export function ChoreographyProvider({
       progressOwnership,
       navigationController,
       reverseController,
+      reverseHandoff,
+      interruptibleReturnSessionId,
       commitReverseTransition,
       interactionOwner,
+      interactiveScreenId,
+      setInteractiveScreen,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
@@ -710,8 +733,12 @@ export function ChoreographyProvider({
       progressOwnership,
       navigationController,
       reverseController,
+      reverseHandoff,
+      interruptibleReturnSessionId,
       commitReverseTransition,
       interactionOwner,
+      interactiveScreenId,
+      setInteractiveScreen,
       preMeasureGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
