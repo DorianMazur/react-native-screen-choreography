@@ -80,6 +80,11 @@ The Gallery benchmark and `docs/performance.md` describe the measurement pipelin
 
 The native overlay presents above native-stack containers. Overlay content
 reports readiness in a layout effect; the native host acknowledges presentation.
+On Android, the host sends a TurboModule event with the session ID after drawing,
+so acknowledgment does not wait for an additional Fabric event-batching frame.
+Changing the session ID requests a fresh acknowledgment even when React batches
+the inactive/active host updates during interruption. iOS uses the native view's
+presentation event after its Core Animation transaction commits.
 Animation waits for those readiness signals, with a bounded safety path. Do not
 start hiding or moving content based only on an eager session-activation callback.
 The native host's dismissal protection is separate from the removed outgoing

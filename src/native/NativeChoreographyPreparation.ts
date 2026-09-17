@@ -1,6 +1,9 @@
 import type { TurboModule } from 'react-native';
 import { TurboModuleRegistry } from 'react-native';
-import type { Double } from 'react-native/Libraries/Types/CodegenTypes';
+import type {
+  Double,
+  EventEmitter,
+} from 'react-native/Libraries/Types/CodegenTypes';
 
 export type LayoutPreparationResult = {
   ready: boolean;
@@ -9,6 +12,10 @@ export type LayoutPreparationResult = {
 };
 
 export interface Spec extends TurboModule {
+  readonly onOverlayPresented: EventEmitter<{
+    sessionId: string;
+    timestamp: Double;
+  }>;
   awaitLayout(
     requestId: string,
     screenTag: Double,
