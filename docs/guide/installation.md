@@ -13,7 +13,7 @@ These are the package's declared peer ranges, not a guarantee that every combina
 
 | Dependency                             | Declared requirement                     |
 | -------------------------------------- | ---------------------------------------- |
-| React Native                           | `>= 0.76`, **New Architecture / Fabric** |
+| React Native                           | `>= 0.81`, **New Architecture / Fabric** |
 | React                                  | `>= 18`                                  |
 | Reanimated                             | `>= 4`                                   |
 | React Native Worklets                  | `>= 0.8`                                 |

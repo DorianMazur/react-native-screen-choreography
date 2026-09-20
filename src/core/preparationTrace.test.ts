@@ -69,7 +69,7 @@ describe('PreparationTrace', () => {
     let now = 10;
     const observer = jest.fn();
     const trace = new PreparationTrace(identity, observer, () => now);
-    const endRead = trace.start('source-measure');
+    const endRead = trace.start('source-capture');
     now = 25;
     trace.finish('cancelled');
     now = 100;
@@ -82,7 +82,7 @@ describe('PreparationTrace', () => {
       sessionId: null,
       completedAtMs: 25,
       outcome: 'cancelled',
-      stages: [{ name: 'source-measure', durationMs: 15, completed: false }],
+      stages: [{ name: 'source-capture', durationMs: 15, completed: false }],
     });
   });
 

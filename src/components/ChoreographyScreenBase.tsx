@@ -4,7 +4,6 @@ import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
 } from 'react-native-reanimated';
-import { hasNativePreparation } from '../core/nativePreparation';
 import { ScreenIdContext } from '../core/screenIdContext';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import {
@@ -56,7 +55,6 @@ export function ChoreographyScreenBase({
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
   const presentationRef = useRef<React.ComponentRef<typeof View> | null>(null);
-  const readinessTokenRef = useRef(0);
   const layoutReadyRef = useRef(false);
   const readyRef = useRef(ready);
   readyRef.current = ready;
@@ -162,7 +160,6 @@ export function ChoreographyScreenBase({
     setScreenReady?.(screenId, false, screenName);
 
     return () => {
-      readinessTokenRef.current += 1;
       unregisterScreen?.(screenId);
     };
   }, [screenId, screenName, setScreenReady, unregisterScreen]);
@@ -180,26 +177,9 @@ export function ChoreographyScreenBase({
       return;
     }
 
-    readinessTokenRef.current += 1;
-    const token = readinessTokenRef.current;
-    layoutReadyRef.current = false;
-    setScreenReady(screenId, false);
-
-    if (hasNativePreparation()) {
-      // This is the application/layout gate; native attachment is checked as a batch.
-      layoutReadyRef.current = true;
-      setScreenReady(screenId, readyRef.current);
-      return;
-    }
-
-    requestAnimationFrame(() => {
-      requestAnimationFrame(() => {
-        if (readinessTokenRef.current === token) {
-          layoutReadyRef.current = true;
-          setScreenReady(screenId, readyRef.current);
-        }
-      });
-    });
+    // Application readiness only. Completed mounting is verified by Fabric capture.
+    layoutReadyRef.current = true;
+    setScreenReady(screenId, readyRef.current);
   }, [screenId, setScreenReady]);
 
   return (

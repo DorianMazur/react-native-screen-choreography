@@ -1,11 +1,12 @@
 import {
-  hasNativePreparation,
-  prepareNativeTargets,
-  type PreparedTargets,
-} from './nativePreparation';
+  captureFabricLayout,
+  subscribeToFabricMounts,
+  waitForFabricLayout,
+  type FabricLayoutEntry,
+  type FabricLayoutSnapshot,
+} from './fabricLayout';
 import type { PreparationTrace } from './preparationTrace';
 import { type SharedValue } from 'react-native-reanimated';
-import { Platform } from 'react-native';
 import type {
   TransitionSessionData,
   ElementTransitionPair,
@@ -14,9 +15,7 @@ import type {
   NodeHandleRef,
 } from '../types';
 import type { ElementRegistry } from './ElementRegistry';
-import { measureElementsBatched, type BatchMeasureEntry } from './measurement';
 import { debugLog, debugTrace, debugWarn } from '../debug/logger';
-import { getElementIdentityKey } from './elementIdentity';
 
 let sessionCounter = 0;
 
@@ -28,11 +27,10 @@ function elapsedMs(startedAt: number): string {
   return `${Date.now() - startedAt}ms`;
 }
 
-function getAnimatedRef(element: RegisteredElement) {
-  return element.getAnimatedRef?.() ?? element.animatedRef;
-}
-
-type ValidatedTargetMeasurements = PreparedTargets;
+type SourceCapture = {
+  elements: RegisteredElement[];
+  snapshot: FabricLayoutSnapshot;
+};
 
 export class TransitionCoordinator {
   private registry: ElementRegistry;
@@ -44,21 +42,13 @@ export class TransitionCoordinator {
   private onSessionChange: (session: TransitionSessionData | null) => void =
     () => {};
   private hiddenElements = new Set<string>();
-  /**
-   * Last known-good metrics keyed by layout identity, group, and element. Lets
-   * repeated opens of the same target layout validate with one batched
-   * measurement instead of running the stable-measurement loop.
-   */
-  private targetMetricsCache = new Map<
-    string,
-    { pageX: number; pageY: number; width: number; height: number }
-  >();
+  // A one-navigation source snapshot, consumed when preparation starts.
+  private releaseMountSubscription: (() => void) | undefined;
+  private sourceCaptureGeneration = 0;
+  private sourceCaptures = new Map<string, SourceCapture>();
   constructor(
     registry: ElementRegistry,
     progress: SharedValue<number>,
-    private readonly resolveLayoutId: (screenId: string) => string = (
-      screenId
-    ) => screenId,
     private readonly nativeReadiness?: {
       getScreenRef: (screenId: string) => NodeHandleRef | undefined;
       isScreenReady: (screenId: string) => boolean;
@@ -68,8 +58,42 @@ export class TransitionCoordinator {
     this.progress = progress;
   }
 
-  private elementKey(screenId: string, groupId: string, id: string): string {
-    return getElementIdentityKey(this.resolveLayoutId(screenId), groupId, id);
+  private sourceKey(screenId: string, groupId: string): string {
+    return JSON.stringify([screenId, groupId]);
+  }
+
+  private entries(elements: RegisteredElement[]): FabricLayoutEntry[] | null {
+    const result: FabricLayoutEntry[] = [];
+    for (const element of elements) {
+      const screenRef = this.nativeReadiness?.getScreenRef(element.screenId);
+      if (!screenRef) return null;
+      result.push({
+        id: JSON.stringify([element.screenId, element.groupId, element.id]),
+        ref: element.ref,
+        screenRef,
+      });
+    }
+    return result;
+  }
+
+  private elementsAreCurrent(elements: RegisteredElement[]): boolean {
+    return elements.every(
+      (element) =>
+        this.registry.getByIdAndScreen(
+          element.id,
+          element.screenId,
+          element.groupId
+        )?.ref === element.ref
+    );
+  }
+
+  private metricsFor(
+    snapshot: FabricLayoutSnapshot,
+    element: RegisteredElement
+  ): ElementMetrics {
+    return snapshot.metrics.get(
+      JSON.stringify([element.screenId, element.groupId, element.id])
+    )!;
   }
 
   private ownsOperation(generation: number, sessionId: string): boolean {
@@ -80,7 +104,11 @@ export class TransitionCoordinator {
   }
 
   private invalidateOperations(): void {
+    this.releaseMountSubscription?.();
+    this.releaseMountSubscription = undefined;
     this.operationGeneration += 1;
+    this.sourceCaptureGeneration += 1;
+    this.sourceCaptures.clear();
     const cancellers = [...this.preparationCancellers];
     this.preparationCancellers.clear();
     cancellers.forEach((cancel) => cancel());
@@ -106,104 +134,67 @@ export class TransitionCoordinator {
     return this.hiddenElements;
   }
 
-  async preMeasureGroup(groupId: string, screenId: string): Promise<void> {
-    const preMeasureStartedAt = nowMs();
-    const elementIds = this.registry.getGroupElementIds(groupId, screenId);
-
-    debugTrace(
-      `[Coordinator] Pre-measuring ${elementIds.length} elements in group "${groupId}" on screen "${screenId}"`
-    );
-
-    const elements = elementIds
-      .map((id) => this.registry.getByIdAndScreen(id, screenId, groupId))
-      .filter((element): element is NonNullable<typeof element> => !!element);
-
-    const batchEntries: BatchMeasureEntry[] = elements.map((element) => ({
-      id: element.id,
-      ref: element.ref,
-      animatedRef: getAnimatedRef(element),
-    }));
-
-    const results = await measureElementsBatched(batchEntries);
-
-    for (const element of elements) {
-      const metrics = results.get(element.id) ?? null;
-      if (metrics) {
-        this.registry.updateMetrics(element.id, screenId, metrics, groupId);
-      }
-    }
-
-    debugTrace(
-      `[Coordinator] Pre-measure complete group="${groupId}" screen="${screenId}" duration=${elapsedMs(preMeasureStartedAt)}`
-    );
+  async captureSourceGroup(groupId: string, screenId: string): Promise<void> {
+    this.sourceCaptures.clear();
+    const captureGeneration = ++this.sourceCaptureGeneration;
+    const generation = this.operationGeneration;
+    const elements = this.registry.getGroupElements(groupId, screenId);
+    const entries = this.entries(elements);
+    if (!entries?.length) return;
+    const snapshot = await waitForFabricLayout({
+      read: () => captureFabricLayout(entries),
+      isCurrent: () =>
+        this.operationGeneration === generation &&
+        this.sourceCaptureGeneration === captureGeneration &&
+        this.elementsAreCurrent(elements),
+      cancellers: this.preparationCancellers,
+    });
+    if (
+      !snapshot ||
+      !snapshot.isCurrent() ||
+      this.operationGeneration !== generation ||
+      this.sourceCaptureGeneration !== captureGeneration ||
+      !this.elementsAreCurrent(elements)
+    )
+      return;
+    this.sourceCaptures.set(this.sourceKey(screenId, groupId), {
+      elements,
+      snapshot,
+    });
   }
 
   async refreshActiveSessionMetrics(side: 'source' | 'target'): Promise<void> {
     const session = this.activeSession;
-    if (!session || session.state !== 'active' || session.pairs.length === 0) {
-      return;
-    }
-
-    const refreshStartedAt = nowMs();
-    const batchEntries: BatchMeasureEntry[] = session.pairs.map((pair) => {
-      const element = side === 'source' ? pair.source : pair.target;
-      return {
-        id: pair.id,
-        ref: element.ref,
-        animatedRef: getAnimatedRef(element),
-      };
-    });
-
-    const results = await measureElementsBatched(batchEntries);
-
-    if (!this.activeSession || this.activeSession.id !== session.id) {
-      return;
-    }
-
-    let updatedCount = 0;
-    const nextPairs = this.activeSession.pairs.map((pair) => {
-      const element = side === 'source' ? pair.source : pair.target;
-      const nextMetrics = results.get(pair.id) ?? null;
-
-      if (!nextMetrics) {
-        return pair;
-      }
-
-      const previousMetrics =
-        side === 'source' ? pair.sourceMetrics : pair.targetMetrics;
-
-      this.registry.updateMetrics(
-        pair.id,
-        element.screenId,
-        nextMetrics,
-        session.groupId
-      );
-
-      if (this.metricsAreClose(previousMetrics, nextMetrics)) {
-        return pair;
-      }
-
-      updatedCount += 1;
-
-      return side === 'source'
-        ? { ...pair, sourceMetrics: nextMetrics }
-        : { ...pair, targetMetrics: nextMetrics };
-    });
-
-    if (updatedCount === 0) {
-      debugTrace(
-        `[Coordinator] Active ${side} metrics unchanged session="${session.id}" duration=${elapsedMs(refreshStartedAt)}`
-      );
-      return;
-    }
-
-    debugLog(
-      `[Coordinator] Refreshed active ${side} metrics session="${session.id}" count=${updatedCount}/${session.pairs.length} duration=${elapsedMs(refreshStartedAt)}`
+    if (!session || session.state !== 'active' || !session.pairs.length) return;
+    const elements = session.pairs.map((pair) =>
+      side === 'source' ? pair.source : pair.target
     );
-
-    this.updateSession({
-      ...this.activeSession,
-      pairs: nextPairs,
+    const entries = this.entries(elements);
+    if (!entries) return;
+    await waitForFabricLayout({
+      isCurrent: () =>
+        this.activeSession?.id === session.id &&
+        this.elementsAreCurrent(elements),
+      cancellers: this.preparationCancellers,
+      read: () => {
+        const snapshot = captureFabricLayout(entries);
+        if (!snapshot) return null;
+        const currentSession = this.activeSession!;
+        let changed = false;
+        const pairs = currentSession.pairs.map((pair) => {
+          const element = side === 'source' ? pair.source : pair.target;
+          const metrics = this.metricsFor(snapshot, element);
+          const previous =
+            side === 'source' ? pair.sourceMetrics : pair.targetMetrics;
+          if (this.metricsAreClose(previous, metrics)) return pair;
+          changed = true;
+          return side === 'source'
+            ? { ...pair, sourceMetrics: metrics }
+            : { ...pair, targetMetrics: metrics };
+        });
+        if (changed) this.updateSession({ ...currentSession, pairs });
+        return true;
+      },
     });
   }
 
@@ -296,259 +287,6 @@ export class TransitionCoordinator {
     );
   }
 
-  /**
-   * Hot path for repeated opens: when every candidate has a cached metric
-   * from a previous session on the same target screen, run one batched
-   * measurement and accept immediately if it matches the cache. Returns
-   * the fresh measured batch when the cache validated, so pairing can reuse it.
-   */
-  private async tryCachedTargetMeasurements(
-    targetScreenId: string,
-    groupId: string,
-    candidateIds: string[],
-    ownsOperation: () => boolean
-  ): Promise<ValidatedTargetMeasurements | null> {
-    if (candidateIds.length === 0) {
-      return null;
-    }
-
-    const validateStartedAt = nowMs();
-    const elements: NonNullable<
-      ReturnType<ElementRegistry['getByIdAndScreen']>
-    >[] = [];
-
-    for (const id of candidateIds) {
-      if (
-        !this.targetMetricsCache.has(
-          this.elementKey(targetScreenId, groupId, id)
-        )
-      ) {
-        return null;
-      }
-
-      const element = this.registry.getByIdAndScreen(
-        id,
-        targetScreenId,
-        groupId
-      );
-      if (!element) {
-        return null;
-      }
-      elements.push(element);
-    }
-
-    const batchEntries = elements.map((element) => ({
-      id: element.id,
-      ref: element.ref,
-      animatedRef: getAnimatedRef(element),
-    }));
-    const results = await measureElementsBatched(batchEntries);
-
-    if (!ownsOperation()) {
-      return null;
-    }
-
-    for (const id of candidateIds) {
-      const cached = this.targetMetricsCache.get(
-        this.elementKey(targetScreenId, groupId, id)
-      )!;
-      const measured = results.get(id);
-
-      if (!measured || !this.metricsAreClose(cached, measured)) {
-        debugTrace(
-          `[Coordinator] Cached target metrics stale screen="${targetScreenId}" id="${id}" duration=${elapsedMs(validateStartedAt)}`
-        );
-        return null;
-      }
-    }
-
-    const validatedMeasurements: ValidatedTargetMeasurements = new Map();
-    for (const entry of batchEntries) {
-      if (!ownsOperation()) {
-        return null;
-      }
-      const metrics = results.get(entry.id)!;
-      this.registry.updateMetrics(entry.id, targetScreenId, metrics, groupId);
-      validatedMeasurements.set(entry.id, { ...entry, metrics });
-    }
-
-    debugTrace(
-      `[Coordinator] Cached target metrics validated screen="${targetScreenId}" ids=${candidateIds.length} duration=${elapsedMs(validateStartedAt)}`
-    );
-    return validatedMeasurements;
-  }
-
-  private async waitForStableTargetMeasurements(
-    targetScreenId: string,
-    groupId: string,
-    candidateIds: string[],
-    options?: {
-      extendedStability?: boolean;
-      ownsOperation?: () => boolean;
-      trace?: PreparationTrace;
-    }
-  ): Promise<ValidatedTargetMeasurements | null> {
-    const waitStartedAt = nowMs();
-    const deadline = Date.now() + 500;
-    const requireExtendedStability = options?.extendedStability ?? false;
-    const ownsOperation = options?.ownsOperation ?? (() => true);
-    const requiredStableReads =
-      Platform.OS === 'android' && requireExtendedStability ? 4 : 2;
-
-    const endCache = options?.trace?.start('cache-validation');
-    const cachedMeasurements = await this.tryCachedTargetMeasurements(
-      targetScreenId,
-      groupId,
-      candidateIds,
-      ownsOperation
-    );
-    endCache?.({ hit: Boolean(cachedMeasurements) });
-    if (cachedMeasurements) {
-      return cachedMeasurements;
-    }
-
-    if (!ownsOperation()) {
-      return null;
-    }
-
-    const endStableLoop = options?.trace?.start('target-stable-loop');
-    let measurementReads = 0;
-    let previousMeasurements = new Map<
-      string,
-      {
-        pageX: number;
-        pageY: number;
-        width: number;
-        height: number;
-      }
-    >();
-    let stableReads = 0;
-
-    while (Date.now() < deadline) {
-      if (!ownsOperation()) {
-        return null;
-      }
-
-      const measurableIds = candidateIds.filter(
-        (id) => !!this.registry.getByIdAndScreen(id, targetScreenId, groupId)
-      );
-
-      if (measurableIds.length === 0) {
-        const endFrameWait = options?.trace?.start('target-frame-wait');
-        await new Promise<void>((resolve) => setTimeout(resolve, 16));
-        endFrameWait?.();
-        if (!ownsOperation()) {
-          return null;
-        }
-        continue;
-      }
-
-      const measurableElements = measurableIds
-        .map((id) =>
-          this.registry.getByIdAndScreen(id, targetScreenId, groupId)
-        )
-        .filter((element): element is NonNullable<typeof element> => !!element);
-
-      const batchEntries: BatchMeasureEntry[] = measurableElements.map(
-        (element) => ({
-          id: element.id,
-          ref: element.ref,
-          animatedRef: getAnimatedRef(element),
-        })
-      );
-
-      const endMeasure = options?.trace?.start('target-measure');
-      measurementReads += 1;
-      const batchResults = await measureElementsBatched(batchEntries);
-      endMeasure?.();
-
-      if (!ownsOperation()) {
-        return null;
-      }
-
-      const measurements: (readonly [
-        string,
-        import('../types').ElementMetrics | null,
-      ])[] = measurableIds.map(
-        (id) => [id, batchResults.get(id) ?? null] as const
-      );
-
-      const currentMeasurements = new Map<
-        string,
-        {
-          pageX: number;
-          pageY: number;
-          width: number;
-          height: number;
-        }
-      >();
-      let allMeasured = true;
-
-      for (const [id, metrics] of measurements) {
-        if (!ownsOperation()) {
-          return null;
-        }
-        if (!metrics) {
-          allMeasured = false;
-          break;
-        }
-
-        currentMeasurements.set(id, metrics);
-        this.registry.updateMetrics(id, targetScreenId, metrics, groupId);
-      }
-
-      if (!allMeasured) {
-        stableReads = 0;
-        previousMeasurements = currentMeasurements;
-        const endFrameWait = options?.trace?.start('target-frame-wait');
-        await new Promise<void>((resolve) => setTimeout(resolve, 16));
-        endFrameWait?.();
-        continue;
-      }
-
-      const unchanged =
-        currentMeasurements.size === previousMeasurements.size &&
-        Array.from(currentMeasurements.entries()).every(([id, metrics]) => {
-          const previous = previousMeasurements.get(id);
-          return previous ? this.metricsAreClose(previous, metrics) : false;
-        });
-
-      if (unchanged) {
-        stableReads += 1;
-        if (stableReads >= requiredStableReads) {
-          endStableLoop?.({ stable: true, reads: measurementReads });
-          debugTrace(
-            `[Coordinator] Stable target measurements ready screen="${targetScreenId}" ids=${currentMeasurements.size} reads=${stableReads}/${requiredStableReads} duration=${elapsedMs(waitStartedAt)}`
-          );
-          return new Map(
-            batchEntries.map((entry) => [
-              entry.id,
-              { ...entry, metrics: currentMeasurements.get(entry.id)! },
-            ])
-          );
-        }
-      } else {
-        stableReads = 0;
-      }
-
-      previousMeasurements = currentMeasurements;
-      const endFrameWait = options?.trace?.start('target-frame-wait');
-      await new Promise<void>((resolve) => setTimeout(resolve, 16));
-      endFrameWait?.();
-      if (!ownsOperation()) {
-        return null;
-      }
-    }
-
-    endStableLoop?.({ stable: false, reads: measurementReads });
-    debugWarn(
-      `[Coordinator] Timed out waiting for stable target measurements on screen "${targetScreenId}" duration=${elapsedMs(waitStartedAt)}`
-    );
-    // A timeout still permits best-effort pairing, but its last sample was
-    // never validated. Keep the final measurement/fallback path for that case.
-    return ownsOperation() ? new Map() : null;
-  }
-
   async startTransition(config: {
     groupId: string;
     sourceScreenId: string;
@@ -560,6 +298,10 @@ export class TransitionCoordinator {
     const transitionStartedAt = nowMs();
     const { groupId, sourceScreenId, targetScreenId, direction } = config;
 
+    const sourceCapture = this.sourceCaptures.get(
+      this.sourceKey(sourceScreenId, groupId)
+    );
+    this.sourceCaptures.clear();
     if (this.activeSession) {
       this.cancelTransition();
     }
@@ -606,105 +348,15 @@ export class TransitionCoordinator {
       return null;
     }
 
-    const elementIds = sourceIds;
-    const measurableTargetIds = elementIds.filter(
-      (id) => !!this.registry.getByIdAndScreen(id, targetScreenId, groupId)
-    );
-    let validatedTargets: ValidatedTargetMeasurements | null = null;
-    const nativeForward = direction === 'forward' && hasNativePreparation();
-    if (nativeForward && measurableTargetIds.length > 0) {
-      const elements = measurableTargetIds.map(
-        (id) => this.registry.getByIdAndScreen(id, targetScreenId, groupId)!
-      );
-      const entries = elements.map((element) => ({
-        id: element.id,
-        ref: element.ref,
-        animatedRef: getAnimatedRef(element),
-      }));
-      const screenRef = this.nativeReadiness?.getScreenRef(targetScreenId);
-      let nativeTimedOut = false;
-      validatedTargets = await prepareNativeTargets({
-        screenRef,
-        entries,
-        onTimeout: () => {
-          nativeTimedOut = true;
-        },
-        cancellers: this.preparationCancellers,
-        trace: config.trace,
-        isCurrent: () =>
-          ownsOperation() &&
-          this.nativeReadiness?.getScreenRef(targetScreenId) === screenRef &&
-          entries.every((entry) => {
-            const current = this.registry.getByIdAndScreen(
-              entry.id,
-              targetScreenId,
-              groupId
-            );
-            return (
-              current?.ref === entry.ref &&
-              getAnimatedRef(current) === entry.animatedRef
-            );
-          }),
-      });
-      if (!ownsOperation()) return null;
-      if (
-        nativeTimedOut ||
-        (this.nativeReadiness &&
-          !this.nativeReadiness.isScreenReady(targetScreenId))
-      ) {
-        // A deadline or new content blocker ends preparation without a second long wait.
-        this.cancelTransition(sessionId);
+    const unavailable = () => {
+      if (!ownsOperation()) return;
+      try {
         config.onUnavailable?.(sessionId);
-        return null;
+      } finally {
+        if (ownsOperation()) this.cancelTransition(sessionId);
       }
-      if (!validatedTargets) {
-        // Restore the conservative frame gates if the native path cannot validate.
-        const endFallback = config.trace?.start('native-fallback-frames');
-        for (let i = 0; i < (Platform.OS === 'android' ? 3 : 2); i++) {
-          await new Promise<void>((resolve) =>
-            requestAnimationFrame(() => resolve())
-          );
-          if (!ownsOperation()) return null;
-        }
-        endFallback?.();
-      }
-    }
-    if (!validatedTargets) {
-      const endStability = config.trace?.start('target-stability');
-      validatedTargets =
-        measurableTargetIds.length === 0
-          ? new Map()
-          : await this.waitForStableTargetMeasurements(
-              targetScreenId,
-              groupId,
-              measurableTargetIds,
-              {
-                extendedStability: direction === 'forward',
-                ownsOperation,
-                trace: config.trace,
-              }
-            );
-      endStability?.();
-    }
-    if (!validatedTargets || !ownsOperation()) {
-      return null;
-    }
-
-    const pairingStartedAt = nowMs();
-    const endPairing = config.trace?.start('pairing');
-
-    const shouldRemeasureSource = direction === 'backward';
-    const shouldRemeasureTarget = direction === 'forward';
-
-    const pairingCandidates: {
-      id: string;
-      source?: RegisteredElement;
-      target?: RegisteredElement;
-      validatedTargetMetrics?: ElementMetrics;
-    }[] = [];
-    const batchEntries: BatchMeasureEntry[] = [];
-
-    for (const id of elementIds) {
+    };
+    const candidates = sourceIds.flatMap((id) => {
       const source = this.registry.getByIdAndScreen(
         id,
         sourceScreenId,
@@ -715,161 +367,115 @@ export class TransitionCoordinator {
         targetScreenId,
         groupId
       );
-
-      if (!source || !target) continue;
-
-      const validatedTarget = validatedTargets.get(id);
-      // A target may have been replaced while awaiting a native measurement.
-      // Only reuse geometry for the same measured ref, including nested targets.
-      const validatedTargetMetrics =
-        target &&
-        validatedTarget?.ref === target.ref &&
-        validatedTarget.animatedRef === getAnimatedRef(target)
-          ? validatedTarget.metrics
-          : undefined;
-      pairingCandidates.push({ id, source, target, validatedTargetMetrics });
-
-      if (source && (shouldRemeasureSource || !source.metrics)) {
-        batchEntries.push({
-          id: `source:${id}`,
-          ref: source.ref,
-          animatedRef: getAnimatedRef(source),
-        });
-      }
-      if (
-        target &&
-        !validatedTargetMetrics &&
-        (shouldRemeasureTarget || !target.metrics)
-      ) {
-        batchEntries.push({
-          id: `target:${id}`,
-          ref: target.ref,
-          animatedRef: getAnimatedRef(target),
-        });
-      }
-    }
-
-    const batchResults =
-      batchEntries.length > 0
-        ? await measureElementsBatched(batchEntries)
-        : new Map<string, import('../types').ElementMetrics | null>();
-
-    if (!ownsOperation()) {
-      return null;
-    }
-
-    const pairs: ElementTransitionPair[] = [];
-
-    for (const {
-      id,
-      source,
-      target,
-      validatedTargetMetrics,
-    } of pairingCandidates) {
-      if (!ownsOperation()) {
-        return null;
-      }
-      const sourcePresentation = source?.getPresentation();
-      const targetPresentation = target?.getPresentation();
-      const transition =
-        sourcePresentation?.transition ?? targetPresentation?.transition;
-      if (!source || !target || !sourcePresentation || !targetPresentation)
-        continue;
-      const measuredSource =
-        batchResults.get(`source:${id}`) ?? source?.metrics;
-      const measuredTarget =
-        validatedTargetMetrics ??
-        batchResults.get(`target:${id}`) ??
-        target?.metrics;
-      const sourceMetrics = source ? measuredSource : measuredTarget;
-      const targetMetrics = target ? measuredTarget : measuredSource;
-
-      if (!sourceMetrics || !targetMetrics || !transition) {
-        debugWarn(
-          `[Coordinator] Skipping "${id}" — sourceMetrics=${!!sourceMetrics} targetMetrics=${!!targetMetrics} transition=${!!transition}`
-        );
-        continue;
-      }
-
-      if (source)
-        this.registry.updateMetrics(id, sourceScreenId, sourceMetrics, groupId);
-      if (target)
-        this.registry.updateMetrics(id, targetScreenId, targetMetrics, groupId);
-
-      pairs.push({
-        id,
-        source,
-        target,
-        sourceMetrics,
-        targetMetrics,
-        transition,
-        sourcePresentation,
-        targetPresentation,
-      });
-    }
-
-    if (!ownsOperation()) {
-      return null;
-    }
-
-    if (pairs.length === 0) {
-      debugWarn(
-        `[Coordinator] No valid pairs found, aborting transition "${sessionId}" after ${elapsedMs(transitionStartedAt)}`
-      );
-      try {
-        config.onUnavailable?.(sessionId);
-      } finally {
-        if (ownsOperation()) {
-          this.updateSession(null);
-        }
-      }
-      return null;
-    }
-
-    debugLog(
-      `[Coordinator] Transition "${sessionId}" active pairs=${pairs.length}/${elementIds.length} pairing=${elapsedMs(pairingStartedAt)} totalPrep=${elapsedMs(transitionStartedAt)}`
-    );
-
-    if (
-      nativeForward &&
-      ((this.nativeReadiness &&
-        !this.nativeReadiness.isScreenReady(targetScreenId)) ||
-        [
-          ...new Set(
-            [...validatedTargets.values()].map((target) => target.isCurrent)
-          ),
-        ].some((check) => check && !check()))
-    ) {
-      this.cancelTransition(sessionId);
-      config.onUnavailable?.(sessionId);
-      return null;
-    }
-
-    if (this.targetMetricsCache.size > 200) {
-      this.targetMetricsCache.clear();
-    }
-    for (const pair of pairs) {
-      this.targetMetricsCache.set(
-        this.elementKey(targetScreenId, groupId, pair.id),
-        pair.targetMetrics
-      );
-    }
-
-    endPairing?.();
-    this.progress.value = direction === 'forward' ? 0 : 1;
-
-    this.updateSession({
-      id: sessionId,
-      groupId,
-      sourceScreenId,
-      targetScreenId,
-      state: 'active',
-      pairs,
-      progress: this.progress,
-      direction,
+      return source && target ? [{ id, source, target }] : [];
     });
-
-    return this.activeSession;
+    if (!candidates.length) {
+      unavailable();
+      return null;
+    }
+    const sources = candidates.map((pair) => pair.source);
+    const targets = candidates.map((pair) => pair.target);
+    const canUseSourceCapture = Boolean(
+      sourceCapture &&
+      sourceCapture.snapshot.isCurrent() &&
+      this.elementsAreCurrent(sourceCapture.elements) &&
+      sources.every((source) =>
+        sourceCapture.elements.some(
+          (captured) => captured.id === source.id && captured.ref === source.ref
+        )
+      )
+    );
+    const endpoints = canUseSourceCapture ? targets : [...sources, ...targets];
+    const entries = this.entries(endpoints);
+    if (!entries) {
+      unavailable();
+      return null;
+    }
+    const isCurrent = () =>
+      ownsOperation() &&
+      this.elementsAreCurrent([...sources, ...targets]) &&
+      (!canUseSourceCapture || sourceCapture!.snapshot.isCurrent()) &&
+      Boolean(this.nativeReadiness?.isScreenReady(targetScreenId));
+    const endCapture = config.trace?.start('fabric-mounted-capture');
+    const session = await waitForFabricLayout({
+      cancellers: this.preparationCancellers,
+      isCurrent,
+      read: () => {
+        const snapshot = captureFabricLayout(entries);
+        if (!snapshot) return null;
+        const pairs: ElementTransitionPair[] = [];
+        for (const { id, source, target } of candidates) {
+          const sourcePresentation = source.getPresentation();
+          const targetPresentation = target.getPresentation();
+          const transition =
+            sourcePresentation.transition ?? targetPresentation.transition;
+          if (!transition) continue;
+          pairs.push({
+            id,
+            source,
+            target,
+            transition,
+            sourcePresentation,
+            targetPresentation,
+            sourceMetrics: this.metricsFor(
+              canUseSourceCapture ? sourceCapture!.snapshot : snapshot,
+              source
+            ),
+            targetMetrics: this.metricsFor(snapshot, target),
+          });
+        }
+        // Presentation getters can trigger app updates. Retry a pending mount;
+        // never activate with geometry invalidated during pairing.
+        if (!isCurrent() || !snapshot.isCurrent() || !pairs.length) return null;
+        const latest = captureFabricLayout(entries);
+        if (
+          !latest ||
+          ![...snapshot.metrics].every(([id, metrics]) =>
+            this.metricsAreClose(metrics, latest.metrics.get(id)!)
+          )
+        )
+          return null;
+        if (!isCurrent()) return null;
+        this.progress.value = direction === 'forward' ? 0 : 1;
+        const active: TransitionSessionData = {
+          id: sessionId,
+          groupId,
+          sourceScreenId,
+          targetScreenId,
+          state: 'active',
+          pairs,
+          progress: this.progress,
+          direction,
+        };
+        this.releaseMountSubscription = subscribeToFabricMounts(() => {
+          const current = this.activeSession;
+          if (current?.id !== sessionId || current.state !== 'active') return;
+          const targetEntries = this.entries(
+            current.pairs.map((pair) => pair.target)
+          );
+          if (!targetEntries) return;
+          const updated = captureFabricLayout(targetEntries);
+          if (!updated) return;
+          let changed = false;
+          const nextPairs = current.pairs.map((pair) => {
+            const metrics = this.metricsFor(updated, pair.target);
+            if (this.metricsAreClose(metrics, pair.targetMetrics)) return pair;
+            changed = true;
+            return { ...pair, targetMetrics: metrics };
+          });
+          if (changed && this.activeSession?.id === sessionId)
+            this.updateSession({ ...current, pairs: nextPairs });
+        });
+        this.updateSession(active);
+        return active;
+      },
+    });
+    endCapture?.({ ready: Boolean(session) });
+    if (!session) unavailable();
+    debugTrace(
+      `[Coordinator] Fabric preparation session="${sessionId}" ready=${!!session} duration=${elapsedMs(transitionStartedAt)}`
+    );
+    return session;
   }
 
   completeTransition(sessionId?: string): void {
@@ -909,7 +515,7 @@ export class TransitionCoordinator {
   dispose(): void {
     this.invalidateOperations();
     this.hiddenElements.clear();
-    this.targetMetricsCache.clear();
+    this.sourceCaptures.clear();
     this.activeSession = null;
     this.onSessionChange = () => {};
   }

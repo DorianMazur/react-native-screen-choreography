@@ -1,4 +1,4 @@
-import { hasNativePreparation } from '../core/nativePreparation';
+import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { PreparationTrace } from '../core/preparationTrace';
 import { useCallback, useContext, useEffect } from 'react';
 import type { CommitBackNavigation } from '../core/navigationCommit';
@@ -58,7 +58,7 @@ export function useChoreographyNavigator({
     progress,
     progressOwnership,
     navigationController: controller,
-    preMeasureGroup,
+    captureSourceGroup,
     startTransition,
     cancelTransition,
     completeTransition,
@@ -304,7 +304,7 @@ export function useChoreographyNavigator({
           groupId,
           sourceScreenId,
           targetScreenId,
-          isAndroid: Platform.OS === 'android' && !hasNativePreparation(),
+          isAndroid: Platform.OS === 'android' && !hasFabricLayoutCapture(),
           trace: ctx.onPreparationTrace
             ? new PreparationTrace(
                 {
@@ -316,10 +316,10 @@ export function useChoreographyNavigator({
                 ctx.onPreparationTrace
               )
             : undefined,
-          preMeasureGroup: async (group, screen) => {
+          captureSourceGroup: async (group, screen) => {
             const startedAt = nowMs();
             logNavigation(() => `preMeasure start group=${group}`);
-            await preMeasureGroup(group, screen);
+            await captureSourceGroup(group, screen);
             logNavigation(
               () =>
                 `preMeasure end group=${group} duration=${elapsedMs(startedAt)}`
@@ -424,7 +424,7 @@ export function useChoreographyNavigator({
       logNavigation,
       progress,
       progressOwnership,
-      preMeasureGroup,
+      captureSourceGroup,
       setNavigationLineage,
       setPendingTargetScreen,
       startTransition,

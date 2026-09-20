@@ -6,25 +6,18 @@ import {
   type ChoreographyActionsType,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
-import { hasNativePreparation } from '../core/nativePreparation';
 import { ChoreographyScreenBase } from './ChoreographyScreenBase';
-
-jest.mock('../core/nativePreparation', () => ({
-  hasNativePreparation: jest.fn(),
-}));
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   __esModule: true,
 }));
 
-const hasNative = jest.mocked(hasNativePreparation);
 const trees: ReactTestRenderer[] = [];
 let frames: ((time: number) => void)[];
 
 beforeEach(() => {
   frames = [];
-  hasNative.mockReturnValue(true);
   jest.spyOn(global, 'requestAnimationFrame').mockImplementation((callback) => {
     frames.push(callback);
     return frames.length;
@@ -97,7 +90,7 @@ async function nextFrame() {
   await act(async () => callback!(0));
 }
 
-test('publishes layout readiness immediately only with native preparation', async () => {
+test('publishes application readiness immediately while Fabric owns the mount check', async () => {
   const screen = await mountScreen();
   expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
     'detail',
@@ -113,66 +106,24 @@ test('publishes layout readiness immediately only with native preparation', asyn
   expect(screen.outer().props.pointerEvents).toBe('none');
 });
 
-test('retains both legacy layout frames when native preparation is unavailable', async () => {
-  hasNative.mockReturnValue(false);
-  const screen = await mountScreen();
+test('honors explicit readiness across layout and updates', async () => {
+  const screen = await mountScreen({ ready: false });
   await screen.layout();
+  expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
+    'detail',
+    true
+  );
+  await screen.update(true);
+  expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
+    'detail',
+    true
+  );
+  await screen.update(false);
   expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
     'detail',
     false
   );
-  await nextFrame();
-  expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
-    'detail',
-    true
-  );
-  await nextFrame();
-  expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
-    'detail',
-    true
-  );
-  expect(requestAnimationFrame).toHaveBeenCalledTimes(2);
-});
-
-test.each([true, false])(
-  'honors explicit readiness across layout and updates (native=%s)',
-  async (native) => {
-    hasNative.mockReturnValue(native);
-    const screen = await mountScreen({ ready: false });
-    await screen.layout();
-    if (!native) {
-      await nextFrame();
-      await nextFrame();
-    }
-    expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
-      'detail',
-      true
-    );
-    await screen.update(true);
-    expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
-      'detail',
-      true
-    );
-    await screen.update(false);
-    expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
-      'detail',
-      false
-    );
-    expect(screen.actions.registerScreenPresentation).toHaveBeenCalledTimes(1);
-  }
-);
-
-test('a ready=false update during legacy frame waits prevents readiness', async () => {
-  hasNative.mockReturnValue(false);
-  const screen = await mountScreen();
-  await screen.layout();
-  await nextFrame();
-  await screen.update(false);
-  await nextFrame();
-  expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
-    'detail',
-    true
-  );
+  expect(screen.actions.registerScreenPresentation).toHaveBeenCalledTimes(1);
 });
 
 test('does not overwrite a native layout event delivered before passive mount effects', async () => {
@@ -184,20 +135,16 @@ test('does not overwrite a native layout event delivered before passive mount ef
   expect(screen.actions.registerScreenPresentation).toHaveBeenCalledTimes(1);
 });
 
-test.each([true, false])(
-  'unmount unregisters the screen and presentation and ignores queued frames (native=%s)',
-  async (native) => {
-    hasNative.mockReturnValue(native);
-    const screen = await mountScreen();
-    await screen.layout();
-    await act(async () => screen.tree.unmount());
-    expect(screen.actions.unregisterScreen).toHaveBeenCalledWith('detail');
-    expect(screen.unregisterPresentation).toHaveBeenCalledTimes(1);
-    screen.actions.setScreenReady.mockClear();
-    while (frames.length > 0) await nextFrame();
-    expect(screen.actions.setScreenReady).not.toHaveBeenCalled();
-  }
-);
+test('unmount unregisters the screen and presentation', async () => {
+  const screen = await mountScreen();
+  await screen.layout();
+  await act(async () => screen.tree.unmount());
+  expect(screen.actions.unregisterScreen).toHaveBeenCalledWith('detail');
+  expect(screen.unregisterPresentation).toHaveBeenCalledTimes(1);
+  screen.actions.setScreenReady.mockClear();
+  while (frames.length > 0) await nextFrame();
+  expect(screen.actions.setScreenReady).not.toHaveBeenCalled();
+});
 
 test('does not carry layout readiness into a new screen identity', async () => {
   const screen = await mountScreen();

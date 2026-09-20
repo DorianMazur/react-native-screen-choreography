@@ -210,7 +210,6 @@ export function ChoreographyProvider({
     coordinatorRef.current = new TransitionCoordinator(
       registryRef.current,
       progress,
-      (screenId) => screenNamesRef.current.get(screenId) ?? screenId,
       {
         getScreenRef: (screenId) => nativeScreenRefs.current.get(screenId),
         isScreenReady: (screenId) =>
@@ -456,9 +455,9 @@ export function ChoreographyProvider({
     []
   );
 
-  const preMeasureGroup = useCallback(
+  const captureSourceGroup = useCallback(
     async (groupId: string, screenId: string) => {
-      await coordinatorRef.current!.preMeasureGroup(groupId, screenId);
+      await coordinatorRef.current!.captureSourceGroup(groupId, screenId);
     },
     []
   );
@@ -704,7 +703,7 @@ export function ChoreographyProvider({
       interactionOwner,
       interactiveScreenId,
       setInteractiveScreen,
-      preMeasureGroup,
+      captureSourceGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
       isOverlayPresented,
@@ -739,7 +738,7 @@ export function ChoreographyProvider({
       interactionOwner,
       interactiveScreenId,
       setInteractiveScreen,
-      preMeasureGroup,
+      captureSourceGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
       isOverlayPresented,

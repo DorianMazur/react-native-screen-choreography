@@ -26,7 +26,7 @@ Use these files as the source of truth:
 - `src/adapters/`: React Navigation and Expo Router hooks and `ChoreographyScreen` wrappers
 - `src/types.ts`: shared runtime and public types
 - `src/components/`: navigator-independent `ChoreographyProvider`, `ChoreographyScreenBase`, `SharedElement`
-- `src/core/`: registry, coordinator, overlay, measurement, constants, contexts, visibility
+- `src/core/`: registry, coordinator, overlay, Fabric layout capture, constants, contexts, visibility
 - `src/native/`: Fabric component spec and native host bridge
 - `src/hooks/`: public progress and navigation hooks
 - `src/standin/`: live transition geometry and surface primitives
@@ -73,7 +73,7 @@ Current important exports include:
 ## Current Feature Boundaries
 
 - custom gesture progress is exposed through `useInteractiveTransition`; native-stack swipe progress is not connected automatically yet
-- startup still depends on live target measurement for structural elements on first open; repeated opens validate cached target metrics with a single batched read
+- startup captures source and target layout from completed Fabric mounts on RN 0.81+; pending mounts are retried with bounded waits, without measurement APIs or a target metrics cache
 - transition renderers receive frozen metadata, style, and metrics plus one library-owned portal host child; they must render that child exactly once
 - the registry is keyed by compound `(screenId, groupId, id)` identity, and pair discovery is scoped to the source screen's group
 - rapid interruption paths are actively hardened and should be regression-tested after changes

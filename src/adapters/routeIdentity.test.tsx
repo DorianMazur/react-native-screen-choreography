@@ -95,6 +95,22 @@ test.each([
   '%s isolates repeated screen instances',
   async (_adapter, Screen) => {
     jest.useFakeTimers();
+    const globals = globalThis as typeof globalThis & {
+      __screenChoreographyCaptureFabricLayout?: jest.Mock;
+    };
+    jest
+      .spyOn(require('react-native'), 'findNodeHandle')
+      .mockImplementation((node: any) => node.tag);
+    globals.__screenChoreographyCaptureFabricLayout = jest.fn(
+      (_screens, tags) =>
+        tags.map((pageX: number) => ({
+          pageX,
+          pageY: 0,
+          width: 100,
+          height: 100,
+        }))
+    );
+
     let tree: ReactTestRenderer | undefined;
     let context!: ChoreographyContextType;
     const registeredIds = new Set<string>();
@@ -104,21 +120,25 @@ test.each([
       const screenId = useScreenId();
       useEffect(() => {
         registeredIds.add(screenId);
+        const release = actions.registerScreenPresentation(screenId, {
+          current: { tag: pageX + 1000 },
+        } as any);
+
         actions.registerElement({
           id: 'card',
           groupId: 'group',
           screenId,
           metrics: { pageX, pageY: 0, width: 100, height: 100 },
-          ref: () => ({
-            measureInWindow: (callback: Function) =>
-              callback(pageX, 0, 100, 100),
-          }),
+          ref: { current: { tag: pageX } },
           getPresentation: () => ({
             content: null,
             transition: { renderer: () => null },
           }),
         });
-        return () => actions.unregisterElement('card', screenId, 'group');
+        return () => {
+          release();
+          actions.unregisterElement('card', screenId, 'group');
+        };
       }, [actions, pageX, screenId]);
       return null;
     }
@@ -192,6 +212,7 @@ test.each([
       await act(async () =>
         context.setPendingTargetScreen('detail-second', 'detail-first')
       );
+      context.setScreenReady('detail-second', true);
       await act(async () => {
         const preparation = context.startTransition({
           groupId: 'group',
@@ -217,6 +238,8 @@ test.each([
       expect(await context.waitForScreenReady('detail-first')).toBe(true);
     } finally {
       await act(async () => tree?.unmount());
+      delete globals.__screenChoreographyCaptureFabricLayout;
+      jest.restoreAllMocks();
       jest.useRealTimers();
     }
   }

@@ -37,7 +37,7 @@ export async function runReverseTransition(
   const {
     progressOwnership,
     navigationController,
-    preMeasureGroup,
+    captureSourceGroup,
     startTransition,
     cancelTransition,
     waitForOverlayReady,
@@ -74,13 +74,13 @@ export async function runReverseTransition(
   };
 
   try {
-    debugLog('[BackIntercept] preMeasureGroup start');
-    const endSource = trace?.start('source-measure');
-    await preMeasureGroup(groupId, currentScreenId);
+    debugLog('[BackIntercept] captureSourceGroup start');
+    const endSource = trace?.start('source-capture');
+    await captureSourceGroup(groupId, currentScreenId);
     endSource?.();
     if (!canContinue() || progressOwnership.version !== preparationVersion)
       return;
-    debugLog('[BackIntercept] preMeasureGroup done');
+    debugLog('[BackIntercept] captureSourceGroup done');
 
     const endCoordinator = trace?.start('coordinator');
     const reverseSession = await startTransition({

@@ -98,7 +98,7 @@ describe('interactive ownership', () => {
         sourceScreenId: 'List',
         targetScreenId: 'Detail',
       }),
-      preMeasureGroup: jest.fn(async () => {}),
+      captureSourceGroup: jest.fn(async () => {}),
       startTransition: jest.fn(async () => {
         return publishSession('A');
       }),
@@ -126,7 +126,7 @@ describe('interactive ownership', () => {
   test('does not start a gesture while another caller owns preparation', async () => {
     ctx.navigationController.acquireNavigationLock('List');
     expect(await interactive.beginBack()).toBeNull();
-    expect(ctx.preMeasureGroup).not.toHaveBeenCalled();
+    expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
     expect(ctx.navigationController.getNavigationSourceScreenId()).toBe('List');
   });
 
@@ -292,7 +292,7 @@ describe('interactive ownership', () => {
 
   test('unmount during premeasurement does not create a session', async () => {
     let resolveMeasurement!: () => void;
-    ctx.preMeasureGroup = jest.fn(
+    ctx.captureSourceGroup = jest.fn(
       () =>
         new Promise<void>((resolve) => {
           resolveMeasurement = resolve;
@@ -363,7 +363,7 @@ describe('interactive ownership', () => {
     expect(
       await interactive.beginBack({ signal: controller.signal })
     ).toBeNull();
-    expect(ctx.preMeasureGroup).not.toHaveBeenCalled();
+    expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
     expect(ctx.navigationController.isNavigationLocked()).toBe(false);
   });
 
@@ -373,7 +373,7 @@ describe('interactive ownership', () => {
       const controller = new AbortController();
       const gate = deferred<void>();
       if (stage === 'measurement') {
-        ctx.preMeasureGroup = jest.fn(() => gate.promise);
+        ctx.captureSourceGroup = jest.fn(() => gate.promise);
       } else if (stage === 'session') {
         ctx.startTransition = jest.fn(async () => {
           const session = publishSession('A');
@@ -414,7 +414,7 @@ describe('interactive ownership', () => {
     const controller = new AbortController();
     const first = deferred<void>();
     const second = deferred<void>();
-    ctx.preMeasureGroup = jest
+    ctx.captureSourceGroup = jest
       .fn()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise);
@@ -483,7 +483,7 @@ describe('interactive ownership', () => {
     ctx.cancelTransition('A');
     await act(async () => tree.update(render()));
     const gate = deferred<void>();
-    ctx.preMeasureGroup = jest.fn(() => gate.promise);
+    ctx.captureSourceGroup = jest.fn(() => gate.promise);
     ctx.startTransition = jest.fn(async () => publishSession('B'));
     await act(async () => tree.update(render()));
     let pending!: ReturnType<Interactive['beginBack']>;

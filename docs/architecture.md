@@ -79,22 +79,40 @@ expansion curve. Transform updates can still use Fabric commits and perform
 native rendering work; the library does not enable Reanimated flags that bypass
 those commits.
 
-## Preparation and measurements
+## Preparation and Fabric layout
 
-Forward navigation pre-measures the source and marks the pending target before
-navigation mounts the destination. Screen `ready` flags and reference-counted
-blockers gate preparation. Native forward preparation waits for attached layout
-across native frames, then reads target coordinates in a batch. When unavailable,
-the coordinator uses its stable-measurement fallback. Cached target geometry is
-validated against live layout; stale entries re-enter measurement.
+On RN 0.81 and newer, a runtime-owned C++ binding observes completed Fabric mounts.
+It retains weak mounted-root references and reads geometry without modifying
+mount transactions. Each batch validates that its root matches the current commit
+and mounting base, with no pending transactions, before and after reading layout.
+Every endpoint is scoped to its registered screen. Non-finite, empty, missing, or
+partially captured batches are rejected.
 
-Reverse preparation measures the visible detail and validates the still-mounted
-list endpoint. Measurements are batched on the UI thread, with a native-ref
-fallback and bounded timeout. Session ownership is checked after asynchronous
-work so stale measurements cannot activate an interrupted session.
+Before navigation, the coordinator captures a one-navigation source snapshot.
+This preserves the departing geometry if native-stack detaches its screen.
+The snapshot is checked against native node identity and consumed by the next
+preparation; it is not a reusable destination cache. Without a source snapshot,
+source and target are captured together from one mounted root.
 
-`onPreparationTrace` exposes stage timings without changing the animation clock.
-The Gallery benchmark and `docs/performance.md` describe the measurement pipeline.
+Forward and backward preparation use the same Fabric path. Screen `ready` flags
+and reference-counted blockers remain application-level gates. Pending mounts
+are retried with a bounded 500ms deadline; the coordinator does not wait for
+repeated identical measurements. Pairing freezes presentations, rechecks current
+geometry, and activates without an asynchronous measurement between these steps.
+Unavailable endpoints skip the shared transition through the navigation fallback.
+Session ownership and node identity checks prevent interrupted work from activating.
+Active endpoint refreshes also read Fabric layout. Coalesced native mount
+notifications refresh target bounds during an active session, including safe-area
+changes after the first destination mount, while preserving frozen presentations.
+The subscription is released on completion, cancellation, or disposal.
+
+There are no Reanimated `measure()`, native-ref `measureInWindow()`, native layout
+sampling, or cached-target measurement paths. Fabric geometry does not describe
+native-only transforms that bypass its shadow tree; applications must keep endpoint
+layout and scroll state stable during the handoff to the overlay.
+
+`onPreparationTrace` exposes source capture, target registration, Fabric preparation,
+and overlay readiness timings. See `docs/performance.md` for benchmark collection.
 
 ## Overlay and screen visibility
 

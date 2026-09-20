@@ -10,10 +10,7 @@ import {
   memo,
 } from 'react';
 import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
-import Animated, {
-  useAnimatedRef,
-  useDerivedValue,
-} from 'react-native-reanimated';
+import Animated, { useDerivedValue } from 'react-native-reanimated';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
   ElementPresentation,
@@ -85,7 +82,6 @@ function SharedElementRegistration({
   metadata,
 }: SharedElementRegistrationProps) {
   const viewNodeRef = useRef<any>(null);
-  const animatedRef = useAnimatedRef<any>();
   const actions = useContext(ChoreographyActionsContext);
   if (!actions) {
     throw new Error(
@@ -118,13 +114,9 @@ function SharedElementRegistration({
   const getTransition = useCallback(() => transitionRef.current, []);
 
   const getNode = useCallback(() => viewNodeRef.current, []);
-  const setRefs = useCallback(
-    (node: any) => {
-      viewNodeRef.current = node;
-      animatedRef(node);
-    },
-    [animatedRef]
-  );
+  const setRefs = useCallback((node: any) => {
+    viewNodeRef.current = node;
+  }, []);
 
   // Stable registration. Effect deps are all stable identities.
   useEffect(() => {
@@ -133,7 +125,6 @@ function SharedElementRegistration({
       groupId,
       screenId,
       ref: getNode,
-      animatedRef,
       metrics: null,
       getPresentation,
       getTransition,
@@ -147,7 +138,6 @@ function SharedElementRegistration({
     groupId,
     screenId,
     getNode,
-    animatedRef,
     getPresentation,
     getTransition,
     registerElement,
