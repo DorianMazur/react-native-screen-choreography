@@ -69,6 +69,16 @@ factory adapter. It does not create image copies or crossfade duplicate content.
 shadow layer whose opacity changes. Android shadow parameters must not animate
 per frame because they recreate drawables.
 
+## Geometry and fixed content layout
+
+Default shared bounds and the geometry primitives position their frames with
+`translateX`/`translateY`, anchored at layout `left: 0, top: 0`. Width and height
+continue interpolating so retained children can reflow without scaling their
+content. The default shared bounds renderer retains its existing height
+expansion curve. Transform updates can still use Fabric commits and perform
+native rendering work; the library does not enable Reanimated flags that bypass
+those commits.
+
 ## Preparation and measurements
 
 Forward navigation pre-measures the source and marks the pending target before

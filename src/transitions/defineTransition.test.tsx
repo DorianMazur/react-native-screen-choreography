@@ -122,7 +122,7 @@ test('owner and empty target bind the same named transition', async () => {
 });
 
 test.each(['bounds', 'surface'] as const)(
-  '%s has one retained host and reverses the same geometry',
+  '%s retains one host and reversible visual bounds without scaling content',
   async (kind) => {
     const definition = defineTransition({
       shared: { hero: { kind, radius: [8, 0] } },
@@ -156,7 +156,6 @@ test.each(['bounds', 'surface'] as const)(
       };
       return <Renderer {...props} />;
     };
-    mockProgress.value = 0.5;
     const tree = await mount(render('forward'));
     const host = tree.root.findByType('PortalHost' as React.ElementType);
     const frame = () =>
@@ -164,31 +163,41 @@ test.each(['bounds', 'surface'] as const)(
         tree.root.findAllByType('Animated.View' as React.ElementType)[0]!.props
           .style
       );
-    expect(frame()).toMatchObject({
-      left: 5,
-      top: 50,
-      width: 190,
-      height: 250,
-    });
-    await act(async () => tree.update(withProviders(render('backward'))));
-    expect(
-      tree.root.findAllByType('PortalHost' as React.ElementType)
-    ).toHaveLength(1);
-    expect(tree.root.findByType('PortalHost' as React.ElementType)).toBe(host);
-    expect(frame()).toMatchObject({
-      left: 5,
-      top: 50,
-      width: 190,
-      height: 250,
-    });
-    mockProgress.value = 0;
-    await act(async () => tree.update(withProviders(render('backward'))));
-    expect(frame()).toMatchObject({
-      left: 10,
-      top: 100,
-      width: 80,
-      height: 100,
-    });
+    const expectedFrames = [
+      { progress: 0, x: 10, y: 100, width: 80, height: 100 },
+      { progress: 0.5, x: 5, y: 50, width: 190, height: 250 },
+      { progress: 1, x: 0, y: 0, width: 300, height: 400 },
+    ];
+    for (const expected of expectedFrames) {
+      mockProgress.value = expected.progress;
+      for (const direction of ['forward', 'backward'] as const) {
+        await act(async () => tree.update(withProviders(render(direction))));
+        expect(
+          tree.root.findAllByType('PortalHost' as React.ElementType)
+        ).toHaveLength(1);
+        expect(tree.root.findByType('PortalHost' as React.ElementType)).toBe(
+          host
+        );
+        const style = frame();
+        expect(style.left).toBe(0);
+        expect(style.top).toBe(0);
+        const transforms = Object.assign({}, ...style.transform);
+        expect(style.left + transforms.translateX).toBeCloseTo(expected.x);
+        expect(style.top + transforms.translateY).toBeCloseTo(expected.y);
+        expect(style.width * (transforms.scaleX ?? 1)).toBeCloseTo(
+          expected.width
+        );
+        expect(style.height * (transforms.scaleY ?? 1)).toBeCloseTo(
+          expected.height
+        );
+        expect(style.width).toBeCloseTo(expected.width);
+        expect(style.height).toBeCloseTo(expected.height);
+        expect(style.transform).toEqual([
+          { translateX: expected.x },
+          { translateY: expected.y },
+        ]);
+      }
+    }
   }
 );
 

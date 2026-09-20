@@ -121,8 +121,24 @@ function BoundsTransition({
     );
 
     return {
-      left: interpolate(timeline.value, [0, 1], [sourceX, targetX], 'clamp'),
-      top: interpolate(timeline.value, [0, 1], [sourceY, targetY], 'clamp'),
+      transform: [
+        {
+          translateX: interpolate(
+            timeline.value,
+            [0, 1],
+            [sourceX, targetX],
+            'clamp'
+          ),
+        },
+        {
+          translateY: interpolate(
+            timeline.value,
+            [0, 1],
+            [sourceY, targetY],
+            'clamp'
+          ),
+        },
+      ],
       width: interpolate(
         timeline.value,
         [0, 1],
@@ -152,6 +168,8 @@ export const defaultTransition = makeTransition({
 const styles = StyleSheet.create({
   liveOverlayHost: {
     position: 'absolute',
+    left: 0,
+    top: 0,
     overflow: 'hidden',
   },
   liveHost: {

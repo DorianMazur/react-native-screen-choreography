@@ -41,6 +41,10 @@ export const artwork = defineTransition({
 
 The `radius` tuple always means **collapsed, expanded**, including on back. Without it, recipes read the endpoint styles.
 
+## Choose how content changes size
+
+Shared recipes, `TransitionFrame`, and `TransitionSurface` update the frame's width and height during motion, letting text, images, and other live children respond to the available space. Frame position uses translations with a fixed layout origin; content is not scaled to fit.
+
 ## Place the endpoints
 
 ```tsx
