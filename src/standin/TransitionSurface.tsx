@@ -1,5 +1,5 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, type ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
@@ -9,6 +9,32 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
 import type { SurfaceTransitionStyle } from './resolveSurfaceStyle';
+export function transitionLayoutStyle(): ViewStyle {
+  return {
+    position: 'absolute',
+    left: 0,
+    top: 0,
+  };
+}
+
+/** Translate position while allowing live content to reflow as dimensions change. */
+export function transitionGeometryStyle(
+  source: ElementMetrics,
+  target: ElementMetrics,
+  timeline: number
+): ViewStyle {
+  'worklet';
+  const t = Math.max(0, Math.min(1, timeline));
+  const x = source.pageX + (target.pageX - source.pageX) * t;
+  const y = source.pageY + (target.pageY - source.pageY) * t;
+  const width = source.width + (target.width - source.width) * t;
+  const height = source.height + (target.height - source.height) * t;
+  return {
+    width,
+    height,
+    transform: [{ translateX: x }, { translateY: y }],
+  };
+}
 
 interface TransitionSurfaceProps {
   progress: SharedValue<number>;
@@ -52,32 +78,10 @@ export function TransitionSurface({
     return direction === 'backward' ? 1 - progress.value : progress.value;
   });
 
-  const frameStyle = useAnimatedStyle(() => ({
-    left: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.pageX, targetMetrics.pageX],
-      'clamp'
-    ),
-    top: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.pageY, targetMetrics.pageY],
-      'clamp'
-    ),
-    width: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.width, targetMetrics.width],
-      'clamp'
-    ),
-    height: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.height, targetMetrics.height],
-      'clamp'
-    ),
-  }));
+  const layoutStyle = transitionLayoutStyle();
+  const frameStyle = useAnimatedStyle(() =>
+    transitionGeometryStyle(sourceMetrics, targetMetrics, t.value)
+  );
 
   const shadowStyle = useAnimatedStyle(() => ({
     borderRadius: interpolate(
@@ -113,7 +117,7 @@ export function TransitionSurface({
 
   return (
     <Animated.View
-      style={[frameStyle, styles.wrapper, { zIndex }]}
+      style={[styles.wrapper, layoutStyle, frameStyle, { zIndex }]}
       pointerEvents="none"
     >
       {expandedBoxShadow && (

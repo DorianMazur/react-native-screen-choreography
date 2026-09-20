@@ -57,6 +57,8 @@ The result contains:
 
 Default enter interval: `[0.55, 0.9]`. Default exit interval: `[0.1, 0.4]`. Translations default to `0`; hidden scale defaults to `1`. The visible endpoint always has zero translation and scale `1`. Reduced motion disables both translation and scale; opacity remains progress-driven. Shared recipes default to `zIndex: 100` through the transition factory.
 
+Shared recipes interpolate width and height so live children can reflow. Position uses translations from a fixed layout origin. See [choosing content layout](../guide/transitions.md#choose-how-content-changes-size).
+
 `index` defaults to `0` and `count` to `1`. For a dynamic list, pass each item's current index and the list length. Each component owns its hooks, so inserting, removing, and reordering keyed items is supported. `during` is the whole group's interval. The effective stagger is `min(stagger, (end - start) / count)`; the remaining interval is each item's animation duration. This compresses excessive staggering so all items finish by `end`. Forward expansion starts lower indices first; reversing progress reverses the sequence. Changes to index or count immediately recompute the interval.
 
 `count` must be a positive safe integer and `index` an integer in `[0, count)`. An empty list simply renders no reveal components. Translations must be finite; scale and stagger must be finite and nonnegative. Definitions capture their recipes at creation.
@@ -92,7 +94,7 @@ Anchors update together with renderer endpoint metrics when the session's measur
 
 ## `TransitionFrame`
 
-An absolute animated frame for position, width, height, and optional corner radius. Pass the renderer's `children` inside it.
+An absolute animated frame for position, size, and optional corner radius. Pass the renderer's `children` inside it.
 
 | Prop                                       | Type                      | Default                                                        |
 | ------------------------------------------ | ------------------------- | -------------------------------------------------------------- |
@@ -103,7 +105,9 @@ An absolute animated frame for position, width, height, and optional corner radi
 | `zIndex`                                   | `number`                  | `1`                                                            |
 | `children`                                 | `ReactNode`               | Optional                                                       |
 
-Metrics contain `pageX`, `pageY`, `width`, and `height`. The frame interpolates source-to-target geometry with direction handling built in. Supplying a radius enables clipping. It does not paint a background or shadow and uses `pointerEvents="none"` during overlay presentation.
+Metrics contain `pageX`, `pageY`, `width`, and `height`. The frame interpolates source-to-target geometry with direction handling built in. It interpolates width and height and positions the frame with `translateX` and `translateY` while layout `left` and `top` remain `0`. Content keeps its natural size and reflows within the changing frame.
+
+Supplying a radius enables clipping. The frame does not paint a background or shadow and uses `pointerEvents="none"` during overlay presentation.
 
 ## `TransitionSurface`
 
@@ -118,7 +122,7 @@ Uses the same required `progress`, `sourceMetrics`, and `targetMetrics` as `Tran
 | `zIndex`                     | `number`                  | `0`         |
 | `children`                   | `ReactNode`               | Optional    |
 
-Missing background colors become transparent and missing radii become `0`. The surface clips its content. Its shadow uses the expanded endpoint's static `boxShadow` and animates opacity, fading near the endpoints. It does not interpolate shadow parameters each frame.
+Missing background colors become transparent and missing radii become `0`. The surface clips its content. Its shadow uses the expanded endpoint's static `boxShadow` and animates opacity, fading near the endpoints. It does not interpolate shadow parameters each frame. Dimensions and position follow `TransitionFrame`.
 
 ## `resolveSurfaceStyle`
 

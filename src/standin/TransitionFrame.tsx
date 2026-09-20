@@ -6,6 +6,10 @@ import Animated, {
   type SharedValue,
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
+import {
+  transitionGeometryStyle,
+  transitionLayoutStyle,
+} from './TransitionSurface';
 
 interface TransitionFrameProps {
   progress: SharedValue<number>;
@@ -36,7 +40,7 @@ export function TransitionFrame({
   const tRadius = targetBorderRadius ?? 0;
 
   const baseStyle = {
-    position: 'absolute' as const,
+    ...transitionLayoutStyle(),
     zIndex,
     ...(hasRadius ? { overflow: 'hidden' as const } : {}),
   };
@@ -46,30 +50,7 @@ export function TransitionFrame({
   );
 
   const animatedStyle = useAnimatedStyle(() => ({
-    left: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.pageX, targetMetrics.pageX],
-      'clamp'
-    ),
-    top: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.pageY, targetMetrics.pageY],
-      'clamp'
-    ),
-    width: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.width, targetMetrics.width],
-      'clamp'
-    ),
-    height: interpolate(
-      t.value,
-      [0, 1],
-      [sourceMetrics.height, targetMetrics.height],
-      'clamp'
-    ),
+    ...transitionGeometryStyle(sourceMetrics, targetMetrics, t.value),
     ...(hasRadius
       ? {
           borderRadius: interpolate(
