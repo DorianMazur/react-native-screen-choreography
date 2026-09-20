@@ -5,11 +5,13 @@ import android.content.Intent
 import android.graphics.Rect
 import android.os.Bundle
 import android.os.SystemClock
+import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
 import androidx.test.uiautomator.Until
+import java.io.ByteArrayOutputStream
 import java.io.File
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
@@ -30,8 +32,27 @@ class ChoreographyBenchmarks(private val scenario: String) {
     }
     device.executeShellCommand("am force-stop $APP_ID")
     instrumentation.context.startActivity(launchIntent())
-    await("benchmark-ready")
-    repeat(cycles) { roundTrip() }
+    try {
+      // Slow local cold boots can opt in without relaxing CI or input checks.
+      val startupTimeout = arguments.getString("performanceStartupTimeoutMs", "$TIMEOUT_MS").toLong()
+      require(startupTimeout > 0) { "performanceStartupTimeoutMs must be positive" }
+      await("benchmark-ready", startupTimeout)
+      repeat(cycles) { roundTrip() }
+    } catch (failure: Throwable) {
+      // Preserve the collector's rejection reason and the actual UI before
+      // AGP uninstalls the app. Diagnostic failures must not mask the assertion.
+      try {
+        val hierarchy = ByteArrayOutputStream()
+        device.dumpWindowHierarchy(hierarchy)
+        writeArtifact("failure-window.xml", hierarchy.toString("UTF-8"))
+        // Export diagnostics through accessibility if the failure is hit
+        // testing itself. The measured probes always use real device touches.
+        exportRun(diagnostic = true)
+      } catch (diagnosticFailure: Throwable) {
+        failure.addSuppressed(diagnosticFailure)
+      }
+      throw failure
+    }
     exportRun()
   }
 
@@ -46,9 +67,25 @@ class ChoreographyBenchmarks(private val scenario: String) {
     await("benchmark-list-probe-ack")
   }
 
-  private fun exportRun() {
+  private fun exportRun(diagnostic: Boolean = false) {
     val previousFiles = fixtureFiles()
-    click("benchmark-end")
+    if (diagnostic) {
+      fun activate(node: AccessibilityNodeInfo): Boolean {
+        if (node.contentDescription?.toString() == "benchmark-end") {
+          return node.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+        }
+        for (index in 0 until node.childCount) {
+          val child = node.getChild(index) ?: continue
+          if (activate(child)) return true
+        }
+        return false
+      }
+      check(instrumentation.uiAutomation.rootInActiveWindow?.let(::activate) == true) {
+        "Cannot activate diagnostic export"
+      }
+    } else {
+      click("benchmark-end")
+    }
     await("benchmark-export-complete")
     val exportedFiles = fixtureFiles() - previousFiles
     check(exportedFiles.size == 1) { "Expected one new fixture export, found $exportedFiles" }
@@ -74,8 +111,8 @@ class ChoreographyBenchmarks(private val scenario: String) {
     putExtra("performanceScenario", scenario)
   }
 
-  private fun await(label: String) {
-    assertTrue("Missing fixture marker: $label", device.wait(Until.hasObject(By.desc(label)), TIMEOUT_MS))
+  private fun await(label: String, timeoutMs: Long = TIMEOUT_MS) {
+    assertTrue("Missing fixture marker: $label", device.wait(Until.hasObject(By.desc(label)), timeoutMs))
   }
 
   private fun click(label: String) {

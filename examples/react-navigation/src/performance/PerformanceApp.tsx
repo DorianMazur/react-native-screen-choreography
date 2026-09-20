@@ -24,7 +24,7 @@ import {
 } from '../../../shared/gallery/GalleryListScreen';
 import { GalleryDetailScreen } from '../../../shared/gallery/GalleryDetailScreen';
 import { ExampleBindings } from '../../../shared/runtime';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
+import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { PHOTOS } from '../../../shared/gallery/data';
 
 import { theme } from '../../../shared/theme';
@@ -359,7 +359,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         }}
       >
         <View style={styles.root}>
-          <View style={styles.toolbar}>
+          <SafeAreaView edges={['bottom', 'right']} style={styles.toolbar}>
             <Text style={styles.caption}>
               {props.performanceScenario} · native timing
             </Text>
@@ -397,22 +397,24 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
               onPress={() => fixture.probe('detail')}
               disabled={status !== 'detail-settled'}
             />
-            {status === 'ready' && <Marker id="benchmark-ready" />}
-            {status === 'detail-settled' && (
-              <Marker id="benchmark-detail-settled" />
-            )}
-            {status === 'list-settled' && (
-              <Marker id="benchmark-list-settled" />
-            )}
-            {status === 'failed' && <Marker id="benchmark-failed" />}
-            {probeAck && <Marker id={`benchmark-${probeAck}-probe-ack`} />}
-            {exported && (
-              <>
-                <Marker id="benchmark-export-complete" />
-                <Marker id="benchmark-exported" />
-              </>
-            )}
-          </View>
+            <View style={styles.markers}>
+              {status === 'ready' && <Marker id="benchmark-ready" />}
+              {status === 'detail-settled' && (
+                <Marker id="benchmark-detail-settled" />
+              )}
+              {status === 'list-settled' && (
+                <Marker id="benchmark-list-settled" />
+              )}
+              {status === 'failed' && <Marker id="benchmark-failed" />}
+              {probeAck && <Marker id={`benchmark-${probeAck}-probe-ack`} />}
+              {exported && (
+                <>
+                  <Marker id="benchmark-export-complete" />
+                  <Marker id="benchmark-exported" />
+                </>
+              )}
+            </View>
+          </SafeAreaView>
           <View style={styles.navigation}>{navigator}</View>
         </View>
       </ChoreographyProvider>
@@ -436,6 +438,7 @@ const styles = StyleSheet.create({
     backgroundColor: theme.bg,
   },
   controls: { flexDirection: 'row', gap: 12 },
+  markers: { height: 48 },
   screen: { flex: 1, padding: 16, backgroundColor: theme.bg },
   heading: {
     color: theme.text,

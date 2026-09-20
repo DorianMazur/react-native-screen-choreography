@@ -40,6 +40,7 @@ jest.mock(
 
 const fabricGlobals = globalThis as typeof globalThis & {
   __screenChoreographyCaptureFabricLayout?: jest.Mock;
+  __screenChoreographySubscribeFabricMount?: jest.Mock;
 };
 function FabricScreens() {
   const actions = useContext(ChoreographyActionsContext)!;
@@ -67,12 +68,16 @@ describe('ChoreographyProvider lifecycle', () => {
       (_screens, tags) =>
         tags.map(() => ({ pageX: 10, pageY: 20, width: 100, height: 100 }))
     );
+    fabricGlobals.__screenChoreographySubscribeFabricMount = jest.fn(
+      () => () => {}
+    );
     jest.mocked(FullWindowOverlay).mockClear();
   });
 
   afterEach(() => {
     Platform.OS = originalPlatform;
     delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    delete fabricGlobals.__screenChoreographySubscribeFabricMount;
     jest.restoreAllMocks();
   });
 
@@ -159,6 +164,81 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(context.activeSession).toBeNull();
         await act(async () => controls.list!());
         expect(handoff).toHaveBeenCalledTimes(1);
+      } finally {
+        await act(async () => tree?.unmount());
+        jest.useRealTimers();
+      }
+    }
+  );
+
+  test.each([false, true])(
+    'retains overlay readiness across a Fabric mount update (host already acknowledged: %s)',
+    async (hostAlreadyAcknowledged) => {
+      jest.useFakeTimers();
+      let context!: ChoreographyContextType;
+      let tree!: ReactTestRenderer;
+      const onTransitionEnd = jest.fn();
+      function Consumer() {
+        context = useContext(ChoreographyContext)!;
+        return null;
+      }
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider onTransitionEnd={onTransitionEnd}>
+              <FabricScreens />
+              <Consumer />
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        await act(async () => {
+          const preparing = context.startTransition({
+            groupId: 'group',
+            sourceScreenId: 'list',
+            targetScreenId: 'detail',
+            direction: 'forward',
+          });
+          await jest.runAllTimersAsync();
+          await preparing;
+        });
+        const sessionId = context.activeSession!.id;
+        const host = tree.root.findByType(NativeTransitionHost);
+        if (hostAlreadyAcknowledged) {
+          await act(async () => host.props.onPresentationReady());
+        }
+        const ready = jest.fn();
+        const waiting = context.waitForOverlayReady(sessionId).then(ready);
+        fabricGlobals.__screenChoreographyCaptureFabricLayout!.mockReturnValue([
+          { pageX: 10, pageY: 80, width: 100, height: 100 },
+        ]);
+        await act(async () => {
+          const notifyMount =
+            fabricGlobals.__screenChoreographySubscribeFabricMount!.mock
+              .calls[0]![0];
+          notifyMount();
+        });
+        expect(context.activeSession!.pairs[0]!.targetMetrics.pageY).toBe(80);
+        if (!hostAlreadyAcknowledged) {
+          await act(async () => host.props.onPresentationReady());
+        }
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(151);
+          await waiting;
+        });
+        expect(ready).toHaveBeenCalledWith(true);
+        expect(context.isOverlayPresented!(sessionId)).toBe(true);
+        expect(context.activeSession?.id).toBe(sessionId);
+        expect(onTransitionEnd).not.toHaveBeenCalled();
       } finally {
         await act(async () => tree?.unmount());
         jest.useRealTimers();
