@@ -9,15 +9,8 @@ on:
       - '.yarnrc.yml'
       - '.yarn/**'
       - '.github/workflows/docs.yml'
-  push:
-    branches: [main]
-    paths:
-      - 'docs/**'
-      - 'package.json'
-      - 'yarn.lock'
-      - '.yarnrc.yml'
-      - '.yarn/**'
-      - '.github/workflows/docs.yml'
+  release:
+    types: [published]
   workflow_dispatch:
 
 permissions:
@@ -58,7 +51,7 @@ jobs:
         run: yarn workspace screen-choreography-docs format:check
 
       - name: Upload the GitHub Pages artifact
-        if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+        if: github.event_name == 'release' && github.event.action == 'published'
         uses: actions/upload-pages-artifact@v3
         with:
           path: docs/.vitepress/dist
@@ -66,7 +59,7 @@ jobs:
   deploy:
     name: Publish documentation to GitHub Pages
     needs: build
-    if: github.ref == 'refs/heads/main' && github.event_name != 'pull_request'
+    if: github.event_name == 'release' && github.event.action == 'published'
     runs-on: ubuntu-latest
     timeout-minutes: 10
     permissions:

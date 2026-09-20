@@ -129,4 +129,4 @@ When debugging or extending behavior, start here:
 - Treat `docs/guide/` and `docs/api/` as canonical user documentation. Keep the README concise and link to these files.
 - Update API reference headings when changing runtime exports; the docs build checks coverage against the export-only entries.
 - Preserve existing architecture and performance Markdown as single sources; the website renders these same files.
-- GitHub Actions builds and deploys `docs/.vitepress/dist/` on `main`. Keep generated output ignored; commit only documentation sources and tooling.
+- GitHub Actions builds and deploys `docs/.vitepress/dist/` when a GitHub release is published, using the release tag. Pull requests and manual workflow runs only validate the docs. Keep generated output ignored; commit only documentation sources and tooling.
