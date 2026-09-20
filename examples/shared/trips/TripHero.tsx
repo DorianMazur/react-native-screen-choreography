@@ -6,10 +6,7 @@ import Animated, {
   useReducedMotion,
   type SharedValue,
 } from 'react-native-reanimated';
-import {
-  useSharedElementPresentation,
-  useChoreographyProgress,
-} from '../runtime';
+import { useSharedElementPresentation } from '../runtime';
 import { theme } from '../theme';
 import { AppIcon } from '../AppChrome';
 import type { Trip } from './data';
@@ -39,9 +36,8 @@ export function TripHero({
   topInset: number;
   bottomInset: number;
 }) {
-  const { progress, transitioning, settled, collapsed, expanded } =
+  const { progress, transitioning, direction, settled, collapsed, expanded } =
     useSharedElementPresentation();
-  const { direction } = useChoreographyProgress();
   const backward = transitioning && direction === 'backward';
   const reduceMotion = useReducedMotion();
   const fromWidth = collapsed.metrics?.width ?? width;

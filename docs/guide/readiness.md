@@ -56,7 +56,7 @@ Render this beneath `ChoreographyScreen` so it blocks the correct screen. Use a 
 
 ## Keep supporting content out of the critical path
 
-The shared target geometry needs to be ready. A long description or expensive secondary section often does not. Use a declarative `Enter` role to animate it, or `useLatchedReveal` to delay mounting it until progress reaches a threshold.
+The shared target geometry needs to be ready. A long description or expensive secondary section often does not. Use `useLatchedReveal` to delay mounting it until progress reaches a threshold. A declarative `Enter` role animates already mounted content; it does not defer the content's rendering or layout work.
 
 ```tsx
 import { useLatchedReveal } from 'react-native-screen-choreography';
@@ -71,7 +71,9 @@ function SupportingContent({ artworkId }: { artworkId: string }) {
 }
 ```
 
-`useLatchedReveal` returns a boolean; it does not animate opacity. Its default `visibleWhenInactive: true` keeps standalone screens readable when there is no active session. Use it for companion content, never to conditionally mount a target the transition needs to measure.
+Place this component beneath `ChoreographyScreen`. New companion content stays unmounted while the destination is pending or preparing, then mounts once when the active transition reaches the threshold. Once visible, it stays mounted through reverse motion and later transitions. Set `resetKey` to the content's identity, as with `artworkId` above, to start a fresh gate when a reused screen shows different content. Its default `visibleWhenInactive: true` also keeps standalone screens and fallback navigation readable.
+
+`useLatchedReveal` returns a boolean; it does not animate opacity. Use it for companion content, never to conditionally mount a target the transition needs to measure. Keep placeholder dimensions stable when omitted content affects shared target geometry. A threshold of `0.7` still mounts the section during the animation, so very expensive content may need further splitting or application-level deferral until the transition settles.
 
 ## Yield to a user's interaction
 

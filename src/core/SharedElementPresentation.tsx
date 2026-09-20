@@ -17,6 +17,8 @@ export interface SharedElementPresentation {
    */
   presentationProgress: DerivedValue<number>;
   transitioning: boolean;
+  /** Participating session direction; null when this owner is settled. */
+  direction: 'forward' | 'backward' | null;
   collapsed: SharedElementEndpoint;
   expanded: SharedElementEndpoint;
   /** Endpoint currently owning the component when no animation is active. */

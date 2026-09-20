@@ -7,6 +7,7 @@ import {
   useCallback,
   useMemo,
   useContext,
+  memo,
 } from 'react';
 import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
 import Animated, {
@@ -18,6 +19,8 @@ import type {
   ElementPresentation,
   Transition,
   SharedElementTransition,
+  ElementTransitionPair,
+  TransitionSessionData,
 } from '../types';
 import {
   ChoreographyActionsContext,
@@ -162,7 +165,41 @@ function SharedElementRegistration({
   );
 }
 
-function LiveSharedElement({
+function LiveSharedElement(props: SharedElementProps) {
+  const choreography = useContext(ChoreographyContext);
+  const actions = useContext(ChoreographyActionsContext);
+  const screenId = useScreenId();
+  if (!choreography || !actions) {
+    throw new Error(
+      'SharedElement must be used within a <ChoreographyProvider>'
+    );
+  }
+  const session = choreography.activeSession;
+  const pair =
+    session?.state === 'active' && session.groupId === props.groupId
+      ? (session.pairs.find(
+          (candidate) =>
+            candidate.id === props.id &&
+            (candidate.source.screenId === screenId ||
+              candidate.target.screenId === screenId)
+        ) ?? null)
+      : null;
+
+  return (
+    <LiveSharedElementContent
+      {...props}
+      screenId={screenId}
+      pair={pair}
+      direction={pair ? session!.direction : null}
+      sourceScreenId={pair ? session!.sourceScreenId : null}
+      targetScreenId={pair ? session!.targetScreenId : null}
+      progress={choreography.progress}
+      getSettledScreenId={actions.getSettledScreenId}
+    />
+  );
+}
+
+const LiveSharedElementContent = memo(function LiveSharedElementContent({
   id,
   groupId,
   children,
@@ -170,34 +207,31 @@ function LiveSharedElement({
   transition = defaultTransition,
   portalStyle,
   metadata,
-}: SharedElementProps) {
-  const choreography = useContext(ChoreographyContext);
-  const actions = useContext(ChoreographyActionsContext);
-  const screenId = useScreenId();
+  screenId,
+  pair,
+  direction,
+  sourceScreenId,
+  targetScreenId,
+  progress,
+  getSettledScreenId,
+}: SharedElementProps & {
+  screenId: string;
+  pair: ElementTransitionPair | null;
+  direction: TransitionSessionData['direction'] | null;
+  sourceScreenId: string | null;
+  targetScreenId: string | null;
+  progress: TransitionSessionData['progress'];
+  getSettledScreenId: () => string | null;
+}) {
   const wasParticipatingRef = useRef(false);
   const endpoints = useRef<{
     collapsed: SharedElementEndpoint;
     expanded: SharedElementEndpoint;
   } | null>(null);
   const settledTargetScreenIdRef = useRef<string | null>(null);
-  const session = choreography?.activeSession ?? null;
-  const participates = Boolean(
-    session?.state === 'active' &&
-    session.groupId === groupId &&
-    session.pairs.some(
-      (pair) =>
-        pair.id === id &&
-        (pair.source.screenId === screenId || pair.target.screenId === screenId)
-    )
-  );
-
-  // The endpoint wrapper is never hidden for live pairs, so the single Fabric
-  // commit that unmounts the overlay host and retargets this portal lands the
-  // view in a visible host at the same window bounds — no gap frame.
-  let hostName: string | undefined;
-  if (participates) {
-    wasParticipatingRef.current = true;
-    const pair = session!.pairs.find((candidate) => candidate.id === id)!;
+  const participates = pair !== null;
+  const activeEndpoints = useMemo(() => {
+    if (!pair) return null;
     const source = {
       metrics: pair.sourceMetrics,
       metadata: pair.sourcePresentation.metadata,
@@ -208,21 +242,29 @@ function LiveSharedElement({
       metadata: pair.targetPresentation.metadata,
       style: pair.targetPresentation.style,
     };
+    return direction === 'forward'
+      ? { collapsed: source, expanded: target }
+      : { collapsed: target, expanded: source };
+  }, [pair, direction]);
+
+  // The endpoint wrapper is never hidden for live pairs, so the single Fabric
+  // commit that unmounts the overlay host and retargets this portal lands the
+  // view in a visible host at the same window bounds — no gap frame.
+  let hostName: string | undefined;
+  if (participates) {
+    wasParticipatingRef.current = true;
     // Retain presentation data only, never a popped screen's registration/ref.
-    endpoints.current =
-      session!.direction === 'forward'
-        ? { collapsed: source, expanded: target }
-        : { collapsed: target, expanded: source };
+    endpoints.current = activeEndpoints;
     hostName = getLiveOverlayHostName(
-      session!.sourceScreenId,
-      session!.targetScreenId,
+      sourceScreenId!,
+      targetScreenId!,
       id,
       groupId ?? 'default'
     );
   } else {
     if (wasParticipatingRef.current) {
       wasParticipatingRef.current = false;
-      const settledScreenId = actions?.getSettledScreenId() ?? null;
+      const settledScreenId = getSettledScreenId();
       settledTargetScreenIdRef.current =
         settledScreenId !== screenId ? settledScreenId : null;
     }
@@ -235,27 +277,39 @@ function LiveSharedElement({
       : undefined;
   }
 
-  const initial = {
-    metrics: null,
-    metadata,
-    style: (StyleSheet.flatten(style) ?? undefined) as ViewStyle | undefined,
-  };
-  const progress = choreography!.progress;
+  const ownerStyle = useMemo(() => StyleSheet.flatten(style), [style]);
+  const initial = useMemo(
+    () => ({ metrics: null, metadata, style: ownerStyle ?? undefined }),
+    [metadata, ownerStyle]
+  );
   const settled = settledTargetScreenIdRef.current
     ? ('expanded' as const)
     : ('collapsed' as const);
   const presentationProgress = useDerivedValue(() =>
     participates ? progress.value : settled === 'expanded' ? 1 : 0
   );
-  const presentation = {
-    progress,
-    presentationProgress,
-    transitioning: participates,
-    collapsed: endpoints.current?.collapsed ?? initial,
-    expanded: endpoints.current?.expanded ?? initial,
-    settled,
-  };
-  const ownerStyle = StyleSheet.flatten(style);
+  const collapsed = endpoints.current?.collapsed ?? initial;
+  const expanded = endpoints.current?.expanded ?? initial;
+  const presentation = useMemo(
+    () => ({
+      progress,
+      presentationProgress,
+      transitioning: participates,
+      direction,
+      collapsed,
+      expanded,
+      settled,
+    }),
+    [
+      progress,
+      presentationProgress,
+      participates,
+      direction,
+      collapsed,
+      expanded,
+      settled,
+    ]
+  );
   const reservedMetrics = hostName
     ? endpoints.current?.collapsed.metrics
     : null;
@@ -295,7 +349,7 @@ function LiveSharedElement({
       </Portal>
     </SharedElementRegistration>
   );
-}
+});
 
 function LiveSharedElementTarget({
   id,

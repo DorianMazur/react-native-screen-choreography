@@ -110,6 +110,117 @@ function choreography(
 }
 
 describe('SharedElement live endpoints', () => {
+  test.each([20, 100, 300])(
+    'only propagates presentation updates to the participating owner among %i owners',
+    async (count) => {
+      const state = makeContexts();
+      const progress = { value: 0 } as ChoreographyContextType['progress'];
+      const renders = Array.from({ length: count }, () => jest.fn());
+      const presentations: SharedElementPresentation[] = [];
+      function Content({ index }: { index: number }) {
+        presentations[index] = useSharedElementPresentation();
+        renders[index]!();
+        return null;
+      }
+      const owners = Array.from({ length: count }, (_, index) => (
+        <SharedElement key={index} id="player" groupId={`group-${index}`}>
+          <Content index={index} />
+        </SharedElement>
+      ));
+      let tree!: ReactTestRenderer;
+      const render = (
+        activeSession: TransitionSessionData | null,
+        pendingTargetScreenId: string | null = null
+      ) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider
+            value={{
+              ...choreography(activeSession),
+              progress,
+              pendingTargetScreenId,
+            }}
+          >
+            <ScreenIdContext.Provider value="list">
+              {owners}
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const active = { ...session('list', 'detail'), groupId: 'group-0' };
+      try {
+        await act(async () => {
+          tree = create(render(null));
+        });
+        const initial = presentations.slice();
+        await act(async () => tree.update(render(null, 'detail')));
+        await act(async () =>
+          tree.update(render({ ...active, state: 'measuring' }, 'detail'))
+        );
+        await act(async () =>
+          tree.update(render({ ...active, state: 'preparing' }, 'detail'))
+        );
+        expect(presentations).toEqual(initial);
+        renders.forEach((renderCount) =>
+          expect(renderCount).toHaveBeenCalledTimes(1)
+        );
+
+        await act(async () => tree.update(render(active, 'detail')));
+        expect(renders[0]).toHaveBeenCalledTimes(2);
+        const participating = presentations[0];
+        // Pending cleanup and cloned session envelopes do not change the pair.
+        await act(async () => tree.update(render({ ...active })));
+        expect(presentations[0]).toBe(participating);
+        expect(renders[0]).toHaveBeenCalledTimes(2);
+
+        const updated = {
+          ...active,
+          pairs: active.pairs.map((pair) => ({
+            ...pair,
+            targetMetrics: { ...pair.targetMetrics, width: 350 },
+          })),
+        };
+        await act(async () => tree.update(render(updated)));
+        expect(presentations[0]!.expanded.metrics!.width).toBe(350);
+        expect(renders[0]).toHaveBeenCalledTimes(3);
+        state.settle('detail');
+        await act(async () => tree.update(render(null)));
+        expect(presentations[0]!.settled).toBe('expanded');
+        expect(renders[0]).toHaveBeenCalledTimes(4);
+        expect(tree.root.findAllByType(Portal)[0]!.props.hostName).toContain(
+          'destination:'
+        );
+
+        // Matching element/group identifiers on other screens stay isolated.
+        await act(async () =>
+          tree.update(
+            render({
+              ...session('other-list', 'other-detail'),
+              groupId: 'group-1',
+            })
+          )
+        );
+        // Another element in the owner's group does not activate it either.
+        await act(async () =>
+          tree.update(
+            render({
+              ...active,
+              pairs: active.pairs.map((pair) => ({ ...pair, id: 'other' })),
+            })
+          )
+        );
+        expect(renders[0]).toHaveBeenCalledTimes(4);
+        for (let index = 1; index < count; index++) {
+          expect(renders[index]).toHaveBeenCalledTimes(1);
+          expect(presentations[index]).toBe(initial[index]);
+        }
+        expect(state.actions.registerElement).toHaveBeenCalledTimes(count);
+        expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => tree?.unmount());
+      }
+    }
+  );
+
   test('retains owner progress across settlement, cancellation, and unrelated sessions', async () => {
     const state = makeContexts();
     const progress = { value: 0 } as ChoreographyContextType['progress'];
@@ -149,11 +260,14 @@ describe('SharedElement live endpoints', () => {
         tree = create(render(null));
       });
       expectProgress(0);
+      expect(presentation.direction).toBeNull();
       await update(unrelated);
+      expect(presentation.direction).toBeNull();
       progress.value = 0.6;
       expectProgress(0);
 
       await update(session('list', 'detail'));
+      expect(presentation.direction).toBe('forward');
       for (const value of [0, 0.4, 1]) {
         progress.value = value;
         expectProgress(value);
@@ -161,6 +275,7 @@ describe('SharedElement live endpoints', () => {
       state.settle('detail');
       await update(null);
       expectProgress(1);
+      expect(presentation.direction).toBeNull();
       await update(unrelated);
       progress.value = 0.2;
       expectProgress(1);
@@ -180,6 +295,7 @@ describe('SharedElement live endpoints', () => {
       expectProgress(1);
 
       await update(session('detail', 'list', 'backward'));
+      expect(presentation.direction).toBe('backward');
       progress.value = 0.3;
       expectProgress(0.3);
       // Cancel back: retained content stays expanded.

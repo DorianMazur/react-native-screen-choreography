@@ -65,6 +65,7 @@ interface SharedElementPresentation {
   progress: SharedValue<number>;
   presentationProgress: DerivedValue<number>;
   transitioning: boolean;
+  direction: 'forward' | 'backward' | null;
   collapsed: SharedElementEndpoint;
   expanded: SharedElementEndpoint;
   settled: 'collapsed' | 'expanded';
@@ -80,6 +81,8 @@ interface SharedElementEndpoint {
 `progress` is the provider-wide expansion clock; it remains unchanged for compatibility and can be driven by another element or group. `presentationProgress` is a read-only Reanimated derived value belonging to this retained owner: it follows `progress` during participation, stays at `0` when settled at the original source (collapsed), and stays at `1` when settled at the destination (expanded). Unrelated transitions leave it unchanged. Backward transitions run from `1` to `0`; cancellation returns it to the endpoint where the element settles. `transitioning` identifies active participation by this owner. `settled` identifies its resting endpoint when no motion is active. Before the first transition, metrics are `null` and the initial endpoint presentation comes from the owner.
 
 This hook does not change React ownership. The retained component still uses the original source context; use these explicit endpoints for its visual adaptation. Narrow `metadata` before reading it and keep metadata objects immutable during a session.
+
+`direction` is the participating owner's active session direction, or `null` while it is at rest or another owner is transitioning. It describes navigation intent, so reversing a drag does not change it. Read it here when adapting retained content instead of subscribing to the screen-wide progress state only for direction.
 
 ## `useChoreographyBlocker`
 
@@ -105,7 +108,9 @@ useLatchedReveal(config?: {
 }): boolean;
 ```
 
-The gate opens when progress reaches `startProgress`. It latches for that reveal, and visibility is recomputed when relevant configuration, active-session state, or `resetKey` changes. By default it is visible while no session is active.
+The gate opens when this screen participates in an active transition and progress reaches `startProgress`. Threshold checks run on the UI thread, including when the hook mounts after progress has already passed the threshold. Once content becomes visible, either at its threshold or through the inactive fallback, the gate stays open as progress reverses, after settlement, and during later transitions. Changing `resetKey` starts a fresh gate; changing `startProgress` affects a gate that has not opened yet.
+
+An unopened gate on a pending forward destination stays closed while preparing, including before a session exists and when the shared progress still holds a previous transition's value. By default, an idle screen or a screen outside the current transition remains readable. `visibleWhenInactive: false` disables that fallback; it does not close an already opened gate. A reused destination retains its already visible content; change `resetKey` when its content identity changes and needs a new reveal. Queued reveal callbacks from an earlier session, reset key, or threshold cannot open a newer gate.
 
 It does not animate the mounted content and should not delay mounting shared targets that must be measured. Use a named `Enter` role for an animated reveal.
 

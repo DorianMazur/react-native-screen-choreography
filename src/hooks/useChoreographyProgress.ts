@@ -1,4 +1,10 @@
-import { useCallback, useContext, useEffect, useState } from 'react';
+import {
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useState,
+} from 'react';
 import {
   useAnimatedStyle,
   interpolate,
@@ -72,10 +78,12 @@ export function useChoreographyProgress() {
   };
 }
 
+let nextRevealObservation = 0;
+
 /**
- * Hook for conditionally rendering companion content once transition progress
- * reaches a threshold. The gate stays open after it is first revealed, and can
- * also stay open whenever no choreography session is active.
+ * Mount companion content after this screen's active transition reaches a
+ * threshold. Once visible, content stays mounted until resetKey changes.
+ * Unopened pending destinations stay closed before a session exists.
  */
 export function useLatchedReveal(
   config: {
@@ -99,33 +107,64 @@ export function useLatchedReveal(
   } = config;
 
   const { progress } = controls;
-  const { isActive } = state;
+  const { isPendingTarget, phase, role, direction, sessionId } = state;
+  const preparing =
+    isPendingTarget ||
+    (role === 'target' && phase === 'preparing' && direction === 'forward');
+  const visibleAtRest =
+    !preparing &&
+    visibleWhenInactive &&
+    (phase === 'idle' || role === 'inactive');
+  const gate = useMemo(() => ({ resetKey }), [resetKey]);
+  const [revealedGate, setRevealedGate] = useState<typeof gate | null>(() =>
+    visibleAtRest ? gate : null
+  );
+  useLayoutEffect(() => {
+    // Keep content already shown at rest mounted when this screen departs or
+    // participates again. A different content identity must change resetKey.
+    if (visibleAtRest) setRevealedGate(gate);
+  }, [gate, visibleAtRest]);
+  const canObserve =
+    revealedGate !== gate &&
+    !preparing &&
+    phase === 'active' &&
+    role !== 'inactive';
+  const observation = useMemo(
+    () => ({
+      gate,
+      sessionId,
+      canObserve,
+      startProgress,
+      progress,
+      token: ++nextRevealObservation,
+      mounted: false,
+    }),
+    [gate, sessionId, canObserve, startProgress, progress]
+  );
+  const { token } = observation;
 
-  const computeVisible = useCallback(() => {
-    return (
-      (visibleWhenInactive && !isActive) || progress.value >= startProgress
-    );
-  }, [isActive, progress, startProgress, visibleWhenInactive]);
-
-  const [isVisible, setIsVisible] = useState(() => computeVisible());
-
-  useEffect(() => {
-    setIsVisible(computeVisible());
-  }, [computeVisible, resetKey]);
+  useLayoutEffect(() => {
+    observation.mounted = true;
+    return () => {
+      // A queued UI-to-RN callback can outlive its session or reset key.
+      observation.mounted = false;
+    };
+  }, [observation]);
 
   const reveal = useCallback(() => {
-    setIsVisible(true);
-  }, []);
+    if (observation.mounted) setRevealedGate(gate);
+  }, [gate, observation]);
 
   useAnimatedReaction(
-    () => progress.value >= startProgress,
-    (shouldShow, previousShouldShow) => {
-      if (shouldShow && !previousShouldShow) {
+    () => (canObserve && progress.value >= startProgress ? token : 0),
+    (current, previous) => {
+      // A fresh observer must notify even if the previous threshold was true.
+      if (current !== 0 && current !== previous) {
         scheduleOnRN(reveal);
       }
     },
-    [progress, reveal, startProgress]
+    [canObserve, progress, reveal, startProgress, token]
   );
 
-  return isVisible;
+  return revealedGate === gate || visibleAtRest;
 }

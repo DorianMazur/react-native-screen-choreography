@@ -30,6 +30,13 @@ supply presentation metadata without unregistering on render. Registration
 uses the stable actions context; active-session consumers use the volatile
 context. Repeated instances of the same logical route remain distinct.
 
+Each live owner selects its participating pair before a memoized payload boundary.
+Pending-screen changes and unrelated groups or elements do not propagate through
+the owner's presentation context. Pair replacement still updates frozen metrics,
+and settlement retargets the portal during the same render/commit that removes
+the overlay. This boundary does not suppress application prop changes or direct
+subscriptions to the screen-wide progress context.
+
 While content is away, the owner reserves its intrinsic measured dimensions.
 This prevents empty text/icon wrappers collapsing and delaying return measurement.
 The reservation is a layout-only style, separate from frozen presentation data;
@@ -37,7 +44,8 @@ explicit sizes and flex height are not replaced. A changed orientation or font
 scale can still require the application to reconsider intrinsic layout.
 
 `useSharedElementPresentation` exposes canonical collapsed/expanded endpoint
-metrics, styles, metadata, shared expansion progress, and the settled endpoint.
+metrics, styles, metadata, shared expansion progress, the participating session's
+direction (null while settled), and the settled endpoint.
 Owners retain endpoint data, not whole pairs or references to popped screens.
 Initial metrics are null. The owner derives `presentationProgress` from its
 participation and settled endpoint: it follows the shared clock during its own

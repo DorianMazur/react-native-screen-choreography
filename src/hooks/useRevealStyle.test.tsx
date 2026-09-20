@@ -249,6 +249,7 @@ test('presentation reveals follow only their owner, including collapsed and expa
     progress: controls.progress,
     presentationProgress,
     transitioning: false,
+    direction: null,
     settled: 'collapsed',
     collapsed: { metrics: null },
     expanded: { metrics: null },
