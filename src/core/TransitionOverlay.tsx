@@ -76,7 +76,7 @@ export function TransitionOverlay({
   );
 }
 const styles = StyleSheet.create({
-  overlay: { ...StyleSheet.absoluteFillObject, zIndex: 9999 },
+  overlay: { ...StyleSheet.absoluteFill, zIndex: 9999 },
 });
 
 function anchorMetrics({

@@ -145,7 +145,7 @@ const styles = StyleSheet.create({
   label: { fontFamily: theme.font, fontSize: 10, color: theme.secondary },
   chart: { height: 138 },
   bars: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     flexDirection: 'row',
     gap: 5,
     alignItems: 'flex-end',
