@@ -54,6 +54,14 @@ react {
     autolinkLibrariesWithApp()
 }
 
+// Metro resolves these workspace sources outside the example root. Include
+// them in Gradle's inputs so incremental release/benchmark builds do not run
+// an old JS bundle after a library or shared-example change.
+tasks.withType(com.facebook.react.tasks.BundleHermesCTask).configureEach {
+    inputs.dir(file("../../../../src"))
+    inputs.dir(file("../../../shared"))
+}
+
 /**
  * Set this to true to Run Proguard on Release builds to minify the Java bytecode.
  */

@@ -1,5 +1,5 @@
 import type { ComponentType, ReactElement } from 'react';
-import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
+import type { SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
 
 export type SpringConfig = {
@@ -101,9 +101,6 @@ export interface RegisteredElement {
   groupId?: string;
   screenId: string;
   ref: NodeHandleRef;
-  animatedRef?: AnimatedRef<any>;
-  /** Resolves a nested measurement target without re-registering the element. */
-  getAnimatedRef?: () => AnimatedRef<any> | undefined;
   metrics: ElementMetrics | null;
   /** Captures metadata, style, and transition once at session start. */
   getPresentation: () => ElementPresentation;

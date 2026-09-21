@@ -245,7 +245,7 @@ const styles = StyleSheet.create({
   },
   photo: { position: 'absolute', top: 0, left: 0, transformOrigin: 'top left' },
   scrim: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     backgroundColor: '#10262425',
     experimental_backgroundImage:
       'linear-gradient(180deg, rgba(0,0,0,0.22) 0%, rgba(0,0,0,0) 65%, rgba(0,0,0,0.35) 100%)',

@@ -46,7 +46,7 @@ function createContext(
     progress,
     progressOwnership,
     navigationController: new NavigationSessionController(),
-    preMeasureGroup: jest.fn(async () => {}),
+    captureSourceGroup: jest.fn(async () => {}),
     startTransition: jest.fn(async () => {
       progressOwnership.setSession('reverse-session');
       return createSession('reverse-session');
@@ -310,7 +310,7 @@ describe('runReverseTransition ownership', () => {
   test('falls back to one pop when preparation fails before navigation', async () => {
     const popAction = jest.fn();
     const ctx = createContext({
-      preMeasureGroup: jest.fn(async () => {
+      captureSourceGroup: jest.fn(async () => {
         throw new Error('measurement failed');
       }),
     });
@@ -427,7 +427,7 @@ describe('reverse preparation diagnostics', () => {
           trace.stages.map((stage: { name: string }) => stage.name)
         ).toEqual(
           expect.arrayContaining([
-            'source-measure',
+            'source-capture',
             'coordinator',
             'overlay-ready',
           ])

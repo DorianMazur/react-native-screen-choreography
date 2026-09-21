@@ -90,7 +90,7 @@ Use `ChoreographyProvider`'s **`onPreparationTrace`** to investigate slow forwar
 <details>
 <summary>What traces mean and how to compare them</summary>
 
-Forward traces break down source measurement, navigation/target resolution, screen readiness, applicable Android frame waiting, coordinator preparation, and overlay readiness. Backward traces cover source measurement, coordinator preparation, and overlay readiness against the still-mounted list endpoint; they do not include forward screen-mount stages. Coordinator stages include registration, native preparation, cache validation, measurement, and pairing.
+Forward traces break down source capture, navigation/target resolution, screen readiness, applicable Android frame waiting, coordinator preparation, and overlay readiness. Backward traces cover source capture, coordinator preparation, and overlay readiness against the still-mounted list endpoint; they do not include forward screen-mount stages. Coordinator stages include target registration and mounted Fabric capture, including retries while commits are pending.
 
 - Timestamps use JavaScript `performance.now()`. Observations are buffered and delivered after preparation, without React updates or logging during a stage.
 - Repeated stages are summed within each journey before calculating medians or P95. Parent and child stages can overlap—**do not add them together**.

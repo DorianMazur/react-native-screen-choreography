@@ -18,7 +18,7 @@ interface PrepareForwardTransitionArgs {
   targetScreenId: string;
   isAndroid: boolean;
   trace?: PreparationTrace;
-  preMeasureGroup: (groupId: string, screenId: string) => Promise<void>;
+  captureSourceGroup: (groupId: string, screenId: string) => Promise<void>;
   setPendingTargetScreen: (
     screenId: string | null,
     sourceScreenId?: string
@@ -129,7 +129,7 @@ export class NavigationSessionController {
     targetScreenId,
     isAndroid,
     trace,
-    preMeasureGroup,
+    captureSourceGroup,
     setPendingTargetScreen,
     dispatchNavigation,
     resolveTargetScreenId,
@@ -143,8 +143,8 @@ export class NavigationSessionController {
   }: PrepareForwardTransitionArgs): Promise<TransitionSessionData | null> {
     let outcome: Parameters<PreparationTrace['finish']>[0] = 'cancelled';
     try {
-      const sourceMeasured = trace?.start('source-measure');
-      await preMeasureGroup(groupId, sourceScreenId);
+      const sourceMeasured = trace?.start('source-capture');
+      await captureSourceGroup(groupId, sourceScreenId);
       sourceMeasured?.();
       if (!isPreparationCurrent()) return null;
       setPendingTargetScreen(targetScreenId, sourceScreenId);

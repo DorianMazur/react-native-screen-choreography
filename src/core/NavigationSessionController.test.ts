@@ -45,7 +45,7 @@ describe('NavigationSessionController', () => {
           targetScreenId: 'target',
           isAndroid: true,
           trace,
-          preMeasureGroup: async () => {
+          captureSourceGroup: async () => {
             now += 5;
           },
           setPendingTargetScreen: () => {},
@@ -88,7 +88,7 @@ describe('NavigationSessionController', () => {
           ]
         )
       ).toEqual([
-        ['source-measure', 5],
+        ['source-capture', 5],
         ['navigation-instance', 5],
         ['screen-ready', 20],
         ['android-frame', 16],
@@ -121,7 +121,7 @@ describe('NavigationSessionController', () => {
           targetScreenId: 'target',
           isAndroid: true,
           trace,
-          preMeasureGroup: async () => {},
+          captureSourceGroup: async () => {},
           setPendingTargetScreen: () => {},
           dispatchNavigation: () => {},
           waitForScreenReady: async () => false,
@@ -176,7 +176,7 @@ describe('NavigationSessionController', () => {
           targetScreenId: 'target',
           isAndroid: false,
           trace,
-          preMeasureGroup: async () => {},
+          captureSourceGroup: async () => {},
           setPendingTargetScreen: () => {},
           dispatchNavigation: () => {},
           waitForScreenReady: async () => true,
@@ -282,7 +282,7 @@ describe('NavigationSessionController', () => {
         sourceScreenId: 'source',
         targetScreenId: 'target',
         isAndroid,
-        preMeasureGroup: async () => {
+        captureSourceGroup: async () => {
           calls.push('measure');
         },
         setPendingTargetScreen: (screenId) => {
@@ -339,7 +339,7 @@ describe('NavigationSessionController', () => {
         sourceScreenId: 'detail-first',
         targetScreenId: 'Detail',
         isAndroid: false,
-        preMeasureGroup: async () => {},
+        captureSourceGroup: async () => {},
         setPendingTargetScreen,
         dispatchNavigation: () => {},
         resolveTargetScreenId: async () => targetInstanceId,
@@ -381,7 +381,7 @@ describe('NavigationSessionController', () => {
       sourceScreenId: 'source',
       targetScreenId: 'target',
       isAndroid: false,
-      preMeasureGroup: async () => {},
+      captureSourceGroup: async () => {},
       setPendingTargetScreen: (screenId) => pendingScreens.push(screenId),
       dispatchNavigation,
       waitForScreenReady: async () => false,
@@ -407,7 +407,7 @@ describe('NavigationSessionController', () => {
       sourceScreenId: 'source',
       targetScreenId: 'target',
       isAndroid: false,
-      preMeasureGroup: async () => {},
+      captureSourceGroup: async () => {},
       setPendingTargetScreen: (screenId) => pendingScreens.push(screenId),
       dispatchNavigation: () => {},
       waitForScreenReady: async () => true,
@@ -431,7 +431,7 @@ describe('NavigationSessionController', () => {
       sourceScreenId: 'source',
       targetScreenId: 'target',
       isAndroid: false,
-      preMeasureGroup: async () => {},
+      captureSourceGroup: async () => {},
       setPendingTargetScreen: (screenId) => pendingScreens.push(screenId),
       dispatchNavigation: () => {},
       waitForScreenReady: async () => true,

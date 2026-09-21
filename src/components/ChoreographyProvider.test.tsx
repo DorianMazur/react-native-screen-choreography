@@ -1,4 +1,4 @@
-import React, { StrictMode, useContext } from 'react';
+import React, { StrictMode, useContext, useLayoutEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { Platform } from 'react-native';
 import { FullWindowOverlay } from 'react-native-screens';
@@ -8,6 +8,7 @@ import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyControls } from '../hooks/useChoreographyProgress';
 import { ScreenIdContext } from '../core/screenIdContext';
 import {
+  ChoreographyActionsContext,
   ChoreographyContext,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
@@ -37,16 +38,47 @@ jest.mock(
   () => 'ScreenChoreographyView'
 );
 
+const fabricGlobals = globalThis as typeof globalThis & {
+  __screenChoreographyCaptureFabricLayout?: jest.Mock;
+  __screenChoreographySubscribeFabricMount?: jest.Mock;
+};
+function FabricScreens() {
+  const actions = useContext(ChoreographyActionsContext)!;
+  useLayoutEffect(() => {
+    const releases = ['list', 'detail', 'source-route'].map((id) => {
+      actions.setScreenReady(id, true);
+      return actions.registerScreenPresentation(id, {
+        current: { tag: 100 },
+      } as any);
+    });
+    return () => releases.forEach((release) => release());
+  }, [actions]);
+  return null;
+}
+
 describe('ChoreographyProvider lifecycle', () => {
   const originalPlatform = Platform.OS;
 
   beforeEach(() => {
     Platform.OS = 'ios';
+    jest
+      .spyOn(require('react-native'), 'findNodeHandle')
+      .mockImplementation((node: any) => node.tag);
+    fabricGlobals.__screenChoreographyCaptureFabricLayout = jest.fn(
+      (_screens, tags) =>
+        tags.map(() => ({ pageX: 10, pageY: 20, width: 100, height: 100 }))
+    );
+    fabricGlobals.__screenChoreographySubscribeFabricMount = jest.fn(
+      () => () => {}
+    );
     jest.mocked(FullWindowOverlay).mockClear();
   });
 
   afterEach(() => {
     Platform.OS = originalPlatform;
+    delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    delete fabricGlobals.__screenChoreographySubscribeFabricMount;
+    jest.restoreAllMocks();
   });
 
   test.each(['forward', 'backward'] as const)(
@@ -65,6 +97,7 @@ describe('ChoreographyProvider lifecycle', () => {
         await act(async () => {
           tree = create(
             <ChoreographyProvider>
+              <FabricScreens />
               {['list', 'detail'].map((screenId) => (
                 <ScreenIdContext.Provider key={screenId} value={screenId}>
                   <Controls screenId={screenId} />
@@ -79,10 +112,7 @@ describe('ChoreographyProvider lifecycle', () => {
             groupId: 'group',
             screenId,
             metrics: { pageX: 24, pageY: 200, width: 320, height: 450 },
-            ref: () => ({
-              measureInWindow: (callback: (...args: number[]) => void) =>
-                callback(24, 200, 320, 450),
-            }),
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
             getPresentation: () => ({ transition: { renderer: () => null } }),
           });
         }
@@ -141,16 +171,85 @@ describe('ChoreographyProvider lifecycle', () => {
     }
   );
 
+  test.each([false, true])(
+    'retains overlay readiness across a Fabric mount update (host already acknowledged: %s)',
+    async (hostAlreadyAcknowledged) => {
+      jest.useFakeTimers();
+      let context!: ChoreographyContextType;
+      let tree!: ReactTestRenderer;
+      const onTransitionEnd = jest.fn();
+      function Consumer() {
+        context = useContext(ChoreographyContext)!;
+        return null;
+      }
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider onTransitionEnd={onTransitionEnd}>
+              <FabricScreens />
+              <Consumer />
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        await act(async () => {
+          const preparing = context.startTransition({
+            groupId: 'group',
+            sourceScreenId: 'list',
+            targetScreenId: 'detail',
+            direction: 'forward',
+          });
+          await jest.runAllTimersAsync();
+          await preparing;
+        });
+        const sessionId = context.activeSession!.id;
+        const host = tree.root.findByType(NativeTransitionHost);
+        if (hostAlreadyAcknowledged) {
+          await act(async () => host.props.onPresentationReady());
+        }
+        const ready = jest.fn();
+        const waiting = context.waitForOverlayReady(sessionId).then(ready);
+        fabricGlobals.__screenChoreographyCaptureFabricLayout!.mockReturnValue([
+          { pageX: 10, pageY: 80, width: 100, height: 100 },
+        ]);
+        await act(async () => {
+          const notifyMount =
+            fabricGlobals.__screenChoreographySubscribeFabricMount!.mock
+              .calls[0]![0];
+          notifyMount();
+        });
+        expect(context.activeSession!.pairs[0]!.targetMetrics.pageY).toBe(80);
+        if (!hostAlreadyAcknowledged) {
+          await act(async () => host.props.onPresentationReady());
+        }
+        await act(async () => {
+          await jest.advanceTimersByTimeAsync(151);
+          await waiting;
+        });
+        expect(ready).toHaveBeenCalledWith(true);
+        expect(context.isOverlayPresented!(sessionId)).toBe(true);
+        expect(context.activeSession?.id).toBe(sessionId);
+        expect(onTransitionEnd).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => tree?.unmount());
+        jest.useRealTimers();
+      }
+    }
+  );
+
   test('unregistering the preparation source invalidates its dispatch and queue', async () => {
     let context!: ChoreographyContextType;
     let navigation!: ReturnType<typeof useChoreographyNavigator>;
     let tree!: ReactTestRenderer;
-    let measured!: (
-      pageX: number,
-      pageY: number,
-      width: number,
-      height: number
-    ) => void;
     function Caller() {
       context = useContext(ChoreographyContext)!;
       navigation = useChoreographyNavigator({
@@ -165,6 +264,7 @@ describe('ChoreographyProvider lifecycle', () => {
       await act(async () => {
         tree = create(
           <ChoreographyProvider>
+            <FabricScreens />
             <Caller />
           </ChoreographyProvider>
         );
@@ -174,16 +274,15 @@ describe('ChoreographyProvider lifecycle', () => {
         groupId: 'group',
         screenId: 'source-route',
         metrics: null,
-        ref: () => ({
-          measureInWindow: (callback: typeof measured) => {
-            measured = callback;
-          },
-        }),
+        ref: { current: { tag: 1 } },
         getPresentation: () => ({
           content: null,
           transition: { renderer: () => null },
         }),
       });
+      fabricGlobals.__screenChoreographyCaptureFabricLayout!.mockReturnValue(
+        null
+      );
       let pending!: Promise<void>;
       await act(async () => {
         pending = navigation.navigate({
@@ -199,7 +298,9 @@ describe('ChoreographyProvider lifecycle', () => {
       });
       await act(async () => context.unregisterScreen('source-route'));
       await act(async () => {
-        measured(0, 0, 100, 100);
+        fabricGlobals.__screenChoreographyCaptureFabricLayout!.mockReturnValue([
+          { pageX: 0, pageY: 0, width: 100, height: 100 },
+        ]);
         await pending;
       });
       expect(dispatchNavigation).not.toHaveBeenCalled();
@@ -246,6 +347,7 @@ describe('ChoreographyProvider lifecycle', () => {
               onTransitionStart={onTransitionStart}
               onTransitionEnd={onTransitionEnd}
             >
+              <FabricScreens />
               <Consumer />
               <ScreenIdContext.Provider value="detail">
                 <Controls />
@@ -270,16 +372,7 @@ describe('ChoreographyProvider lifecycle', () => {
             id: 'card',
             groupId: 'group',
             screenId,
-            ref: () => ({
-              measureInWindow: (
-                callback: (
-                  pageX: number,
-                  pageY: number,
-                  width: number,
-                  height: number
-                ) => void
-              ) => callback(10, 20, 100, 100),
-            }),
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
             metrics,
             getPresentation: () => ({
               transition: {

@@ -25,14 +25,14 @@ test('navigation callers share one provider preparation lock', async () => {
   const measurement = new Promise<void>((resolve) => {
     releaseMeasurement = resolve;
   });
-  const preMeasureGroup = jest.fn(() => measurement);
+  const captureSourceGroup = jest.fn(() => measurement);
   const ctx = {
     progress,
     progressOwnership,
     navigationController: new NavigationSessionController(),
     activeSession: null,
     pendingTargetScreenId: null,
-    preMeasureGroup,
+    captureSourceGroup,
   } as unknown as ChoreographyContextType;
   const callers: Array<ReturnType<typeof useChoreographyNavigator>> = [];
   function Caller({ index }: { index: number }) {
@@ -65,7 +65,7 @@ test('navigation callers share one provider preparation lock', async () => {
         );
       }
     });
-    expect(preMeasureGroup).toHaveBeenCalledTimes(1);
+    expect(captureSourceGroup).toHaveBeenCalledTimes(1);
   } finally {
     progressOwnership.invalidate();
     releaseMeasurement();
@@ -89,7 +89,7 @@ test('queued replay survives focus changes and only its source instance dispatch
   );
   const controller = new NavigationSessionController();
   const dispatchNavigation = jest.fn();
-  const preMeasureGroup = jest.fn(async () => {});
+  const captureSourceGroup = jest.fn(async () => {});
   const request = {
     sourceScreenId: 'second-route',
     targetScreenId: 'Detail',
@@ -103,7 +103,7 @@ test('queued replay survives focus changes and only its source instance dispatch
     navigationController: controller,
     activeSession: null,
     pendingTargetScreenId: null,
-    preMeasureGroup,
+    captureSourceGroup,
     setPendingTargetScreen: jest.fn(),
     waitForScreenReady: jest.fn(async () => false),
   } as unknown as ChoreographyContextType;
@@ -143,8 +143,8 @@ test('queued replay survives focus changes and only its source instance dispatch
       });
     }
     expect(dispatchNavigation).toHaveBeenCalledTimes(1);
-    expect(preMeasureGroup).toHaveBeenCalledWith('group', 'second-route');
-    expect(preMeasureGroup).toHaveBeenCalledTimes(1);
+    expect(captureSourceGroup).toHaveBeenCalledWith('group', 'second-route');
+    expect(captureSourceGroup).toHaveBeenCalledTimes(1);
     expect(controller.peekQueuedNavigation()).toBeNull();
   } finally {
     await act(async () => tree?.unmount());
@@ -206,7 +206,7 @@ test('a tap queued during removal replays as soon as the return is interruptible
       state: 'active',
     },
     pendingTargetScreenId: null,
-    preMeasureGroup: jest.fn(async () => {}),
+    captureSourceGroup: jest.fn(async () => {}),
     setPendingTargetScreen: jest.fn(),
     waitForScreenReady: jest.fn(async () => false),
   } as unknown as ChoreographyContextType;

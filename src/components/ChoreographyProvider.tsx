@@ -210,7 +210,6 @@ export function ChoreographyProvider({
     coordinatorRef.current = new TransitionCoordinator(
       registryRef.current,
       progress,
-      (screenId) => screenNamesRef.current.get(screenId) ?? screenId,
       {
         getScreenRef: (screenId) => nativeScreenRefs.current.get(screenId),
         isScreenReady: (screenId) =>
@@ -240,8 +239,13 @@ export function ChoreographyProvider({
       if (previousSession && previousSession.id !== session?.id) {
         settleOverlayWaiters(previousSession.id, false);
       }
-      hostPresentedSessionIdRef.current = null;
-      overlayContentReadySessionIdRef.current = null;
+      // Fabric mount notifications can update geometry within the same
+      // session. Its host and overlay stay mounted and do not acknowledge
+      // again, so retain their readiness until the session identity changes.
+      if (previousSession?.id !== session?.id) {
+        hostPresentedSessionIdRef.current = null;
+        overlayContentReadySessionIdRef.current = null;
+      }
 
       if (!session) {
         setInteractiveScreenId(null);
@@ -456,9 +460,9 @@ export function ChoreographyProvider({
     []
   );
 
-  const preMeasureGroup = useCallback(
+  const captureSourceGroup = useCallback(
     async (groupId: string, screenId: string) => {
-      await coordinatorRef.current!.preMeasureGroup(groupId, screenId);
+      await coordinatorRef.current!.captureSourceGroup(groupId, screenId);
     },
     []
   );
@@ -704,7 +708,7 @@ export function ChoreographyProvider({
       interactionOwner,
       interactiveScreenId,
       setInteractiveScreen,
-      preMeasureGroup,
+      captureSourceGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
       isOverlayPresented,
@@ -739,7 +743,7 @@ export function ChoreographyProvider({
       interactionOwner,
       interactiveScreenId,
       setInteractiveScreen,
-      preMeasureGroup,
+      captureSourceGroup,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
       isOverlayPresented,

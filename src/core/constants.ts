@@ -41,7 +41,6 @@ export const PROGRESS_RANGES = {
 
 export const DEFAULT_BACKDROP_OPACITY = 0.5;
 export const DEFAULT_CORNER_RADIUS = 16;
-export const MEASUREMENT_TIMEOUT = 500;
 
 export const Springs = {
   /** Default spring for primary geometry transitions */

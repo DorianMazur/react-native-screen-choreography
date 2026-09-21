@@ -12957,7 +12957,7 @@ __metadata:
     "@react-navigation/native-stack": ">=6.0.0"
     expo-router: ">=56.1.1"
     react: ">=18.0.0"
-    react-native: ">=0.76.0"
+    react-native: ">=0.81.0"
     react-native-reanimated: ">=4.0.0"
     react-native-screens: ">=4.0.0"
     react-native-teleport: ">=1.2.0"

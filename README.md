@@ -44,7 +44,7 @@ npm install react-native-screen-choreography
 
 The library also needs native peer dependencies and a native app rebuild. Follow the [installation guide](https://screen-choreography.dev/guide/installation.html) for your navigation setup before running the example above.
 
-- **Platforms:** iOS and Android, React Native ≥0.76 with the New Architecture / Fabric.
+- **Platforms:** iOS and Android, React Native ≥0.81 with the New Architecture / Fabric.
 - **Runtime:** React ≥18, Reanimated ≥4, Worklets ≥0.8, Screens ≥4, and Teleport ≥1.2. Choose mutually compatible peer versions; these lower bounds are not a full tested compatibility matrix.
 - **Navigation:** React Navigation native-stack ≥6 (validated on 7.x), or Expo Router ≥56.1.1.
 - **Expo:** a development build is required. Expo Go does not include the custom native host.

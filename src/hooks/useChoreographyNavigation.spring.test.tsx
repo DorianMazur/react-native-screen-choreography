@@ -43,7 +43,7 @@ function createContext() {
     commitReverseTransition: jest.fn(async () => {}),
     activeSession: null,
     pendingTargetScreenId: null,
-    preMeasureGroup: jest.fn(async () => {}),
+    captureSourceGroup: jest.fn(async () => {}),
     setPendingTargetScreen: jest.fn(),
     waitForScreenReady: jest.fn(async () => true),
     waitForOverlayReady: jest.fn(async () => true),

@@ -47,7 +47,7 @@ export function useInteractiveTransitionNavigator({
     navigationController,
     reverseController,
     commitReverseTransition,
-    preMeasureGroup,
+    captureSourceGroup,
     startTransition,
     waitForOverlayReady,
     cancelTransition,
@@ -288,7 +288,7 @@ export function useInteractiveTransitionNavigator({
       signal?.addEventListener('abort', cancelPreparation, { once: true });
 
       try {
-        await preMeasureGroup(groupId, screenId);
+        await captureSourceGroup(groupId, screenId);
         if (!isCurrent() || progressOwnership.version !== preparationVersion)
           return null;
         startedTransition = true;
@@ -366,7 +366,7 @@ export function useInteractiveTransitionNavigator({
       navigationController,
       gestureProgress,
       owner,
-      preMeasureGroup,
+      captureSourceGroup,
       progress,
       progressOwnership,
       reverseController,
