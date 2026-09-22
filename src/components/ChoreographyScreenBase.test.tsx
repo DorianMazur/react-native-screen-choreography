@@ -1,7 +1,10 @@
+import { useContext } from 'react';
+import { Platform } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
+  ChoreographyControlsContext,
   type ChoreographyActionsType,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
@@ -9,6 +12,8 @@ import {
   ChoreographyScreenBase,
   type ChoreographyScreenProps,
 } from './ChoreographyScreenBase';
+import { useChoreographyProgress } from '../hooks/useChoreographyProgress';
+import type { ScreenAnimationLifetime } from '../hooks/useScreenAnimationLifetime';
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -21,11 +26,13 @@ jest.mock('react-native-reanimated', () => ({
 }));
 
 const trees: ReactTestRenderer[] = [];
+const originalOS = Platform.OS;
 
 afterEach(async () => {
   await act(async () => {
     trees.splice(0).forEach((tree) => tree.unmount());
   });
+  Platform.OS = originalOS;
 });
 
 function createContext() {
@@ -235,4 +242,110 @@ test('keepVisible holds the cross-faded endpoint at full opacity', async () => {
   expect(fading.opacity()).toBe(0);
   expect(kept.opacity()).toBe(1);
   expect(kept.inner().props.animatedProps.pointerEvents).toBe('none');
+});
+
+test('suspension freezes public companion progress and pointer events while retained content keeps following the overlay', async () => {
+  Platform.OS = 'android';
+  const context = createContext();
+  context.progress.value = 0.25;
+  let lifetime!: ScreenAnimationLifetime;
+  const controls = { progress: context.progress, settleTransition: jest.fn() };
+  const actions = {
+    registerScreenPresentation: jest.fn((_id, _ref, registeredLifetime) => {
+      lifetime = registeredLifetime;
+      return jest.fn();
+    }),
+    setScreenReady: jest.fn(),
+    unregisterScreen: jest.fn(),
+  } as unknown as ChoreographyActionsType;
+  let companion!: ReturnType<typeof useChoreographyProgress>;
+  let retainedProgress!: ChoreographyContextType['progress'];
+  let providerProgress!: ChoreographyContextType['progress'];
+  function Companion() {
+    companion = useChoreographyProgress();
+    // Retained SharedElement content takes its progress from the session context.
+    retainedProgress = useContext(ChoreographyContext)!.progress;
+    return null;
+  }
+  function ProviderConsumer() {
+    providerProgress = useContext(ChoreographyControlsContext)!.progress;
+    return null;
+  }
+  let tree!: ReactTestRenderer;
+  const frames: ((time: number) => void)[] = [];
+  const frameMock = jest
+    .spyOn(global, 'requestAnimationFrame')
+    .mockImplementation((callback) => {
+      frames.push(callback);
+      return frames.length;
+    });
+  try {
+    await act(async () => {
+      tree = create(
+        <ChoreographyControlsContext.Provider value={controls}>
+          <ChoreographyContext.Provider value={context}>
+            <ChoreographyActionsContext.Provider value={actions}>
+              <ProviderConsumer />
+              <ChoreographyScreenBase screenId="detail">
+                <Companion />
+              </ChoreographyScreenBase>
+            </ChoreographyActionsContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyControlsContext.Provider>
+      );
+    });
+    trees.push(tree);
+    const pointerEvents = () =>
+      tree.root.findAll((node) => Boolean(node.props?.animatedProps))[0]!.props
+        .animatedProps.pointerEvents;
+    expect(companion.progress).not.toBe(context.progress);
+    expect(companion.progress.value).toBe(0.25);
+    expect(retainedProgress).toBe(context.progress);
+    expect(providerProgress).toBe(context.progress);
+    expect(pointerEvents()).toBe('none');
+    const barrier = lifetime.suspend(3);
+    while (frames.length) frames.shift()!(0);
+    await barrier;
+    context.progress.value = 0.1;
+    context.interactionOwner.value = 'detail';
+    expect(companion.progress.value).toBe(0.25);
+    expect(retainedProgress.value).toBe(0.1);
+    expect(providerProgress.value).toBe(0.1);
+    expect(pointerEvents()).toBe('none');
+    lifetime.resume(3);
+    expect(companion.progress.value).toBe(0.1);
+    expect(pointerEvents()).toBe('auto');
+  } finally {
+    frameMock.mockRestore();
+  }
+});
+
+test('iOS screens preserve the provider controls and progress identity', async () => {
+  Platform.OS = 'ios';
+  const context = createContext();
+  const controls = { progress: context.progress, settleTransition: jest.fn() };
+  let observedControls!: React.ContextType<typeof ChoreographyControlsContext>;
+  let observedProgress!: ReturnType<typeof useChoreographyProgress>;
+  function Consumer() {
+    observedControls = useContext(ChoreographyControlsContext);
+    observedProgress = useChoreographyProgress();
+    return null;
+  }
+  await act(async () => {
+    trees.push(
+      create(
+        <ChoreographyControlsContext.Provider value={controls}>
+          <ChoreographyContext.Provider value={context}>
+            <ChoreographyScreenBase screenId="detail">
+              <Consumer />
+            </ChoreographyScreenBase>
+          </ChoreographyContext.Provider>
+        </ChoreographyControlsContext.Provider>
+      )
+    );
+  });
+  expect(observedControls).toBe(controls);
+  expect(observedProgress.progress).toBe(context.progress);
+  context.progress.value = 0.15;
+  expect(observedProgress.progress.value).toBe(0.15);
 });

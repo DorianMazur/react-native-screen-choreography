@@ -1,15 +1,24 @@
-import React, { useCallback, useContext, useLayoutEffect, useRef } from 'react';
+import React, {
+  useCallback,
+  useContext,
+  useLayoutEffect,
+  useMemo,
+  useRef,
+} from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
+  useDerivedValue,
 } from 'react-native-reanimated';
 import { ScreenIdContext } from '../core/screenIdContext';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
+  ChoreographyControlsContext,
 } from '../core/ChoreographyContext';
+import { useScreenAnimationLifetime } from '../hooks/useScreenAnimationLifetime';
 import {
   deriveScreenOpacity,
   getScreenRole,
@@ -54,6 +63,7 @@ export function ChoreographyScreenBase({
   if (screenFade !== undefined) validateScreenFade(screenFade);
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
+  const controls = useContext(ChoreographyControlsContext);
   const presentationRef = useRef<React.ComponentRef<typeof View> | null>(null);
   const layoutReadyRef = useRef(false);
   const readyRef = useRef(ready);
@@ -61,7 +71,22 @@ export function ChoreographyScreenBase({
 
   const session = choreography?.activeSession ?? null;
   const pendingTargetScreenId = choreography?.pendingTargetScreenId ?? null;
-  const progress = choreography?.progress ?? null;
+  const {
+    progress: screenProgress,
+    suspended,
+    lifetime,
+  } = useScreenAnimationLifetime(choreography?.progress ?? null);
+  const progress =
+    Platform.OS === 'android'
+      ? screenProgress
+      : (choreography?.progress ?? null);
+  const screenControls = useMemo(
+    () =>
+      controls && Platform.OS === 'android'
+        ? { ...controls, progress: screenProgress }
+        : controls,
+    [controls, screenProgress]
+  );
   const isPendingTarget =
     pendingTargetScreenId === screenId ||
     (pendingTargetScreenId === screenName &&
@@ -120,7 +145,8 @@ export function ChoreographyScreenBase({
   const reverseHandoff = choreography?.reverseHandoff;
   const progressOwner = choreography?.progressOwnership?.owner;
   const sessionId = session?.id;
-  const interactionProps = useAnimatedProps(() => {
+  const screenPointerEvents = useDerivedValue(() => {
+    if (suspended.value) return 'none' as const;
     const returning = reverseHandoff?.value;
     const isReturnTarget = Boolean(
       returning &&
@@ -138,20 +164,20 @@ export function ChoreographyScreenBase({
         isReturnTarget,
         isInteractiveSource
       );
-    return {
-      pointerEvents:
-        blocked && interactionOwner?.value !== screenId
-          ? ('none' as const)
-          : ('auto' as const),
-    };
+    return blocked && interactionOwner?.value !== screenId
+      ? ('none' as const)
+      : ('auto' as const);
   });
+  const interactionProps = useAnimatedProps(() => ({
+    pointerEvents: screenPointerEvents.value,
+  }));
   const setScreenReady = actions?.setScreenReady;
   const unregisterScreen = actions?.unregisterScreen;
   const registerScreenPresentation = actions?.registerScreenPresentation;
 
   useLayoutEffect(
-    () => registerScreenPresentation?.(screenId, presentationRef),
-    [registerScreenPresentation, screenId]
+    () => registerScreenPresentation?.(screenId, presentationRef, lifetime),
+    [registerScreenPresentation, screenId, lifetime]
   );
 
   useLayoutEffect(() => {
@@ -206,7 +232,9 @@ export function ChoreographyScreenBase({
             style={styles.container}
           >
             <ChoreographyProgressProvider isPendingTarget={isPendingTarget}>
-              {children}
+              <ChoreographyControlsContext.Provider value={screenControls}>
+                {children}
+              </ChoreographyControlsContext.Provider>
             </ChoreographyProgressProvider>
           </View>
         </Animated.View>

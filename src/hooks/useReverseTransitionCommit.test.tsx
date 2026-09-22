@@ -16,6 +16,7 @@ import {
 } from '../core/navigationCommit';
 import type { TransitionSessionData } from '../types';
 import { useReverseTransitionCommit } from './useReverseTransitionCommit';
+import type { ScreenAnimationLifetime } from './useScreenAnimationLifetime';
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -39,10 +40,12 @@ jest.mock('react-native-worklets', () => ({
 
 function deferred<T>() {
   let resolve!: (value: T) => void;
-  const promise = new Promise<T>((resolvePromise) => {
+  let reject!: (error: unknown) => void;
+  const promise = new Promise<T>((resolvePromise, rejectPromise) => {
     resolve = resolvePromise;
+    reject = rejectPromise;
   });
-  return { promise, resolve };
+  return { promise, resolve, reject };
 }
 
 /** Flush one RN turn, leaving callbacks scheduled by this turn queued. */
@@ -57,9 +60,11 @@ const trees: ReactTestRenderer[] = [];
 async function mountHook({
   registerSource = true,
   direction = 'backward',
+  animationLifetime,
 }: {
   registerSource?: boolean;
   direction?: 'forward' | 'backward';
+  animationLifetime?: ScreenAnimationLifetime;
 } = {}) {
   const visibility = new ElementVisibilityRegistry();
   const sourceHidden = visibility.get('source', false);
@@ -113,9 +118,11 @@ async function mountHook({
   });
   trees.push(tree);
   const unregister = registerSource
-    ? api.registerScreenPresentation('article', {
-        current: {} as React.ComponentRef<typeof View>,
-      })
+    ? api.registerScreenPresentation(
+        'article',
+        { current: {} as React.ComponentRef<typeof View> },
+        animationLifetime
+      )
     : () => {};
 
   return {
@@ -123,6 +130,9 @@ async function mountHook({
       return api;
     },
     tree,
+    get token() {
+      return token;
+    },
     visibility,
     sourceHidden,
     targetHidden,
@@ -184,16 +194,16 @@ afterEach(async () => {
 
 describe('provider reverse commit integration', () => {
   test.each(['forward', 'backward'] as const)(
-    '%s return accepts a new tap in the final 25% before the spring completes',
+    '%s return accepts a new tap in the final 10% before the spring completes',
     async (direction) => {
       const harness = await mountHook({ direction });
       const { completion, navigation, navigateBack } = await harness.start();
       const [prepare, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
         -1
       )!;
-      harness.progress.value = 0.251;
+      harness.progress.value = 0.101;
       expect(prepare()).toBeNull();
-      harness.progress.value = 0.25;
+      harness.progress.value = 0.1;
       await act(async () => {
         react(prepare(), null);
         flushRN();
@@ -225,6 +235,324 @@ describe('provider reverse commit integration', () => {
         flushRN();
       });
       expect(finishTransition).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each(['forward', 'backward'] as const)(
+    'Android fences the departing %s screen at 10% while retained motion continues',
+    async (direction) => {
+      const barrier = deferred<void>();
+      const lifetime = {
+        suspend: jest.fn(() => barrier.promise),
+        resume: jest.fn(),
+      };
+      const destinationLifetime = {
+        suspend: jest.fn(async () => {}),
+        resume: jest.fn(),
+      };
+      const harness = await mountHook({
+        direction,
+        animationLifetime: lifetime,
+      });
+      harness.api.registerScreenPresentation(
+        'home',
+        { current: {} as React.ComponentRef<typeof View> },
+        destinationLifetime
+      );
+      const { completion, navigation, navigateBack } = await harness.start();
+      const [prepare, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
+        -1
+      )!;
+      harness.progress.value = 0.101;
+      expect(prepare()).toBeNull();
+      expect(lifetime.suspend).not.toHaveBeenCalled();
+      harness.progress.value = 0.1;
+      await act(async () => {
+        react(prepare(), null);
+        flushRN();
+      });
+      expect(lifetime.suspend).toHaveBeenCalledWith(harness.token);
+      expect(destinationLifetime.suspend).not.toHaveBeenCalled();
+      expect(navigateBack).not.toHaveBeenCalled();
+      expect(harness.progress.value).toBe(0.1);
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+      await act(async () => barrier.resolve());
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+      await act(async () =>
+        navigation.resolve({ removed: true, presented: false })
+      );
+      expect(harness.api.interruptibleReturnSessionId).toBe('reverse');
+      expect(harness.progress.value).toBe(0.1);
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+      await act(async () => {
+        harness.finishAnimation();
+        flushRN();
+      });
+      await completion;
+      expect(lifetime.resume).not.toHaveBeenCalled();
+      expect(harness.interactionOwner.value).toBe('home');
+    }
+  );
+
+  test('Android still awaits the source fence when the animation has already finished', async () => {
+    const barrier = deferred<void>();
+    const lifetime = {
+      suspend: jest.fn(() => barrier.promise),
+      resume: jest.fn(),
+    };
+    const harness = await mountHook({ animationLifetime: lifetime });
+    const { completion, navigation, navigateBack } = await harness.start();
+    await act(async () => {
+      harness.finishAnimation();
+      flushRN();
+    });
+    expect(lifetime.suspend).toHaveBeenCalledTimes(1);
+    expect(navigateBack).not.toHaveBeenCalled();
+    expect(harness.completeTransition).not.toHaveBeenCalled();
+    await act(async () => barrier.resolve());
+    expect(navigateBack).toHaveBeenCalledTimes(1);
+    await act(async () =>
+      navigation.resolve({ removed: true, presented: false })
+    );
+    await completion;
+    expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
+  });
+
+  test('iOS preserves early removal without waiting for an Android fence', async () => {
+    Platform.OS = 'ios';
+    const barrier = deferred<void>();
+    const lifetime = {
+      suspend: jest.fn(() => barrier.promise),
+      resume: jest.fn(),
+    };
+    const harness = await mountHook({ animationLifetime: lifetime });
+    const { completion, navigation, navigateBack } = await harness.start();
+    await act(async () =>
+      harness.api.reverseController.commitNearEndpoint('reverse')
+    );
+    expect(lifetime.suspend).not.toHaveBeenCalled();
+    expect(navigateBack).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      navigation.resolve({ removed: true, presented: false });
+      harness.finishAnimation();
+      flushRN();
+    });
+    await completion;
+  });
+
+  test.each(['replacement', 'disposal'] as const)(
+    'a pending Android fence cannot pop after %s and resumes its surviving source',
+    async (interruption) => {
+      const barrier = deferred<void>();
+      const lifetime = {
+        suspend: jest.fn(() => barrier.promise),
+        resume: jest.fn(),
+      };
+      const harness = await mountHook({ animationLifetime: lifetime });
+      const originalToken = harness.token;
+      const { completion, navigateBack } = await harness.start();
+      await act(async () =>
+        harness.api.reverseController.commitNearEndpoint('reverse')
+      );
+      expect(lifetime.suspend).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        if (interruption === 'replacement')
+          harness.replaceSession('replacement');
+        else harness.api.reverseController.dispose();
+        barrier.resolve();
+      });
+      await completion;
+      expect(navigateBack).not.toHaveBeenCalled();
+      expect(lifetime.resume).toHaveBeenCalledWith(originalToken);
+      expect(harness.completeTransition).not.toHaveBeenCalled();
+      expect(harness.cancelTransition).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ['replacement', 'refused'],
+    ['replacement', 'throws'],
+    ['replacement', 'removed'],
+    ['disposal', 'refused'],
+    ['disposal', 'throws'],
+    ['disposal', 'removed'],
+  ] as const)(
+    'late navigation result after %s resumes only the surviving source (%s)',
+    async (interruption, outcome) => {
+      const lifetime = { suspend: jest.fn(async () => {}), resume: jest.fn() };
+      const harness = await mountHook({ animationLifetime: lifetime });
+      const originalToken = harness.token;
+      const { completion, navigation, navigateBack } = await harness.start();
+      await act(async () =>
+        harness.api.reverseController.commitNearEndpoint('reverse')
+      );
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        if (interruption === 'replacement')
+          harness.replaceSession('replacement');
+        else harness.api.reverseController.dispose();
+        if (outcome === 'throws') navigation.reject(new Error('Rejected pop'));
+        else
+          navigation.resolve({
+            removed: outcome === 'removed',
+            presented: false,
+          });
+      });
+      await completion;
+      if (outcome === 'removed') expect(lifetime.resume).not.toHaveBeenCalled();
+      else expect(lifetime.resume).toHaveBeenCalledWith(originalToken);
+      expect(harness.completeTransition).not.toHaveBeenCalled();
+      expect(harness.cancelTransition).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each([
+    ['forward', 'absent'],
+    ['forward', 'remounted'],
+    ['forward', 'reused lifetime'],
+    ['backward', 'absent'],
+    ['backward', 'remounted'],
+    ['backward', 'reused lifetime'],
+  ] as const)(
+    'an %s source presentation changed during the fence cancels without claiming route removal (%s)',
+    async (direction, presentation) => {
+      const barrier = deferred<void>();
+      const lifetime = {
+        suspend: jest.fn(() => barrier.promise),
+        resume: jest.fn(),
+      };
+      const replacementLifetime = {
+        suspend: jest.fn(async () => {}),
+        resume: jest.fn(),
+      };
+      const harness = await mountHook({
+        direction,
+        animationLifetime: lifetime,
+      });
+      const { completion, navigateBack } = await harness.start();
+      await act(async () =>
+        harness.api.reverseController.commitNearEndpoint('reverse')
+      );
+      expect(lifetime.suspend).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        harness.unregister();
+        if (presentation !== 'absent')
+          harness.api.registerScreenPresentation(
+            'article',
+            { current: {} as React.ComponentRef<typeof View> },
+            presentation === 'reused lifetime' ? lifetime : replacementLifetime
+          );
+        barrier.resolve();
+      });
+      await completion;
+      expect(navigateBack).not.toHaveBeenCalled();
+      expect(harness.api.interruptibleReturnSessionId).toBeNull();
+      expect(harness.api.reverseHandoff.value?.navigationPresented).toBe(false);
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+      expect(harness.interactionOwner.value).toBeNull();
+      expect(harness.releaseLock).not.toHaveBeenCalled();
+      expect(replacementLifetime.suspend).not.toHaveBeenCalled();
+      expect(replacementLifetime.resume).not.toHaveBeenCalled();
+      if (direction === 'forward') {
+        expect(harness.progress.value).toBe(1);
+        expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
+        expect(harness.cancelTransition).not.toHaveBeenCalled();
+      } else {
+        expect(harness.cancelTransition).toHaveBeenCalledWith('reverse');
+        expect(harness.completeTransition).not.toHaveBeenCalled();
+      }
+      await act(async () => {
+        harness.finishAnimation();
+        flushRN();
+      });
+      expect(navigateBack).not.toHaveBeenCalled();
+      expect(harness.interactionOwner.value).toBeNull();
+    }
+  );
+
+  test('stale presentation cleanup cannot unregister the remounted route before its next return', async () => {
+    const firstBarrier = deferred<void>();
+    const oldLifetime = {
+      suspend: jest.fn(() => firstBarrier.promise),
+      resume: jest.fn(),
+    };
+    const newLifetime = { suspend: jest.fn(async () => {}), resume: jest.fn() };
+    const harness = await mountHook({ animationLifetime: oldLifetime });
+    const first = await harness.start();
+    await act(async () =>
+      harness.api.reverseController.commitNearEndpoint('reverse')
+    );
+    harness.api.registerScreenPresentation(
+      'article',
+      { current: {} as React.ComponentRef<typeof View> },
+      newLifetime
+    );
+    await act(async () => {
+      harness.unregister();
+      firstBarrier.resolve();
+    });
+    await first.completion;
+    expect(first.navigateBack).not.toHaveBeenCalled();
+    harness.replaceSession('replacement');
+    const second = await harness.start();
+    await act(async () =>
+      harness.api.reverseController.commitNearEndpoint('replacement')
+    );
+    expect(newLifetime.suspend).toHaveBeenCalledWith(harness.token);
+    expect(second.navigateBack).toHaveBeenCalledTimes(1);
+    await act(async () => {
+      harness.finishAnimation();
+      flushRN();
+      second.navigation.resolve({ removed: true, presented: false });
+    });
+    await second.completion;
+    expect(harness.completeTransition).toHaveBeenCalledWith('replacement');
+  });
+
+  test.each(['refused', 'throws'] as const)(
+    'a source unmount after the Android fence proves removal even if navigation %s',
+    async (outcome) => {
+      const lifetime = { suspend: jest.fn(async () => {}), resume: jest.fn() };
+      const harness = await mountHook({ animationLifetime: lifetime });
+      const { completion, navigateBack, navigation } = await harness.start();
+      await act(async () =>
+        harness.api.reverseController.commitNearEndpoint('reverse')
+      );
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+      await act(async () => {
+        harness.unregister();
+        if (outcome === 'throws')
+          navigation.reject(new Error('Navigation rejected'));
+        else navigation.resolve({ removed: false, presented: false });
+        harness.finishAnimation();
+        flushRN();
+      });
+      await completion;
+      expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
+      expect(harness.cancelTransition).not.toHaveBeenCalled();
+      expect(harness.interactionOwner.value).toBe('home');
+      expect(lifetime.resume).not.toHaveBeenCalled();
+    }
+  );
+
+  test.each(['refused', 'throws'] as const)(
+    'a %s Android pop resumes the source animation lifetime',
+    async (outcome) => {
+      const lifetime = { suspend: jest.fn(async () => {}), resume: jest.fn() };
+      const harness = await mountHook({ animationLifetime: lifetime });
+      const navigate = async () => {
+        if (outcome === 'throws') throw new Error('Navigation rejected');
+        return { removed: false, presented: false };
+      };
+      const { completion } = await harness.start(navigate);
+      await act(async () =>
+        harness.api.reverseController.commitNearEndpoint('reverse')
+      );
+      await completion;
+      expect(lifetime.suspend).toHaveBeenCalledWith(harness.token);
+      expect(lifetime.resume).toHaveBeenCalledWith(harness.token);
+      expect(harness.cancelTransition).toHaveBeenCalledWith('reverse');
+      expect(harness.interactionOwner.value).toBeNull();
     }
   );
 

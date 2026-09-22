@@ -1,11 +1,19 @@
 // Minimal mock for react-native-reanimated in tests
 module.exports = {
-  useSharedValue: (initial) => ({ value: initial }),
-  useDerivedValue: (fn) => ({
-    get value() {
-      return fn();
-    },
-  }),
+  useSharedValue: (initial) => {
+    const { useRef } = require('react');
+    return useRef({ value: initial }).current;
+  },
+  useDerivedValue: (fn) => {
+    const { useRef } = require('react');
+    const updater = useRef(fn);
+    updater.current = fn;
+    return useRef({
+      get value() {
+        return updater.current();
+      },
+    }).current;
+  },
   useAnimatedStyle: (fn) => fn(),
   useAnimatedProps: (fn) => fn(),
   useAnimatedReaction: jest.fn(),

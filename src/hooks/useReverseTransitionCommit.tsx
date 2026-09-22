@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
-import { type View } from 'react-native';
+import { Platform, type View } from 'react-native';
 import {
   cancelAnimation,
   useAnimatedReaction,
@@ -20,6 +20,7 @@ import { ReverseTransitionController } from '../core/ReverseTransitionController
 import type { NavigationSessionController } from '../core/NavigationSessionController';
 import type { CommitBackNavigation } from '../core/navigationCommit';
 import { resolveSpringConfig } from '../core/constants';
+import type { ScreenAnimationLifetime } from './useScreenAnimationLifetime';
 import type {
   InteractiveTransitionSettleOptions,
   TransitionSessionData,
@@ -30,6 +31,10 @@ export interface ReverseCommitRequest {
   token: number;
   navigateBack: CommitBackNavigation;
   options?: InteractiveTransitionSettleOptions;
+}
+
+interface ScreenPresentation {
+  animationLifetime?: ScreenAnimationLifetime;
 }
 
 interface ReverseCommitDependencies {
@@ -64,11 +69,11 @@ export function useReverseTransitionCommit({
   useAnimatedReaction(
     () => {
       const state = reverseHandoff.value;
-      // Start native dismissal during the remaining quarter of the motion.
+      // Start native dismissal during the remaining 10% of the motion.
       // Input still waits for confirmed removal; progress alone is not readiness.
       return state &&
         progressOwner.value === state.token &&
-        progress.value <= 0.25
+        progress.value <= 0.1
         ? state.sessionId
         : null;
     },
@@ -77,13 +82,17 @@ export function useReverseTransitionCommit({
         scheduleOnRN(commitNearEndpoint, sessionId);
     }
   );
-  const screens = useRef(
-    new Map<string, React.RefObject<React.ComponentRef<typeof View> | null>>()
-  );
+  const screens = useRef(new Map<string, ScreenPresentation>());
+  const navigationDispatch = useRef<{
+    sessionId: string;
+    token: number;
+    presentation: ScreenPresentation | undefined;
+  } | null>(null);
   useEffect(() => {
     const registeredScreens = screens.current;
     return () => {
       reverseController.dispose();
+      navigationDispatch.current = null;
       scheduleOnUI(() => {
         'worklet';
         reverseHandoff.value = null;
@@ -95,24 +104,30 @@ export function useReverseTransitionCommit({
   const registerScreenPresentation = useCallback(
     (
       screenId: string,
-      ref: React.RefObject<React.ComponentRef<typeof View> | null>
+      _ref: React.RefObject<React.ComponentRef<typeof View> | null>,
+      animationLifetime?: ScreenAnimationLifetime
     ) => {
-      screens.current.set(screenId, ref);
+      const presentation = { animationLifetime };
+      screens.current.set(screenId, presentation);
       return () => {
+        if (screens.current.get(screenId) !== presentation) return;
         const session = getSession();
+        const dispatched = navigationDispatch.current;
         if (session) {
-          if (
-            !reverseController.noteSourceUnmount(session.id, screenId) &&
-            session.sourceScreenId === screenId
-          ) {
+          // A presentation can remount during the Android fence without its
+          // route being removed. Only an actual dispatch can explain unmount.
+          const removedByNavigation =
+            dispatched?.sessionId === session.id &&
+            dispatched.presentation === presentation &&
+            progressOwnership.isCurrent(dispatched.token, session.id) &&
+            reverseController.noteSourceUnmount(session.id, screenId);
+          if (!removedByNavigation && session.sourceScreenId === screenId)
             reverseController.cancelBeforeCommit(session.id);
-          }
         }
-        if (screens.current.get(screenId) === ref)
-          screens.current.delete(screenId);
+        screens.current.delete(screenId);
       };
     },
-    [getSession, reverseController]
+    [getSession, progressOwnership, reverseController]
   );
 
   const commitReverseTransition = useCallback(
@@ -137,6 +152,8 @@ export function useReverseTransitionCommit({
       const targetScreenId = cancellingForward
         ? session.sourceScreenId
         : session.targetScreenId;
+      const sourcePresentation = screens.current.get(sourceScreenId);
+      const sourceAnimationLifetime = sourcePresentation?.animationLifetime;
       scheduleOnUI(() => {
         'worklet';
         if (owner.value !== token) return;
@@ -181,10 +198,48 @@ export function useReverseTransitionCommit({
         targetScreenId,
         isCurrent: current,
         commitNavigation: async () => {
-          const result = await navigateBack();
-          // Core bindings may be void; the bundled navigation adapters always
-          // return the checked removal/native-presentation result.
-          return result ?? { removed: true, presented: false };
+          if (Platform.OS === 'android' && sourceAnimationLifetime) {
+            await sourceAnimationLifetime.suspend(token);
+            if (!current() || !reverseController.owns(sessionId)) {
+              if (
+                screens.current.get(sourceScreenId)?.animationLifetime ===
+                sourceAnimationLifetime
+              )
+                sourceAnimationLifetime.resume(token);
+              return { removed: false, presented: false };
+            }
+            // Presentation cleanup does not prove navigator route removal. A
+            // remounted route needs its own fence before it can be dismissed.
+            if (screens.current.get(sourceScreenId) !== sourcePresentation)
+              return { removed: false, presented: false };
+          }
+          const dispatched = {
+            sessionId,
+            token,
+            presentation: sourcePresentation,
+          };
+          navigationDispatch.current = dispatched;
+          let removed = false;
+          try {
+            const result = await navigateBack();
+            // Core bindings may be void; the bundled navigation adapters always
+            // return the checked removal/native-presentation result.
+            const outcome = result ?? { removed: true, presented: false };
+            removed = outcome.removed;
+            return outcome;
+          } finally {
+            if (navigationDispatch.current === dispatched)
+              navigationDispatch.current = null;
+            // A replacement can abandon the controller while navigation is
+            // awaiting confirmation. Restore a surviving, rejected source too.
+            if (
+              !removed &&
+              (!current() || !reverseController.owns(sessionId)) &&
+              screens.current.get(sourceScreenId)?.animationLifetime ===
+                sourceAnimationLifetime
+            )
+              sourceAnimationLifetime?.resume(token);
+          }
         },
         onNavigationRemoved: () => {
           if (!current()) return;
@@ -232,6 +287,7 @@ export function useReverseTransitionCommit({
         },
         cancel: () => {
           if (!current()) return;
+          sourceAnimationLifetime?.resume(token);
           if (cancellingForward) {
             // A rejected pop leaves the detail mounted: restore that endpoint.
             setOwnedProgress(progressOwnership, token, sessionId, progress, 1);

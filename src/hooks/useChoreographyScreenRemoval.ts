@@ -1,10 +1,14 @@
 import { useCallback, useContext, useEffect, useRef } from 'react';
+import { Platform } from 'react-native';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import type { CommitBackNavigation } from '../core/navigationCommit';
-import { runReverseTransition } from '../core/runReverseTransition';
+import {
+  reverseActiveSession,
+  runReverseTransition,
+} from '../core/runReverseTransition';
 
 interface ChoreographyScreenRemovalOptions {
   screenId: string;
@@ -45,11 +49,24 @@ export function useChoreographyScreenRemoval({
       }
 
       const context = contextRef.current;
+      if (!context || !mountedRef.current) return false;
+
+      const session = context.navigationController.getActiveSession();
+      // A duration-based opening spring may look finished before it settles.
+      // Android Back must reverse it just like the application's Back button.
+      const openingSession =
+        Platform.OS === 'android' &&
+        session?.direction === 'forward' &&
+        session.state === 'active' &&
+        session.targetScreenId === screenId &&
+        context.progressOwnership.isSession(session.id) &&
+        !context.reverseController.owns(session.id)
+          ? session
+          : null;
       if (
-        !context ||
-        context.progressOwnership.hasSession ||
-        context.navigationController.isNavigationLocked() ||
-        !mountedRef.current
+        !openingSession &&
+        (context.progressOwnership.hasSession ||
+          context.navigationController.isNavigationLocked())
       ) {
         return false;
       }
@@ -67,16 +84,29 @@ export function useChoreographyScreenRemoval({
       }
 
       reversePendingRef.current = true;
-      runReverseTransition({
-        ctx: context,
-        groupId,
-        sourceScreenId,
-        currentScreenId: screenId,
-        popAction,
-        isRouteRemoved,
-        spring: lineage?.spring,
-        canContinue: () => mountedRef.current,
-      })
+      const reverse = openingSession
+        ? reverseActiveSession({
+            ctx: context,
+            session: openingSession,
+            navigateBack: popAction,
+            options: { spring: lineage?.spring },
+            canContinue: () => mountedRef.current,
+          })?.completion
+        : runReverseTransition({
+            ctx: context,
+            groupId,
+            sourceScreenId,
+            currentScreenId: screenId,
+            popAction,
+            isRouteRemoved,
+            spring: lineage?.spring,
+            canContinue: () => mountedRef.current,
+          });
+      if (!reverse) {
+        reversePendingRef.current = false;
+        return false;
+      }
+      reverse
         .catch(() => {
           // runReverseTransition falls back to popAction on failure.
         })

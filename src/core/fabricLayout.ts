@@ -111,7 +111,7 @@ export function waitForFabricLayout<T>({
   read,
   isCurrent,
   cancellers,
-  timeoutMs = 500,
+  timeoutMs = 1000,
 }: {
   read: () => T | null;
   isCurrent: () => boolean;

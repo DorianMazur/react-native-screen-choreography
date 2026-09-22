@@ -167,13 +167,21 @@ Do not treat that bookkeeping as a reason to add snapshot render paths.
 After a settled forward transition, Back prepares a reverse session while the
 outgoing route remains mounted. During committed settlement, a UI-thread reaction
 asks `ReverseTransitionController` to remove the outgoing route once expansion
-progress reaches 0.25. This is remaining expansion, not elapsed animation time;
+progress reaches 0.10. This is remaining expansion, not elapsed animation time;
 the threshold starts dismissal and does not itself confirm input readiness.
 Retained content stays in the overlay until the spring finishes. After confirmed
 route removal, a new navigation tap can finish that remaining motion immediately;
 it does not wait for the spring's settling tail. Exact animation completion also
 commits navigation if the earlier reaction has not run. There is no outgoing-screen
 snapshot component. Cancelling an interactive return keeps the detail route.
+On Android, each screen exposes its own derived progress to companion animations.
+Before dispatching removal, the controller freezes the outgoing screen's progress
+and pointer events, then crosses two UI animation frames to drain queued mapper
+and Fabric prop updates. The provider's overlay progress continues throughout;
+retained presentation progress also remains on that clock. This prevents updates
+to deleted route views without delaying removal until the spring completes.
+A rejected removal resumes the screen; a superseded commit cannot remove another
+route or resume a newer suspension.
 Once animation completion and route removal are confirmed, the provider enqueues
 the UI input handoff and completes the session in the same JavaScript turn.
 Portal retargeting and navigation unlock do not wait for a UI-to-JavaScript
@@ -191,7 +199,12 @@ interruption owns that decision.
 
 Navigation lineage records source route identity, group, and requested spring.
 Removal interception routes hardware and navigator Back through the same reverse
-preparation. `NavigationSessionController` owns locks, queued requests, and replay
+preparation. On Android, Back from a detail whose opening animation is still
+active reuses the in-app Back reversal and refreshes the original source metrics
+before returning. It does not remove that route underneath the forward animation.
+If Back removes the Android destination before preparation finishes, the pending
+opening is cancelled instead of animating an unmounted route.
+`NavigationSessionController` owns locks, queued requests, and replay
 checks. Keep provider cleanup independent of an outgoing route's lifetime.
 
 ## Companion motion and extensions
