@@ -221,6 +221,7 @@ export function ChoreographyScreenBase({
         }
       >
         <Animated.View
+          needsOffscreenAlphaCompositing={Platform.OS === 'android'}
           style={[styles.container, revealStyle]}
           pointerEvents={blockInteraction ? 'none' : 'auto'}
           animatedProps={interactionProps}
