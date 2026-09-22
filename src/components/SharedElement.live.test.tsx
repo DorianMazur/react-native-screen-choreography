@@ -1,4 +1,4 @@
-import { StyleSheet, View, type ViewStyle } from 'react-native';
+import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type {
   ElementTransitionPair,
@@ -9,12 +9,16 @@ import type {
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
+  ChoreographyControlsContext,
   type ChoreographyActionsType,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import { ScreenIdContext } from '../core/screenIdContext';
 import { makeTransition } from '../transitions/makeTransition';
 import { SharedElement } from './SharedElement';
+import { ChoreographyScreenBase } from './ChoreographyScreenBase';
+import { useChoreographyProgress } from '../hooks/useChoreographyProgress';
+import type { ScreenAnimationLifetime } from '../hooks/useScreenAnimationLifetime';
 import {
   useSharedElementPresentation,
   type SharedElementPresentation,
@@ -110,6 +114,77 @@ function choreography(
 }
 
 describe('SharedElement live endpoints', () => {
+  test('retained presentation keeps animating after its departing screen companions suspend', async () => {
+    const originalOS = Platform.OS;
+    Platform.OS = 'android';
+    const state = makeContexts();
+    const active = session('detail', 'list', 'backward');
+    const context = choreography(active);
+    context.progress.value = 0.25;
+    let lifetime!: ScreenAnimationLifetime;
+    state.actions.registerScreenPresentation = (_id, _ref, registered) => {
+      lifetime = registered!;
+      return () => {};
+    };
+    let presentation!: SharedElementPresentation;
+    let companion!: ReturnType<typeof useChoreographyProgress>;
+    function Content() {
+      presentation = useSharedElementPresentation();
+      return null;
+    }
+    function Companion() {
+      companion = useChoreographyProgress();
+      return null;
+    }
+    const frames: ((time: number) => void)[] = [];
+    const frameMock = jest
+      .spyOn(global, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(
+          <ChoreographyActionsContext.Provider value={state.actions}>
+            <ChoreographyContext.Provider value={context}>
+              <ChoreographyControlsContext.Provider
+                value={{
+                  progress: context.progress,
+                  settleTransition: jest.fn(),
+                }}
+              >
+                <ChoreographyScreenBase screenId="detail">
+                  <Companion />
+                  <SharedElement id="player" groupId="media">
+                    <Content />
+                  </SharedElement>
+                </ChoreographyScreenBase>
+              </ChoreographyControlsContext.Provider>
+            </ChoreographyContext.Provider>
+          </ChoreographyActionsContext.Provider>
+        );
+      });
+      expect(presentation.progress).toBe(context.progress);
+      expect(presentation.presentationProgress.value).toBe(0.25);
+      const barrier = lifetime.suspend(1);
+      while (frames.length) frames.shift()!(0);
+      await barrier;
+      context.progress.value = 0.1;
+      expect(companion.progress.value).toBe(0.25);
+      expect(presentation.progress.value).toBe(0.1);
+      expect(presentation.presentationProgress.value).toBe(0.1);
+      context.progress.value = 0;
+      expect(companion.progress.value).toBe(0.25);
+      expect(presentation.presentationProgress.value).toBe(0);
+    } finally {
+      frameMock.mockRestore();
+      await act(async () => tree?.unmount());
+      Platform.OS = originalOS;
+    }
+  });
+
   test.each([20, 100, 300])(
     'only propagates presentation updates to the participating owner among %i owners',
     async (count) => {

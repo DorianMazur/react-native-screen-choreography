@@ -2,7 +2,10 @@ import { withSpring } from 'react-native-reanimated';
 import { ElementRegistry } from './ElementRegistry';
 import { ProgressOwnership } from './ProgressOwnership';
 import { NavigationSessionController } from './NavigationSessionController';
-import { runReverseTransition } from './runReverseTransition';
+import {
+  reverseActiveSession,
+  runReverseTransition,
+} from './runReverseTransition';
 import { TransitionCoordinator } from './TransitionCoordinator';
 import type { ChoreographyContextType } from './ChoreographyContext';
 import type { TransitionSessionData } from '../types';
@@ -58,6 +61,63 @@ function createContext(
     ...overrides,
   } as unknown as ChoreographyContextType;
 }
+
+describe('reversing an existing session', () => {
+  test.each(['forward', 'backward'] as const)(
+    'preserves caller options and provider ownership for %s Back',
+    async (direction) => {
+      const frames: Array<(timestamp: number) => void> = [];
+      const frame = jest
+        .spyOn(global, 'requestAnimationFrame')
+        .mockImplementation((callback) => {
+          frames.push(callback);
+          return frames.length;
+        });
+      try {
+        const ctx = createContext({
+          refreshActiveSessionMetrics: jest.fn(async () => {}),
+        });
+        const session = { ...createSession('opening'), direction };
+        ctx.progress.value = 0.01;
+        ctx.progressOwnership.setSession(session.id);
+        const navigateBack = jest.fn();
+        const options = {
+          spring: { duration: 800, dampingRatio: 1 },
+          duration: 180,
+        };
+        const reversal = reverseActiveSession({
+          ctx,
+          session,
+          navigateBack,
+          options,
+        });
+        expect(reversal).not.toBeNull();
+        expect(
+          ctx.progressOwnership.isCurrent(reversal!.token, session.id)
+        ).toBe(true);
+        if (direction === 'forward') {
+          expect(ctx.progress.value).toBe(0.12);
+          expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+          frames.shift()!(0);
+        } else expect(frames).toHaveLength(0);
+        await reversal!.completion;
+        expect(ctx.refreshActiveSessionMetrics).toHaveBeenCalledTimes(
+          direction === 'forward' ? 1 : 0
+        );
+        expect(ctx.commitReverseTransition).toHaveBeenCalledWith({
+          sessionId: session.id,
+          token: reversal!.token,
+          navigateBack,
+          options,
+        });
+        expect(ctx.startTransition).not.toHaveBeenCalled();
+        expect(navigateBack).not.toHaveBeenCalled();
+      } finally {
+        frame.mockRestore();
+      }
+    }
+  );
+});
 
 function createCoordinatorContext() {
   const ctx = createContext();

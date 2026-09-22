@@ -572,9 +572,13 @@ export function ChoreographyProvider({
   const registerScreenPresentation = useCallback<
     ChoreographyActionsType['registerScreenPresentation']
   >(
-    (screenId, ref) => {
+    (screenId, ref, animationLifetime) => {
       nativeScreenRefs.current.set(screenId, ref);
-      const release = registerReverseScreenPresentation(screenId, ref);
+      const release = registerReverseScreenPresentation(
+        screenId,
+        ref,
+        animationLifetime
+      );
       return () => {
         if (nativeScreenRefs.current.get(screenId) === ref)
           nativeScreenRefs.current.delete(screenId);

@@ -7,6 +7,7 @@ import type { View } from 'react-native';
 import type { ReverseTransitionController } from './ReverseTransitionController';
 import type { ReverseHandoffState } from './ReverseTransitionHandoff';
 import type { ReverseCommitRequest } from '../hooks/useReverseTransitionCommit';
+import type { ScreenAnimationLifetime } from '../hooks/useScreenAnimationLifetime';
 import type {
   ChoreographyDebugConfig,
   ChoreographyPreparationTrace,
@@ -38,7 +39,8 @@ export interface ChoreographyActionsType {
   waitForScreenReady: (screenId: string) => Promise<boolean>;
   registerScreenPresentation: (
     screenId: string,
-    ref: React.RefObject<React.ComponentRef<typeof View> | null>
+    ref: React.RefObject<React.ComponentRef<typeof View> | null>,
+    animationLifetime?: ScreenAnimationLifetime
   ) => () => void;
 }
 

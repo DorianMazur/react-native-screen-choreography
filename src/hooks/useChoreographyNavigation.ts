@@ -15,6 +15,7 @@ import type { ChoreographyNavigationOptions } from '../types';
 import { DEFAULT_SPRING, FAST_SPRING } from '../core/constants';
 import { debugLog, isDebugEnabled } from '../debug/logger';
 import type { PendingNavigationRequest } from '../core/NavigationSessionController';
+import { reverseActiveSession } from '../core/runReverseTransition';
 
 function nowMs(): number {
   return Date.now();
@@ -62,14 +63,13 @@ export function useChoreographyNavigator({
     startTransition,
     cancelTransition,
     completeTransition,
-    commitReverseTransition,
     reverseController,
     setPendingTargetScreen,
     setNavigationLineage,
     getNavigationLineage,
+    resolveScreenId,
     waitForOverlayReady,
     waitForScreenReady,
-    refreshActiveSessionMetrics,
   } = ctx;
 
   const logNavigation = useCallback(
@@ -367,6 +367,16 @@ export function useChoreographyNavigator({
           return;
         }
 
+        // Back can remove the destination while its overlay is still preparing.
+        // Do not start an opening animation for a route that has already gone.
+        if (
+          Platform.OS === 'android' &&
+          resolveScreenId(session.targetScreenId) !== session.targetScreenId
+        ) {
+          cancelTransition(session.id);
+          return;
+        }
+
         setNavigationLineage({
           groupId,
           sourceScreenId,
@@ -412,7 +422,9 @@ export function useChoreographyNavigator({
       ctx.pendingTargetScreenId,
       ctx.onPreparationTrace,
       ctx.isOverlayPresented,
+      resolveScreenId,
       controller,
+      cancelTransition,
       canInterruptReturnToCurrentScreen,
       createProgressAnimationToken,
       currentScreenId,
@@ -554,30 +566,10 @@ export function useChoreographyNavigator({
           options?.spring ??
           getNavigationLineage(detailScreenId)?.spring ??
           FAST_SPRING;
-        const sessionId = session.id;
-        const animationToken = createProgressAnimationToken(sessionId);
-        if (animationToken === null) return;
-
         if (session.direction === 'forward') {
           logNavigation(
             () =>
               `goBack interrupt active forward session elapsed=${elapsedMs(goBackStartedAt)}`
-          );
-          controller.clearQueuedNavigation();
-          setOwnedProgress(
-            progressOwnership,
-            animationToken,
-            sessionId,
-            progress,
-            Math.max(progress.value, 0.12)
-          );
-          await waitForNextFrame();
-          if (!progressOwnership.isCurrent(animationToken, sessionId)) return;
-          await refreshActiveSessionMetrics('source');
-          if (!progressOwnership.isCurrent(animationToken, sessionId)) return;
-          logNavigation(
-            () =>
-              `goBack refreshed source metrics session=${sessionId} total=${elapsedMs(goBackStartedAt)}`
           );
         } else {
           logNavigation(
@@ -585,31 +577,24 @@ export function useChoreographyNavigator({
               `goBack continue reverse session elapsed=${elapsedMs(goBackStartedAt)}`
           );
         }
-        await commitReverseTransition({
-          sessionId,
-          token: animationToken,
+        await reverseActiveSession({
+          ctx,
+          session,
           navigateBack,
           options: { spring: springConfig, duration: options?.duration },
-        });
+        })?.completion;
       } else {
         logNavigation('goBack delegating to router');
         navigateBack();
       }
     },
     [
-      ctx.activeSession,
-      controller,
+      ctx,
       currentScreenId,
-      createProgressAnimationToken,
-      commitReverseTransition,
       reverseController,
       getNavigationLineage,
       logNavigation,
       navigateBack,
-      progress,
-      progressOwnership,
-      refreshActiveSessionMetrics,
-      waitForNextFrame,
     ]
   );
 

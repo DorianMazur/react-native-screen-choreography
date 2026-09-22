@@ -1,9 +1,62 @@
 import type { CommitBackNavigation } from './navigationCommit';
 import type { ChoreographyContextType } from './ChoreographyContext';
 import { PreparationTrace } from './preparationTrace';
+import { setOwnedProgress } from './ProgressOwnership';
 import { FAST_SPRING } from './constants';
-import type { SpringConfig } from '../types';
+import type {
+  InteractiveTransitionSettleOptions,
+  SpringConfig,
+  TransitionSessionData,
+} from '../types';
 import { debugLog } from '../debug/logger';
+
+/** Reverse the current animation for either application or Android Back. */
+export function reverseActiveSession({
+  ctx,
+  session,
+  navigateBack,
+  options,
+  canContinue = () => true,
+}: {
+  ctx: ChoreographyContextType;
+  session: TransitionSessionData;
+  navigateBack: CommitBackNavigation;
+  options?: InteractiveTransitionSettleOptions;
+  canContinue?: () => boolean;
+}): { token: number; completion: Promise<void> } | null {
+  const { progressOwnership, progress, navigationController } = ctx;
+  if (!canContinue()) return null;
+  const token = progressOwnership.claim(session.id);
+  if (token === null) return null;
+  const isCurrent = () =>
+    canContinue() && progressOwnership.isCurrent(token, session.id);
+  const reverse = async () => {
+    if (session.direction === 'forward') {
+      navigationController.clearQueuedNavigation();
+      setOwnedProgress(
+        progressOwnership,
+        token,
+        session.id,
+        progress,
+        Math.max(progress.value, 0.12)
+      );
+      await new Promise<void>((resolve) =>
+        requestAnimationFrame(() => resolve())
+      );
+      if (!isCurrent()) return;
+      await ctx.refreshActiveSessionMetrics('source');
+      if (!isCurrent()) return;
+    }
+    if (!isCurrent()) return;
+    await ctx.commitReverseTransition({
+      sessionId: session.id,
+      token,
+      navigateBack,
+      options,
+    });
+  };
+  return { token, completion: reverse() };
+}
 
 export interface RunReverseTransitionArgs {
   ctx: ChoreographyContextType;

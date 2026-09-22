@@ -40,6 +40,8 @@ const {
 
 Read `progress.value` inside Reanimated worklets for frame-by-frame motion. `isActive` is not a synonym for `phase === 'active'`. A pending target can have phase `preparing` before a session exists.
 
+Within `ChoreographyScreen`, progress follows that screen's lifetime. On Android it freezes just before an outgoing route is removed, while the shared-element overlay finishes its return. For retained content that must follow the whole transition, use `useSharedElementPresentation().presentationProgress` or presentation-scoped reveals.
+
 `backdropStyle` supplies opacity only. Apply your own positioning, background color, and pointer-event behavior to the backdrop view.
 
 ## `useChoreographyControls`
