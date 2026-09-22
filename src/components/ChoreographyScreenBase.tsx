@@ -1,5 +1,5 @@
 import React, { useCallback, useContext, useLayoutEffect, useRef } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { Platform, StyleSheet, View } from 'react-native';
 import Animated, {
   useAnimatedProps,
   useAnimatedStyle,
@@ -195,6 +195,7 @@ export function ChoreographyScreenBase({
         }
       >
         <Animated.View
+          needsOffscreenAlphaCompositing={Platform.OS === 'android'}
           style={[styles.container, revealStyle]}
           pointerEvents={blockInteraction ? 'none' : 'auto'}
           animatedProps={interactionProps}
