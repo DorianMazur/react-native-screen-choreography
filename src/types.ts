@@ -138,6 +138,7 @@ export interface TransitionSessionData {
   pairs: ElementTransitionPair[];
   progress: SharedValue<number>;
   direction: 'forward' | 'backward';
+  reducedMotion?: boolean;
 }
 
 export interface TransitionConfig {

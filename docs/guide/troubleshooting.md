@@ -9,6 +9,10 @@ Most integration issues come from mismatched IDs, layout, or competing screen an
 
 ## Navigation happens without a transition
 
+When reduced motion is enabled at app startup, forward and back navigation transfer shared content directly to its endpoint without an animated overlay. This includes disabling Android's animation scales. The preference is read once at startup; restart the app after changing it.
+
+Interactive `beginBack()` returns `null` in this mode. Keep a Back button or system Back available for navigation.
+
 Check these connections in order:
 
 1. Navigation uses the choreography adapter and includes `transitionConfig: { group }`.

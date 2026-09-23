@@ -182,7 +182,12 @@ export function useInteractiveTransitionNavigator({
       options: InteractiveBackOptions = {}
     ): Promise<InteractiveTransitionHandle | null> => {
       const { signal } = options;
-      if (signal?.aborted || preparingRef.current || sessionIdRef.current) {
+      if (
+        progressOwnership.reducedMotion ||
+        signal?.aborted ||
+        preparingRef.current ||
+        sessionIdRef.current
+      ) {
         return null;
       }
 

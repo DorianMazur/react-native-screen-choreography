@@ -292,6 +292,7 @@ export class TransitionCoordinator {
     sourceScreenId: string;
     targetScreenId: string;
     direction: 'forward' | 'backward';
+    reducedMotion?: boolean;
     onUnavailable?: (sessionId: string) => void;
     trace?: PreparationTrace;
   }): Promise<TransitionSessionData | null> {
@@ -436,7 +437,8 @@ export class TransitionCoordinator {
         )
           return null;
         if (!isCurrent()) return null;
-        this.progress.value = direction === 'forward' ? 0 : 1;
+        const endpoint = direction === 'forward' ? 1 : 0;
+        this.progress.value = config.reducedMotion ? endpoint : 1 - endpoint;
         const active: TransitionSessionData = {
           id: sessionId,
           groupId,
@@ -446,6 +448,7 @@ export class TransitionCoordinator {
           pairs,
           progress: this.progress,
           direction,
+          reducedMotion: config.reducedMotion,
         };
         this.releaseMountSubscription = subscribeToFabricMounts(() => {
           const current = this.activeSession;

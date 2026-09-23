@@ -1,4 +1,4 @@
-import { withSpring } from 'react-native-reanimated';
+import { withSpring, withTiming } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import {
   animateOwnedProgress,
@@ -11,6 +11,7 @@ jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   cancelAnimation: jest.fn(),
   withSpring: jest.fn(() => 0.4),
+  withTiming: jest.fn(() => 0.4),
 }));
 
 jest.mock('react-native-worklets', () => ({
@@ -28,6 +29,55 @@ function flushRN() {
 beforeEach(() => jest.clearAllMocks());
 
 describe('provider progress ownership', () => {
+  test.each([
+    [0, undefined],
+    [1, undefined],
+    [0, 600],
+    [1, 600],
+  ])(
+    'reduced motion settles to %s without animating (duration=%s)',
+    (target, duration) => {
+      const visibility = new ElementVisibilityRegistry();
+      const element = visibility.get('element', false);
+      visibility.sync(new Set(['element']), 'A');
+      const progress = { value: 0.5 } as ProgressOwnership['owner'];
+      const ownership = new ProgressOwnership(
+        { value: 0 } as ProgressOwnership['owner'],
+        progress,
+        visibility.handoff,
+        true
+      );
+      ownership.setSession('A');
+      const token = ownership.claim('A')!;
+      const onComplete = jest.fn();
+      const onCompleteUI = jest.fn(() => expect(progress.value).toBe(target));
+      const animate = () =>
+        animateOwnedProgress({
+          ownership,
+          token,
+          sessionId: 'A',
+          progress,
+          target: target!,
+          duration,
+          spring: {},
+          onComplete,
+          onCompleteUI,
+        });
+      animate();
+      expect(withSpring).not.toHaveBeenCalled();
+      expect(withTiming).not.toHaveBeenCalled();
+      expect(progress.value).toBe(target);
+      expect(element.value).toBe(0);
+      expect(onCompleteUI).toHaveBeenCalledTimes(1);
+      expect(onComplete).not.toHaveBeenCalled();
+      flushRN();
+      expect(onComplete).toHaveBeenCalledWith(token, 'A');
+      expect(onComplete).toHaveBeenCalledTimes(1);
+
+      ownership.setSession(null);
+    }
+  );
+
   test.each([0, 1])(
     'hands off endpoint %s before JS completion runs',
     (target) => {

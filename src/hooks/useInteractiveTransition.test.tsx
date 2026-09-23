@@ -130,6 +130,22 @@ describe('interactive ownership', () => {
     expect(ctx.navigationController.getNavigationSourceScreenId()).toBe('List');
   });
 
+  test('reduced motion leaves Back to ordinary navigation without preparing a drag', async () => {
+    ctx.progressOwnership = new ProgressOwnership(
+      ctx.progressOwnership.owner,
+      ctx.progress,
+      undefined,
+      true
+    );
+    await act(async () => tree.update(render()));
+    expect(await interactive.beginBack()).toBeNull();
+    expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
+    expect(ctx.startTransition).not.toHaveBeenCalled();
+    expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+    expect(ctx.progress.value).toBe(1);
+    expect(navigateBack).not.toHaveBeenCalled();
+  });
+
   test('holds source input from preparation until settlement', async () => {
     await act(async () => {
       await interactive.beginBack();

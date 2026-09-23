@@ -41,7 +41,7 @@ export function TransitionOverlay({
   useLayoutEffect(() => {
     if (id && hasPairs) onReady?.(id);
   }, [id, hasPairs, onReady]);
-  if (!session || !hasPairs) return null;
+  if (!session || !hasPairs || session.reducedMotion) return null;
   return (
     <View pointerEvents="none" style={styles.overlay}>
       {[...session.pairs]

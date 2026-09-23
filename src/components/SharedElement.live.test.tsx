@@ -1,3 +1,4 @@
+import { useEffect } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type {
@@ -114,6 +115,71 @@ function choreography(
 }
 
 describe('SharedElement live endpoints', () => {
+  test('reduced motion transfers the same content directly to each endpoint, including rejected Back', async () => {
+    const state = makeContexts();
+    let presentation!: SharedElementPresentation;
+    let tree!: ReactTestRenderer;
+    const mounted = jest.fn();
+    function Content() {
+      useEffect(mounted, []);
+      presentation = useSharedElementPresentation();
+      return null;
+    }
+    const render = (activeSession: TransitionSessionData | null) => (
+      <ChoreographyActionsContext.Provider value={state.actions}>
+        <ChoreographyContext.Provider value={choreography(activeSession)}>
+          <ScreenIdContext.Provider value="list">
+            <SharedElement id="player" groupId="media">
+              <Content />
+            </SharedElement>
+          </ScreenIdContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const update = async (active: TransitionSessionData | null) => {
+      await act(async () => tree.update(render(active)));
+    };
+    try {
+      await act(async () => {
+        tree = create(render(null));
+      });
+      await update({ ...session('list', 'detail'), reducedMotion: true });
+      const destination = tree.root.findByType(Portal).props.hostName;
+      expect(destination).toContain('destination');
+      expect(presentation.presentationProgress.value).toBe(1);
+      expect(presentation.transitioning).toBe(false);
+      expect(presentation.expanded.metrics?.width).toBe(300);
+      state.settle('detail');
+      await update(null);
+      expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+
+      await update({
+        ...session('detail', 'list', 'backward'),
+        reducedMotion: true,
+      });
+      expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
+      expect(presentation.presentationProgress.value).toBe(0);
+      state.settle('detail');
+      await update(null);
+      expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+      expect(presentation.presentationProgress.value).toBe(1);
+
+      await update({
+        ...session('detail', 'list', 'backward'),
+        reducedMotion: true,
+      });
+      state.settle('list');
+      await update(null);
+      expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
+      expect(presentation.presentationProgress.value).toBe(0);
+      expect(mounted).toHaveBeenCalledTimes(1);
+      expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+      expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
+
   test('retained presentation keeps animating after its departing screen companions suspend', async () => {
     const originalOS = Platform.OS;
     Platform.OS = 'android';

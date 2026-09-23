@@ -36,7 +36,8 @@ export class ProgressOwnership {
   constructor(
     readonly owner: SharedValue<number>,
     private readonly progress: SharedValue<number>,
-    readonly handoff?: SharedValue<VisibilityHandoff>
+    readonly handoff?: SharedValue<VisibilityHandoff>,
+    readonly reducedMotion = false
   ) {}
 
   get version(): number {
@@ -152,7 +153,7 @@ export function animateOwnedProgress({
   onComplete: (token: number, sessionId: string) => void;
 }): void {
   if (!ownership.isCurrent(token, sessionId)) return;
-  const { owner, handoff } = ownership;
+  const { owner, handoff, reducedMotion } = ownership;
   const completionId = ownership.retainCompletion(token, sessionId, onComplete);
   scheduleOnUI(() => {
     'worklet';
@@ -167,6 +168,12 @@ export function animateOwnedProgress({
         scheduleOnRN(dispatchCompletion, completionId);
       }
     };
+    if (reducedMotion) {
+      cancelAnimation(progress);
+      progress.value = target;
+      complete(true);
+      return;
+    }
     progress.value = duration
       ? withTiming(
           target,

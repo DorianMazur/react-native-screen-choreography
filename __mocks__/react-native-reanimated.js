@@ -1,5 +1,6 @@
 // Minimal mock for react-native-reanimated in tests
 module.exports = {
+  useReducedMotion: () => false,
   useSharedValue: (initial) => {
     const { useRef } = require('react');
     return useRef({ value: initial }).current;
