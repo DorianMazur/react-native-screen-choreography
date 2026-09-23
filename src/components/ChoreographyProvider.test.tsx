@@ -1,6 +1,8 @@
 import React, { StrictMode, useContext, useLayoutEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { Platform } from 'react-native';
+import { useReducedMotion } from 'react-native-reanimated';
+import { animateOwnedProgress } from '../core/ProgressOwnership';
 import { FullWindowOverlay } from 'react-native-screens';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
@@ -19,6 +21,7 @@ jest.mock('react-native-reanimated', () => {
     ...jest.requireActual('../../__mocks__/react-native-reanimated'),
     __esModule: true,
     useSharedValue: (value: number) => useRef({ value }).current,
+    useReducedMotion: jest.fn(() => false),
     cancelAnimation: jest.fn(),
   };
 });
@@ -60,6 +63,7 @@ describe('ChoreographyProvider lifecycle', () => {
   const originalPlatform = Platform.OS;
 
   beforeEach(() => {
+    jest.mocked(useReducedMotion).mockReturnValue(false);
     Platform.OS = 'ios';
     jest
       .spyOn(require('react-native'), 'findNodeHandle')
@@ -80,6 +84,97 @@ describe('ChoreographyProvider lifecycle', () => {
     delete fabricGlobals.__screenChoreographySubscribeFabricMount;
     jest.restoreAllMocks();
   });
+
+  test.each(['forward', 'backward'] as const)(
+    'Android reduced motion completes %s without mounting an overlay or waiting for native presentation',
+    async (direction) => {
+      Platform.OS = 'android';
+      jest.mocked(useReducedMotion).mockReturnValue(true);
+      jest.useFakeTimers();
+      let context!: ChoreographyContextType;
+      let tree!: ReactTestRenderer;
+      const renderer = jest.fn(() => null);
+      const onTransitionEnd = jest.fn();
+      const navigateBack = jest.fn(async () => ({
+        removed: true,
+        presented: false,
+      }));
+      function Consumer() {
+        context = useContext(ChoreographyContext)!;
+        return null;
+      }
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider onTransitionEnd={onTransitionEnd}>
+              <FabricScreens />
+              <Consumer />
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer } }),
+          });
+        }
+        context.navigationController.acquireNavigationLock('list');
+        await act(async () => {
+          const preparing = context.startTransition({
+            groupId: 'group',
+            direction,
+            sourceScreenId: direction === 'forward' ? 'list' : 'detail',
+            targetScreenId: direction === 'forward' ? 'detail' : 'list',
+          });
+          await jest.runAllTimersAsync();
+          await preparing;
+        });
+        const sessionId = context.activeSession!.id;
+        expect(context.activeSession!.reducedMotion).toBe(true);
+        expect(context.progress.value).toBe(direction === 'forward' ? 1 : 0);
+        expect(tree.root.findByType(NativeTransitionHost).props.active).toBe(
+          false
+        );
+        expect(renderer).not.toHaveBeenCalled();
+        // No host acknowledgement or timeout is needed for a direct transfer.
+        expect(await context.waitForOverlayReady(sessionId)).toBe(true);
+        const token = context.progressOwnership.claim(sessionId)!;
+        await act(async () => {
+          if (direction === 'backward') {
+            await context.commitReverseTransition({
+              sessionId,
+              token,
+              navigateBack,
+            });
+          } else {
+            animateOwnedProgress({
+              ownership: context.progressOwnership,
+              token,
+              sessionId,
+              progress: context.progress,
+              target: 1,
+              spring: {},
+              onComplete: () => context.completeTransition(sessionId),
+            });
+          }
+        });
+        expect(navigateBack).toHaveBeenCalledTimes(
+          direction === 'backward' ? 1 : 0
+        );
+        expect(context.activeSession).toBeNull();
+        expect(context.progressOwnership.hasSession).toBe(false);
+        expect(context.navigationController.isNavigationLocked()).toBe(false);
+        expect(onTransitionEnd).toHaveBeenCalledTimes(1);
+      } finally {
+        await act(async () => tree?.unmount());
+        jest.useRealTimers();
+      }
+    }
+  );
 
   test.each(['forward', 'backward'] as const)(
     'scrolling the return destination settles a %s session only after removal',

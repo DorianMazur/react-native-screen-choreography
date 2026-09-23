@@ -180,6 +180,7 @@ function LiveSharedElement(props: SharedElementProps) {
       {...props}
       screenId={screenId}
       pair={pair}
+      reducedMotion={pair ? session!.reducedMotion : false}
       direction={pair ? session!.direction : null}
       sourceScreenId={pair ? session!.sourceScreenId : null}
       targetScreenId={pair ? session!.targetScreenId : null}
@@ -199,6 +200,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   metadata,
   screenId,
   pair,
+  reducedMotion,
   direction,
   sourceScreenId,
   targetScreenId,
@@ -207,6 +209,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
 }: SharedElementProps & {
   screenId: string;
   pair: ElementTransitionPair | null;
+  reducedMotion?: boolean;
   direction: TransitionSessionData['direction'] | null;
   sourceScreenId: string | null;
   targetScreenId: string | null;
@@ -245,12 +248,16 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     wasParticipatingRef.current = true;
     // Retain presentation data only, never a popped screen's registration/ref.
     endpoints.current = activeEndpoints;
-    hostName = getLiveOverlayHostName(
-      sourceScreenId!,
-      targetScreenId!,
-      id,
-      groupId ?? 'default'
-    );
+    hostName = reducedMotion
+      ? targetScreenId === screenId
+        ? undefined
+        : getLiveDestinationHostName(targetScreenId!, id, groupId)
+      : getLiveOverlayHostName(
+          sourceScreenId!,
+          targetScreenId!,
+          id,
+          groupId ?? 'default'
+        );
   } else {
     if (wasParticipatingRef.current) {
       wasParticipatingRef.current = false;
@@ -272,11 +279,19 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     () => ({ metrics: null, metadata, style: ownerStyle ?? undefined }),
     [metadata, ownerStyle]
   );
-  const settled = settledTargetScreenIdRef.current
+  const settled = (
+    participates && reducedMotion
+      ? targetScreenId !== screenId
+      : settledTargetScreenIdRef.current
+  )
     ? ('expanded' as const)
     : ('collapsed' as const);
   const presentationProgress = useDerivedValue(() =>
-    participates ? progress.value : settled === 'expanded' ? 1 : 0
+    participates && !reducedMotion
+      ? progress.value
+      : settled === 'expanded'
+        ? 1
+        : 0
   );
   const collapsed = endpoints.current?.collapsed ?? initial;
   const expanded = endpoints.current?.expanded ?? initial;
@@ -284,7 +299,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     () => ({
       progress,
       presentationProgress,
-      transitioning: participates,
+      transitioning: participates && !reducedMotion,
       direction,
       collapsed,
       expanded,
@@ -294,6 +309,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       progress,
       presentationProgress,
       participates,
+      reducedMotion,
       direction,
       collapsed,
       expanded,

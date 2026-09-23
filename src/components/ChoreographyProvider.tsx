@@ -8,7 +8,11 @@ import React, {
   useState,
 } from 'react';
 import { Platform, StyleSheet, View } from 'react-native';
-import { useSharedValue, type SharedValue } from 'react-native-reanimated';
+import {
+  useReducedMotion,
+  useSharedValue,
+  type SharedValue,
+} from 'react-native-reanimated';
 import { PortalProvider } from 'react-native-teleport';
 import type {
   ChoreographyDebugConfig,
@@ -110,6 +114,7 @@ export function ChoreographyProvider({
   onPreparationTrace,
 }: ChoreographyProviderProps) {
   const progress = useSharedValue(0);
+  const reducedMotion = useReducedMotion();
   const progressOwner = useSharedValue(0);
   const interactionOwner = useSharedValue<string | null>(null);
   const [interactiveScreenId, setInteractiveScreenId] = useState<string | null>(
@@ -126,7 +131,12 @@ export function ChoreographyProvider({
   const [visibilityRegistry] = useState(() => new ElementVisibilityRegistry());
   const [progressOwnership] = useState(
     () =>
-      new ProgressOwnership(progressOwner, progress, visibilityRegistry.handoff)
+      new ProgressOwnership(
+        progressOwner,
+        progress,
+        visibilityRegistry.handoff,
+        reducedMotion
+      )
   );
   const [navigationController] = useState(
     () => new NavigationSessionController()
@@ -140,7 +150,9 @@ export function ChoreographyProvider({
     string | null
   >(null);
   const isOverlayActive =
-    activeSession?.state === 'active' && activeSession.pairs.length > 0;
+    activeSession?.state === 'active' &&
+    activeSession.pairs.length > 0 &&
+    !activeSession.reducedMotion;
   const activeSessionRef = useRef<TransitionSessionData | null>(null);
   const hostPresentedSessionIdRef = useRef<string | null>(null);
   const overlayContentReadySessionIdRef = useRef<string | null>(null);
@@ -455,9 +467,12 @@ export function ChoreographyProvider({
       onUnavailable?: (sessionId: string) => void;
       trace?: PreparationTrace;
     }) => {
-      return coordinatorRef.current!.startTransition(config);
+      return coordinatorRef.current!.startTransition({
+        ...config,
+        reducedMotion,
+      });
     },
-    []
+    [reducedMotion]
   );
 
   const captureSourceGroup = useCallback(
@@ -603,6 +618,10 @@ export function ChoreographyProvider({
       if (!session || session.id !== sessionId) return;
       if (session.state === 'active' && session.pairs.length > 0) {
         overlayContentReadySessionIdRef.current = sessionId;
+        // Reduced-motion content commits directly to its endpoint host. There
+        // is no native overlay presentation to wait for in this path.
+        if (session.reducedMotion)
+          hostPresentedSessionIdRef.current = sessionId;
         resolveOverlayWaitersIfReady(sessionId);
       }
     },
