@@ -1,6 +1,7 @@
 #import "ScreenChoreographyView.h"
 
 #import <React/RCTConversions.h>
+#import <React/RCTSurfaceTouchHandler.h>
 #import <QuartzCore/QuartzCore.h>
 
 #import <react/renderer/components/ScreenChoreographyViewSpec/ComponentDescriptors.h>
@@ -30,6 +31,8 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 } // namespace
 
 @interface ScreenChoreographyWindowContainer : UIView
+@property (nonatomic, assign) BOOL foreground;
+@property (nonatomic, weak) UIView *anchor;
 @end
 
 @implementation ScreenChoreographyWindowContainer
@@ -47,9 +50,18 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   return self;
 }
 
+- (UIResponder *)nextResponder
+{
+  // Native children (for example Modal) still need their original controller
+  // to present from, even though their visible views live in the window.
+  return self.anchor ?: [super nextResponder];
+}
+
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
 {
-  return nil;
+  if (!self.foreground) return nil;
+  UIView *hit = [super hitTest:point withEvent:event];
+  return hit == self ? nil : hit;
 }
 
 @end
@@ -59,6 +71,8 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   __weak UIWindow *_lastWindow;
   UIView *_hostView;
   UIView *_dismissalFrame;
+  RCTSurfaceTouchHandler *_foregroundTouchHandler;
+  BOOL _foreground;
   BOOL _active;
   NSUInteger _presentationRequestId;
   NSUInteger _dismissalRequestId;
@@ -76,6 +90,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
     _props = defaultProps;
 
     _windowContainer = [[ScreenChoreographyWindowContainer alloc] initWithFrame:CGRectZero];
+    _windowContainer.anchor = self;
     _hostView = [[UIView alloc] initWithFrame:CGRectZero];
     _hostView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
     _hostView.backgroundColor = UIColor.clearColor;
@@ -94,6 +109,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 
 - (void)dealloc
 {
+  [_foregroundTouchHandler detachFromView:_windowContainer];
   [_windowContainer removeFromSuperview];
 }
 
@@ -169,11 +185,48 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   if (_windowContainer.superview != window) {
     [_windowContainer removeFromSuperview];
     _windowContainer.frame = window.bounds;
-    [window addSubview:_windowContainer];
+  }
+  [self insertWindowContainerInWindow:window];
+  if (_foreground && _foregroundTouchHandler == nil) {
+    _foregroundTouchHandler = [RCTSurfaceTouchHandler new];
+    [_foregroundTouchHandler attachToView:_windowContainer];
   }
   _windowContainer.frame = window.bounds;
   _hostView.frame = _windowContainer.bounds;
   [self schedulePresentationReady];
+}
+
+- (void)insertWindowContainerInWindow:(UIWindow *)window
+{
+  // An already-mounted foreground must stay below later native modals, including
+  // modals presented by its own children. Transition hosts order themselves
+  // below it; rerenders and rotation must not bring its empty Modal anchor up.
+  if (_foreground && _windowContainer.superview == window) return;
+  // Cover controller-owned content (including presented native stacks), not
+  // unrelated window overlays such as RCTPerfMonitor or FullWindowOverlay.
+  UIView *below = nil;
+  for (UIViewController *controller = window.rootViewController; controller != nil;
+       controller = controller.presentedViewController) {
+    UIView *content = controller.viewIfLoaded;
+    if (content.window != window) continue;
+    while (content.superview != nil && content.superview != window) content = content.superview;
+    if (content.superview == window) below = content;
+  }
+  NSArray<UIView *> *siblings = window.subviews;
+  for (UIView *view in siblings) {
+    if (view == _windowContainer || ![view isKindOfClass:ScreenChoreographyWindowContainer.class]) continue;
+    ScreenChoreographyWindowContainer *layer = (ScreenChoreographyWindowContainer *)view;
+    if (layer.foreground && !_foreground) continue;
+    if (below == nil || [siblings indexOfObject:view] > [siblings indexOfObject:below]) below = view;
+  }
+  if (below != nil) {
+    if (_windowContainer.superview != window ||
+        [siblings indexOfObject:_windowContainer] != [siblings indexOfObject:below] + 1) {
+      [window insertSubview:_windowContainer aboveSubview:below];
+    }
+  } else if (_windowContainer.superview != window || siblings.firstObject != _windowContainer) {
+    [window insertSubview:_windowContainer atIndex:0];
+  }
 }
 
 - (void)detachWindowContainer
@@ -184,6 +237,8 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   [_dismissalFrame removeFromSuperview];
   _dismissalFrame = nil;
   _hostView.hidden = YES;
+  [_foregroundTouchHandler detachFromView:_windowContainer];
+  _foregroundTouchHandler = nil;
   [_windowContainer removeFromSuperview];
 }
 
@@ -191,6 +246,8 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 {
   [self detachWindowContainer];
   _active = NO;
+  _foreground = NO;
+  _windowContainer.foreground = NO;
   _lastWindow = nil;
   [super prepareForRecycle];
 }
@@ -198,6 +255,12 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 - (void)updateProps:(Props::Shared const &)props oldProps:(Props::Shared const &)oldProps
 {
   const auto &newViewProps = *std::static_pointer_cast<ScreenChoreographyViewProps const>(props);
+  _foreground = newViewProps.foreground;
+  _windowContainer.foreground = _foreground;
+  if (!_foreground && _foregroundTouchHandler != nil) {
+    [_foregroundTouchHandler detachFromView:_windowContainer];
+    _foregroundTouchHandler = nil;
+  }
 
   [super updateProps:props oldProps:oldProps];
 
@@ -212,6 +275,10 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
       _hostView.hidden = NO;
       [self presentWindowContainer];
     } else {
+      if (_foreground) {
+        [self detachWindowContainer];
+        return;
+      }
       _presentationRequestId += 1;
       UIView *snapshot = nil;
       if (_hostView.window != nil && !CGRectIsEmpty(_hostView.bounds)) {
@@ -253,7 +320,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 - (void)schedulePresentationReady
 {
   UIWindow *window = _windowContainer.window;
-  if (!_active || self.superview == nil || window == nil || CGRectIsEmpty(_windowContainer.bounds)) {
+  if (_foreground || !_active || self.superview == nil || window == nil || CGRectIsEmpty(_windowContainer.bounds)) {
     return;
   }
 

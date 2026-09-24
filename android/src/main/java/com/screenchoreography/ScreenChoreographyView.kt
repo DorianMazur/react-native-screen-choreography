@@ -15,6 +15,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   var onPresentationReady: ((Double) -> Unit)? = null
 
   private var active = false
+  private var foregroundLayer = false
   private var presentationRequestId = 0
   private var dismissalRequestId = 0
   private var pendingPresentationAck = false
@@ -38,6 +39,15 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     visibility = View.INVISIBLE
     // dispatchDraw needs to run even when the view group has no background.
     setWillNotDraw(false)
+  }
+
+  fun setForegroundLayer(value: Boolean) {
+    foregroundLayer = value
+    pointerEvents = if (value) PointerEvents.BOX_NONE else PointerEvents.NONE
+    if (value) {
+      presentationRequestId += 1
+      pendingPresentationAck = false
+    }
   }
 
   fun setActive(value: Boolean) {
@@ -176,7 +186,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   private fun schedulePresentationReady() {
-    if (!active || windowToken == null) {
+    if (foregroundLayer || !active || windowToken == null) {
       return
     }
 
