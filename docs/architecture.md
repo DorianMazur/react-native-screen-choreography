@@ -122,7 +122,7 @@ Animation waits for those readiness signals, with a bounded safety path. Do not
 start hiding or moving content based only on an eager session-activation callback.
 The native host's dismissal protection is separate from the removed outgoing
 screen capture implementation.
-Both native hosts exclude themselves and their children from touch hit testing.
+Both transition hosts exclude themselves and their children from touch hit testing.
 On Android this is enforced in `ScreenChoreographyView`, since its custom
 `ViewGroupManager` does not apply the JSX `pointerEvents` prop. This lets the
 destination accept input while the overlay finishes its remaining motion.
@@ -135,11 +135,36 @@ transition or finishing the native dismissal handoff. Live React children mount
 into that container; the anchor itself never moves out of its React parent.
 The host-only dismissal snapshot remains separate from those live children.
 
+Both transition and foreground containers are non-modal accessibility containers
+(`accessibilityViewIsModal = NO`, `isAccessibilityElement = NO`). Foreground
+controls must not hide the underlying screen from VoiceOver. Dismissal snapshots
+remain excluded from accessibility. The native window host deliberately does not
+use `FullWindowOverlay`, preserving the accessibility behavior introduced in
+`c3cc0f4`.
+
 The container uses the anchor's actual `UIWindow`. If a native full-screen modal
 temporarily detaches an ancestor, it can keep using that anchor's last known
 window while the anchor remains mounted. Removing or recycling the anchor clears
 this association and removes the container. Deferred presentation and dismissal
 callbacks are invalidated across interruption and recycling.
+
+Window ordering is explicit: controller-owned content, transition containers,
+then `ChoreographyOverlay` containers. Containers are inserted directly above
+the owning window's attached controller content instead of appended above all
+window subviews. This preserves independent window overlays such as React
+Native's FPS monitor and `FullWindowOverlay`, without naming or moving their views.
+
+`ChoreographyOverlay` uses the same native component in foreground mode. It stays
+mounted independently of transition sessions. On iOS its container has a Fabric
+surface touch handler; only a hit on its children is accepted. Its empty root
+passes touches through and is not an accessibility modal. On Android it is a
+`box-none` sibling above the transition portal, using the shared layer constants.
+Foreground hosts do not participate in transition presentation acknowledgments.
+
+Window containers retain a weak connection to their Fabric anchor in the responder
+chain, so nested native modals resolve the original presenting view controller.
+An attached foreground layer keeps its position when a modal is presented above
+it; rerenders and rotation cannot raise its modal placeholder over the modal.
 
 Screen opacity and input gating are defined in `screenVisibility.ts`, from
 (direction, role, phase, progress). Expansion progress is 0 at the list and 1 at

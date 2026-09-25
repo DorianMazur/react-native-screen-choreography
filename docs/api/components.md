@@ -7,6 +7,38 @@ description: Props and lifecycle behavior for the provider, screen wrapper, and 
 
 Import these from your integration entry unless noted otherwise. The root entry selects React Navigation; `/expo-router` selects Expo Router. Shared components are also available from `/core`.
 
+## `ChoreographyOverlay`
+
+Keeps floating app controls above shared transitions. Its children remain mounted
+and interactive throughout navigation, and empty space lets touches reach the
+screens below. Use it for persistent controls, a mini player, or a debug menu.
+
+Mount it alongside the navigator, inside the provider, outside any
+`ChoreographyScreen`. On Android it must share the transition host's parent;
+put it directly inside the provider rather than inside a screen or another view.
+Position its children with absolute styles and use your app's safe-area insets.
+
+```tsx
+<ChoreographyProvider>
+  <NavigationContainer>{/* native stack */}</NavigationContainer>
+  <ChoreographyOverlay>
+    <View style={{ position: 'absolute', right: 16, bottom: 40 }}>
+      <FloatingControls />
+    </View>
+  </ChoreographyOverlay>
+</ChoreographyProvider>
+```
+
+| Prop       | Type        | Default / behavior       |
+| ---------- | ----------- | ------------------------ |
+| `children` | `ReactNode` | Required overlay content |
+
+An ordinary view's `zIndex` cannot place it above the iOS native window host.
+The wrapper supplies that native layer without replacing or duplicating its
+children. It does not make the rest of the app inaccessible to screen readers.
+Existing iOS window overlays, including React Native's FPS monitor, stay above
+the transition host automatically.
+
 ## `ChoreographyProvider`
 
 Owns the shared progress clock, transition sessions, element registry, and native overlay. Mount one stable provider above the navigator.

@@ -11,6 +11,7 @@ export type PresentationReadyEvent = Readonly<{
 
 interface NativeProps extends ViewProps {
   active?: boolean;
+  foreground?: boolean;
   onPresentationReady?: DirectEventHandler<PresentationReadyEvent>;
 }
 

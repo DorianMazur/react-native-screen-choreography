@@ -26,6 +26,7 @@ import { ElementRegistry } from '../core/ElementRegistry';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import { TRANSITION_LAYER_Z_INDEX } from '../core/layers';
 import { TransitionCoordinator } from '../core/TransitionCoordinator';
 import { TransitionOverlay } from '../core/TransitionOverlay';
 import {
@@ -810,6 +811,6 @@ export function ChoreographyProvider({
 const styles = StyleSheet.create({
   androidPortal: {
     ...StyleSheet.absoluteFill,
-    zIndex: 9999,
+    zIndex: TRANSITION_LAYER_Z_INDEX,
   },
 });

@@ -44,6 +44,11 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     view?.setActive(active)
   }
 
+  @ReactProp(name = "foreground", defaultBoolean = false)
+  override fun setForeground(view: ScreenChoreographyView?, foreground: Boolean) {
+    view?.setForegroundLayer(foreground)
+  }
+
   override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any>? {
     return mapOf(
       "onPresentationReady" to mapOf("registrationName" to "onPresentationReady")
