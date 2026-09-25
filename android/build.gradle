@@ -35,6 +35,9 @@ apply plugin: "com.facebook.react"
 android {
   namespace "com.screenchoreography"
 
+  if (rootProject.ext.has("ndkVersion")) {
+    ndkVersion rootProject.ext.ndkVersion
+  }
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 
   defaultConfig {
