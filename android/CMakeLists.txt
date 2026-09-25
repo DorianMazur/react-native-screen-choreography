@@ -8,6 +8,9 @@ add_library(screenchoreography SHARED
   ../cpp/FabricLayoutCapture.cpp)
 target_include_directories(screenchoreography PRIVATE ../cpp)
 target_link_libraries(screenchoreography ReactAndroid::jsi ReactAndroid::reactnative fbjni::fbjni)
+# Keep 16 KB alignment when the app uses an NDK older than r28.
+target_link_options(screenchoreography PRIVATE
+  "-Wl,-z,max-page-size=16384" "-Wl,-z,common-page-size=16384")
 target_compile_options(screenchoreography PRIVATE -fexceptions -frtti -Wall -Werror)
 target_compile_definitions(screenchoreography PRIVATE
   FOLLY_NO_CONFIG=1 FOLLY_MOBILE=1 FOLLY_USE_LIBCPP=1 FOLLY_CFG_NO_COROUTINES=1)
