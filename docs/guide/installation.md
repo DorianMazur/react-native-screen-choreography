@@ -18,7 +18,7 @@ These are the package's declared peer ranges, not a guarantee that every combina
 | Reanimated                             | `>= 4`                                   |
 | React Native Worklets                  | `>= 0.8`                                 |
 | React Native Screens                   | `>= 4`                                   |
-| React Native Teleport                  | `>= 1.2`                                 |
+| React Native Teleport                  | `>= 1.2.2`                               |
 | React Navigation native + native stack | `>= 6`, when using that integration      |
 | Expo Router                            | `>= 56.1.1`, when using that integration |
 

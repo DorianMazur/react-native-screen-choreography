@@ -42,6 +42,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
 NODE
 
 arguments=(
+  :app:connectedBenchmarkAndroidTest
   :macrobenchmark:connectedBenchmarkAndroidTest
   --no-daemon --console=plain
   "-PreactNativeArchitectures=$abi"
@@ -53,7 +54,8 @@ adb shell rm -rf /sdcard/Android/data/screenchoreography.example/files/performan
 adb shell rm -rf /sdcard/Android/data/screenchoreography.example.macrobenchmark/files/performance
 native_outputs=examples/react-navigation/android/macrobenchmark/build/outputs/connected_android_test_additional_output
 native_results=examples/react-navigation/android/macrobenchmark/build/outputs/androidTest-results/connected/benchmark
-rm -rf "$native_outputs"
+ownership_results=examples/react-navigation/android/app/build/outputs/androidTest-results/connected/benchmark
+rm -rf "$native_outputs" "$native_results" "$ownership_results"
 status=0
 (cd examples/react-navigation/android && ./gradlew "${arguments[@]}") > >(tee "$output/gradle.log") 2>&1 || status=$?
 
@@ -63,6 +65,7 @@ status=0
 if [[ -d "$native_outputs" ]]; then cp -R "$native_outputs" "$output/raw/macrobenchmark"; fi
 # Keep per-test logs and stack traces; the final logcat tail can miss an earlier scenario's crash.
 if [[ -d "$native_results" ]]; then cp -R "$native_results" "$output/test-results"; fi
+if [[ -d "$ownership_results" ]]; then cp -R "$ownership_results" "$output/ownership-test-results"; fi
 adb logcat -d -t 2000 > "$output/logcat.txt" || true
 node --experimental-transform-types scripts/performance/report.mts --platform=android "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || status=1
 printf 'Report: %s/report/summary.md\n' "$output"
