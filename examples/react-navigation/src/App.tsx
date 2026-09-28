@@ -13,6 +13,7 @@ import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
 import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
+import { JSStressMenu } from '../../shared/performance/JSStressMenu';
 
 import {
   TripsListScreen,
@@ -106,6 +107,7 @@ export default function App() {
             />
           </Stack.Navigator>
         </NavigationContainer>
+        {__DEV__ && <JSStressMenu />}
       </ChoreographyProvider>
     </SafeAreaProvider>
   );

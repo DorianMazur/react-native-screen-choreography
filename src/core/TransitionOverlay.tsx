@@ -1,5 +1,6 @@
 import { useLayoutEffect, useMemo } from 'react';
-import { StyleSheet, View } from 'react-native';
+import { StyleSheet } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import type {
   ElementMetrics,
@@ -18,6 +19,10 @@ export function TransitionOverlay({
   progress,
   onReady,
 }: TransitionOverlayProps) {
+  const presentation = session?.presentation;
+  const visibility = useAnimatedStyle(() => ({
+    opacity: !presentation || presentation.phase.value >= 1 ? 1 : 0,
+  }));
   const pairs = session?.pairs;
   const direction = session?.direction;
   const anchors = useMemo(() => {
@@ -43,7 +48,7 @@ export function TransitionOverlay({
   }, [id, hasPairs, onReady]);
   if (!session || !hasPairs || session.reducedMotion) return null;
   return (
-    <View pointerEvents="none" style={styles.overlay}>
+    <Animated.View pointerEvents="none" style={[styles.overlay, visibility]}>
       {[...session.pairs]
         .sort((a, b) => (a.transition.zIndex ?? 0) - (b.transition.zIndex ?? 0))
         .map((pair) => {
@@ -72,7 +77,7 @@ export function TransitionOverlay({
             />
           );
         })}
-    </View>
+    </Animated.View>
   );
 }
 const styles = StyleSheet.create({

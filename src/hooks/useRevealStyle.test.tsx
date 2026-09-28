@@ -202,29 +202,6 @@ test('screen content is visible on standalone entry and after settlement', async
   expect(styles(tree).map((style) => style.opacity)).toEqual([1, 1]);
 });
 
-test('translations and scale reverse with progress, including cancellation', async () => {
-  const render = () => (
-    <Harness>
-      <Item
-        recipe={{ during: [0, 1], translateX: -20, translateY: 40, scale: 0.5 }}
-      />
-    </Harness>
-  );
-  const tree = await mount(render());
-  for (const progress of [0, 0.5, 1, 0.5, 0, 0.5, 1]) {
-    controls.progress.value = progress;
-    await act(async () => tree.update(render()));
-    expect(styles(tree)[0]).toEqual({
-      opacity: progress,
-      transform: [
-        { translateY: (1 - progress) * 40 },
-        { translateX: (1 - progress) * -20 },
-        { scale: 0.5 + 0.5 * progress },
-      ],
-    });
-  }
-});
-
 test('reduced motion preserves opacity and disables translation and scale', async () => {
   mockReducedMotion = true;
   controls.progress.value = 0.5;

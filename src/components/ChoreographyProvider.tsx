@@ -48,6 +48,7 @@ import { getScreenRole } from '../core/screenVisibility';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { useReverseTransitionCommit } from '../hooks/useReverseTransitionCommit';
 import { scheduleOnUI } from 'react-native-worklets';
+import { TRANSITION_LAYER_Z_INDEX } from '../core/layers';
 
 function TransitionHostPortal({
   active,
@@ -318,11 +319,13 @@ export function ChoreographyProvider({
 
   const registerElement = useCallback((element: RegisteredElement) => {
     registryRef.current!.register(element);
+    coordinatorRef.current?.revalidatePresentation();
   }, []);
 
   const unregisterElement = useCallback(
     (id: string, screenId: string, groupId: string | undefined) => {
       registryRef.current!.unregister(id, screenId, groupId);
+      coordinatorRef.current?.revalidatePresentation();
       const key = getElementIdentityKey(screenId, groupId, id);
       if (coordinatorRef.current?.getHiddenElements().has(key)) {
         return;
@@ -336,6 +339,7 @@ export function ChoreographyProvider({
     (screenId: string, ready: boolean, screenName?: string) => {
       if (screenName) screenNamesRef.current.set(screenId, screenName);
       screenReadinessRef.current.setReady(screenId, ready);
+      coordinatorRef.current?.revalidatePresentation();
 
       debugTrace(
         () =>
@@ -348,6 +352,7 @@ export function ChoreographyProvider({
   const unregisterScreen = useCallback(
     (screenId: string) => {
       screenReadinessRef.current.unregister(screenId);
+      coordinatorRef.current?.revalidatePresentation(screenId);
       screenNamesRef.current.delete(screenId);
       navigationLineageRef.current.delete(screenId);
       if (
@@ -395,6 +400,7 @@ export function ChoreographyProvider({
   const acquireScreenBlocker = useCallback((screenId: string) => {
     debugTrace(() => `[Provider] Screen blocker acquired screen="${screenId}"`);
     const release = screenReadinessRef.current.acquire(screenId);
+    coordinatorRef.current?.revalidatePresentation();
     let released = false;
     return () => {
       if (released) {
@@ -512,8 +518,6 @@ export function ChoreographyProvider({
           overlayWaitersRef.current.set(sessionId, waiters);
         }
 
-        // Native-ack timeout may proceed only with ready content. Never hide
-        // an original to show an image that has not finished preparing.
         const timeoutId = setTimeout(() => {
           waiters!.delete(waiter);
           if (waiters!.size === 0) {
@@ -524,12 +528,11 @@ export function ChoreographyProvider({
             resolve(false);
             return;
           }
-          if (overlayContentReadySessionIdRef.current !== sessionId) {
-            // Forward navigation already pushed its destination. Release its
-            // visibility gate and leave it as an ordinary, unanimated screen.
-            if (session.direction === 'forward') {
-              coordinatorRef.current?.cancelTransition(sessionId);
-            }
+          if (
+            overlayContentReadySessionIdRef.current !== sessionId ||
+            session.presentation?.phase.value !== 2
+          ) {
+            coordinatorRef.current!.failPresentation(sessionId);
             resolve(false);
             return;
           }
@@ -628,15 +631,31 @@ export function ChoreographyProvider({
     [resolveOverlayWaitersIfReady]
   );
 
-  const handleHostPresentationReady = useCallback(() => {
-    const session = activeSessionRef.current;
-    if (!session || session.state !== 'active' || session.pairs.length === 0) {
-      return;
-    }
+  const handleHostPresentationReady = useCallback(
+    (sessionId: string) => {
+      const session = activeSessionRef.current;
+      if (
+        !session ||
+        session.id !== sessionId ||
+        session.state !== 'active' ||
+        session.pairs.length === 0
+      ) {
+        return;
+      }
 
-    hostPresentedSessionIdRef.current = session.id;
-    resolveOverlayWaitersIfReady(session.id);
-  }, [resolveOverlayWaitersIfReady]);
+      hostPresentedSessionIdRef.current = session.id;
+      resolveOverlayWaitersIfReady(session.id);
+    },
+    [resolveOverlayWaitersIfReady]
+  );
+
+  const handlePresentationFailed = useCallback(
+    (sessionId: string) => {
+      coordinatorRef.current!.failPresentation(sessionId);
+      settleOverlayWaiters(sessionId, false);
+    },
+    [settleOverlayWaiters]
+  );
 
   const settleTransition = useCallback(
     (screenId: string) => {
@@ -789,6 +808,11 @@ export function ChoreographyProvider({
                 active={Boolean(isOverlayActive && activeSession)}
               >
                 <NativeTransitionHost
+                  ownership={progressOwnership}
+                  progress={progress}
+                  sessionId={activeSession?.id}
+                  presentation={activeSession?.presentation}
+                  onPresentationFailed={handlePresentationFailed}
                   active={Boolean(isOverlayActive && activeSession)}
                   onPresentationReady={handleHostPresentationReady}
                 >
@@ -810,6 +834,6 @@ export function ChoreographyProvider({
 const styles = StyleSheet.create({
   androidPortal: {
     ...StyleSheet.absoluteFill,
-    zIndex: 9999,
+    zIndex: TRANSITION_LAYER_Z_INDEX,
   },
 });

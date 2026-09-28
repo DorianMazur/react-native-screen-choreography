@@ -4,13 +4,20 @@ import {
   type ReactNode,
   useRef,
   useEffect,
+  useLayoutEffect,
+  useState,
   useCallback,
   useMemo,
   useContext,
   memo,
 } from 'react';
 import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
-import Animated, { useDerivedValue } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedReaction,
+  useDerivedValue,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
+import type { NativePresentation } from '../core/nativePresentation';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
   ElementPresentation,
@@ -184,6 +191,10 @@ function LiveSharedElement(props: SharedElementProps) {
       direction={pair ? session!.direction : null}
       sourceScreenId={pair ? session!.sourceScreenId : null}
       targetScreenId={pair ? session!.targetScreenId : null}
+      nativePresentation={
+        pair && !session!.reducedMotion ? session!.presentation : undefined
+      }
+      sessionId={pair ? session!.id : null}
       progress={choreography.progress}
       getSettledScreenId={actions.getSettledScreenId}
     />
@@ -204,6 +215,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   direction,
   sourceScreenId,
   targetScreenId,
+  nativePresentation,
+  sessionId,
   progress,
   getSettledScreenId,
 }: SharedElementProps & {
@@ -213,6 +226,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   direction: TransitionSessionData['direction'] | null;
   sourceScreenId: string | null;
   targetScreenId: string | null;
+  nativePresentation?: NativePresentation;
+  sessionId: string | null;
   progress: TransitionSessionData['progress'];
   getSettledScreenId: () => string | null;
 }) {
@@ -274,6 +289,11 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       : undefined;
   }
 
+  const committedHostName = useRetainedPortalHost(
+    hostName,
+    sessionId,
+    nativePresentation
+  );
   const ownerStyle = useMemo(() => StyleSheet.flatten(style), [style]);
   const initial = useMemo(
     () => ({ metrics: null, metadata, style: ownerStyle ?? undefined }),
@@ -345,7 +365,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       metadata={metadata}
     >
       <Portal
-        hostName={hostName}
+        hostName={committedHostName}
         name={getLivePortalName(screenId, id, groupId)}
         style={[styles.livePortal, portalStyle]}
       >
@@ -356,6 +376,54 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     </SharedElementRegistration>
   );
 });
+
+/** A missing Teleport host sends content back to its owner, which may be hidden. */
+function useRetainedPortalHost(
+  requestedHostName: string | undefined,
+  sessionId: string | null,
+  presentation: NativePresentation | undefined
+) {
+  const previousHost = useRef<string | undefined>(undefined);
+  const current = useRef<{
+    id: string | null;
+    presentation: NativePresentation;
+  } | null>(null);
+  const [attachedSessionId, setAttachedSessionId] = useState<string | null>(
+    null
+  );
+  useLayoutEffect(() => {
+    current.current = presentation ? { id: sessionId, presentation } : null;
+    return () => {
+      current.current = null;
+    };
+  }, [sessionId, presentation]);
+  const acceptAttachment = useCallback((id: string) => {
+    if (
+      current.current?.id === id &&
+      current.current.presentation.valid.value
+    ) {
+      setAttachedSessionId(id);
+    }
+  }, []);
+  const phase = presentation?.phase;
+  const valid = presentation?.valid;
+  useAnimatedReaction(
+    () => (valid?.value && phase && phase.value >= 1 ? sessionId : null),
+    (readyId, previousId) => {
+      if (readyId !== null && readyId !== previousId) {
+        scheduleOnRN(acceptAttachment, readyId);
+      }
+    }
+  );
+  const hostName =
+    !presentation || attachedSessionId === sessionId
+      ? requestedHostName
+      : previousHost.current;
+  useLayoutEffect(() => {
+    previousHost.current = hostName;
+  }, [hostName]);
+  return hostName;
+}
 
 function LiveSharedElementTarget({
   id,

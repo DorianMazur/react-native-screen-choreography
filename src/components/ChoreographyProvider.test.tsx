@@ -42,6 +42,7 @@ jest.mock(
 );
 
 const fabricGlobals = globalThis as typeof globalThis & {
+  __screenChoreographyRequestFabricLayout?: jest.Mock;
   __screenChoreographyCaptureFabricLayout?: jest.Mock;
   __screenChoreographySubscribeFabricMount?: jest.Mock;
 };
@@ -75,12 +76,24 @@ describe('ChoreographyProvider lifecycle', () => {
     fabricGlobals.__screenChoreographySubscribeFabricMount = jest.fn(
       () => () => {}
     );
+    fabricGlobals.__screenChoreographyRequestFabricLayout = jest.fn(
+      (screens, tags) => (validate?: boolean) =>
+        validate === true
+          ? true
+          : validate === false
+            ? undefined
+            : fabricGlobals.__screenChoreographyCaptureFabricLayout!(
+                screens,
+                tags
+              )
+    );
     jest.mocked(FullWindowOverlay).mockClear();
   });
 
   afterEach(() => {
     Platform.OS = originalPlatform;
     delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    delete fabricGlobals.__screenChoreographyRequestFabricLayout;
     delete fabricGlobals.__screenChoreographySubscribeFabricMount;
     jest.restoreAllMocks();
   });
@@ -309,7 +322,7 @@ describe('ChoreographyProvider lifecycle', () => {
         const sessionId = context.activeSession!.id;
         const host = tree.root.findByType(NativeTransitionHost);
         if (hostAlreadyAcknowledged) {
-          await act(async () => host.props.onPresentationReady());
+          await act(async () => host.props.onPresentationReady(sessionId));
         }
         const ready = jest.fn();
         const waiting = context.waitForOverlayReady(sessionId).then(ready);
@@ -318,13 +331,14 @@ describe('ChoreographyProvider lifecycle', () => {
         ]);
         await act(async () => {
           const notifyMount =
-            fabricGlobals.__screenChoreographySubscribeFabricMount!.mock
-              .calls[0]![0];
+            fabricGlobals.__screenChoreographySubscribeFabricMount!.mock.calls.at(
+              -1
+            )![0];
           notifyMount();
         });
         expect(context.activeSession!.pairs[0]!.targetMetrics.pageY).toBe(80);
         if (!hostAlreadyAcknowledged) {
-          await act(async () => host.props.onPresentationReady());
+          await act(async () => host.props.onPresentationReady(sessionId));
         }
         await act(async () => {
           await jest.advanceTimersByTimeAsync(151);
@@ -524,8 +538,8 @@ describe('ChoreographyProvider lifecycle', () => {
         if (readiness === 'native') {
           await act(async () => {
             const host = tree!.root.findByType(NativeTransitionHost);
-            host.props.onPresentationReady();
-            host.props.onPresentationReady();
+            host.props.onPresentationReady(sessionId);
+            host.props.onPresentationReady(sessionId);
             await waiting;
           });
         } else {
@@ -538,7 +552,11 @@ describe('ChoreographyProvider lifecycle', () => {
           });
         }
 
-        expect(ready).toHaveBeenCalledWith(true);
+        expect(ready).toHaveBeenCalledWith(readiness === 'native');
+        if (readiness === 'timeout') {
+          expect(context.progress.value).toBe(1);
+          expect(context.navigationController.isNavigationLocked()).toBe(false);
+        }
         expect(hidden.value).toBe(0);
         expect(writes[0]).not.toHaveBeenCalled();
         expect(writes[1]).not.toHaveBeenCalled();

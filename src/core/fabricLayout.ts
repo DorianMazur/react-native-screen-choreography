@@ -3,8 +3,17 @@ import NativePreparation from '../native/NativeChoreographyPreparation';
 import type { ElementMetrics, NodeHandleRef } from '../types';
 
 type FabricCapture = (screenTags: number[], viewTags: number[]) => unknown;
+interface NativeCaptureReader {
+  (): ElementMetrics[] | null;
+  (validate: true): boolean;
+  (cancel: false): void;
+}
 type FabricGlobal = typeof globalThis & {
   __screenChoreographyCaptureFabricLayout?: FabricCapture;
+  __screenChoreographyRequestFabricLayout?: (
+    screenTags: number[],
+    viewTags: number[]
+  ) => NativeCaptureReader | null;
   __screenChoreographySubscribeFabricMount?: (
     callback: () => void
   ) => () => void;
@@ -20,6 +29,10 @@ export interface FabricLayoutSnapshot {
   metrics: Map<string, ElementMetrics>;
   /** Numeric tags can be recycled; retain native node identity too. */
   isCurrent: () => boolean;
+}
+
+export interface NativeLayoutSnapshot extends FabricLayoutSnapshot {
+  validateNative: () => boolean;
 }
 
 export function hasFabricLayoutCapture(): boolean {
@@ -106,61 +119,124 @@ export function captureFabricLayout(
   }
 }
 
-/** Retry pending mounts, not measurements or equal-geometry stability samples. */
-export function waitForFabricLayout<T>({
-  read,
+export function requestFabricLayout({
+  entries,
   isCurrent,
   cancellers,
   timeoutMs = 1000,
 }: {
-  read: () => T | null;
+  entries: FabricLayoutEntry[];
   isCurrent: () => boolean;
   cancellers: Set<() => void>;
   timeoutMs?: number;
-}): Promise<T | null> {
-  if (!hasFabricLayoutCapture() || !isCurrent()) return Promise.resolve(null);
-  return new Promise((resolve, reject) => {
-    let settled = false;
-    let retry: ReturnType<typeof setTimeout> | undefined;
+}): Promise<NativeLayoutSnapshot | null> {
+  if (!entries.length || !hasFabricLayoutCapture() || !isCurrent())
+    return Promise.resolve(null);
+  const globals = globalThis as FabricGlobal;
+  const prepare = globals.__screenChoreographyRequestFabricLayout;
+  const subscribe = globals.__screenChoreographySubscribeFabricMount;
+  if (!prepare || !subscribe) return Promise.resolve(null);
+  return new Promise((resolve) => {
+    let reader: NativeCaptureReader | null = null;
+    let unsubscribe: (() => void) | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
-    const cleanup = () => {
+    let settled = false;
+    const cleanup = (cancelNative = true) => {
       settled = true;
-      clearTimeout(retry);
-      clearTimeout(deadline);
+      if (deadline !== undefined) clearTimeout(deadline);
+      try {
+        unsubscribe?.();
+      } catch {
+        /* Runtime may already be disposed. */
+      }
+      try {
+        if (cancelNative) reader?.(false);
+      } catch {
+        /* Still settle the caller. */
+      }
+      reader = null;
       cancellers.delete(cancel);
     };
-    const finish = (value: T | null) => {
+    const finish = (snapshot: NativeLayoutSnapshot | null) => {
       if (settled) return;
-      cleanup();
-      resolve(value);
+      cleanup(snapshot === null);
+      resolve(snapshot);
     };
     const cancel = () => finish(null);
-    const attempt = () => {
-      if (settled) return;
-      if (!isCurrent()) {
+    try {
+      const nodes = entries.map((entry) => nodeFor(entry.ref));
+      const screens = entries.map((entry) => nodeFor(entry.screenRef));
+      const tags = nodes.map((node) => node && findNodeHandle(node));
+      const screenTags = screens.map((node) => node && findNodeHandle(node));
+      if (
+        [...tags, ...screenTags].some(
+          (tag) => !Number.isInteger(tag) || tag <= 0
+        ) ||
+        new Set(entries.map((entry) => entry.id)).size !== entries.length
+      ) {
         finish(null);
         return;
       }
-      try {
-        const value = read();
-        if (settled) return;
-        if (!isCurrent()) {
+      // Subscribe before requesting so a mount racing setup cannot be missed.
+      const currentRefs = () =>
+        entries.every(
+          (entry, i) =>
+            nodeFor(entry.ref) === nodes[i] &&
+            nodeFor(entry.screenRef) === screens[i] &&
+            findNodeHandle(nodes[i]) === tags[i] &&
+            findNodeHandle(screens[i]) === screenTags[i]
+        );
+      const attempt = () => {
+        if (settled || !reader) return;
+        try {
+          if (!isCurrent() || !currentRefs() || !reader(true)) {
+            finish(null);
+            return;
+          }
+          const batch = reader();
+          if (batch === null) return;
+          if (
+            !Array.isArray(batch) ||
+            batch.length !== entries.length ||
+            batch.some(
+              (m) =>
+                !m ||
+                ![m.pageX, m.pageY, m.width, m.height].every(Number.isFinite) ||
+                m.width <= 0 ||
+                m.height <= 0
+            ) ||
+            !isCurrent() ||
+            !currentRefs()
+          ) {
+            finish(null);
+            return;
+          }
+          const nativeReader = reader;
+          const validateNative = () => {
+            'worklet';
+            return nativeReader(true);
+          };
+          finish({
+            validateNative,
+            metrics: new Map(entries.map((entry, i) => [entry.id, batch[i]!])),
+            isCurrent: currentRefs,
+          });
+        } catch {
           finish(null);
-          return;
         }
-        if (value !== null) {
-          finish(value);
-          return;
-        }
-        retry = setTimeout(attempt, 16);
-      } catch (error) {
-        cleanup();
-        reject(error);
+      };
+      cancellers.add(cancel);
+      unsubscribe = subscribe(attempt);
+      reader = prepare(screenTags as number[], tags as number[]);
+      if (!reader) {
+        finish(null);
+        return;
       }
-    };
-    cancellers.add(cancel);
-    deadline = setTimeout(cancel, timeoutMs);
-    attempt();
+      deadline = setTimeout(cancel, timeoutMs);
+      attempt();
+    } catch {
+      finish(null);
+    }
   });
 }
 

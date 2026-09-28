@@ -90,11 +90,11 @@ Use `ChoreographyProvider`'s **`onPreparationTrace`** to investigate slow forwar
 <details>
 <summary>What traces mean and how to compare them</summary>
 
-Forward traces break down source capture, navigation/target resolution, screen readiness, applicable Android frame waiting, coordinator preparation, and overlay readiness. Backward traces cover source capture, coordinator preparation, and overlay readiness against the still-mounted list endpoint; they do not include forward screen-mount stages. Coordinator stages include target registration and mounted Fabric capture, including retries while commits are pending.
+Forward traces break down source capture, navigation/target resolution, screen readiness, applicable Android frame waiting, coordinator preparation, and overlay readiness. Backward traces cover source capture, coordinator preparation, and overlay readiness against the still-mounted list endpoint; they do not include forward screen-mount stages. Coordinator stages include target registration and mounted Fabric capture, including waiting for completed mounts.
 
 - Timestamps use JavaScript `performance.now()`. Observations are buffered and delivered after preparation, without React updates or logging during a stage.
 - Repeated stages are summed within each journey before calculating medians or P95. Parent and child stages can overlap—**do not add them together**.
-- `requestToOverlayReadyMs` ends when JavaScript observes both overlay acknowledgments. It excludes deferred observer delivery and is a readiness proxy, **not first presented motion**.
+- `requestToOverlayReadyMs` ends when JavaScript observes both overlay acknowledgments. It excludes deferred observer delivery and is a readiness proxy, **not first presented motion**. Under JavaScript load, the UI thread may already have started forward motion before this acknowledgment arrives.
 - `overlay-timeout` traces retain stage timings but omit that readiness value. Reports show traced, acknowledged, and timed-out counts. A timeout alone does not discard otherwise valid navigation or its original preparation sample.
 - Tracing covers both `gallery.forward` and `gallery.backward`. Cancellation, unavailable targets, and failures have separate outcomes. Absent optional traces produce no numbers; missing or invalid traces in either direction fail collection when tracing was requested. P95 is shown only when a metric has at least 20 samples; timeout journeys do not contribute an acknowledged readiness value.
 

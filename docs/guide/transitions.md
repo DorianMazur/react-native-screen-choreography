@@ -201,6 +201,8 @@ Reuse `heroTransition` on both `SharedElement` and `SharedElement.Target`, or as
 Always render the supplied `children` exactly once throughout a session. Do not replace it with another copy of your artwork, conditionally remove it, or move it between different renderer branches during the animation.
 :::
 
+All renderers use native geometry preparation. React still mounts the renderer and transfers its content, so JavaScript load can delay startup. Motion starts once the overlay's live content is ready and runs on the UI thread. See the [startup lifecycle](../architecture.md#react-rendering-and-native-presentation) for details.
+
 `progress` is expansion progress. `source` and `target` describe the current navigation direction. If you interpolate their metrics directly, derive `t = direction === 'backward' ? 1 - progress.value : progress.value` in a worklet. `TransitionFrame` and `TransitionSurface` already do this.
 
 ## Animate inside the retained content

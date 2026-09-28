@@ -1,5 +1,6 @@
 // Minimal mock for react-native-reanimated in tests
 module.exports = {
+  __esModule: true,
   useReducedMotion: () => false,
   useSharedValue: (initial) => {
     const { useRef } = require('react');
@@ -17,6 +18,47 @@ module.exports = {
   },
   useAnimatedStyle: (fn) => fn(),
   useAnimatedProps: (fn) => fn(),
+  useAnimatedRef: () => {
+    const { useRef } = require('react');
+    const ref = useRef();
+    if (!ref.current) {
+      const animatedRef = (...args) => {
+        if (args.length) animatedRef.current = args[0];
+        return animatedRef.current;
+      };
+      animatedRef.current = null;
+      ref.current = animatedRef;
+    }
+    return ref.current;
+  },
+  useFrameCallback: (callback, autostart = true) => {
+    const { useRef } = require('react');
+    const latest = useRef(callback);
+    latest.current = callback;
+    const ref = useRef();
+    if (!ref.current) {
+      const frame = {
+        isActive: autostart,
+        setActive: (active) => {
+          frame.isActive = active;
+        },
+        callback: (info) => {
+          if (frame.isActive) latest.current(info);
+        },
+      };
+      ref.current = frame;
+    }
+    return ref.current;
+  },
+  useEvent: (callback) => {
+    const { useRef } = require('react');
+    const latest = useRef(callback);
+    latest.current = callback;
+    return useRef((event) => latest.current(event.nativeEvent ?? event))
+      .current;
+  },
+  dispatchCommand: jest.fn(),
+  cancelAnimation: jest.fn(),
   useAnimatedReaction: jest.fn(),
   makeMutable: (initial) => ({ value: initial }),
   withSpring: (toValue) => toValue,
@@ -47,5 +89,6 @@ module.exports = {
   },
   default: {
     View: 'Animated.View',
+    createAnimatedComponent: (Component) => Component,
   },
 };

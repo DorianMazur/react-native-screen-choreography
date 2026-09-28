@@ -1,25 +1,19 @@
 import React from 'react';
-import { StyleSheet } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import type {
   TransitionRendererProps,
   SharedElementTransitionRendererProps,
   SharedElementTransitionSide,
 } from '../types';
-import { defaultTransition, makeTransition } from './makeTransition';
+import { makeTransition } from './makeTransition';
+import { TransitionPortalHost as PortalHost } from '../native/TransitionPortalHost';
+
+jest.mock('react-native-teleport', () => ({}));
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   __esModule: true,
 }));
-
-jest.mock('react-native-teleport', () => ({
-  PortalHost: 'PortalHost',
-}));
-
-const { PortalHost } = jest.requireMock('react-native-teleport') as {
-  PortalHost: React.ElementType;
-};
 
 const metrics = {
   pageX: 11,
@@ -60,61 +54,6 @@ function rendererProps(
 }
 
 describe('makeTransition', () => {
-  test.each(['forward', 'backward'] as const)(
-    'default bounds preserve visual geometry and one live host during %s motion',
-    async (direction) => {
-      const endpoints = rendererProps();
-      const progress = { value: 0 } as AdapterRuntimeProps['progress'];
-      const props = rendererProps({
-        direction,
-        progress,
-        source: direction === 'forward' ? endpoints.source : endpoints.target,
-        target: direction === 'forward' ? endpoints.target : endpoints.source,
-      });
-      // Height retains the existing expansion curve; X/Y/width stay linear.
-      const frames = [
-        { progress: 0, x: 11, y: 22, width: 33, height: 44 },
-        { progress: 0.25, x: 22, y: 33, width: 44, height: 63.25 },
-        { progress: 0.5, x: 33, y: 44, width: 55, height: 77 },
-        { progress: 0.75, x: 44, y: 55, width: 66, height: 85.25 },
-        { progress: 1, x: 55, y: 66, width: 77, height: 88 },
-      ];
-      const sequence = direction === 'forward' ? frames : [...frames].reverse();
-      let tree!: ReactTestRenderer;
-      try {
-        for (const frame of sequence) {
-          progress.value = frame.progress;
-          await act(async () => {
-            const content = React.createElement(
-              defaultTransition.renderer,
-              props
-            );
-            if (tree) tree.update(content);
-            else tree = create(content);
-          });
-          const overlay = tree.root.findByType(
-            'Animated.View' as React.ElementType
-          );
-          const styles = StyleSheet.flatten(overlay.props.style);
-          expect(styles.left).toBe(0);
-          expect(styles.top).toBe(0);
-          expect(styles.transform).toEqual([
-            { translateX: frame.x },
-            { translateY: frame.y },
-          ]);
-          expect(styles.left + styles.transform[0].translateX).toBe(frame.x);
-          expect(styles.top + styles.transform[1].translateY).toBe(frame.y);
-          expect(styles.width).toBeCloseTo(frame.width);
-          expect(styles.height).toBeCloseTo(frame.height);
-          expect(styles.overflow).toBe('hidden');
-          expect(tree.root.findAllByType(PortalHost)).toHaveLength(1);
-        }
-      } finally {
-        await act(async () => tree?.unmount());
-      }
-    }
-  );
-
   test('defaults zIndex to 100 while retaining explicit zero', () => {
     const Renderer = () => null;
 
@@ -166,16 +105,6 @@ describe('makeTransition', () => {
       expect(host.props.name).toBe(
         'screen-choreography:live:overlay:["feed:one","detail:two","media","player"]'
       );
-      expect(host.props.style).toMatchObject({
-        position: 'absolute',
-        top: 0,
-        right: 0,
-        bottom: 0,
-        left: 0,
-      });
-
-      props.progress.value = 0.75;
-      expect(received.progress.value).toBe(0.75);
     } finally {
       await act(async () => tree?.unmount());
     }

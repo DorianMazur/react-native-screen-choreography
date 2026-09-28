@@ -1,10 +1,10 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { Platform } from 'react-native';
-import { withSpring } from 'react-native-reanimated';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
+import { createNativePresentation } from '../core/nativePresentation';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ReverseTransitionController } from '../core/ReverseTransitionController';
@@ -14,19 +14,18 @@ import type { TransitionSessionData } from '../types';
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   cancelAnimation: jest.fn(),
-  withSpring: jest.fn(() => 0),
 }));
 
 test.each([
-  ['android', false],
-  ['android', true],
-  ['ios', false],
+  ['android', false, false],
+  ['android', true, false],
+  ['ios', false, false],
+  ['ios', true, true],
 ] as const)(
   '%s handles forward readiness after destination mounted=%s without reviving a removed Android route',
-  async (platform, remainsMounted) => {
+  async (platform, remainsMounted, reducedMotion) => {
     const originalOS = Platform.OS;
     Platform.OS = platform;
-    jest.mocked(withSpring).mockClear();
     const frame = jest
       .spyOn(global, 'requestAnimationFrame')
       .mockImplementation((callback) => {
@@ -46,10 +45,12 @@ test.each([
     });
     const session: TransitionSessionData = {
       id: 'opening',
+      presentation: createNativePresentation([], () => true),
       sourceScreenId: 'list-route',
       targetScreenId: 'detail-route',
       groupId: 'trip',
       direction: 'forward',
+      reducedMotion,
       state: 'active',
       pairs: [],
       progress,
@@ -71,6 +72,11 @@ test.each([
       waitForOverlayReady: jest.fn(() => overlay),
       resolveScreenId: jest.fn(() => (targetMounted ? 'detail-route' : null)),
       setNavigationLineage: jest.fn(),
+      completeTransition: jest.fn(() => {
+        ownership.setSession(null);
+        controller.setActiveSession(null);
+        controller.releaseNavigationLock();
+      }),
       cancelTransition: jest.fn(() => {
         ownership.setSession(null);
         controller.setActiveSession(null);
@@ -109,7 +115,6 @@ test.each([
       });
       expect(dispatchNavigation).toHaveBeenCalledTimes(1);
       expect(ctx.waitForOverlayReady).toHaveBeenCalledWith('opening');
-      expect(withSpring).not.toHaveBeenCalled();
       targetMounted = remainsMounted;
       await act(async () => {
         acknowledgeOverlay(true);
@@ -117,8 +122,7 @@ test.each([
       });
       if (platform === 'android' && !remainsMounted) {
         expect(ctx.cancelTransition).toHaveBeenCalledWith('opening');
-        expect(ctx.setNavigationLineage).not.toHaveBeenCalled();
-        expect(withSpring).not.toHaveBeenCalled();
+        expect(session.presentation!.animation.value).not.toBeNull();
         expect(ownership.hasSession).toBe(false);
         expect(controller.isNavigationLocked()).toBe(false);
       } else {
@@ -126,16 +130,19 @@ test.each([
         expect(ctx.setNavigationLineage).toHaveBeenCalledWith(
           expect.objectContaining({ targetScreenId: 'detail-route', spring })
         );
-        expect(withSpring).toHaveBeenCalledWith(
-          1,
-          spring,
-          expect.any(Function)
-        );
+        if (reducedMotion) {
+          expect(session.presentation!.animation.value).toBeNull();
+          expect(ctx.completeTransition).toHaveBeenCalledWith('opening');
+          expect(controller.isNavigationLocked()).toBe(false);
+        } else {
+          expect(session.presentation!.animation.value).toEqual(
+            expect.objectContaining({ target: 1, spring })
+          );
+        }
       }
     } finally {
       await act(async () => tree?.unmount());
       ownership.setSession(null);
-      jest.mocked(withSpring).mockClear();
       frame.mockRestore();
       Platform.OS = originalOS;
     }
@@ -518,7 +525,6 @@ describe('Back preparation ownership', () => {
         await pending;
       });
       expect(progress.value).toBe(0.65);
-      expect(withSpring).not.toHaveBeenCalled();
       expect(ctx.completeTransition).not.toHaveBeenCalled();
       expect(ctx.cancelTransition).not.toHaveBeenCalled();
       expect(ctx.commitReverseTransition).not.toHaveBeenCalled();

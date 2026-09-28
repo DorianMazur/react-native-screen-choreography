@@ -1,4 +1,12 @@
-import { Image, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useLayoutEffect, useRef } from 'react';
+import {
+  Image,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+  useWindowDimensions,
+} from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -36,8 +44,15 @@ export function TripHero({
   topInset: number;
   bottomInset: number;
 }) {
-  const { progress, transitioning, direction, settled, collapsed, expanded } =
-    useSharedElementPresentation();
+  const {
+    presentationProgress,
+    transitioning,
+    direction,
+    settled,
+    collapsed,
+    expanded,
+  } = useSharedElementPresentation();
+  const { width: windowWidth } = useWindowDimensions();
   const backward = transitioning && direction === 'backward';
   const reduceMotion = useReducedMotion();
   const fromWidth = collapsed.metrics?.width ?? width;
@@ -47,11 +62,7 @@ export function TripHero({
   const fromX = collapsed.metrics?.pageX ?? 0;
   const toX = expanded.metrics?.pageX ?? fromX;
   const amount = useDerivedValue(() =>
-    transitioning
-      ? Math.max(0, Math.min(1, progress.value))
-      : settled === 'expanded'
-        ? 1
-        : 0
+    Math.max(0, Math.min(1, presentationProgress.value))
   );
   const frame = useDerivedValue(() => ({
     width:
@@ -95,8 +106,9 @@ export function TripHero({
     opacity: interpolate(amount.value, [0.8, 1], [0, 1], 'clamp'),
   }));
   const activitiesStyle = useAnimatedStyle(() => ({
-    top: Math.max(topInset + 210, frame.value.height * 0.39),
-    width: frame.value.width,
+    transform: [
+      { translateY: Math.max(topInset + 210, frame.value.height * 0.39) },
+    ],
     opacity: interpolate(
       amount.value,
       backward ? [0.06, 0.2] : [0.35, 0.55],
@@ -105,10 +117,17 @@ export function TripHero({
     ),
   }));
   const footerStyle = useAnimatedStyle(() => ({
-    top: frame.value.height - bottomInset - 40,
+    transform: [{ translateY: frame.value.height - bottomInset - 40 }],
     opacity: interpolate(amount.value, [0.7, 1], [0, 1], 'clamp'),
   }));
   const pickupMetadata = expanded.metadata as TripPickupMetadata | undefined;
+  const activityHeight = pickupMetadata?.activityHeight;
+  const measuredActivityHeight = useRef<number | null>(null);
+  useLayoutEffect(() => {
+    // A reused row must publish its cached height to the new destination.
+    if (activityHeight && measuredActivityHeight.current !== null)
+      activityHeight.value = measuredActivityHeight.current;
+  }, [activityHeight]);
   const expandedAndIdle = settled === 'expanded' && !transitioning;
 
   return (
@@ -116,8 +135,8 @@ export function TripHero({
       style={[
         styles.frame,
         {
-          width: expandedAndIdle ? toWidth : fromWidth,
-          height: expandedAndIdle ? toHeight : fromHeight,
+          width,
+          height,
         },
         frameStyle,
       ]}
@@ -147,11 +166,12 @@ export function TripHero({
       </Animated.View>
       <Animated.View
         onLayout={(event) => {
-          if (pickupMetadata)
-            pickupMetadata.activityHeight.value =
-              event.nativeEvent.layout.height;
+          const nextHeight = event.nativeEvent.layout.height;
+          if (measuredActivityHeight.current === nextHeight) return;
+          measuredActivityHeight.current = nextHeight;
+          if (activityHeight) activityHeight.value = nextHeight;
         }}
-        style={[styles.activities, { width: toWidth }, activitiesStyle]}
+        style={[styles.activities, { width: windowWidth }, activitiesStyle]}
         pointerEvents={expandedAndIdle ? 'auto' : 'none'}
         accessibilityElementsHidden={!expandedAndIdle}
         importantForAccessibility={
@@ -275,7 +295,7 @@ const styles = StyleSheet.create({
     letterSpacing: 0.8,
     marginTop: 9,
   },
-  activities: { position: 'absolute', left: 0 },
+  activities: { position: 'absolute', top: 0, left: 0 },
   sectionTitle: {
     fontFamily: theme.font,
     fontSize: 14,
@@ -336,6 +356,7 @@ const styles = StyleSheet.create({
   },
   destination: {
     position: 'absolute',
+    top: 0,
     left: 32,
     color: '#FFFFFF',
     fontFamily: theme.font,

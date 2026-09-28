@@ -39,6 +39,9 @@ Expo Go is not supported because the library includes a custom native overlay ho
 
 Keep `animation: 'none'` and transparent stack content so the choreography overlay owns the visible motion.
 
+Development builds include the [JS stress menu](../react-navigation/README.md#test-animations-under-js-load)
+for checking transitions under heavy JavaScript load.
+
 ## Transition definitions
 
 Transition recipes live alongside their screens in [the shared source](../shared) and use `defineTransition` from the shared core API.

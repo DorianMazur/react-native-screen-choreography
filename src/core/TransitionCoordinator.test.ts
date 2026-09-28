@@ -13,6 +13,7 @@ jest.mock('../native/NativeChoreographyPreparation', () => ({
 }));
 
 const globals = globalThis as typeof globalThis & {
+  __screenChoreographyRequestFabricLayout?: jest.Mock;
   __screenChoreographyCaptureFabricLayout?: jest.Mock;
   __screenChoreographySubscribeFabricMount?: jest.Mock;
 };
@@ -80,6 +81,14 @@ beforeEach(() => {
     return values.every(Boolean) ? values : null;
   });
   globals.__screenChoreographyCaptureFabricLayout = capture;
+  globals.__screenChoreographyRequestFabricLayout = jest.fn(
+    (screens, tags) => (validate?: boolean) =>
+      validate === true
+        ? true
+        : validate === false
+          ? undefined
+          : capture(screens, tags)
+  );
   coordinator = new TransitionCoordinator(registry, { value: 0 } as any, {
     getScreenRef: (id) => screenRefs.get(id),
     isScreenReady: () => ready,
@@ -88,6 +97,7 @@ beforeEach(() => {
 afterEach(() => {
   coordinator.dispose();
   delete globals.__screenChoreographyCaptureFabricLayout;
+  delete globals.__screenChoreographyRequestFabricLayout;
   delete globals.__screenChoreographySubscribeFabricMount;
   jest.restoreAllMocks();
   jest.useRealTimers();
@@ -95,6 +105,8 @@ afterEach(() => {
 
 async function start(direction: 'forward' | 'backward' = 'forward') {
   const pending = coordinator.startTransition({ ...config, direction });
+  await jest.advanceTimersByTimeAsync(0);
+  mountListeners.forEach((listener) => listener());
   await jest.runAllTimersAsync();
   return pending;
 }
@@ -147,19 +159,10 @@ test('waits for a pending mount and uses its current geometry', async () => {
   register('detail', targetMetrics);
   capture.mockReturnValueOnce(null);
   expect((await start())?.pairs[0]?.targetMetrics).toEqual(targetMetrics);
-  expect(capture.mock.calls.length).toBeGreaterThan(2);
+  expect(capture).toHaveBeenCalledTimes(2);
 });
 
-test('transient unavailability during final validation retries instead of cancelling backward navigation', async () => {
-  register('list', sourceMetrics);
-  register('detail', targetMetrics);
-  capture
-    .mockReturnValueOnce([sourceMetrics, targetMetrics])
-    .mockReturnValueOnce(null);
-  expect((await start('backward'))?.state).toBe('active');
-});
-
-test('a layout change during presentation capture retries with fresh geometry', async () => {
+test('freezes presentation getters before the native geometry request', async () => {
   register('list', sourceMetrics);
   const target = register('detail', targetMetrics);
   const fresh = { ...targetMetrics, pageY: 99 };
@@ -325,4 +328,73 @@ test('late mount notifications cannot update a cancelled session', async () => {
   notification();
   expect(coordinator.getActiveSession()).toBeNull();
   expect(mountListeners.size).toBe(0);
+});
+
+test.each(['forward', 'backward'] as const)(
+  'revokes %s presentation when readiness is lost and settles content on the visible route',
+  async (direction) => {
+    register('list', sourceMetrics);
+    register('detail', targetMetrics);
+    const session = (await start(direction))!;
+    ready = false;
+    coordinator.revalidatePresentation();
+    expect(session.presentation!.valid.value).toBe(false);
+    expect(coordinator.getActiveSession()).toBeNull();
+    expect(coordinator.getSettledScreenId()).toBe(
+      direction === 'forward' ? 'detail' : 'list'
+    );
+    expect(session.progress.value).toBe(1);
+  }
+);
+
+test('removing the target before presentation restores the source and rejects its late ack', async () => {
+  register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  const session = (await start())!;
+  coordinator.revalidatePresentation('detail');
+  expect(session.presentation!.valid.value).toBe(false);
+  expect(session.progress.value).toBe(0);
+  expect(coordinator.getSettledScreenId()).toBe('list');
+  expect(coordinator.getActiveSession()).toBeNull();
+});
+
+test('registration replacement revokes pending presentation but ordinary prop updates do not', async () => {
+  const source = register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  const session = (await start())!;
+  source.presentation.current = { transition, metadata: { updated: true } };
+  coordinator.revalidatePresentation();
+  expect(coordinator.getActiveSession()).toBe(session);
+  expect(session.pairs[0]!.sourcePresentation.metadata).toEqual({
+    original: true,
+  });
+  register('detail', targetMetrics);
+  coordinator.revalidatePresentation();
+  expect(session.presentation!.valid.value).toBe(false);
+  expect(coordinator.getSettledScreenId()).toBe('detail');
+});
+
+test('readiness changes after presentation do not tear down running motion', async () => {
+  register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  const session = (await start())!;
+  session.presentation!.phase.value = 2;
+  ready = false;
+  coordinator.revalidatePresentation();
+  expect(coordinator.getActiveSession()).toBe(session);
+  expect(session.presentation!.valid.value).toBe(true);
+});
+
+test('target element cleanup before screen cleanup returns content to its surviving owner', async () => {
+  register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  const session = (await start())!;
+  registry.unregister('card', 'detail', 'group');
+  coordinator.revalidatePresentation();
+  expect(session.presentation!.valid.value).toBe(false);
+  expect(coordinator.getSettledScreenId()).toBe('list');
+  expect(session.progress.value).toBe(0);
+  expect(coordinator.getActiveSession()).toBeNull();
+  coordinator.revalidatePresentation('detail');
+  expect(coordinator.getSettledScreenId()).toBe('list');
 });

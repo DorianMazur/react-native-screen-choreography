@@ -299,7 +299,6 @@ export function useChoreographyNavigator({
       const preparationVersion = progressOwnership.version;
 
       try {
-        const transitionPrepareStartedAt = nowMs();
         const session = await controller.prepareForwardTransition({
           groupId,
           sourceScreenId,
@@ -352,6 +351,29 @@ export function useChoreographyNavigator({
           isOverlayPresented: ctx.isOverlayPresented,
           waitForNextFrame,
           startTransition,
+          onSessionPrepared: (prepared) => {
+            setNavigationLineage({
+              groupId,
+              sourceScreenId,
+              targetScreenId: prepared.targetScreenId,
+              sourceRouteKey: currentRouteKey,
+              spring: options?.spring ? { ...options.spring } : undefined,
+            });
+            if (prepared.reducedMotion) return;
+            const token = createProgressAnimationToken(prepared.id);
+            if (token === null) return;
+            animateOwnedProgress({
+              ownership: progressOwnership,
+              token,
+              sessionId: prepared.id,
+              progress,
+              target: 1,
+              spring: options?.spring ?? DEFAULT_SPRING,
+              duration: options?.duration,
+              presentation: prepared.presentation,
+              onComplete: finishForwardTransition,
+            });
+          },
           waitForOverlayReady,
           isPreparationCurrent: () =>
             progressOwnership.version === preparationVersion,
@@ -367,8 +389,6 @@ export function useChoreographyNavigator({
           return;
         }
 
-        // Back can remove the destination while its overlay is still preparing.
-        // Do not start an opening animation for a route that has already gone.
         if (
           Platform.OS === 'android' &&
           resolveScreenId(session.targetScreenId) !== session.targetScreenId
@@ -376,39 +396,7 @@ export function useChoreographyNavigator({
           cancelTransition(session.id);
           return;
         }
-
-        setNavigationLineage({
-          groupId,
-          sourceScreenId,
-          targetScreenId: session.targetScreenId,
-          sourceRouteKey: currentRouteKey,
-          spring: options?.spring ? { ...options.spring } : undefined,
-        });
-
-        logNavigation(
-          () =>
-            `transition prepared session=${session.id} duration=${elapsedMs(transitionPrepareStartedAt)} total=${elapsedMs(tapStartedAt)}`
-        );
-
-        const springConfig = options?.spring ?? DEFAULT_SPRING;
-        const animationToken = createProgressAnimationToken(session.id);
-        if (animationToken === null) return;
-        const sessionId = session.id;
-        logNavigation(
-          () =>
-            `forward animation start session=${sessionId} token=${animationToken} totalDelay=${elapsedMs(tapStartedAt)} interruptedSettlingReturn=${interruptedSettlingReturn}`
-        );
-
-        animateOwnedProgress({
-          ownership: progressOwnership,
-          token: animationToken,
-          sessionId,
-          progress,
-          target: 1,
-          spring: springConfig,
-          duration: options?.duration,
-          onComplete: finishForwardTransition,
-        });
+        if (session.reducedMotion) completeTransition(session.id);
       } catch (error) {
         logNavigation(
           () =>
@@ -425,6 +413,7 @@ export function useChoreographyNavigator({
       resolveScreenId,
       controller,
       cancelTransition,
+      completeTransition,
       canInterruptReturnToCurrentScreen,
       createProgressAnimationToken,
       currentScreenId,

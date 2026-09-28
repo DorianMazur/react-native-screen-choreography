@@ -2,6 +2,7 @@ import { ThemeProvider, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
 import { theme as palette } from '../../../shared/theme';
+import { JSStressMenu } from '../../../shared/performance/JSStressMenu';
 
 const theme = {
   dark: true,
@@ -60,6 +61,7 @@ export default function RootLayout() {
           />
         </Stack>
       </ThemeProvider>
+      {__DEV__ && <JSStressMenu />}
     </ChoreographyProvider>
   );
 }

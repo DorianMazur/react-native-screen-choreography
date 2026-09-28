@@ -1,7 +1,9 @@
+import { createNativePresentation } from './nativePresentation';
+import { getLiveOverlayHostName } from './liveHostNames';
 import {
   captureFabricLayout,
   subscribeToFabricMounts,
-  waitForFabricLayout,
+  requestFabricLayout,
   type FabricLayoutEntry,
   type FabricLayoutSnapshot,
 } from './fabricLayout';
@@ -104,6 +106,8 @@ export class TransitionCoordinator {
   }
 
   private invalidateOperations(): void {
+    const valid = this.activeSession?.presentation?.valid;
+    if (valid) valid.value = false;
     this.releaseMountSubscription?.();
     this.releaseMountSubscription = undefined;
     this.operationGeneration += 1;
@@ -134,6 +138,42 @@ export class TransitionCoordinator {
     return this.hiddenElements;
   }
 
+  failPresentation(sessionId: string): void {
+    const session = this.activeSession;
+    if (session?.id !== sessionId) return;
+    if (session.direction === 'forward') {
+      this.progress.value = 1;
+      this.completeTransition(sessionId);
+    } else {
+      this.cancelTransition(sessionId);
+    }
+  }
+
+  revalidatePresentation(removedScreenId?: string): void {
+    const session = this.activeSession;
+    if (!session?.presentation || session.presentation.phase.value === 2)
+      return;
+    const missingTarget = session.pairs.some(
+      (pair) =>
+        !this.registry.getByIdAndScreen(
+          pair.target.id,
+          pair.target.screenId,
+          pair.target.groupId
+        )
+    );
+    // Element cleanup can remove the receiving host before screen cleanup runs.
+    if (removedScreenId === session.targetScreenId || missingTarget) {
+      this.cancelTransition(session.id);
+    } else if (
+      !this.nativeReadiness?.isScreenReady(session.targetScreenId) ||
+      !this.elementsAreCurrent(
+        session.pairs.flatMap((pair) => [pair.source, pair.target])
+      )
+    ) {
+      this.failPresentation(session.id);
+    }
+  }
+
   async captureSourceGroup(groupId: string, screenId: string): Promise<void> {
     this.sourceCaptures.clear();
     const captureGeneration = ++this.sourceCaptureGeneration;
@@ -141,8 +181,8 @@ export class TransitionCoordinator {
     const elements = this.registry.getGroupElements(groupId, screenId);
     const entries = this.entries(elements);
     if (!entries?.length) return;
-    const snapshot = await waitForFabricLayout({
-      read: () => captureFabricLayout(entries),
+    const snapshot = await requestFabricLayout({
+      entries,
       isCurrent: () =>
         this.operationGeneration === generation &&
         this.sourceCaptureGeneration === captureGeneration &&
@@ -171,31 +211,33 @@ export class TransitionCoordinator {
     );
     const entries = this.entries(elements);
     if (!entries) return;
-    await waitForFabricLayout({
+    const snapshot = await requestFabricLayout({
+      entries,
       isCurrent: () =>
         this.activeSession?.id === session.id &&
         this.elementsAreCurrent(elements),
       cancellers: this.preparationCancellers,
-      read: () => {
-        const snapshot = captureFabricLayout(entries);
-        if (!snapshot) return null;
-        const currentSession = this.activeSession!;
-        let changed = false;
-        const pairs = currentSession.pairs.map((pair) => {
-          const element = side === 'source' ? pair.source : pair.target;
-          const metrics = this.metricsFor(snapshot, element);
-          const previous =
-            side === 'source' ? pair.sourceMetrics : pair.targetMetrics;
-          if (this.metricsAreClose(previous, metrics)) return pair;
-          changed = true;
-          return side === 'source'
-            ? { ...pair, sourceMetrics: metrics }
-            : { ...pair, targetMetrics: metrics };
-        });
-        if (changed) this.updateSession({ ...currentSession, pairs });
-        return true;
-      },
     });
+    if (
+      !snapshot ||
+      !snapshot.isCurrent() ||
+      this.activeSession?.id !== session.id
+    )
+      return;
+    const currentSession = this.activeSession;
+    let changed = false;
+    const pairs = currentSession.pairs.map((pair) => {
+      const element = side === 'source' ? pair.source : pair.target;
+      const metrics = this.metricsFor(snapshot, element);
+      const previous =
+        side === 'source' ? pair.sourceMetrics : pair.targetMetrics;
+      if (this.metricsAreClose(previous, metrics)) return pair;
+      changed = true;
+      return side === 'source'
+        ? { ...pair, sourceMetrics: metrics }
+        : { ...pair, targetMetrics: metrics };
+    });
+    if (changed) this.updateSession({ ...currentSession, pairs });
   }
 
   private waitForTargets(
@@ -397,82 +439,91 @@ export class TransitionCoordinator {
       this.elementsAreCurrent([...sources, ...targets]) &&
       (!canUseSourceCapture || sourceCapture!.snapshot.isCurrent()) &&
       Boolean(this.nativeReadiness?.isScreenReady(targetScreenId));
+    // App presentation getters can mutate registration; run them before native capture.
+    const presentations = candidates.map(({ id, source, target }) => ({
+      id,
+      source,
+      target,
+      sourcePresentation: source.getPresentation(),
+      targetPresentation: target.getPresentation(),
+    }));
     const endCapture = config.trace?.start('fabric-mounted-capture');
-    const session = await waitForFabricLayout({
-      cancellers: this.preparationCancellers,
+    const snapshot = await requestFabricLayout({
+      entries,
       isCurrent,
-      read: () => {
-        const snapshot = captureFabricLayout(entries);
-        if (!snapshot) return null;
-        const pairs: ElementTransitionPair[] = [];
-        for (const { id, source, target } of candidates) {
-          const sourcePresentation = source.getPresentation();
-          const targetPresentation = target.getPresentation();
-          const transition =
-            sourcePresentation.transition ?? targetPresentation.transition;
-          if (!transition) continue;
-          pairs.push({
-            id,
-            source,
-            target,
-            transition,
-            sourcePresentation,
-            targetPresentation,
-            sourceMetrics: this.metricsFor(
-              canUseSourceCapture ? sourceCapture!.snapshot : snapshot,
-              source
-            ),
-            targetMetrics: this.metricsFor(snapshot, target),
-          });
-        }
-        // Presentation getters can trigger app updates. Retry a pending mount;
-        // never activate with geometry invalidated during pairing.
-        if (!isCurrent() || !snapshot.isCurrent() || !pairs.length) return null;
-        const latest = captureFabricLayout(entries);
-        if (
-          !latest ||
-          ![...snapshot.metrics].every(([id, metrics]) =>
-            this.metricsAreClose(metrics, latest.metrics.get(id)!)
-          )
-        )
-          return null;
-        if (!isCurrent()) return null;
-        const endpoint = direction === 'forward' ? 1 : 0;
-        this.progress.value = config.reducedMotion ? endpoint : 1 - endpoint;
-        const active: TransitionSessionData = {
-          id: sessionId,
-          groupId,
-          sourceScreenId,
-          targetScreenId,
-          state: 'active',
-          pairs,
-          progress: this.progress,
-          direction,
-          reducedMotion: config.reducedMotion,
-        };
-        this.releaseMountSubscription = subscribeToFabricMounts(() => {
-          const current = this.activeSession;
-          if (current?.id !== sessionId || current.state !== 'active') return;
-          const targetEntries = this.entries(
-            current.pairs.map((pair) => pair.target)
-          );
-          if (!targetEntries) return;
-          const updated = captureFabricLayout(targetEntries);
-          if (!updated) return;
-          let changed = false;
-          const nextPairs = current.pairs.map((pair) => {
-            const metrics = this.metricsFor(updated, pair.target);
-            if (this.metricsAreClose(metrics, pair.targetMetrics)) return pair;
-            changed = true;
-            return { ...pair, targetMetrics: metrics };
-          });
-          if (changed && this.activeSession?.id === sessionId)
-            this.updateSession({ ...current, pairs: nextPairs });
-        });
-        this.updateSession(active);
-        return active;
-      },
+      cancellers: this.preparationCancellers,
     });
+    let session: TransitionSessionData | null = null;
+    if (snapshot && snapshot.isCurrent() && isCurrent()) {
+      const pairs: ElementTransitionPair[] = presentations.flatMap((pair) => {
+        const transition =
+          pair.sourcePresentation.transition ??
+          pair.targetPresentation.transition;
+        return transition
+          ? [
+              {
+                ...pair,
+                transition,
+                sourceMetrics: this.metricsFor(
+                  canUseSourceCapture ? sourceCapture!.snapshot : snapshot,
+                  pair.source
+                ),
+                targetMetrics: this.metricsFor(snapshot, pair.target),
+              },
+            ]
+          : [];
+      });
+      if (!pairs.length) {
+        endCapture?.({ ready: false });
+        unavailable();
+        return null;
+      }
+      const endpoint = direction === 'forward' ? 1 : 0;
+      this.progress.value = config.reducedMotion ? endpoint : 1 - endpoint;
+      const active: TransitionSessionData = {
+        id: sessionId,
+        groupId,
+        sourceScreenId,
+        targetScreenId,
+        state: 'active',
+        presentation: createNativePresentation(
+          pairs.map((pair) =>
+            getLiveOverlayHostName(
+              sourceScreenId,
+              targetScreenId,
+              pair.id,
+              groupId
+            )
+          ),
+          snapshot.validateNative
+        ),
+        pairs,
+        progress: this.progress,
+        direction,
+        reducedMotion: config.reducedMotion,
+      };
+      this.releaseMountSubscription = subscribeToFabricMounts(() => {
+        const current = this.activeSession;
+        if (current?.id !== sessionId || current.state !== 'active') return;
+        const targetEntries = this.entries(
+          current.pairs.map((pair) => pair.target)
+        );
+        if (!targetEntries) return;
+        const updated = captureFabricLayout(targetEntries);
+        if (!updated) return;
+        let changed = false;
+        const nextPairs = current.pairs.map((pair) => {
+          const metrics = this.metricsFor(updated, pair.target);
+          if (this.metricsAreClose(metrics, pair.targetMetrics)) return pair;
+          changed = true;
+          return { ...pair, targetMetrics: metrics };
+        });
+        if (changed && this.activeSession?.id === sessionId)
+          this.updateSession({ ...current, pairs: nextPairs });
+      });
+      this.updateSession(active);
+      session = active;
+    }
     endCapture?.({ ready: Boolean(session) });
     if (!session) unavailable();
     debugTrace(

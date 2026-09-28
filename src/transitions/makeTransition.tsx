@@ -5,7 +5,7 @@ import Animated, {
   useAnimatedStyle,
   useDerivedValue,
 } from 'react-native-reanimated';
-import { PortalHost } from 'react-native-teleport';
+import { TransitionPortalHost as PortalHost } from '../native/TransitionPortalHost';
 import { getExpansionProgress } from '../core/expansionProgress';
 import { getLiveOverlayHostName } from '../core/liveHostNames';
 import type {

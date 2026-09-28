@@ -7,6 +7,7 @@ import {
 } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import type { SpringConfig } from '../types';
+import type { NativePresentation } from './nativePresentation';
 import {
   finishVisibilityHandoff,
   resumeVisibilityHandoff,
@@ -138,6 +139,7 @@ export function animateOwnedProgress({
   handoffOnComplete = true,
   onCompleteUI,
   onComplete,
+  presentation,
 }: {
   ownership: ProgressOwnership;
   token: number;
@@ -151,6 +153,7 @@ export function animateOwnedProgress({
   /** Runs on the UI runtime before the RN completion is scheduled. */
   onCompleteUI?: () => void;
   onComplete: (token: number, sessionId: string) => void;
+  presentation?: NativePresentation;
 }): void {
   if (!ownership.isCurrent(token, sessionId)) return;
   const { owner, handoff, reducedMotion } = ownership;
@@ -158,28 +161,83 @@ export function animateOwnedProgress({
   scheduleOnUI(() => {
     'worklet';
     if (owner.value !== token) return;
-    const complete = (finished?: boolean) => {
-      'worklet';
-      if (finished && owner.value === token) {
-        if (handoffOnComplete && (target === 0 || target === 1)) {
-          finishVisibilityHandoff(handoff, sessionId);
-        }
-        onCompleteUI?.();
-        scheduleOnRN(dispatchCompletion, completionId);
-      }
-    };
-    if (reducedMotion) {
-      cancelAnimation(progress);
-      progress.value = target;
-      complete(true);
-      return;
+    if (presentation) {
+      presentation.animation.value = {
+        token,
+        completionId,
+        target,
+        spring,
+        duration,
+      };
+    } else {
+      startOwnedProgressOnUI({
+        owner,
+        handoff,
+        reducedMotion,
+        token,
+        sessionId,
+        progress,
+        target,
+        spring,
+        duration,
+        completionId,
+        handoffOnComplete,
+        onCompleteUI,
+      });
     }
-    progress.value = duration
-      ? withTiming(
-          target,
-          { duration, easing: Easing.out(Easing.cubic) },
-          complete
-        )
-      : withSpring(target, spring, complete);
   });
+}
+
+export function startOwnedProgressOnUI({
+  owner,
+  handoff,
+  reducedMotion = false,
+  token,
+  sessionId,
+  progress,
+  target,
+  spring,
+  duration,
+  completionId,
+  handoffOnComplete = true,
+  onCompleteUI,
+}: {
+  owner: SharedValue<number>;
+  handoff?: SharedValue<VisibilityHandoff>;
+  reducedMotion?: boolean;
+  token: number;
+  sessionId: string;
+  progress: SharedValue<number>;
+  target: number;
+  spring: SpringConfig;
+  duration?: number;
+  completionId: number;
+  handoffOnComplete?: boolean;
+  onCompleteUI?: () => void;
+}): void {
+  'worklet';
+  if (owner.value !== token) return;
+  const complete = (finished?: boolean) => {
+    'worklet';
+    if (finished && owner.value === token) {
+      if (handoffOnComplete && (target === 0 || target === 1)) {
+        finishVisibilityHandoff(handoff, sessionId);
+      }
+      onCompleteUI?.();
+      scheduleOnRN(dispatchCompletion, completionId);
+    }
+  };
+  if (reducedMotion) {
+    cancelAnimation(progress);
+    progress.value = target;
+    complete(true);
+    return;
+  }
+  progress.value = duration
+    ? withTiming(
+        target,
+        { duration, easing: Easing.out(Easing.cubic) },
+        complete
+      )
+    : withSpring(target, spring, complete);
 }

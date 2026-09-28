@@ -94,17 +94,46 @@ The snapshot is checked against native node identity and consumed by the next
 preparation; it is not a reusable destination cache. Without a source snapshot,
 source and target are captured together from one mounted root.
 
-Forward and backward preparation use the same Fabric path. Screen `ready` flags
-and reference-counted blockers remain application-level gates. Pending mounts
-are retried with a bounded 500ms deadline; the coordinator does not wait for
-repeated identical measurements. Pairing freezes presentations, rechecks current
-geometry, and activates without an asynchronous measurement between these steps.
-Unavailable endpoints skip the shared transition through the navigation fallback.
-Session ownership and node identity checks prevent interrupted work from activating.
-Active endpoint refreshes also read Fabric layout. Coalesced native mount
-notifications refresh target bounds during an active session, including safe-area
-changes after the first destination mount, while preserving frozen presentations.
-The subscription is released on completion, cancellation, or disposal.
+Both directions wait for screen readiness and matching registrations, freeze
+presentations, then issue one native request. It binds weak node-family identities
+and collects geometry from completed mounts. JavaScript consumes the batch once,
+immediately or on a coalesced mount notification, within a one-second deadline.
+There is no JavaScript polling. Cancellation and runtime replacement invalidate
+requests; consumed requests stop collecting geometry. Unavailable endpoints skip
+animation.
+
+Numeric geometry feeds the React renderer and `useSharedElementPresentation`.
+During animation, coalesced mount notifications refresh endpoint bounds, including
+safe-area changes, while preserving frozen styles and metadata. Subscriptions
+are released on completion, cancellation, or disposal.
+
+### React rendering and native presentation
+
+React mounts each renderer with one registered receiving host while retained
+content stays at its previous destination. After native acknowledges attachment
+of the empty overlay, React transfers content to those hosts. Registering before
+transfer prevents Teleport from falling back to a hidden owner during Back.
+Attachment stays latched for the session despite React prop updates. Native
+acknowledges presentation only when every expected host is attached, has nonzero
+bounds, and contains its live child.
+
+Forward motion starts on the UI thread after both the matching presentation
+acknowledgment and animation configuration arrive, in either order. A final native
+identity check rejects removed or recycled endpoints without recapturing geometry.
+Session IDs and ownership tokens reject stale transfers and animation starts.
+Reverse and interactive navigation share this preparation and presentation protocol
+with their existing progress/commit controllers.
+
+A one-second UI deadline and the 150ms RN overlay-readiness deadline bound the wait.
+Unconfirmed presentation after a forward push settles content onto the destination
+without animation; a removed destination cancels toward the source. Registration
+or readiness changes revoke pending presentation, release navigation, and invalidate
+late acknowledgments. Reduced motion hands content directly to its endpoint.
+
+React mounting, portal transfer, animation arming, and final settlement still need
+JavaScript. Load during startup delays motion while content stays at its previous
+endpoint. Once prepared and armed, native acknowledgment can start forward motion
+while JavaScript is busy.
 
 There are no Reanimated `measure()`, native-ref `measureInWindow()`, native layout
 sampling, or cached-target measurement paths. Fabric geometry does not describe
@@ -122,7 +151,7 @@ Animation waits for those readiness signals, with a bounded safety path. Do not
 start hiding or moving content based only on an eager session-activation callback.
 The native host's dismissal protection is separate from the removed outgoing
 screen capture implementation.
-Both native hosts exclude themselves and their children from touch hit testing.
+Both transition hosts exclude themselves and their children from touch hit testing.
 On Android this is enforced in `ScreenChoreographyView`, since its custom
 `ViewGroupManager` does not apply the JSX `pointerEvents` prop. This lets the
 destination accept input while the overlay finishes its remaining motion.
@@ -140,6 +169,17 @@ temporarily detaches an ancestor, it can keep using that anchor's last known
 window while the anchor remains mounted. Removing or recycling the anchor clears
 this association and removes the container. Deferred presentation and dismissal
 callbacks are invalidated across interruption and recycling.
+
+Window containers sit above attached controller content and below independent
+window overlays such as React Native's FPS monitor. `ChoreographyOverlay` stays
+above transition containers independently of their sessions and acknowledgments.
+Its iOS foreground container uses a Fabric touch handler; Android uses a
+`box-none` sibling above the transition portal. Only its controls receive touches;
+empty space passes through, and it does not act as an accessibility modal.
+
+A weak responder-chain link to the Fabric anchor lets nested modals find their
+original presenting controller. Once attached, a foreground container keeps its
+position so rerenders and rotation cannot raise it above a modal it presented.
 
 Screen opacity and input gating are defined in `screenVisibility.ts`, from
 (direction, role, phase, progress). Expansion progress is 0 at the list and 1 at

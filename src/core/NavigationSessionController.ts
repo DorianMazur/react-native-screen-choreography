@@ -35,6 +35,7 @@ interface PrepareForwardTransitionArgs {
     trace?: PreparationTrace;
   }) => Promise<TransitionSessionData | null>;
   waitForOverlayReady: (sessionId: string) => Promise<boolean>;
+  onSessionPrepared?: (session: TransitionSessionData) => void;
   isOverlayPresented?: (sessionId: string) => boolean;
   isPreparationCurrent?: () => boolean;
   isSessionCurrent?: (sessionId: string) => boolean;
@@ -137,6 +138,7 @@ export class NavigationSessionController {
     waitForNextFrame,
     startTransition,
     waitForOverlayReady,
+    onSessionPrepared,
     isOverlayPresented = () => true,
     isPreparationCurrent = () => true,
     isSessionCurrent = () => true,
@@ -202,6 +204,7 @@ export class NavigationSessionController {
       }
 
       trace?.setSession(session.id, targetInstanceId);
+      onSessionPrepared?.(session);
       const endOverlay = trace?.start('overlay-ready');
       const overlayReady = await waitForOverlayReady(session.id);
       const acknowledged = trace
