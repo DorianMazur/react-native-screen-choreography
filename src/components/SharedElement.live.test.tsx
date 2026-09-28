@@ -99,6 +99,7 @@ function makeContexts() {
     unregisterElement: jest.fn(),
     isElementHidden: jest.fn(() => ({ value: 0 })),
     getSettledScreenId: jest.fn(() => settledScreenId),
+    subscribeToScreenRemoval: jest.fn(() => () => {}),
   } as unknown as ChoreographyActionsType;
   return {
     actions,

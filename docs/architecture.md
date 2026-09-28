@@ -51,6 +51,9 @@ Initial metrics are null. The owner derives `presentationProgress` from its
 participation and settled endpoint: it follows the shared clock during its own
 transition and holds 0 or 1 otherwise. The existing `progress` remains the global
 clock, which can subsequently belong to a different group.
+An owner stays settled at a destination only while that screen is mounted. A
+fallback Back that removes the route completes its session on the returned screen,
+and a destination removed any other way returns the owner to its source, collapsed.
 
 ## Pairing and frozen presentations
 

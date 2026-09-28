@@ -36,6 +36,10 @@ export interface ChoreographyActionsType {
   unregisterScreen: (screenId: string) => void;
   acquireScreenBlocker: (screenId: string) => () => void;
   getSettledScreenId: () => string | null;
+  subscribeToScreenRemoval: (
+    screenId: string,
+    listener: () => void
+  ) => () => void;
   waitForScreenReady: (screenId: string) => Promise<boolean>;
   registerScreenPresentation: (
     screenId: string,

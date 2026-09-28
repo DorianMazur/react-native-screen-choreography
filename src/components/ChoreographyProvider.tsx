@@ -211,6 +211,9 @@ export function ChoreographyProvider({
   const screenReadinessRef = useRef(new ScreenReadinessRegistry());
   const screenNamesRef = useRef(new Map<string, string>());
   const nativeScreenRefs = useRef(new Map<string, NodeHandleRef>());
+  // Unlike presentation refs, membership survives presentation re-registration.
+  const mountedScreensRef = useRef(new Set<string>());
+  const screenRemovalListenersRef = useRef(new Map<string, Set<() => void>>());
 
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
@@ -370,8 +373,36 @@ export function ChoreographyProvider({
         () =>
           `[Provider] Screen unregistered screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
       );
+      mountedScreensRef.current.delete(screenId);
+      const removalListeners = screenRemovalListenersRef.current.get(screenId);
+      if (removalListeners) {
+        screenRemovalListenersRef.current.delete(screenId);
+        [...removalListeners].forEach((listener) => listener());
+      }
     },
     [navigationController, progressOwnership]
+  );
+
+  const subscribeToScreenRemoval = useCallback(
+    (screenId: string, listener: () => void) => {
+      if (!mountedScreensRef.current.has(screenId)) {
+        listener();
+        return () => {};
+      }
+      const listeners = screenRemovalListenersRef.current;
+      let screenListeners = listeners.get(screenId);
+      if (!screenListeners) {
+        screenListeners = new Set();
+        listeners.set(screenId, screenListeners);
+      }
+      screenListeners.add(listener);
+      return () => {
+        const current = listeners.get(screenId);
+        current?.delete(listener);
+        if (current?.size === 0) listeners.delete(screenId);
+      };
+    },
+    []
   );
 
   const resolveScreenId = useCallback(
@@ -409,10 +440,12 @@ export function ChoreographyProvider({
     };
   }, []);
 
-  const getSettledScreenId = useCallback(
-    () => coordinatorRef.current?.getSettledScreenId() ?? null,
-    []
-  );
+  const getSettledScreenId = useCallback(() => {
+    const settledScreenId = coordinatorRef.current?.getSettledScreenId();
+    return settledScreenId && mountedScreensRef.current.has(settledScreenId)
+      ? settledScreenId
+      : null;
+  }, []);
 
   const setNavigationLineage = useCallback(
     (lineage: ChoreographyNavigationLineage) => {
@@ -589,6 +622,7 @@ export function ChoreographyProvider({
   >(
     (screenId, ref, animationLifetime) => {
       nativeScreenRefs.current.set(screenId, ref);
+      mountedScreensRef.current.add(screenId);
       const release = registerReverseScreenPresentation(
         screenId,
         ref,
@@ -689,6 +723,7 @@ export function ChoreographyProvider({
       unregisterScreen,
       acquireScreenBlocker,
       getSettledScreenId,
+      subscribeToScreenRemoval,
       waitForScreenReady,
       registerScreenPresentation,
     }),
@@ -700,6 +735,7 @@ export function ChoreographyProvider({
       unregisterScreen,
       acquireScreenBlocker,
       getSettledScreenId,
+      subscribeToScreenRemoval,
       waitForScreenReady,
       registerScreenPresentation,
     ]

@@ -125,8 +125,8 @@ export function waitForFabricLayout<T>({
     let deadline: ReturnType<typeof setTimeout> | undefined;
     const cleanup = () => {
       settled = true;
-      clearTimeout(retry);
-      clearTimeout(deadline);
+      if (retry !== undefined) clearTimeout(retry);
+      if (deadline !== undefined) clearTimeout(deadline);
       cancellers.delete(cancel);
     };
     const finish = (value: T | null) => {
