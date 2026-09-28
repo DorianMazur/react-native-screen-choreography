@@ -1,6 +1,7 @@
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import * as Reanimated from 'react-native-reanimated';
 import type {
   ElementTransitionPair,
   Transition,
@@ -115,6 +116,68 @@ function choreography(
 }
 
 describe('SharedElement live endpoints', () => {
+  test('unrelated context updates skip payload work when an element factory adds fresh refs', async () => {
+    const runtime =
+      jest.requireActual<typeof import('react/jsx-runtime')>(
+        'react/jsx-runtime'
+      );
+    const originalJsx = runtime.jsx;
+    const factory = jest
+      .spyOn(runtime, 'jsx')
+      .mockImplementation((type, props, key) => {
+        const elementType: unknown = type;
+        return originalJsx(
+          type,
+          typeof elementType === 'object' &&
+            elementType !== null &&
+            '$$typeof' in elementType &&
+            elementType.$$typeof === Symbol.for('react.memo')
+            ? { ...(props as object), ref: () => {} }
+            : props,
+          key
+        );
+      });
+    const payloadWork = jest.spyOn(Reanimated, 'useDerivedValue');
+    const state = makeContexts();
+    const context = choreography(null);
+    const owner = (
+      <SharedElement id="player" groupId="media">
+        <View />
+      </SharedElement>
+    );
+    const render = (activeSession: TransitionSessionData | null) => (
+      <ChoreographyActionsContext.Provider value={state.actions}>
+        <ChoreographyContext.Provider value={{ ...context, activeSession }}>
+          <ScreenIdContext.Provider value="list">
+            {owner}
+          </ScreenIdContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(render(null));
+      });
+      const initialWork = payloadWork.mock.calls.length;
+      expect(initialWork).toBeGreaterThan(0);
+      await act(async () =>
+        tree.update(render(session('other', 'other-detail')))
+      );
+      await act(async () => tree.update(render(null)));
+      expect(payloadWork).toHaveBeenCalledTimes(initialWork);
+      await act(async () => tree.update(render(session('list', 'detail'))));
+      expect(payloadWork).toHaveBeenCalledTimes(initialWork + 1);
+      expect(tree.root.findByType(Portal).props.hostName).toContain('overlay');
+      expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+      expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => tree?.unmount());
+      payloadWork.mockRestore();
+      factory.mockRestore();
+    }
+  });
+
   test('reduced motion transfers the same content directly to each endpoint, including rejected Back', async () => {
     const state = makeContexts();
     let presentation!: SharedElementPresentation;

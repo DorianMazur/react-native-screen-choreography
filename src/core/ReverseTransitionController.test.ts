@@ -19,6 +19,7 @@ function createOperation() {
     sourceScreenId: 'detail',
     targetScreenId: 'home',
     commitNavigation: jest.fn(() => navigation.promise),
+    onNavigationRemoved: jest.fn(),
     animate: jest.fn((finished: () => void) => {
       finishAnimation = finished;
     }),
@@ -31,6 +32,68 @@ function createOperation() {
 }
 
 describe('reverse settlement ordering', () => {
+  test.each(['before', 'after'] as const)(
+    'source unmount %s animation completion hands off without waiting for navigation acknowledgement',
+    async (order) => {
+      const operation = createOperation();
+      const controller = new ReverseTransitionController();
+      const completed = controller.start(operation.config);
+      expect(controller.noteSourceUnmount('reverse', 'detail')).toBe(false);
+      controller.commitNearEndpoint('reverse');
+      expect(controller.noteSourceUnmount('stale', 'detail')).toBe(false);
+      expect(controller.noteSourceUnmount('reverse', 'other')).toBe(false);
+      if (order === 'after') operation.finishAnimation();
+
+      expect(controller.noteSourceUnmount('reverse', 'detail')).toBe(true);
+      expect(operation.config.onNavigationRemoved).toHaveBeenCalledTimes(1);
+      if (order === 'before') {
+        expect(controller.canInterrupt('reverse')).toBe(true);
+        expect(operation.config.handoff).not.toHaveBeenCalled();
+        expect(controller.noteSourceUnmount('reverse', 'detail')).toBe(true);
+        operation.finishAnimation();
+      }
+      expect(operation.config.handoff).toHaveBeenCalledTimes(1);
+      await completed;
+      expect(controller.owns('reverse')).toBe(false);
+
+      operation.navigation.resolve({ removed: false, presented: false });
+      await Promise.resolve();
+      expect(operation.config.onNavigationRemoved).toHaveBeenCalledTimes(1);
+      expect(operation.config.handoff).toHaveBeenCalledTimes(1);
+      expect(operation.config.cancel).not.toHaveBeenCalled();
+    }
+  );
+
+  test('acknowledgement after unmount does not notify removal twice or end unfinished motion', async () => {
+    const operation = createOperation();
+    const controller = new ReverseTransitionController();
+    const completed = controller.start(operation.config);
+    controller.commitNearEndpoint('reverse');
+    controller.noteSourceUnmount('reverse', 'detail');
+    expect(operation.config.onNavigationRemoved).toHaveBeenCalledTimes(1);
+    operation.navigation.resolve({ removed: false, presented: false });
+    await Promise.resolve();
+    expect(operation.config.onNavigationRemoved).toHaveBeenCalledTimes(1);
+    expect(operation.config.handoff).not.toHaveBeenCalled();
+    expect(controller.finishImmediately('reverse')).toBe(true);
+    await completed;
+    expect(operation.config.handoff).toHaveBeenCalledTimes(1);
+    expect(operation.config.cancel).not.toHaveBeenCalled();
+  });
+
+  test('unmount of an obsolete operation cannot notify removal or hand off', async () => {
+    const operation = createOperation();
+    const controller = new ReverseTransitionController();
+    const completed = controller.start(operation.config);
+    controller.commitNearEndpoint('reverse');
+    operation.config.isCurrent = () => false;
+    expect(controller.noteSourceUnmount('reverse', 'detail')).toBe(false);
+    await completed;
+    expect(operation.config.onNavigationRemoved).not.toHaveBeenCalled();
+    expect(operation.config.handoff).not.toHaveBeenCalled();
+    expect(controller.owns('reverse')).toBe(false);
+  });
+
   test('can remove the faded route before settlement without handing off content', async () => {
     const operation = createOperation();
     const controller = new ReverseTransitionController();

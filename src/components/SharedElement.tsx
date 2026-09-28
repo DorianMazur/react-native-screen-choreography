@@ -175,18 +175,40 @@ function LiveSharedElement(props: SharedElementProps) {
         ) ?? null)
       : null;
 
-  return (
-    <LiveSharedElementContent
-      {...props}
-      screenId={screenId}
-      pair={pair}
-      reducedMotion={pair ? session!.reducedMotion : false}
-      direction={pair ? session!.direction : null}
-      sourceScreenId={pair ? session!.sourceScreenId : null}
-      targetScreenId={pair ? session!.targetScreenId : null}
-      progress={choreography.progress}
-      getSettledScreenId={actions.getSettledScreenId}
-    />
+  const reducedMotion = pair ? session!.reducedMotion : false;
+  const direction = pair ? session!.direction : null;
+  const sourceScreenId = pair ? session!.sourceScreenId : null;
+  const targetScreenId = pair ? session!.targetScreenId : null;
+  const { progress } = choreography;
+  const { getSettledScreenId } = actions;
+
+  // Element factories may attach a new ref even when every input is unchanged.
+  // Retain the element too, so unrelated context updates preserve the memo boundary.
+  return useMemo(
+    () => (
+      <LiveSharedElementContent
+        {...props}
+        screenId={screenId}
+        pair={pair}
+        reducedMotion={reducedMotion}
+        direction={direction}
+        sourceScreenId={sourceScreenId}
+        targetScreenId={targetScreenId}
+        progress={progress}
+        getSettledScreenId={getSettledScreenId}
+      />
+    ),
+    [
+      props,
+      screenId,
+      pair,
+      reducedMotion,
+      direction,
+      sourceScreenId,
+      targetScreenId,
+      progress,
+      getSettledScreenId,
+    ]
   );
 }
 
