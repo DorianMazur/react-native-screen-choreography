@@ -1,10 +1,13 @@
 import { useEffect, useLayoutEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { makeMutable } from 'react-native-reanimated';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
-import { runReverseTransition } from '../core/runReverseTransition';
+import { NavigationSessionController } from '../core/NavigationSessionController';
+import { ProgressOwnership } from '../core/ProgressOwnership';
+import type { TransitionSessionData } from '../types';
 import { ChoreographyScreen } from './expo-router';
 
 jest.mock('expo-router', () => ({
@@ -35,20 +38,16 @@ jest.mock(
   'expo-router/build/react-navigation/core/NavigationProvider',
   () => ({})
 );
-jest.mock('../components/ChoreographyScreenBase', () => ({
-  ChoreographyScreenBase: () => null,
-}));
-jest.mock('../hooks/useChoreographyNavigation', () => ({}));
-jest.mock('../hooks/useInteractiveTransition', () => ({}));
-jest.mock('../core/runReverseTransition', () => ({
-  runReverseTransition: jest.fn(),
+jest.mock('react-native-reanimated', () => ({
+  ...jest.requireActual('../../__mocks__/react-native-reanimated'),
+  __esModule: true,
+  cancelAnimation: jest.fn(),
 }));
 
 const { shouldPreventRemove } = jest.requireActual(
   'expo-router/build/react-navigation/core/useOnPreventRemove'
 );
 const mockSetPreventRemove = jest.fn();
-const mockReverse = jest.mocked(runReverseTransition);
 
 const mockPreventRemove = jest.requireMock(
   'expo-router/react-navigation'
@@ -162,28 +161,61 @@ test.each(cases)(
       }),
     };
     jest.requireMock('expo-router').useNavigation.mockReturnValue(navigation);
-    const context = {
+    const progress = makeMutable(1);
+    const progressOwnership = new ProgressOwnership(makeMutable(0), progress);
+    const navigationController = new NavigationSessionController();
+    let finishPreparation!: () => void;
+    const preparation = new Promise<void>(
+      (resolve) => (finishPreparation = resolve)
+    );
+    const captureSourceGroup = jest.fn(() => preparation);
+    let finishReverse!: () => void;
+    const commitReverseTransition = jest.fn<
+      ReturnType<ChoreographyContextType['commitReverseTransition']>,
+      Parameters<ChoreographyContextType['commitReverseTransition']>
+    >(
+      () =>
+        new Promise<void>((resolve) => {
+          finishReverse = () => {
+            progressOwnership.setSession(null);
+            navigationController.setActiveSession(null);
+            resolve();
+          };
+        })
+    );
+    const context: Partial<ChoreographyContextType> = {
+      progress,
+      progressOwnership,
+      navigationController,
+      captureSourceGroup,
+      startTransition: async (config) => {
+        const session: TransitionSessionData = {
+          ...config,
+          id: 'reverse',
+          state: 'active',
+          pairs: [],
+          progress,
+        };
+        progressOwnership.setSession(session.id);
+        navigationController.setActiveSession(session);
+        return session;
+      },
+      waitForOverlayReady: async () => true,
+      commitReverseTransition,
       getNavigationLineage: () => ({
         groupId: 'trip.seiland',
         sourceScreenId: 'list',
         sourceRouteKey: 'list',
         targetScreenId: 'detail',
       }),
-      navigationController: {
-        getActiveSession: () => null,
-        isNavigationLocked: () => false,
-      },
-      progressOwnership: { hasSession: false },
-    } as unknown as ChoreographyContextType;
-    let finishReverse!: () => void;
-    mockReverse.mockImplementation(
-      () => new Promise<void>((resolve) => (finishReverse = resolve))
-    );
+    };
     let tree: ReactTestRenderer | undefined;
     try {
       await act(async () => {
         tree = create(
-          <ChoreographyContext.Provider value={context}>
+          <ChoreographyContext.Provider
+            value={context as ChoreographyContextType}
+          >
             <ChoreographyScreen screenId="TripDetail">
               {null}
             </ChoreographyScreen>
@@ -201,17 +233,22 @@ test.each(cases)(
       }
       navigation.dispatch(action);
       expect(state.routes).toHaveLength(2);
-      expect(mockReverse).toHaveBeenCalledTimes(1);
-      const reverse = mockReverse.mock.calls[0]![0];
+      expect(captureSourceGroup).toHaveBeenCalledTimes(1);
+      expect(captureSourceGroup).toHaveBeenCalledWith('trip.seiland', 'detail');
+      expect(navigationController.isNavigationLocked()).toBe(true);
+      expect(commitReverseTransition).not.toHaveBeenCalled();
 
       navigation.dispatch({ ...action });
-      expect(mockReverse).toHaveBeenCalledTimes(1);
+      expect(captureSourceGroup).toHaveBeenCalledTimes(1);
       expect(state.routes).toHaveLength(2);
 
+      await act(async () => finishPreparation());
+      expect(commitReverseTransition).toHaveBeenCalledTimes(1);
+      const reverse = commitReverseTransition.mock.calls[0]![0];
       const interceptedAction = emit.mock.calls[0]![0].data.action;
       let result;
       await act(async () => {
-        result = await reverse.popAction();
+        result = await reverse.navigateBack();
       });
       expect(navigation.dispatch).toHaveBeenLastCalledWith(interceptedAction);
       expect(navigation.dispatch.mock.calls[2]![0]).toBe(interceptedAction);
@@ -238,13 +275,17 @@ test.each(cases)(
       }
       expect(listeners.get('state')?.size).toBe(0);
       await act(async () => finishReverse());
+      expect(navigationController.isNavigationLocked()).toBe(false);
       if (outcome !== 'removed') {
         replayOutcome = 'removed';
-        navigation.dispatch({ ...action });
-        expect(mockReverse).toHaveBeenCalledTimes(2);
+        await act(async () => navigation.dispatch({ ...action }));
+        expect(captureSourceGroup).toHaveBeenCalledTimes(2);
+        expect(commitReverseTransition).toHaveBeenCalledTimes(2);
         expect(state.routes).toHaveLength(2);
         await act(async () => {
-          expect(await mockReverse.mock.calls[1]![0].popAction()).toEqual({
+          expect(
+            await commitReverseTransition.mock.calls[1]![0].navigateBack()
+          ).toEqual({
             removed: true,
             presented: false,
           });
