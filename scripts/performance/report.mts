@@ -1,4 +1,10 @@
-import { summaryTable, startupDiagnostics } from './summary-table.mts';
+import {
+  summaryTable,
+  startupDiagnostics,
+  renderCountsTable,
+} from './summary-table.mts';
+import { metricDefinition } from './metric-definitions.mts';
+import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
 import type {
   InputRecord,
   MetricSamples,
@@ -9,7 +15,6 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 import { execFileSync } from 'node:child_process';
 
-const SCENARIOS = ['gallery'];
 const MODES = ['native-release'];
 
 function finite(value: unknown, label: string) {
@@ -128,7 +133,7 @@ function readFixture(report: InputRecord, metrics: MetricSamples) {
   if (report.schemaVersion !== 1 || report.fixtureVersion !== 5) {
     throw new Error('Unsupported fixture schema/version');
   }
-  if (!SCENARIOS.includes(report.scenario))
+  if (!SCENARIO_IDS.includes(report.scenario))
     throw new Error('Unknown fixture scenario');
   if (report.clock !== 'js-performance-now')
     throw new Error('Unknown JS clock domain');
@@ -161,6 +166,16 @@ function readFixture(report: InputRecord, metrics: MetricSamples) {
   )
     throw new Error('Unknown preparation tracing definition');
   const directions = new Set<string>();
+  if (
+    report.renderCounting !== undefined &&
+    (report.renderCounting?.version !== 1 ||
+      !Array.isArray(report.renderCounting.observed) ||
+      report.renderCounting.observed.length !== 3 ||
+      !['list', 'detail', 'hero'].every((name) =>
+        report.renderCounting.observed.includes(name)
+      ))
+  )
+    throw new Error('Missing or invalid render observation coverage');
   for (const [index, journey] of report.journeys.entries()) {
     if (journey.direction !== (index % 2 === 0 ? 'forward' : 'backward'))
       throw new Error('Journeys must alternate forward then backward');
@@ -179,6 +194,18 @@ function readFixture(report: InputRecord, metrics: MetricSamples) {
       throw new Error('Unknown probe timing definition');
     }
     const prefix = `${report.scenario}.${journey.direction}`;
+    if (report.renderCounting) {
+      for (const component of ['list', 'detail', 'hero']) {
+        for (const phase of ['mount', 'update']) {
+          const count = journey.renderCounts?.[component]?.[phase];
+          if (!Number.isSafeInteger(count) || count < 0)
+            throw new Error('Missing or invalid committed render count');
+          add(metrics, `${prefix}.renders.${component}.${phase}`, count);
+        }
+      }
+    } else if (journey.renderCounts !== undefined) {
+      throw new Error('Render counts lack a measurement definition');
+    }
     readPreparationTrace(
       journey,
       report.preparationTracing?.requested === true,
@@ -207,7 +234,7 @@ function readFixture(report: InputRecord, metrics: MetricSamples) {
   finite(report.payloadMounts, 'payloadMounts');
   finite(report.payloadUnmounts, 'payloadUnmounts');
   if (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
-    throw new Error('Live photo owner must stay mounted');
+    throw new Error('Live payload owner must stay mounted');
   readAndroidInput(report);
 }
 
@@ -312,6 +339,7 @@ export function summarize(
   const fixtures = new Set<string>();
   const sources = [];
   const runIds = new Set<string>();
+  const instrumentation = new Map<string, string>();
   let expectedCycles;
   try {
     expectedCycles = expectedCount(
@@ -332,6 +360,8 @@ export function summarize(
           throw new Error('Missing run ID');
         if (runIds.has(data.runId))
           throw new Error('Duplicate run ID would double-count timings');
+        if (fixtures.has(data.scenario))
+          throw new Error('Duplicate scenario would double-count timings');
         readFixture(data, documentMetrics);
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
@@ -343,6 +373,13 @@ export function summarize(
           }
         }
         runIds.add(data.runId);
+        instrumentation.set(
+          data.scenario,
+          (data.preparationTracing?.requested === true
+            ? 'preparation-tracing-v2-both-directions'
+            : 'preparation-tracing-disabled') +
+            (data.renderCounting ? '+committed-render-counts-v1' : '')
+        );
         fixtures.add(data.scenario);
         sources.push(file);
       }
@@ -355,7 +392,7 @@ export function summarize(
       );
     }
   }
-  for (const scenario of SCENARIOS) {
+  for (const scenario of SCENARIO_IDS) {
     if (!fixtures.has(scenario))
       errors.push(`Missing valid ${scenario} fixture run`);
   }
@@ -370,6 +407,19 @@ export function summarize(
     valid: errors.length === 0,
     errors,
     sources,
+    metricDefinitions: Object.fromEntries(
+      Object.keys(metrics)
+        .filter((name) => !name.endsWith('.overlayReadinessTimeout'))
+        .map((key) => [
+          key,
+          metricDefinition(key, instrumentation.get(key.split('.')[0])!),
+        ])
+    ),
+    samples: Object.fromEntries(
+      Object.entries(metrics).filter(
+        ([name]) => !name.endsWith('.overlayReadinessTimeout')
+      )
+    ),
     preparationDiagnostics: Object.fromEntries(
       Object.entries(metrics)
         .filter(([name]) => name.endsWith('.overlayReadinessTimeout'))
@@ -395,11 +445,12 @@ export function summarize(
 }
 
 export function markdown(
-  summary: ReturnType<typeof summarize>,
+  summary: InputRecord,
   base?: InputRecord,
   baselineNote = 'No baseline supplied. Local runs do not fetch baselines.'
 ) {
   const diagnostics = startupDiagnostics(summary, base);
+  const renders = renderCountsTable(summary, base);
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
@@ -407,11 +458,14 @@ export function markdown(
       ? 'Collection passed. Performance results are informational.'
       : '**Collection failed. Do not interpret missing data as an improvement.**',
     '',
-    ...summary.errors.map((error) => `- ${error.replaceAll('\n', ' ')}`),
+    ...(summary.errors ?? []).map(
+      (error: string) => `- ${error.replaceAll('\n', ' ')}`
+    ),
     '',
     baselineNote,
     '',
     summaryTable(summary, base),
+    ...(renders ? ['', '### Committed React renders', '', renders] : []),
     ...(diagnostics
       ? ['', '### Optional startup diagnostics', '', diagnostics]
       : []),

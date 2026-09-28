@@ -60,7 +60,7 @@ The checked-in examples use React Native 0.83 and Expo SDK 57. Native-stack swip
 | [Your first transition](https://screen-choreography.dev/guide/quick-start.html) | [Readiness and loading](https://screen-choreography.dev/guide/readiness.html)   | [Transitions reference](https://screen-choreography.dev/api/transitions.html) |
 | [Expo Router](https://screen-choreography.dev/guide/expo-router.html)           | [Troubleshooting](https://screen-choreography.dev/guide/troubleshooting.html)   | [Hooks and utilities](https://screen-choreography.dev/api/hooks.html)         |
 
-Contributor material: [runtime architecture](https://screen-choreography.dev/architecture.html), [performance measurements](https://screen-choreography.dev/performance.html), and [contributing](CONTRIBUTING.md).
+Contributor material: [runtime architecture](https://screen-choreography.dev/architecture.html) and [contributing](CONTRIBUTING.md).
 
 ## Example apps
 

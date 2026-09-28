@@ -20,7 +20,7 @@ output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(d
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Running %s forward/back timing and input cycles.\n' "$cycles"
+printf 'Running %s forward/back timing and input cycles per example (Gallery, Trips, Wallet).\n' "$cycles"
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"

@@ -21,8 +21,22 @@ import { TRIPS } from './data';
 import { TripHero } from './TripHero';
 import { useTripPickup } from './useTripPickup';
 import { tripsTransition } from './tripsTransitions';
+import type { ExampleObservation } from '../ExampleObservation';
+import {
+  useRenderObservation,
+  type RenderObserver,
+} from '../useRenderObservation';
 
-export function TripsListScreen() {
+export function TripsListScreen({
+  observation,
+}: {
+  observation?: ExampleObservation;
+}) {
+  useRenderObservation(
+    observation?.rendered
+      ? (phase) => observation.rendered?.('list', phase)
+      : undefined
+  );
   const { goBack, navigate } = useExampleNavigation();
   const { settleTransition } = useChoreographyControls();
   const { width, height } = useWindowDimensions();
@@ -90,6 +104,7 @@ export function TripsListScreen() {
                   height={cardHeight}
                   topInset={insets.top}
                   bottomInset={insets.bottom}
+                  observation={observation}
                 />
               </tripsTransition.Element>
               <Pressable
@@ -128,7 +143,14 @@ export function TripsListScreen() {
   );
 }
 
-export function TripsDetailScreen({ tripId = 'seiland' }: { tripId?: string }) {
+export function TripsDetailScreen({
+  tripId = 'seiland',
+  onRender,
+}: {
+  tripId?: string;
+  onRender?: RenderObserver;
+}) {
+  useRenderObservation(onRender);
   const trip = TRIPS.find((item) => item.id === tripId) ?? TRIPS[0]!;
   const { goBack } = useExampleNavigation();
   const insets = useSafeAreaInsets();

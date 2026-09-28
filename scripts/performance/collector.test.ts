@@ -2,11 +2,20 @@ import assert from 'node:assert/strict';
 import test from 'node:test';
 import { BenchmarkCollector } from '../../examples/react-navigation/src/performance/collector.ts';
 import type { ChoreographyPreparationTrace } from '../../src/types.ts';
+import {
+  SCENARIO_IDS,
+  type PerformanceScenario,
+} from '../../examples/react-navigation/src/performance/scenarios.ts';
 
-function fixture(preparationTracing = false) {
+function fixture(
+  preparationTracing = false,
+  renderCounting = false,
+  scenario: PerformanceScenario = 'gallery'
+) {
   let time = 100;
-  const collector = new BenchmarkCollector('test-1', 'gallery', () => time, {
+  const collector = new BenchmarkCollector('test-1', scenario, () => time, {
     preparationTracing,
+    renderCounting,
   });
   collector.payloadLifecycle(collector.allocatePayloadInstance(), true);
   return {
@@ -81,26 +90,72 @@ function completeRoundTrip(
   assert.equal(collector.probe('list'), true);
 }
 
-test('reports same-clock durations and verifies both destination probes', () => {
-  const { collector, at } = fixture();
+for (const scenario of SCENARIO_IDS)
+  test(`${scenario}: reports same-clock durations and verifies both destination probes`, () => {
+    const { collector, at } = fixture(false, false, scenario);
+    completeRoundTrip(collector, at);
+    const report = collector.report();
+    assert.equal(report.valid, true);
+    assert.deepEqual(report.errors, []);
+    assert.equal(report.scenario, scenario);
+    assert.equal(report.journeys[0].requestToSessionActiveMs, 40);
+    assert.equal(report.journeys[0].sessionActiveToEndMs, 360);
+    assert.equal(report.journeys[0].requestToSessionEndMs, 400);
+    assert.equal(report.journeys[0].probe!.sessionEndToProbeHandlerMs, 150);
+    assert.equal(report.journeys[1].probe!.requestToProbeHandlerMs, 580);
+    assert.ok(
+      report.samples.every((sample) => sample.clock === 'js-performance-now')
+    );
+  });
+
+for (const scenario of SCENARIO_IDS)
+  test(`${scenario}: committed renders distinguish mounts and updates and stop counting at the input probe`, () => {
+    const { collector, at } = fixture(false, true, scenario);
+    collector.renderCommitted('list', 'mount');
+    collector.renderCommitted('hero', 'mount');
+    collector.request('forward');
+    collector.renderCommitted('detail', 'mount');
+    collector.renderCommitted('hero', 'update');
+    collector.renderCommitted('hero', 'update');
+    at(140);
+    collector.sessionActive('f', 'forward', 1);
+    at(200);
+    collector.sessionEnd('f');
+    collector.probe('detail');
+    collector.renderCommitted('hero', 'update');
+    collector.request('backward');
+    collector.renderCommitted('list', 'update');
+    at(240);
+    collector.sessionActive('b', 'backward', 1);
+    at(300);
+    collector.sessionEnd('b');
+    collector.probe('list');
+    const report = collector.report();
+    assert.equal(report.valid, true);
+    assert.deepEqual(report.journeys[0].renderCounts, {
+      list: { mount: 0, update: 0 },
+      detail: { mount: 1, update: 0 },
+      hero: { mount: 0, update: 2 },
+    });
+    assert.equal(report.journeys[1].renderCounts!.list.update, 1);
+    report.journeys[0].renderCounts!.hero.update = 999;
+    assert.equal(collector.report().journeys[0].renderCounts!.hero.update, 2);
+  });
+
+test('missing render instrumentation is unknown, never a fabricated zero', () => {
+  const { collector, at } = fixture(false, true);
   completeRoundTrip(collector, at);
-  const report = collector.report();
-  assert.equal(report.valid, true);
-  assert.deepEqual(report.errors, []);
-  assert.equal(report.journeys[0].requestToSessionActiveMs, 40);
-  assert.equal(report.journeys[0].sessionActiveToEndMs, 360);
-  assert.equal(report.journeys[0].requestToSessionEndMs, 400);
-  assert.equal(report.journeys[0].probe!.sessionEndToProbeHandlerMs, 150);
-  assert.equal(report.journeys[1].probe!.requestToProbeHandlerMs, 580);
-  assert.ok(
-    report.samples.every((sample) => sample.clock === 'js-performance-now')
-  );
+  assert.ok(collector.report().errors.includes('missing-render-observations'));
+  const disabled = fixture();
+  completeRoundTrip(disabled.collector, disabled.at);
+  assert.equal(disabled.collector.report().renderCounting, undefined);
+  assert.equal(disabled.collector.report().journeys[0].renderCounts, undefined);
 });
 
 test('delayed diagnostics attach by session and preserve the original request timing', () => {
   const { collector, at } = fixture(true);
   completeRoundTrip(collector, at);
-  // Degalleryry can happen after a later request; its callback time is not a metric.
+  // Delivery can happen after a later request; its callback time is not a metric.
   collector.preparationTrace(preparationTrace());
   collector.preparationTrace(backTrace());
   const report = collector.report();

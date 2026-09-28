@@ -7,7 +7,14 @@ import React, {
   useRef,
   useState,
 } from 'react';
-import { NativeModules, Pressable, StyleSheet, Text, View } from 'react-native';
+import {
+  Image,
+  NativeModules,
+  Pressable,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { NavigationContainer, useNavigation } from '@react-navigation/native';
 import {
   createNativeStackNavigator,
@@ -17,15 +24,23 @@ import {
   ChoreographyProvider,
   ChoreographyScreen,
   useChoreographyNavigation,
+  useInteractiveTransition,
 } from 'react-native-screen-choreography';
-import {
-  GalleryListScreen,
-  type GalleryObservation,
-} from '../../../shared/gallery/GalleryListScreen';
+import { GalleryListScreen } from '../../../shared/gallery/GalleryListScreen';
 import { GalleryDetailScreen } from '../../../shared/gallery/GalleryDetailScreen';
+import {
+  TripsListScreen,
+  TripsDetailScreen,
+} from '../../../shared/trips/TripsScreens';
+import { TokenListScreen } from '../../../shared/wallet/TokenListScreen';
+import { TokenDetailScreen } from '../../../shared/wallet/TokenDetailScreen';
+import { TOKENS } from '../../../shared/wallet/data';
+import { tokenLogoUri } from '../../../shared/wallet/TokenLogo';
+import type { ExampleObservation } from '../../../shared/ExampleObservation';
+import type { ExampleStackParams } from '../ExampleScreen';
 import { ExampleBindings } from '../../../shared/runtime';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { PHOTOS } from '../../../shared/gallery/data';
+import { SCENARIOS } from './scenarios';
 
 import { theme } from '../../../shared/theme';
 import {
@@ -42,11 +57,7 @@ export interface PerformanceLaunchProps {
   performanceScenario: PerformanceScenario;
 }
 
-type StackParams = {
-  GalleryList: undefined;
-  GalleryDetail: { photoId: string };
-};
-const Stack = createNativeStackNavigator<StackParams>();
+const Stack = createNativeStackNavigator<ExampleStackParams>();
 const REQUEST_TIMEOUT_MS = 10000;
 
 interface BenchmarkNativeModule {
@@ -109,23 +120,29 @@ function Marker({ id }: { id: string }) {
   );
 }
 
-function GalleryBindings({ children }: { children: React.ReactNode }) {
+function BenchmarkBindings({ children }: { children: React.ReactNode }) {
   const fixture = useFixture();
-  const navigation = useNavigation<NativeStackNavigationProp<StackParams>>();
+  const navigation =
+    useNavigation<NativeStackNavigationProp<ExampleStackParams>>();
   const choreography = useChoreographyNavigation(navigation);
+  const interactive = useInteractiveTransition();
   return (
     <ExampleBindings
+      interactive={interactive}
       navigation={{
         open: () => {
-          throw new Error('Only Gallery is available in the benchmark');
+          throw new Error('The benchmark stays inside its selected example');
         },
         navigate: async (destination, options) => {
-          if (destination.screen !== 'GalleryDetail')
+          if (
+            destination.screen !==
+            SCENARIOS[fixture.collector.scenario].detailScreen
+          )
             throw new Error('Unexpected benchmark destination');
           if (!fixture.request('forward')) return;
           try {
             await choreography.navigate(
-              'GalleryDetail',
+              destination.screen,
               destination.params,
               options
             );
@@ -150,38 +167,91 @@ function GalleryBindings({ children }: { children: React.ReactNode }) {
 
 function ListScreen() {
   const fixture = useFixture();
-  const observation = useMemo<GalleryObservation>(() => {
-    let ready = false;
+  const scenario = SCENARIOS[fixture.collector.scenario];
+  const [imageReady, setImageReady] = useState(false);
+  const [assetsReady, setAssetsReady] = useState(
+    fixture.collector.scenario !== 'wallet'
+  );
+  useEffect(() => {
+    if (fixture.collector.scenario !== 'wallet') return;
+    let cancelled = false;
+    // Warm remote logos independently of FlatList's clipped/off-screen rows.
+    Promise.all(
+      TOKENS.map((token) => Image.prefetch(tokenLogoUri(token)))
+    ).then(
+      (loaded) => {
+        if (cancelled) return;
+        if (loaded.every(Boolean)) setAssetsReady(true);
+        else fixture.fail('wallet-logo-prefetch-failed');
+      },
+      () => {
+        if (!cancelled) fixture.fail('wallet-logo-prefetch-failed');
+      }
+    );
+    return () => {
+      cancelled = true;
+    };
+  }, [fixture]);
+  useEffect(() => {
+    if (imageReady && assetsReady) fixture.ready();
+  }, [imageReady, assetsReady, fixture]);
+  const observation = useMemo<ExampleObservation>(() => {
     return {
-      mounted: (photoId) => {
-        if (photoId !== PHOTOS[0]!.id) return () => {};
+      rendered: (component, phase, itemId) => {
+        if (component === 'hero' && itemId !== scenario.itemId) return;
+        fixture.collector.renderCommitted(component, phase);
+      },
+      mounted: (itemId) => {
+        if (itemId !== scenario.itemId) return () => {};
         const id = fixture.collector.allocatePayloadInstance();
         fixture.collector.payloadLifecycle(id, true);
         return () => fixture.collector.payloadLifecycle(id, false);
       },
-      loaded: (photoId) => {
-        if (photoId !== PHOTOS[0]!.id || ready) return;
-        ready = true;
-        fixture.ready();
+      loaded: (itemId) => {
+        if (itemId === scenario.itemId) setImageReady(true);
       },
-      failed: (photoId) => fixture.fail(`gallery-image-load-failed:${photoId}`),
+      failed: (itemId) =>
+        fixture.fail(
+          `${fixture.collector.scenario}-image-load-failed:${itemId}`
+        ),
     };
-  }, [fixture]);
+  }, [fixture, scenario]);
+  const Screen = {
+    gallery: GalleryListScreen,
+    trips: TripsListScreen,
+    wallet: TokenListScreen,
+  }[fixture.collector.scenario];
   return (
-    <ChoreographyScreen screenId="GalleryList">
-      <GalleryBindings>
-        <GalleryListScreen observation={observation} />
-      </GalleryBindings>
+    <ChoreographyScreen screenId={scenario.listScreen}>
+      <BenchmarkBindings>
+        <Screen observation={observation} />
+      </BenchmarkBindings>
     </ChoreographyScreen>
   );
 }
 
-function DetailScreen({ route }: { route: { params: { photoId: string } } }) {
+function DetailScreen({
+  route,
+}: {
+  route: { params: { photoId?: string; tripId?: string; tokenId?: string } };
+}) {
+  const fixture = useFixture();
+  const scenario = SCENARIOS[fixture.collector.scenario];
+  const Screen = {
+    gallery: GalleryDetailScreen,
+    trips: TripsDetailScreen,
+    wallet: TokenDetailScreen,
+  }[fixture.collector.scenario];
   return (
-    <ChoreographyScreen screenId="GalleryDetail">
-      <GalleryBindings>
-        <GalleryDetailScreen photoId={route.params.photoId} />
-      </GalleryBindings>
+    <ChoreographyScreen screenId={scenario.detailScreen}>
+      <BenchmarkBindings>
+        <Screen
+          {...route.params}
+          onRender={(phase) =>
+            fixture.collector.renderCommitted('detail', phase)
+          }
+        />
+      </BenchmarkBindings>
     </ChoreographyScreen>
   );
 }
@@ -202,7 +272,7 @@ function createCollector(props: PerformanceLaunchProps) {
     `${props.performanceScenario}-${launchNonce}-${++runCounter}`,
     props.performanceScenario,
     () => performance.now(),
-    { preparationTracing: true }
+    { preparationTracing: true, renderCounting: true }
   );
 }
 
@@ -224,7 +294,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
       collector,
       ready: () => {
         collector.note('fixture-ready', {
-          meaning: 'selected-gallery-image-loaded',
+          meaning: 'example-assets-loaded',
         });
         // Keep startup tracing open until Android has reported fully drawn.
         // Publishing the marker first can race the native module/UI queues.
@@ -318,6 +388,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
   const navigator = (
     <NavigationContainer>
       <Stack.Navigator
+        initialRouteName={SCENARIOS[props.performanceScenario].listScreen}
         screenOptions={{
           headerShown: false,
           animation: 'none',
@@ -329,6 +400,24 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         <Stack.Screen name="GalleryList" component={ListScreen} />
         <Stack.Screen
           name="GalleryDetail"
+          component={DetailScreen}
+          options={{
+            presentation: 'containedTransparentModal',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
+        <Stack.Screen name="TripsList" component={ListScreen} />
+        <Stack.Screen
+          name="TripsDetail"
+          component={DetailScreen}
+          options={{
+            presentation: 'containedTransparentModal',
+            contentStyle: { backgroundColor: 'transparent' },
+          }}
+        />
+        <Stack.Screen name="TokenList" component={ListScreen} />
+        <Stack.Screen
+          name="TokenDetail"
           component={DetailScreen}
           options={{
             presentation: 'containedTransparentModal',

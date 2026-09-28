@@ -2,6 +2,10 @@ import type { InputRecord, MeasurementDocument } from './types.ts';
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import { distribution, summarize, markdown } from './report.mts';
+import {
+  SCENARIOS,
+  SCENARIO_IDS,
+} from '../../examples/react-navigation/src/performance/scenarios.ts';
 
 function fixture(scenario: string): InputRecord {
   return {
@@ -49,8 +53,12 @@ function fixture(scenario: string): InputRecord {
   };
 }
 
-function documents(): MeasurementDocument[] {
-  return [{ file: 'gallery.json', data: fixture('gallery') }];
+function documents(overrides: InputRecord[] = []): MeasurementDocument[] {
+  return SCENARIO_IDS.map((scenario) => ({
+    file: `${scenario}.json`,
+    data:
+      overrides.find((data) => data.scenario === scenario) ?? fixture(scenario),
+  }));
 }
 
 const options = {
@@ -58,6 +66,37 @@ const options = {
   mode: 'native-release',
   metadata: { timingCycles: 1 },
 };
+
+test('preserves sample readings and self-describing render counts without changing timing units', () => {
+  const data = fixture('gallery');
+  data.renderCounting = { version: 1, observed: ['list', 'detail', 'hero'] };
+  data.journeys.forEach((journey: InputRecord) => {
+    journey.renderCounts = {
+      list: { mount: 0, update: 2 },
+      detail: { mount: 1, update: 3 },
+      hero: { mount: 0, update: 0 },
+    };
+  });
+  const summary = summarize(documents([data]), options);
+  assert.equal(summary.valid, true, summary.errors.join());
+  const key = 'gallery.forward.renders.hero.update';
+  assert.deepEqual(summary.samples[key], [0]);
+  assert.equal(summary.metricDefinitions[key].unit, 'count');
+  assert.equal(
+    summary.metricDefinitions['gallery.forward.requestToSessionActiveMs'].unit,
+    'ms'
+  );
+  assert.match(
+    markdown(summary),
+    /forward · hero · rerenders \| 1 \| — \| 0 \| —/
+  );
+  for (const bad of [undefined, -1, 0.5, NaN]) {
+    data.journeys[0].renderCounts.hero.update = bad;
+    const invalid = summarize(documents([data]), options);
+    assert.equal(invalid.valid, false);
+    assert.equal(invalid.metrics[key], undefined);
+  }
+});
 
 function withPreparationTrace(data: InputRecord) {
   data.preparationTracing = {
@@ -383,10 +422,10 @@ test('requires the requested number of forward and backward timing samples', () 
 
 test('reports 20 round trips with preparation traces in both directions', () => {
   const input = documents();
-  withPreparationTrace(input[0].data);
   for (const { data } of input.filter(
     (document) => document.data.fixtureVersion
   )) {
+    withPreparationTrace(data);
     data.journeys = Array.from({ length: 20 }, () =>
       structuredClone(data.journeys)
     ).flat();
@@ -411,7 +450,7 @@ test('reports 20 round trips with preparation traces in both directions', () => 
   });
   assert.equal(summary.valid, true, summary.errors.join('\n'));
   assert.equal(summary.measurementDefinitionVersion, 4);
-  for (const scenario of ['gallery']) {
+  for (const scenario of SCENARIO_IDS) {
     for (const direction of ['forward', 'backward']) {
       assert.equal(
         summary.metrics[`${scenario}.${direction}.requestToSessionActiveMs`]!
@@ -433,6 +472,66 @@ test('reports 20 round trips with preparation traces in both directions', () => 
   assert.equal(
     Object.keys(summary.metrics).some((key) => key.includes('memory')),
     false
+  );
+});
+
+test('requires every example and never merges their readings or workload definitions', () => {
+  const input = documents();
+  input.forEach(({ data }, index) => {
+    data.journeys.forEach((journey: InputRecord) => {
+      journey.requestToSessionActiveMs = (index + 1) * 10;
+    });
+  });
+  const summary = summarize(input, options);
+  assert.equal(summary.valid, true, summary.errors.join());
+  SCENARIO_IDS.forEach((scenario, index) => {
+    const key = `${scenario}.forward.requestToSessionActiveMs`;
+    assert.equal(summary.metrics[key]!.median, (index + 1) * 10);
+    assert.equal(
+      summary.metricDefinitions[key].workload,
+      SCENARIOS[scenario].workload
+    );
+    const missing = summarize(
+      input.filter(({ data }) => data.scenario !== scenario),
+      options
+    );
+    assert.equal(missing.valid, false);
+    assert.match(
+      missing.errors.join(),
+      new RegExp(`Missing valid ${scenario} fixture run`)
+    );
+  });
+  assert.match(markdown(summary), /Trips · open preparation/);
+  assert.match(markdown(summary), /Wallet · return preparation/);
+});
+
+test("instrumentation changes in one example do not invalidate another example's definitions", () => {
+  const input = documents();
+  const before = summarize(input, options);
+  withPreparationTrace(input[1].data);
+  const after = summarize(input, options);
+  assert.deepEqual(
+    after.metricDefinitions['gallery.forward.requestToSessionActiveMs'],
+    before.metricDefinitions['gallery.forward.requestToSessionActiveMs']
+  );
+  assert.notDeepEqual(
+    after.metricDefinitions['trips.forward.requestToSessionActiveMs'],
+    before.metricDefinitions['trips.forward.requestToSessionActiveMs']
+  );
+});
+
+test('rejects duplicate scenarios even when they have different run IDs', () => {
+  const input = documents();
+  input.push({
+    file: 'another-gallery.json',
+    data: { ...fixture('gallery'), runId: 'gallery-2' },
+  });
+  const summary = summarize(input, options);
+  assert.equal(summary.valid, false);
+  assert.match(summary.errors.join(), /Duplicate scenario/);
+  assert.equal(
+    summary.metrics['gallery.forward.requestToSessionActiveMs']!.count,
+    1
   );
 });
 

@@ -8,6 +8,10 @@ import { TOKENS } from './data';
 import { walletTransition } from './walletTransitions';
 import { useWalletDismiss } from './useWalletDismiss';
 import type { WalletCardActions } from './WalletCard';
+import {
+  useRenderObservation,
+  type RenderObserver,
+} from '../useRenderObservation';
 
 const websites: Record<string, string> = {
   polygon: 'https://polygon.technology',
@@ -20,9 +24,12 @@ const websites: Record<string, string> = {
 
 export function TokenDetailScreen({
   tokenId = 'polygon',
+  onRender,
 }: {
   tokenId?: string;
+  onRender?: RenderObserver;
 }) {
+  useRenderObservation(onRender);
   const token = TOKENS.find((item) => item.id === tokenId) ?? TOKENS[0]!;
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyControls();

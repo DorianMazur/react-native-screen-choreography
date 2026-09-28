@@ -1,4 +1,6 @@
 import { GalleryHero } from './GalleryHero';
+import { useRenderObservation } from '../useRenderObservation';
+import type { ExampleObservation } from '../ExampleObservation';
 import {
   View,
   Text,
@@ -20,17 +22,16 @@ import {
 
 const TILE_GAP = 12;
 
-export interface GalleryObservation {
-  mounted: (photoId: string) => () => void;
-  loaded: (photoId: string) => void;
-  failed: (photoId: string) => void;
-}
-
 export function GalleryListScreen({
   observation,
 }: {
-  observation?: GalleryObservation;
+  observation?: ExampleObservation;
 }) {
+  useRenderObservation(
+    observation?.rendered
+      ? (phase) => observation.rendered?.('list', phase)
+      : undefined
+  );
   const { goBack, navigate } = useExampleNavigation();
   const { width } = useWindowDimensions();
   const tileWidth = (width - 48 - TILE_GAP) / 2;
@@ -90,7 +91,7 @@ function Tile({
   photo: Photo;
   width: number;
   onPress: () => void;
-  observation?: GalleryObservation;
+  observation?: ExampleObservation;
 }) {
   return (
     <Pressable

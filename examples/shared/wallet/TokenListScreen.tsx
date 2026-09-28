@@ -13,6 +13,8 @@ import { TOKENS } from './data';
 import { formatMoney, walletTheme as theme } from './walletTheme';
 import { WalletIconButton } from './WalletIcon';
 import { walletTransition } from './walletTransitions';
+import type { ExampleObservation } from '../ExampleObservation';
+import { useRenderObservation } from '../useRenderObservation';
 
 const portfolioValue = TOKENS.reduce((total, token) => total + token.value, 0);
 const previousValue = TOKENS.reduce(
@@ -22,7 +24,16 @@ const previousValue = TOKENS.reduce(
 const dailyChange = portfolioValue - previousValue;
 const dailyPercent = (dailyChange / previousValue) * 100;
 
-export function TokenListScreen() {
+export function TokenListScreen({
+  observation,
+}: {
+  observation?: ExampleObservation;
+}) {
+  useRenderObservation(
+    observation?.rendered
+      ? (phase) => observation.rendered?.('list', phase)
+      : undefined
+  );
   const { navigate, goBack } = useExampleNavigation();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [filter, setFilter] = useState<'all' | 'gainers'>('all');
@@ -136,6 +147,7 @@ export function TokenListScreen() {
         renderItem={({ item }) => (
           <TokenRow
             token={item}
+            observation={observation}
             onPress={() =>
               navigate(
                 { screen: 'TokenDetail', params: { tokenId: item.id } },

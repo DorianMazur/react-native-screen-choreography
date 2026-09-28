@@ -46,7 +46,7 @@ test('only the current open PR head in this repository can receive a comment', (
   assert.equal(isCurrentPullRequest(pr, run, 'other/repo'), false);
 });
 
-test('comment contains only release headline comparisons, never startup or profiling metrics', () => {
+test('comment omits optional startup timings and profiling durations', () => {
   const body = renderComment(run, { [artifact]: report });
   assert.ok(body.includes(COMMENT_MARKER));
   assert.match(body, /Release: \*\*passed\*\*/);
@@ -61,6 +61,75 @@ test('comment contains only release headline comparisons, never startup or profi
     body.split('\n').filter((line) => /^\| Gallery/.test(line)).length,
     2
   );
+});
+
+test('PR comments include rerenders but only link to temporary current-run artifacts', () => {
+  const measured = structuredClone(report) as InputRecord;
+  measured.metrics['gallery.forward.renders.hero.update'] = {
+    count: 20,
+    median: 2,
+  };
+  const body = renderComment(
+    { ...run, repository: { full_name: 'owner/repo' } },
+    { [artifact]: measured }
+  );
+  assert.match(body, /forward · hero · rerenders \| 20 \| — \| 2 \| —/);
+  assert.match(body, /actions\/runs\/42/);
+  assert.doesNotMatch(body, /Permanent report|performance-history\/runs\/42/);
+});
+
+test('all examples get separate comparison rows even when main only has Gallery', () => {
+  const measured = structuredClone(report) as InputRecord;
+  Object.assign(measured, {
+    fixtureVersion: 5,
+    measurementDefinitionVersion: 4,
+    metadata: {
+      deviceModel: 'pixel',
+      osVersion: '15',
+      apiLevel: 35,
+      emulator: true,
+      abi: 'arm64-v8a',
+      timingCycles: 20,
+      reactNativeVersion: '0.83',
+      reanimatedVersion: '4',
+      nodeVersion: '24',
+    },
+  });
+  const base = structuredClone(measured);
+  for (const scenario of ['trips', 'wallet']) {
+    for (const direction of ['forward', 'backward']) {
+      measured.metrics[`${scenario}.${direction}.requestToSessionActiveMs`] = {
+        count: 20,
+        median: 30,
+      };
+      measured.metrics[`${scenario}.${direction}.renders.hero.update`] = {
+        count: 20,
+        median: 2,
+      };
+    }
+  }
+  const body = renderComment(
+    run,
+    { [artifact]: measured },
+    {
+      run: {
+        ...run,
+        repository: { full_name: 'owner/repo' },
+        head_branch: 'main',
+      },
+      reports: { [artifact]: base },
+    }
+  );
+  assert.match(body, /Gallery · open preparation \(ms\) \| 40 \| 40 \| 0 ms/);
+  for (const label of ['Trips', 'Wallet']) {
+    assert.match(
+      body,
+      new RegExp(`${label} · open preparation \\(ms\\) \\| — \\| 30 \\| —`)
+    );
+    assert.match(body, new RegExp(`${label} · backward · hero · rerenders`));
+  }
+  assert.match(body, /Optional committed-render diagnostics/);
+  assert.match(body, /not a smoothness score or regression threshold/);
 });
 
 test('missing, mismatched and failed collections do not manufacture values', () => {

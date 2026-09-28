@@ -1,5 +1,6 @@
 import { useEffect } from 'react';
-import type { GalleryObservation } from './GalleryListScreen';
+import { useRenderObservation } from '../useRenderObservation';
+import type { ExampleObservation } from '../ExampleObservation';
 import { StyleSheet, Text } from 'react-native';
 import Animated, {
   useAnimatedStyle,
@@ -21,8 +22,13 @@ export function GalleryHero({
   photo: Photo;
   width: number;
   height: number;
-  observation?: GalleryObservation;
+  observation?: ExampleObservation;
 }) {
+  useRenderObservation(
+    observation?.rendered
+      ? (phase) => observation.rendered?.('hero', phase, photo.id)
+      : undefined
+  );
   useEffect(() => observation?.mounted(photo.id), [observation, photo.id]);
   const { presentationProgress, collapsed, expanded } =
     useSharedElementPresentation();

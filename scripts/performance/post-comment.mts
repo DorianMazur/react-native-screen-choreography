@@ -1,4 +1,16 @@
-import { compatible, summaryTable } from './summary-table.mts';
+import {
+  compatible,
+  environmentChanges,
+  summaryTable,
+  renderCountsTable,
+} from './summary-table.mts';
+import {
+  readLatestHistory,
+  newerRun,
+  isMainRun,
+  MAIN_BRANCH,
+  type SavedRun,
+} from './history.mts';
 import type { InputRecord } from './types.ts';
 import { Buffer } from 'node:buffer';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
@@ -83,7 +95,7 @@ function collectionStatus(report: InputRecord | undefined, mode: string) {
 export function renderComment(
   run: InputRecord,
   reports: Record<string, InputRecord>,
-  baseline?: { run: InputRecord; reports: Record<string, InputRecord> }
+  baseline?: SavedRun
 ) {
   const lines = [
     COMMENT_MARKER,
@@ -131,15 +143,25 @@ export function renderComment(
     const base = baseline?.reports[artifactName];
     lines.push(
       compatible(report, base)
-        ? `Base: [${safe(baseline!.run.head_branch)} · ${safe(baseline!.run.head_sha.slice(0, 7))}](https://github.com/${safe(baseline!.run.repository.full_name)}/actions/runs/${baseline!.run.id}).`
-        : 'No compatible baseline available for the PR base commit.',
+        ? baselineNote(baseline!, report)
+        : 'No compatible baseline in the latest successful main report. Current readings remain available; older runs are not substituted.',
       ''
     );
     lines.push(summaryTable(report, base), '');
+    const renders = renderCountsTable(report, base);
+    if (renders)
+      lines.push(
+        '<details><summary>Optional committed-render diagnostics</summary>',
+        '',
+        renders,
+        '',
+        '</details>',
+        ''
+      );
     lines.push('</details>', '');
   }
   lines.push(
-    'Informational emulator results · medians · absolute changes in milliseconds. [Full reports and measurements](' +
+    'Informational emulator results · medians · timing changes in milliseconds, render changes in counts. [Full reports and measurements](' +
       run.html_url +
       ').'
   );
@@ -148,18 +170,15 @@ export function renderComment(
 
 export function selectBaselineRun(
   runs: InputRecord[],
-  pr: InputRecord,
-  repository: string
+  repository: string,
+  excludeRunId?: number
 ) {
   return runs
     .filter(
       (candidate) =>
-        candidate.event === 'push' &&
-        candidate.status === 'completed' &&
+        isMainRun(candidate, repository) &&
         candidate.conclusion === 'success' &&
-        candidate.head_sha === pr.base?.sha &&
-        candidate.head_branch === pr.base?.ref &&
-        candidate.repository?.full_name === repository &&
+        candidate.id !== excludeRunId &&
         Number.isSafeInteger(candidate.id)
     )
     .sort((a, b) => b.id - a.id)[0];
@@ -181,7 +200,10 @@ export function createGitHubApi(repository: string, token: string) {
       },
     });
     if (!response.ok)
-      throw new Error(`GitHub API returned ${response.status} for ${route}`);
+      throw Object.assign(
+        new Error(`GitHub API returned ${response.status} for ${route}`),
+        { status: response.status }
+      );
     return response;
   };
 }
@@ -240,17 +262,21 @@ export async function loadReports(
 
 export async function findBaseline(
   api: ReturnType<typeof createGitHubApi>,
-  pr: InputRecord,
   workflowId: number | string,
-  repository: string
+  repository: string,
+  excludeRunId?: number
 ) {
-  let baseline;
+  let baseline: SavedRun | undefined;
+  try {
+    baseline = await readLatestHistory(api, repository);
+    if (baseline?.run.id === excludeRunId) baseline = undefined;
+  } catch (error) {
+    console.warn(`Performance history unavailable: ${String(error)}`);
+  }
   try {
     const query = new URLSearchParams({
-      event: 'push',
       status: 'success',
-      branch: pr.base.ref,
-      head_sha: pr.base.sha,
+      branch: MAIN_BRANCH,
       per_page: '100',
     });
     const response = await (
@@ -258,17 +284,27 @@ export async function findBaseline(
     ).json();
     const baseRun = selectBaselineRun(
       response.workflow_runs ?? [],
-      pr,
-      repository
+      repository,
+      excludeRunId
     );
-    if (baseRun)
-      baseline = { run: baseRun, reports: await loadReports(api, baseRun.id) };
+    if (baseRun && newerRun(baseRun, baseline?.run)) {
+      baseline = { run: baseRun, reports: {} };
+      baseline.reports = await loadReports(api, baseRun.id);
+    }
   } catch (error) {
     console.warn(
       `Baseline unavailable: ${error instanceof Error ? error.message : String(error)}`
     );
   }
   return baseline;
+}
+
+export function baselineNote(baseline: SavedRun, report: InputRecord) {
+  const { run } = baseline;
+  const url =
+    baseline.reportUrl ??
+    `https://github.com/${safe(run.repository.full_name)}/actions/runs/${run.id}`;
+  return `Latest successful ${safe(run.head_branch)} report: [${safe(run.head_sha.slice(0, 7))}](${url}). ${environmentChanges(report, baseline.reports[ARTIFACTS[0]])}`.trim();
 }
 
 async function main() {
@@ -288,7 +324,8 @@ async function main() {
   if (
     run.name !== 'Performance' ||
     run.event !== 'pull_request' ||
-    run.status !== 'completed'
+    run.status !== 'completed' ||
+    run.run_attempt !== event.workflow_run.run_attempt
   )
     return;
   if (run.repository?.full_name !== repository)
@@ -311,8 +348,14 @@ async function main() {
   if (!current.length) return; // Never overwrite the current head with stale measurements.
 
   const reports = await loadReports(api, run.id);
+  const latestRun = await (await api(`/actions/runs/${run.id}`)).json();
+  if (
+    latestRun.run_attempt !== run.run_attempt ||
+    latestRun.status !== 'completed'
+  )
+    return;
   for (const pr of current) {
-    const baseline = await findBaseline(api, pr, run.workflow_id, repository);
+    const baseline = await findBaseline(api, run.workflow_id, repository);
     const body = renderComment(run, reports, baseline);
     // Both heads must still match after fetching artifacts.
     const latest = await (await api(`/pulls/${pr.number}`)).json();

@@ -115,7 +115,6 @@ export default defineConfig({
         items: [
           { text: 'Example apps', link: '/examples' },
           { text: 'Architecture', link: '/architecture' },
-          { text: 'Performance', link: '/performance' },
         ],
       },
     ],

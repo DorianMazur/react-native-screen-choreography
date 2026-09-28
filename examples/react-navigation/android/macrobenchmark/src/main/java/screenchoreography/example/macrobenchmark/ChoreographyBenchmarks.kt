@@ -1,5 +1,6 @@
 package screenchoreography.example.macrobenchmark
 
+import android.app.KeyguardManager
 import android.content.ComponentName
 import android.content.Intent
 import android.graphics.Rect
@@ -30,6 +31,11 @@ class ChoreographyBenchmarks(private val scenario: String) {
     val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
       require(it in 1..100) { "performanceTimingCycles must be between 1 and 100" }
     }
+    device.wakeUp()
+    device.executeShellCommand("wm dismiss-keyguard")
+    check(!instrumentation.context.getSystemService(KeyguardManager::class.java).isDeviceLocked) {
+      "Unlock the test device before running performance measurements"
+    }
     device.executeShellCommand("am force-stop $APP_ID")
     instrumentation.context.startActivity(launchIntent())
     try {
@@ -44,7 +50,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
       try {
         val hierarchy = ByteArrayOutputStream()
         device.dumpWindowHierarchy(hierarchy)
-        writeArtifact("failure-window.xml", hierarchy.toString("UTF-8"))
+        writeArtifact("$scenario-failure-window.xml", hierarchy.toString("UTF-8"))
         // Export diagnostics through accessibility if the failure is hit
         // testing itself. The measured probes always use real device touches.
         exportRun(diagnostic = true)
@@ -57,11 +63,17 @@ class ChoreographyBenchmarks(private val scenario: String) {
   }
 
   private fun roundTrip() {
-    click("View Aurora")
+    val (open, back) = when (scenario) {
+      "gallery" -> "View Aurora" to "Back to gallery"
+      "trips" -> "Open SEILAND NORWAY trip" to "Back to trips"
+      "wallet" -> "Open Polygon" to "Back to wallet"
+      else -> error("Unknown performance scenario: $scenario")
+    }
+    click(open, leadingQuarter = true)
     await("benchmark-detail-settled")
     click("benchmark-detail-probe")
     await("benchmark-detail-probe-ack")
-    click("Back to gallery")
+    click(back)
     await("benchmark-list-settled")
     click("benchmark-list-probe")
     await("benchmark-list-probe-ack")
@@ -115,7 +127,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
     assertTrue("Missing fixture marker: $label", device.wait(Until.hasObject(By.desc(label)), timeoutMs))
   }
 
-  private fun click(label: String) {
+  private fun click(label: String, leadingQuarter: Boolean = false) {
     val deadline = SystemClock.uptimeMillis() + TIMEOUT_MS
     var bounds: Rect? = null
     while (bounds == null && SystemClock.uptimeMillis() < deadline) {
@@ -132,8 +144,10 @@ class ChoreographyBenchmarks(private val scenario: String) {
       if (bounds == null) SystemClock.sleep(20)
     }
     val targetBounds = checkNotNull(bounds) { "Missing fixture control: $label" }
+    // Wide example cards can extend behind the benchmark toolbar on the right.
+    val x = if (leadingQuarter) targetBounds.left + targetBounds.width() / 4 else targetBounds.centerX()
     // UiAutomator injects an actual device touch; this never invokes JS onPress directly.
-    check(device.click(targetBounds.centerX(), targetBounds.centerY())) { "Touch injection failed: $label" }
+    check(device.click(x, targetBounds.centerY())) { "Touch injection failed: $label" }
   }
 
   private fun writeArtifact(filename: String, contents: String) {
@@ -170,6 +184,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
 
     @JvmStatic
     @Parameterized.Parameters(name = "{0}")
-    fun scenarios(): List<Array<String>> = listOf(arrayOf("gallery"))
+    fun scenarios(): List<Array<String>> = listOf("gallery", "trips", "wallet").map { arrayOf(it) }
   }
 }

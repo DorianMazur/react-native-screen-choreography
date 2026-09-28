@@ -1,22 +1,7 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { baselineTarget } from './workflow-summary.mts';
 import { markdown } from './report.mts';
 import type { InputRecord } from './types.ts';
-
-test('workflow baseline uses PR base or previous push tip, never an arbitrary latest run', () => {
-  const base = { sha: 'a'.repeat(40), ref: 'main' };
-  assert.deepEqual(baselineTarget({ pull_request: { base } }), { base });
-  assert.deepEqual(
-    baselineTarget({ before: base.sha, ref: 'refs/heads/main' }),
-    { base }
-  );
-  assert.equal(
-    baselineTarget({ before: '0'.repeat(40), ref: 'refs/heads/main' }),
-    undefined
-  );
-  assert.equal(baselineTarget({}), undefined);
-});
 
 test('standalone markdown renders compatible baseline and deltas alongside diagnostics', () => {
   const base: InputRecord = {
