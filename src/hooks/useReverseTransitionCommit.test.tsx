@@ -585,21 +585,26 @@ describe('provider reverse commit integration', () => {
     }
   );
 
-  test('source unmount evidence also completes without an extra RN turn', async () => {
+  test('source unmount unlocks input before delayed navigation acknowledgement', async () => {
     const harness = await mountHook();
     const { completion, navigation } = await harness.start();
     await act(async () => {
       harness.finishAnimation();
       flushRN();
       harness.unregister();
-      navigation.resolve({ removed: false, presented: false });
     });
-    await completion;
     expect(harness.interactionOwner.value).toBe('home');
     expect(harness.completeTransition).toHaveBeenCalledWith('reverse');
     expect(harness.releaseLock).toHaveBeenCalledTimes(1);
     expect(harness.cancelTransition).not.toHaveBeenCalled();
     expect(scheduleOnRN).not.toHaveBeenCalled();
+    await completion;
+    await act(async () =>
+      navigation.resolve({ removed: false, presented: false })
+    );
+    expect(harness.releaseLock).toHaveBeenCalledTimes(1);
+    expect(harness.completeTransition).toHaveBeenCalledTimes(1);
+    expect(harness.cancelTransition).not.toHaveBeenCalled();
   });
 
   test('queues input handoff before session cleanup invalidates UI ownership', async () => {

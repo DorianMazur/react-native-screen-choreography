@@ -72,7 +72,15 @@ export class ReverseTransitionController {
 
   noteSourceUnmount(sessionId: string, screenId: string): boolean {
     if (!this.expectsSourceUnmount(sessionId, screenId)) return false;
-    this.operation!.sourceUnmounted = true;
+    const operation = this.operation!;
+    if (!this.isCurrent(operation)) return false;
+    // The caller validated the dispatched source presentation. Its unmount
+    // must not wait for a delayed navigation-state acknowledgement.
+    operation.sourceUnmounted = true;
+    this.acceptNavigationResult(operation, {
+      removed: true,
+      presented: operation.navigationResult?.presented ?? false,
+    });
     return true;
   }
 
@@ -152,25 +160,38 @@ export class ReverseTransitionController {
     debugTrace(
       `[ReverseCommit] removing route session=${operation.config.sessionId}`
     );
+    let result: ReverseNavigationResult;
     try {
-      operation.navigationResult = await operation.config.commitNavigation();
+      result = await operation.config.commitNavigation();
     } catch {
-      operation.navigationResult = {
+      result = {
         removed: operation.sourceUnmounted,
         presented: false,
       };
     }
     if (!this.isCurrent(operation)) return;
     debugTrace(
-      `[ReverseCommit] navigation result session=${operation.config.sessionId} removed=${operation.navigationResult.removed}`
+      `[ReverseCommit] navigation result session=${operation.config.sessionId} removed=${result.removed}`
     );
 
-    if (operation.sourceUnmounted) operation.navigationResult.removed = true;
+    this.acceptNavigationResult(operation, result);
+  }
+
+  private acceptNavigationResult(
+    operation: ReverseOperation,
+    result: ReverseNavigationResult
+  ): void {
+    if (!this.isCurrent(operation)) return;
+    const alreadyRemoved = operation.navigationResult?.removed === true;
+    operation.navigationResult = {
+      ...result,
+      removed: result.removed || operation.sourceUnmounted,
+    };
     if (!operation.navigationResult.removed) {
       this.finish(operation, 'cancel');
       return;
     }
-    operation.config.onNavigationRemoved?.();
+    if (!alreadyRemoved) operation.config.onNavigationRemoved?.();
     this.completeIfReady(operation);
   }
 
