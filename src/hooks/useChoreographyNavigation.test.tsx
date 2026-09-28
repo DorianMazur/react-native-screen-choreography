@@ -114,7 +114,10 @@ test.each([
         });
       });
       expect(dispatchNavigation).toHaveBeenCalledTimes(1);
-      expect(ctx.waitForOverlayReady).toHaveBeenCalledWith('opening');
+      expect(ctx.waitForOverlayReady).toHaveBeenCalledWith(
+        'opening',
+        undefined
+      );
       targetMounted = remainsMounted;
       await act(async () => {
         acknowledgeOverlay(true);

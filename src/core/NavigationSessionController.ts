@@ -34,7 +34,10 @@ interface PrepareForwardTransitionArgs {
     direction: 'forward';
     trace?: PreparationTrace;
   }) => Promise<TransitionSessionData | null>;
-  waitForOverlayReady: (sessionId: string) => Promise<boolean>;
+  waitForOverlayReady: (
+    sessionId: string,
+    onUnavailable?: () => void
+  ) => Promise<boolean>;
   onSessionPrepared?: (session: TransitionSessionData) => void;
   isOverlayPresented?: (sessionId: string) => boolean;
   isPreparationCurrent?: () => boolean;
@@ -206,7 +209,15 @@ export class NavigationSessionController {
       trace?.setSession(session.id, targetInstanceId);
       onSessionPrepared?.(session);
       const endOverlay = trace?.start('overlay-ready');
-      const overlayReady = await waitForOverlayReady(session.id);
+      const overlayReady = await waitForOverlayReady(
+        session.id,
+        trace
+          ? () => {
+              endOverlay?.({ ready: false, acknowledged: false });
+              trace.finish('overlay-timeout');
+            }
+          : undefined
+      );
       const acknowledged = trace
         ? overlayReady && isOverlayPresented(session.id)
         : overlayReady;

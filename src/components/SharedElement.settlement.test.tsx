@@ -16,6 +16,8 @@ import {
 import { runReverseTransition } from '../core/runReverseTransition';
 import { makeTransition } from '../transitions/makeTransition';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import { PreparationTrace } from '../core/preparationTrace';
+import type { ChoreographyPreparationTrace } from '../types';
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -54,6 +56,7 @@ const GROUP = 'rewards';
 const transition = makeTransition({ renderer: () => null });
 
 describe('SharedElement owner settlement when the destination route goes away', () => {
+  const onPreparationTrace = jest.fn<void, [ChoreographyPreparationTrace]>();
   let context!: ChoreographyContextType;
   let actions!: ChoreographyActionsType;
   let presentation!: SharedElementPresentation;
@@ -72,7 +75,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
 
   function App({ detail }: { detail: boolean }) {
     return (
-      <ChoreographyProvider>
+      <ChoreographyProvider onPreparationTrace={onPreparationTrace}>
         <Consumer />
         <ChoreographyScreenBase screenId="list">
           <SharedElement id="medal" groupId={GROUP} transition={transition}>
@@ -193,6 +196,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
 
   beforeEach(async () => {
     jest.useFakeTimers();
+    onPreparationTrace.mockClear();
     // Mocked composite views expose instances instead of host nodes.
     const nodeTags = new WeakMap<object, number>();
     let nextTag = 0;
@@ -250,6 +254,68 @@ describe('SharedElement owner settlement when the destination route goes away', 
     expectCollapsedAtHome();
   });
 
+  test.each(['timeout', 'native', 'cancel'] as const)(
+    'forward preparation records %s before the provider clears its session',
+    async (failure) => {
+      const trace = new PreparationTrace(
+        {
+          groupId: GROUP,
+          sourceScreenId: 'list',
+          targetScreenId: 'detail',
+          direction: 'forward',
+        },
+        onPreparationTrace
+      );
+      let preparing!: ReturnType<
+        typeof context.navigationController.prepareForwardTransition
+      >;
+      await act(async () => {
+        preparing = context.navigationController.prepareForwardTransition({
+          groupId: GROUP,
+          sourceScreenId: 'list',
+          targetScreenId: 'detail',
+          isAndroid: false,
+          trace,
+          captureSourceGroup: context.captureSourceGroup,
+          setPendingTargetScreen: context.setPendingTargetScreen,
+          dispatchNavigation: () => {},
+          waitForScreenReady: context.waitForScreenReady,
+          waitForNextFrame: async () => {},
+          startTransition: context.startTransition,
+          waitForOverlayReady: context.waitForOverlayReady,
+          isSessionCurrent: (id) => context.progressOwnership.isSession(id),
+        });
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      const sessionId = context.activeSession!.id;
+      await act(async () => {
+        if (failure === 'native') {
+          tree!.root
+            .findByType(NativeTransitionHost)
+            .props.onPresentationFailed(sessionId);
+        } else if (failure === 'cancel') {
+          context.cancelTransition(sessionId);
+        }
+        await jest.runAllTimersAsync();
+        expect(await preparing).toBeNull();
+      });
+      expect(context.activeSession).toBeNull();
+      expect(onPreparationTrace).toHaveBeenCalledTimes(1);
+      const report = onPreparationTrace.mock.calls[0]![0];
+      expect(report.outcome).toBe(
+        failure === 'cancel' ? 'cancelled' : 'overlay-timeout'
+      );
+      expect(report.sessionId).toBe(sessionId);
+      expect(report.stages.every((stage) => stage.completed)).toBe(true);
+      expect(report.stages.at(-1)).toMatchObject({
+        name: 'overlay-ready',
+        details: { ready: false, acknowledged: false },
+      });
+      if (failure === 'cancel') expectCollapsedAtHome();
+      else expectExpandedOnDetail();
+    }
+  );
+
   test('a rejected back keeps the owner on the still-mounted destination', async () => {
     await openDetail();
     const sessionId = await startBackSession();
@@ -276,6 +342,15 @@ describe('SharedElement owner settlement when the destination route goes away', 
     async (presentationFailure) => {
       await openDetail();
       await goBack({ rendersActiveSession: true, presentationFailure });
+      expect(onPreparationTrace).toHaveBeenCalledTimes(1);
+      const report = onPreparationTrace.mock.calls[0]![0];
+      expect(report.outcome).toBe('overlay-timeout');
+      expect(report.direction).toBe('backward');
+      expect(report.stages.every((stage) => stage.completed)).toBe(true);
+      expect(report.stages.at(-1)).toMatchObject({
+        name: 'overlay-ready',
+        details: { ready: false, acknowledged: false },
+      });
       // The owner must not re-host into the screen that is being popped.
       expectCollapsedAtHome();
       await removeDetailRoute();

@@ -91,6 +91,7 @@ interface ChoreographyProviderProps {
 interface OverlayWaiter {
   resolve: (ready: boolean) => void;
   timeoutId: ReturnType<typeof setTimeout>;
+  onUnavailable?: () => void;
 }
 
 function resolveDebugConfig(debug: ChoreographyDebugConfig | undefined) {
@@ -538,6 +539,13 @@ export function ChoreographyProvider({
   const handlePresentationFailed = useCallback(
     (sessionId: string) => {
       const session = activeSessionRef.current;
+      // Record unconfirmed presentation before settlement invalidates the
+      // session and resolves its waiters as cancelled.
+      if (session?.id === sessionId) {
+        overlayWaitersRef.current.get(sessionId)?.forEach((waiter) => {
+          waiter.onUnavailable?.();
+        });
+      }
       if (
         session?.id === sessionId &&
         session.direction === 'backward' &&
@@ -555,7 +563,7 @@ export function ChoreographyProvider({
   );
 
   const waitForOverlayReady = useCallback(
-    async (sessionId: string) => {
+    async (sessionId: string, onUnavailable?: () => void) => {
       if (
         hostPresentedSessionIdRef.current === sessionId &&
         overlayContentReadySessionIdRef.current === sessionId
@@ -587,7 +595,7 @@ export function ChoreographyProvider({
           settleOverlayWaiters(sessionId, true);
         }, 150);
 
-        const waiter: OverlayWaiter = { resolve, timeoutId };
+        const waiter: OverlayWaiter = { resolve, timeoutId, onUnavailable };
         waiters.add(waiter);
         resolveOverlayWaitersIfReady(sessionId);
       });
