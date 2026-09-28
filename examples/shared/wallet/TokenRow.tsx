@@ -3,13 +3,16 @@ import { useSafeAreaInsets } from '../runtime';
 import type { Token } from './data';
 import { WalletCard } from './WalletCard';
 import { walletTransition } from './walletTransitions';
+import type { ExampleObservation } from '../ExampleObservation';
 
 export function TokenRow({
   token,
   onPress,
+  observation,
 }: {
   token: Token;
   onPress: () => void;
+  observation?: ExampleObservation;
 }) {
   const dimensions = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -26,6 +29,7 @@ export function TokenRow({
           height={dimensions.height}
           topInset={insets.top}
           bottomInset={insets.bottom}
+          observation={observation}
         />
       </walletTransition.Element>
       <Pressable

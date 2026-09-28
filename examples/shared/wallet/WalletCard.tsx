@@ -1,4 +1,6 @@
-import type { ReactNode } from 'react';
+import { useEffect, type ReactNode } from 'react';
+import type { ExampleObservation } from '../ExampleObservation';
+import { useRenderObservation } from '../useRenderObservation';
 import { ScrollView, StyleSheet, Text, View } from 'react-native';
 import Animated, {
   interpolate,
@@ -32,13 +34,21 @@ export function WalletCard({
   height,
   topInset,
   bottomInset,
+  observation,
 }: {
   token: Token;
   width: number;
   height: number;
   topInset: number;
   bottomInset: number;
+  observation?: ExampleObservation;
 }) {
+  useRenderObservation(
+    observation?.rendered
+      ? (phase) => observation.rendered?.('hero', phase, token.id)
+      : undefined
+  );
+  useEffect(() => observation?.mounted(token.id), [observation, token.id]);
   const {
     presentationProgress: amount,
     transitioning,
@@ -129,7 +139,12 @@ export function WalletCard({
         to={[24, headerTop]}
         scale={48 / 44}
       >
-        <TokenLogo token={token} size={44} />
+        <TokenLogo
+          token={token}
+          size={44}
+          onLoad={observation ? () => observation.loaded(token.id) : undefined}
+          onError={observation ? () => observation.failed(token.id) : undefined}
+        />
       </CardItem>
       <CardItem
         amount={amount}

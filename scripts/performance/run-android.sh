@@ -20,7 +20,7 @@ output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(d
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Running %s forward/back timing and input cycles.\n' "$cycles"
+printf 'Running %s forward/back timing and input cycles per example (Gallery, Trips, Wallet).\n' "$cycles"
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
@@ -52,6 +52,7 @@ arguments=(
 adb shell rm -rf /sdcard/Android/data/screenchoreography.example/files/performance
 adb shell rm -rf /sdcard/Android/data/screenchoreography.example.macrobenchmark/files/performance
 native_outputs=examples/react-navigation/android/macrobenchmark/build/outputs/connected_android_test_additional_output
+native_results=examples/react-navigation/android/macrobenchmark/build/outputs/androidTest-results/connected/benchmark
 rm -rf "$native_outputs"
 status=0
 (cd examples/react-navigation/android && ./gradlew "${arguments[@]}") > >(tee "$output/gradle.log") 2>&1 || status=$?
@@ -60,6 +61,8 @@ status=0
 # cleanup. Collect that single source even on failure; do not double-count it
 # through an additional post-test pull from a surviving app installation.
 if [[ -d "$native_outputs" ]]; then cp -R "$native_outputs" "$output/raw/macrobenchmark"; fi
+# Keep per-test logs and stack traces; the final logcat tail can miss an earlier scenario's crash.
+if [[ -d "$native_results" ]]; then cp -R "$native_results" "$output/test-results"; fi
 adb logcat -d -t 2000 > "$output/logcat.txt" || true
 node --experimental-transform-types scripts/performance/report.mts --platform=android "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || status=1
 printf 'Report: %s/report/summary.md\n' "$output"

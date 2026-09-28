@@ -1,5 +1,9 @@
 import React, { useState } from 'react';
 import {
+  useRenderObservation,
+  type RenderObserver,
+} from '../useRenderObservation';
+import {
   View,
   Text,
   StyleSheet,
@@ -19,9 +23,12 @@ import { galleryTransition } from './galleryTransitions';
 
 export function GalleryDetailScreen({
   photoId = 'aurora',
+  onRender,
 }: {
   photoId?: string;
+  onRender?: RenderObserver;
 }) {
+  useRenderObservation(onRender);
   const photo = PHOTOS.find((item) => item.id === photoId) ?? PHOTOS[0]!;
   const [lightboxVisible, setLightboxVisible] = useState(false);
   const { goBack } = useExampleNavigation();

@@ -29,13 +29,21 @@ export function TripHero({
   height,
   topInset,
   bottomInset,
+  observation,
 }: {
   trip: Trip;
   width: number;
   height: number;
   topInset: number;
   bottomInset: number;
+  observation?: ExampleObservation;
 }) {
+  useRenderObservation(
+    observation?.rendered
+      ? (phase) => observation.rendered?.('hero', phase, trip.id)
+      : undefined
+  );
+  useEffect(() => observation?.mounted(trip.id), [observation, trip.id]);
   const { progress, transitioning, direction, settled, collapsed, expanded } =
     useSharedElementPresentation();
   const backward = transitioning && direction === 'backward';
@@ -124,6 +132,8 @@ export function TripHero({
     >
       <Animated.Image
         source={trip.image}
+        onLoad={observation ? () => observation.loaded(trip.id) : undefined}
+        onError={observation ? () => observation.failed(trip.id) : undefined}
         resizeMode="cover"
         fadeDuration={0}
         style={[
@@ -344,3 +354,6 @@ const styles = StyleSheet.create({
     letterSpacing: 1,
   },
 });
+import { useEffect } from 'react';
+import type { ExampleObservation } from '../ExampleObservation';
+import { useRenderObservation } from '../useRenderObservation';

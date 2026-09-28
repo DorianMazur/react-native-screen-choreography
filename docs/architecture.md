@@ -115,7 +115,8 @@ native-only transforms that bypass its shadow tree; applications must keep endpo
 layout and scroll state stable during the handoff to the overlay.
 
 `onPreparationTrace` exposes source capture, target registration, Fabric preparation,
-and overlay readiness timings. See `docs/performance.md` for benchmark collection.
+and overlay readiness timings. See [troubleshooting](./guide/troubleshooting.md#turn-on-diagnostics)
+for application diagnostics.
 
 ## Overlay and screen visibility
 
@@ -232,8 +233,7 @@ registry. Use preparation traces to distinguish time before animation from
 animation duration. Test rapid interruption, repeated return, layout changes,
 and missing endpoint handling when modifying lifecycle code.
 
-The two example apps share screen implementations and transition recipes. The Android performance workload mounts the actual Gallery screens;
-it does not compare synthetic default/custom rendering modes.
+The two example apps share screen implementations and transition recipes.
 
 ## Declarative composition
 

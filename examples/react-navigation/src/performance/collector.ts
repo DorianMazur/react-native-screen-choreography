@@ -1,8 +1,11 @@
 import type { ChoreographyPreparationTrace } from '../../../../src/types';
 
-export type PerformanceScenario = 'gallery';
+import type { PerformanceScenario } from './scenarios';
+export type { PerformanceScenario } from './scenarios';
 export type JourneyDirection = 'forward' | 'backward';
 export type ProbeScreen = 'detail' | 'list';
+export type RenderComponent = 'list' | 'detail' | 'hero';
+type RenderCounts = Record<RenderComponent, { mount: number; update: number }>;
 
 export interface BenchmarkSample {
   sequence: number;
@@ -33,6 +36,7 @@ export interface JourneyObservation {
     meaning: 'observed-successful-probe-upper-bound-including-test-wait';
   } | null;
   failure: string | null;
+  renderCounts?: RenderCounts;
 }
 
 export interface BenchmarkReport {
@@ -54,6 +58,7 @@ export interface BenchmarkReport {
     directions: ['forward', 'backward'];
   };
   limitations: string[];
+  renderCounting?: { version: 1; observed: RenderComponent[] };
 }
 
 const MAX_SAMPLES = 4096;
@@ -71,12 +76,16 @@ export class BenchmarkCollector {
   private payloadMounts = 0;
   private payloadUnmounts = 0;
   private current: JourneyObservation | null = null;
+  private observedRenderComponents = new Set<RenderComponent>();
 
   constructor(
     readonly runId: string,
     readonly scenario: PerformanceScenario,
     private readonly now: () => number,
-    private readonly options: { preparationTracing?: boolean } = {}
+    private readonly options: {
+      preparationTracing?: boolean;
+      renderCounting?: boolean;
+    } = {}
   ) {}
 
   private timestamp() {
@@ -129,6 +138,15 @@ export class BenchmarkCollector {
       requestToSessionEndMs: null,
       probe: null,
       failure: null,
+      ...(this.options.renderCounting
+        ? {
+            renderCounts: {
+              list: { mount: 0, update: 0 },
+              detail: { mount: 0, update: 0 },
+              hero: { mount: 0, update: 0 },
+            },
+          }
+        : {}),
     };
     this.journeys.push(this.current);
     this.record('navigation-request', at, {
@@ -288,6 +306,15 @@ export class BenchmarkCollector {
     return ++this.instanceCounter;
   }
 
+  renderCommitted(component: RenderComponent, phase: 'mount' | 'update') {
+    if (!this.options.renderCounting) return;
+    this.observedRenderComponents.add(component);
+    const journey = this.current;
+    if (journey?.renderCounts && !journey.probe && !journey.failure) {
+      journey.renderCounts[component][phase]++;
+    }
+  }
+
   hasRequests() {
     return this.journeys.length > 0;
   }
@@ -324,6 +351,8 @@ export class BenchmarkCollector {
     )
       errors.push('missing-preparation-trace');
     if (this.droppedSamples > 0) errors.push('sample-buffer-overflow');
+    if (this.options.renderCounting && this.observedRenderComponents.size !== 3)
+      errors.push('missing-render-observations');
     if (this.payloadMounts !== 1 || this.payloadUnmounts !== 0) {
       errors.push('live-payload-owner-not-retained');
     }
@@ -339,6 +368,15 @@ export class BenchmarkCollector {
       droppedSamples: this.droppedSamples,
       journeys: this.journeys.map((journey) => ({
         ...journey,
+        ...(journey.renderCounts
+          ? {
+              renderCounts: {
+                list: { ...journey.renderCounts.list },
+                detail: { ...journey.renderCounts.detail },
+                hero: { ...journey.renderCounts.hero },
+              },
+            }
+          : {}),
         probe: journey.probe ? { ...journey.probe } : null,
         ...(journey.preparationTrace
           ? {
@@ -354,6 +392,14 @@ export class BenchmarkCollector {
       })),
       payloadMounts: this.payloadMounts,
       payloadUnmounts: this.payloadUnmounts,
+      ...(this.options.renderCounting
+        ? {
+            renderCounting: {
+              version: 1 as const,
+              observed: [...this.observedRenderComponents],
+            },
+          }
+        : {}),
       preparationTracing: {
         version: 2,
         requested: this.options.preparationTracing === true,

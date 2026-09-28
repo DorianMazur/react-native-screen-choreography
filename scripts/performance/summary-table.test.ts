@@ -7,6 +7,7 @@ import {
 } from './summary-table.mts';
 import type { InputRecord } from './types.ts';
 import { selectBaselineRun } from './post-comment.mts';
+import { metricDefinition } from './metric-definitions.mts';
 
 function report() {
   return {
@@ -89,34 +90,85 @@ test('does not display nonnumeric metrics or compare invalid collections', () =>
   assert.equal(compatible(current, { ...report(), valid: false }), false);
 });
 
-test('selects only successful push runs for the exact PR base branch and commit', () => {
-  const pr = { base: { ref: 'master', sha: 'base' } };
+test('selects the latest successful main push or manual run, never a PR or other branch', () => {
   const good = {
     id: 10,
     event: 'push',
     status: 'completed',
     conclusion: 'success',
     head_sha: 'base',
-    head_branch: 'master',
+    head_branch: 'main',
     repository: { full_name: 'owner/repo' },
   };
   for (const changed of [
     { event: 'pull_request' },
-    { head_sha: 'older' },
     { head_branch: 'other' },
     { conclusion: 'failure' },
     { repository: { full_name: 'fork/repo' } },
   ]) {
     assert.equal(
-      selectBaselineRun(
-        [{ ...good, ...changed, id: 20 }, good],
-        pr,
-        'owner/repo'
-      ),
+      selectBaselineRun([{ ...good, ...changed, id: 20 }, good], 'owner/repo'),
       good
     );
   }
-  assert.equal(selectBaselineRun([], pr, 'owner/repo'), undefined);
+  assert.equal(selectBaselineRun([], 'owner/repo'), undefined);
+  const latest = { ...good, head_sha: 'newer', id: 30 };
+  assert.equal(selectBaselineRun([good, latest], 'owner/repo'), latest);
+  assert.equal(selectBaselineRun([good, latest], 'owner/repo', 30), good);
+  const manual = { ...latest, event: 'workflow_dispatch' };
+  assert.equal(selectBaselineRun([good, manual], 'owner/repo'), manual);
+});
+
+test('explicit definitions survive implementation changes and compare each metric independently', () => {
+  const base: InputRecord = report();
+  base.metricDefinitions = Object.fromEntries(
+    Object.keys(base.metrics).map((key) => [
+      key,
+      metricDefinition(key, 'tracing-v2'),
+    ])
+  );
+  const current = structuredClone(base);
+  current.fixtureVersion = 99;
+  current.measurementDefinitionVersion = 100;
+  current.metadata.reactNativeVersion = 'next';
+  current.metadata.nodeVersion = 'next';
+  current.metadata.reanimatedVersion = 'next';
+  assert.equal(compatible(current, base), true);
+  assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
+  current.metricDefinitions['gallery.forward.requestToSessionActiveMs']
+    .version++;
+  assert.match(summaryTable(current, base), /— \| 40 \| —/);
+  assert.match(summaryTable(current, base), /0 \| 0 \| 0 ms/);
+  current.metadata.deviceModel = 'other';
+  assert.equal(compatible(current, base), false);
+});
+
+test('unknown, changed, or missing measurement semantics never get a numeric comparison', () => {
+  const base: InputRecord = report();
+  base.metricDefinitions = Object.fromEntries(
+    Object.keys(base.metrics).map((key) => [
+      key,
+      metricDefinition(key, 'tracing-v2'),
+    ])
+  );
+  for (const field of [
+    'version',
+    'unit',
+    'clock',
+    'start',
+    'end',
+    'workload',
+    'aggregation',
+    'instrumentation',
+  ]) {
+    const current = structuredClone(base);
+    for (const definition of Object.values(
+      current.metricDefinitions
+    ) as InputRecord[])
+      definition[field] = 'changed';
+    assert.equal(compatible(current, base), false, field);
+  }
+  assert.equal(compatible(base, report()), false);
 });
 
 test('does not compare rows collected with different sample counts', () => {
