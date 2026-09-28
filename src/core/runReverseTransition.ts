@@ -1,4 +1,7 @@
-import type { CommitBackNavigation } from './navigationCommit';
+import type {
+  CommitBackNavigation,
+  NavigationCommitResult,
+} from './navigationCommit';
 import type { ChoreographyContextType } from './ChoreographyContext';
 import { PreparationTrace } from './preparationTrace';
 import { setOwnedProgress } from './ProgressOwnership';
@@ -88,11 +91,13 @@ export async function runReverseTransition(
     spring = FAST_SPRING,
   } = args;
   const {
+    progress,
     progressOwnership,
     navigationController,
     captureSourceGroup,
     startTransition,
     cancelTransition,
+    completeTransition,
     waitForOverlayReady,
   } = ctx;
   if (!navigationController.acquireNavigationLock(currentScreenId)) return;
@@ -112,6 +117,7 @@ export async function runReverseTransition(
   const preparationVersion = progressOwnership.version;
   let animationToken: number | null = null;
   let navigationCommitted = false;
+  let navigationResult: Promise<NavigationCommitResult | void> | null = null;
   const commitNavigation = () => {
     if (
       navigationCommitted ||
@@ -123,7 +129,40 @@ export async function runReverseTransition(
       return Promise.resolve({ removed: false, presented: false });
     }
     navigationCommitted = true;
-    return popAction();
+    const result = popAction();
+    navigationResult = Promise.resolve(result);
+    return result;
+  };
+  const commitFallbackNavigation = async () => {
+    try {
+      if (navigationCommitted && !navigationResult)
+        return isRouteRemoved?.() ?? false;
+      const result = await (navigationResult ?? commitNavigation());
+      return result?.removed ?? isRouteRemoved?.() ?? true;
+    } catch {
+      return isRouteRemoved?.() ?? false;
+    }
+  };
+  const endFallbackSession = (sessionId: string, returned: boolean) => {
+    if (
+      animationToken === null
+        ? !progressOwnership.isSession(sessionId)
+        : !progressOwnership.isCurrent(animationToken, sessionId)
+    )
+      return;
+    if (!returned) {
+      cancelTransition(sessionId);
+      return;
+    }
+    if (animationToken !== null)
+      setOwnedProgress(
+        progressOwnership,
+        animationToken,
+        sessionId,
+        progress,
+        0
+      );
+    completeTransition(sessionId);
   };
 
   try {
@@ -172,8 +211,9 @@ export async function runReverseTransition(
     if (!progressOwnership.isCurrent(animationToken, reverseSession.id)) return;
     if (!overlayReady || !canContinue()) {
       // Unready overlay content must not swallow a requested Back action.
-      if (!overlayReady && canContinue()) await commitNavigation();
-      cancelTransition(reverseSession.id);
+      const returned =
+        !overlayReady && canContinue() && (await commitFallbackNavigation());
+      endFallbackSession(reverseSession.id, returned);
       return;
     }
     trace?.finish(acknowledged ? 'overlay-ready' : 'overlay-timeout');
@@ -202,8 +242,7 @@ export async function runReverseTransition(
       (animationToken === null ||
         progressOwnership.isCurrent(animationToken, reverseSessionId))
     ) {
-      commitNavigation();
-      cancelTransition(reverseSessionId);
+      endFallbackSession(reverseSessionId, await commitFallbackNavigation());
       return;
     }
     commitNavigation();

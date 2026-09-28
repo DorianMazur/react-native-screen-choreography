@@ -9,6 +9,7 @@ import {
   useCallback,
   useMemo,
   useContext,
+  useReducer,
   memo,
 } from 'react';
 import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
@@ -182,22 +183,49 @@ function LiveSharedElement(props: SharedElementProps) {
         ) ?? null)
       : null;
 
-  return (
-    <LiveSharedElementContent
-      {...props}
-      screenId={screenId}
-      pair={pair}
-      reducedMotion={pair ? session!.reducedMotion : false}
-      direction={pair ? session!.direction : null}
-      sourceScreenId={pair ? session!.sourceScreenId : null}
-      targetScreenId={pair ? session!.targetScreenId : null}
-      nativePresentation={
-        pair && !session!.reducedMotion ? session!.presentation : undefined
-      }
-      sessionId={pair ? session!.id : null}
-      progress={choreography.progress}
-      getSettledScreenId={actions.getSettledScreenId}
-    />
+  const reducedMotion = pair ? session!.reducedMotion : false;
+  const direction = pair ? session!.direction : null;
+  const sourceScreenId = pair ? session!.sourceScreenId : null;
+  const targetScreenId = pair ? session!.targetScreenId : null;
+  const nativePresentation =
+    pair && !session!.reducedMotion ? session!.presentation : undefined;
+  const sessionId = pair ? session!.id : null;
+  const { progress } = choreography;
+  const { getSettledScreenId, subscribeToScreenRemoval } = actions;
+
+  // Element factories may attach a new ref even when every input is unchanged.
+  // Retain the element too, so unrelated context updates preserve the memo boundary.
+  return useMemo(
+    () => (
+      <LiveSharedElementContent
+        {...props}
+        screenId={screenId}
+        pair={pair}
+        reducedMotion={reducedMotion}
+        direction={direction}
+        sourceScreenId={sourceScreenId}
+        targetScreenId={targetScreenId}
+        nativePresentation={nativePresentation}
+        sessionId={sessionId}
+        progress={progress}
+        getSettledScreenId={getSettledScreenId}
+        subscribeToScreenRemoval={subscribeToScreenRemoval}
+      />
+    ),
+    [
+      props,
+      screenId,
+      pair,
+      reducedMotion,
+      direction,
+      sourceScreenId,
+      targetScreenId,
+      nativePresentation,
+      sessionId,
+      progress,
+      getSettledScreenId,
+      subscribeToScreenRemoval,
+    ]
   );
 }
 
@@ -219,6 +247,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   sessionId,
   progress,
   getSettledScreenId,
+  subscribeToScreenRemoval,
 }: SharedElementProps & {
   screenId: string;
   pair: ElementTransitionPair | null;
@@ -230,7 +259,12 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   sessionId: string | null;
   progress: TransitionSessionData['progress'];
   getSettledScreenId: () => string | null;
+  subscribeToScreenRemoval: (
+    screenId: string,
+    listener: () => void
+  ) => () => void;
 }) {
+  const [, returnHome] = useReducer((version: number) => version + 1, 0);
   const wasParticipatingRef = useRef(false);
   const endpoints = useRef<{
     collapsed: SharedElementEndpoint;
@@ -294,6 +328,18 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     sessionId,
     nativePresentation
   );
+
+  // The destination host unmounts with its screen, returning content to this portal.
+  const settledTargetScreenId = settledTargetScreenIdRef.current;
+  useLayoutEffect(() => {
+    if (!settledTargetScreenId) return;
+    return subscribeToScreenRemoval(settledTargetScreenId, () => {
+      if (settledTargetScreenIdRef.current !== settledTargetScreenId) return;
+      settledTargetScreenIdRef.current = null;
+      returnHome();
+    });
+  }, [settledTargetScreenId, subscribeToScreenRemoval]);
+
   const ownerStyle = useMemo(() => StyleSheet.flatten(style), [style]);
   const initial = useMemo(
     () => ({ metrics: null, metadata, style: ownerStyle ?? undefined }),

@@ -30,7 +30,7 @@ Both example apps use the same shared demo screens and transition implementation
 
 The checked-in example environments are React Native 0.83 and Expo SDK 57. See [installation](./guide/installation) for the package’s declared peer requirements and compatibility considerations.
 
-The homepage preview is a browser illustration of the ownership model. These recordings show the actual React Native library. Neither is a performance benchmark; see [performance measurements](./performance) for the measurement setup and its limits.
+The homepage preview is a browser illustration of the ownership model. These recordings show the actual React Native library.
 
 Photography comes from the existing example assets. [Sources and license](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/assets/photos/README.md).
 

@@ -212,6 +212,9 @@ export function ChoreographyProvider({
   const screenReadinessRef = useRef(new ScreenReadinessRegistry());
   const screenNamesRef = useRef(new Map<string, string>());
   const nativeScreenRefs = useRef(new Map<string, NodeHandleRef>());
+  // Unlike presentation refs, membership survives presentation re-registration.
+  const mountedScreensRef = useRef(new Set<string>());
+  const screenRemovalListenersRef = useRef(new Map<string, Set<() => void>>());
 
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
@@ -375,8 +378,36 @@ export function ChoreographyProvider({
         () =>
           `[Provider] Screen unregistered screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)}`
       );
+      mountedScreensRef.current.delete(screenId);
+      const removalListeners = screenRemovalListenersRef.current.get(screenId);
+      if (removalListeners) {
+        screenRemovalListenersRef.current.delete(screenId);
+        [...removalListeners].forEach((listener) => listener());
+      }
     },
     [navigationController, progressOwnership]
+  );
+
+  const subscribeToScreenRemoval = useCallback(
+    (screenId: string, listener: () => void) => {
+      if (!mountedScreensRef.current.has(screenId)) {
+        listener();
+        return () => {};
+      }
+      const listeners = screenRemovalListenersRef.current;
+      let screenListeners = listeners.get(screenId);
+      if (!screenListeners) {
+        screenListeners = new Set();
+        listeners.set(screenId, screenListeners);
+      }
+      screenListeners.add(listener);
+      return () => {
+        const current = listeners.get(screenId);
+        current?.delete(listener);
+        if (current?.size === 0) listeners.delete(screenId);
+      };
+    },
+    []
   );
 
   const resolveScreenId = useCallback(
@@ -415,10 +446,12 @@ export function ChoreographyProvider({
     };
   }, []);
 
-  const getSettledScreenId = useCallback(
-    () => coordinatorRef.current?.getSettledScreenId() ?? null,
-    []
-  );
+  const getSettledScreenId = useCallback(() => {
+    const settledScreenId = coordinatorRef.current?.getSettledScreenId();
+    return settledScreenId && mountedScreensRef.current.has(settledScreenId)
+      ? settledScreenId
+      : null;
+  }, []);
 
   const setNavigationLineage = useCallback(
     (lineage: ChoreographyNavigationLineage) => {
@@ -502,6 +535,25 @@ export function ChoreographyProvider({
     []
   );
 
+  const handlePresentationFailed = useCallback(
+    (sessionId: string) => {
+      const session = activeSessionRef.current;
+      if (
+        session?.id === sessionId &&
+        session.direction === 'backward' &&
+        overlayWaitersRef.current.has(sessionId)
+      ) {
+        // The waiting Back/gesture controller owns fallback navigation and
+        // settlement. Revoke late attachment without canceling that ownership.
+        if (session.presentation) session.presentation.valid.value = false;
+      } else {
+        coordinatorRef.current!.failPresentation(sessionId);
+      }
+      settleOverlayWaiters(sessionId, false);
+    },
+    [settleOverlayWaiters]
+  );
+
   const waitForOverlayReady = useCallback(
     async (sessionId: string) => {
       if (
@@ -519,25 +571,20 @@ export function ChoreographyProvider({
         }
 
         const timeoutId = setTimeout(() => {
-          waiters!.delete(waiter);
-          if (waiters!.size === 0) {
-            overlayWaitersRef.current.delete(sessionId);
-          }
           const session = activeSessionRef.current;
           if (session?.id !== sessionId) {
-            resolve(false);
+            settleOverlayWaiters(sessionId, false);
             return;
           }
           if (
             overlayContentReadySessionIdRef.current !== sessionId ||
             session.presentation?.phase.value !== 2
           ) {
-            coordinatorRef.current!.failPresentation(sessionId);
-            resolve(false);
+            handlePresentationFailed(sessionId);
             return;
           }
           syncHiddenElements();
-          resolve(true);
+          settleOverlayWaiters(sessionId, true);
         }, 150);
 
         const waiter: OverlayWaiter = { resolve, timeoutId };
@@ -545,7 +592,12 @@ export function ChoreographyProvider({
         resolveOverlayWaitersIfReady(sessionId);
       });
     },
-    [resolveOverlayWaitersIfReady, syncHiddenElements]
+    [
+      handlePresentationFailed,
+      resolveOverlayWaitersIfReady,
+      settleOverlayWaiters,
+      syncHiddenElements,
+    ]
   );
 
   const completeTransition = useCallback((sessionId?: string) => {
@@ -592,6 +644,7 @@ export function ChoreographyProvider({
   >(
     (screenId, ref, animationLifetime) => {
       nativeScreenRefs.current.set(screenId, ref);
+      mountedScreensRef.current.add(screenId);
       const release = registerReverseScreenPresentation(
         screenId,
         ref,
@@ -649,14 +702,6 @@ export function ChoreographyProvider({
     [resolveOverlayWaitersIfReady]
   );
 
-  const handlePresentationFailed = useCallback(
-    (sessionId: string) => {
-      coordinatorRef.current!.failPresentation(sessionId);
-      settleOverlayWaiters(sessionId, false);
-    },
-    [settleOverlayWaiters]
-  );
-
   const settleTransition = useCallback(
     (screenId: string) => {
       const session = activeSessionRef.current;
@@ -708,6 +753,7 @@ export function ChoreographyProvider({
       unregisterScreen,
       acquireScreenBlocker,
       getSettledScreenId,
+      subscribeToScreenRemoval,
       waitForScreenReady,
       registerScreenPresentation,
     }),
@@ -719,6 +765,7 @@ export function ChoreographyProvider({
       unregisterScreen,
       acquireScreenBlocker,
       getSettledScreenId,
+      subscribeToScreenRemoval,
       waitForScreenReady,
       registerScreenPresentation,
     ]

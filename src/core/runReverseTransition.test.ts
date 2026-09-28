@@ -387,25 +387,36 @@ describe('runReverseTransition ownership', () => {
     expect(ctx.cancelTransition).not.toHaveBeenCalled();
   });
 
-  test('falls back to one pop and cancels its session when provider setup fails', async () => {
-    const popAction = jest.fn();
-    const ctx = createContext({
-      commitReverseTransition: jest.fn(async () => {
-        throw new Error('provider setup failed');
-      }),
-    });
+  test.each([
+    [true, 'completes'],
+    [false, 'cancels'],
+  ] as const)(
+    'falls back to one pop when provider setup fails (route removed=%s) and %s its session',
+    async (removed, _outcome) => {
+      const popAction = jest.fn();
+      const ctx = createContext({
+        commitReverseTransition: jest.fn(async () => {
+          throw new Error('provider setup failed');
+        }),
+      });
 
-    await runReverseTransition({
-      ctx,
-      groupId: 'group',
-      sourceScreenId: 'list',
-      currentScreenId: 'detail',
-      popAction,
-    });
+      await runReverseTransition({
+        ctx,
+        groupId: 'group',
+        sourceScreenId: 'list',
+        currentScreenId: 'detail',
+        popAction,
+        isRouteRemoved: () => removed,
+      });
 
-    expect(popAction).toHaveBeenCalledTimes(1);
-    expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
-  });
+      expect(popAction).toHaveBeenCalledTimes(1);
+      const [ended, untouched] = removed
+        ? [ctx.completeTransition, ctx.cancelTransition]
+        : [ctx.cancelTransition, ctx.completeTransition];
+      expect(ended).toHaveBeenCalledWith('reverse-session');
+      expect(untouched).not.toHaveBeenCalled();
+    }
+  );
 
   test('does not retry a navigation commit that throws', async () => {
     const popAction = jest.fn(() => {
@@ -444,7 +455,132 @@ test('unready overlay falls back to one plain Back action without animating a bl
   });
   expect(popAction).toHaveBeenCalledTimes(1);
   expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+  // The route is gone, so the session settles on the screen it returned to.
+  expect(ctx.progress.value).toBe(0);
+  expect(ctx.completeTransition).toHaveBeenCalledWith('reverse-session');
+  expect(ctx.cancelTransition).not.toHaveBeenCalled();
+});
+
+test('unready overlay cancels its session when the fallback Back is rejected', async () => {
+  const ctx = createContext({
+    waitForOverlayReady: jest.fn(async () => false),
+  });
+  const popAction = jest.fn(async () => ({ removed: false, presented: false }));
+  await runReverseTransition({
+    ctx,
+    groupId: 'group',
+    sourceScreenId: 'list',
+    currentScreenId: 'detail',
+    popAction,
+  });
+  expect(popAction).toHaveBeenCalledTimes(1);
   expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
+  expect(ctx.completeTransition).not.toHaveBeenCalled();
+});
+
+describe('fallback Back settlement ownership', () => {
+  test.each([
+    ['same session', true],
+    ['same session', false],
+    ['replacement session', true],
+    ['replacement session', false],
+  ] as const)(
+    'ignores a delayed removal result after a new owner takes over the %s (removed=%s)',
+    async (replacement, removed) => {
+      const ctx = createContext({
+        waitForOverlayReady: jest.fn(async () => false),
+      });
+      let resolvePop!: (result: {
+        removed: boolean;
+        presented: boolean;
+      }) => void;
+      const popAction = jest.fn(
+        () =>
+          new Promise<{ removed: boolean; presented: boolean }>((resolve) => {
+            resolvePop = resolve;
+          })
+      );
+      const back = runReverseTransition({
+        ctx,
+        groupId: 'group',
+        sourceScreenId: 'list',
+        currentScreenId: 'detail',
+        popAction,
+      });
+      await Promise.resolve();
+      await Promise.resolve();
+      await Promise.resolve();
+      expect(popAction).toHaveBeenCalledTimes(1);
+      const sessionId =
+        replacement === 'same session' ? 'reverse-session' : 'new-session';
+      ctx.progressOwnership.setSession(sessionId);
+      const token = ctx.progressOwnership.claim(sessionId)!;
+      ctx.progress.value = 0.6;
+      resolvePop({ removed, presented: false });
+      await back;
+      expect(ctx.completeTransition).not.toHaveBeenCalled();
+      expect(ctx.cancelTransition).not.toHaveBeenCalled();
+      expect(ctx.progress.value).toBe(0.6);
+      expect(ctx.progressOwnership.isCurrent(token, sessionId)).toBe(true);
+    }
+  );
+
+  test.each(['throw', 'reject'] as const)(
+    'cancels and releases ownership when provider setup fails and fallback navigation fails with %s',
+    async (failure) => {
+      const ctx = createContext({
+        commitReverseTransition: jest.fn(async () => {
+          throw new Error('provider setup failed');
+        }),
+      });
+      jest.mocked(ctx.cancelTransition).mockImplementation(() => {
+        ctx.progressOwnership.setSession(null);
+      });
+      const popAction = jest.fn(() => {
+        if (failure === 'throw') throw new Error('dispatch failed');
+        return Promise.reject(new Error('dispatch rejected'));
+      });
+      await expect(
+        runReverseTransition({
+          ctx,
+          groupId: 'group',
+          sourceScreenId: 'list',
+          currentScreenId: 'detail',
+          popAction,
+        })
+      ).resolves.toBeUndefined();
+      expect(popAction).toHaveBeenCalledTimes(1);
+      expect(ctx.cancelTransition).toHaveBeenCalledWith('reverse-session');
+      expect(ctx.completeTransition).not.toHaveBeenCalled();
+      expect(ctx.navigationController.acquireNavigationLock('next')).toBe(true);
+    }
+  );
+
+  test.each([true, false])(
+    'uses the confirmed removal result if the provider throws after navigation (removed=%s)',
+    async (removed) => {
+      const ctx = createContext({
+        commitReverseTransition: jest.fn(async (request) => {
+          await request.navigateBack();
+          throw new Error('provider completion failed');
+        }),
+      });
+      const popAction = jest.fn(async () => ({ removed, presented: false }));
+      await runReverseTransition({
+        ctx,
+        groupId: 'group',
+        sourceScreenId: 'list',
+        currentScreenId: 'detail',
+        popAction,
+      });
+      expect(popAction).toHaveBeenCalledTimes(1);
+      const [ended, untouched] = removed
+        ? [ctx.completeTransition, ctx.cancelTransition]
+        : [ctx.cancelTransition, ctx.completeTransition];
+      expect(ended).toHaveBeenCalledWith('reverse-session');
+      expect(untouched).not.toHaveBeenCalled();
+    }
+  );
 });
 
 describe('reverse preparation diagnostics', () => {

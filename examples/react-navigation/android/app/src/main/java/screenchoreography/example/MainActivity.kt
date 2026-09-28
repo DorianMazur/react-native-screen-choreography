@@ -3,6 +3,7 @@ package screenchoreography.example
 import android.os.Bundle
 import android.view.MotionEvent
 import android.view.ViewTreeObserver
+import android.view.WindowManager
 import com.facebook.react.ReactActivity
 import com.facebook.react.ReactActivityDelegate
 import com.facebook.react.defaults.DefaultNewArchitectureEntryPoint.fabricEnabled
@@ -48,6 +49,9 @@ class MainActivity : ReactActivity() {
   override fun onCreate(savedInstanceState: Bundle?) {
     if (BuildConfig.PERFORMANCE_BENCHMARK) BenchmarkRecorder.reset()
     super.onCreate(savedInstanceState)
+    if (BuildConfig.PERFORMANCE_BENCHMARK) {
+      window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
+    }
   }
 
   override fun dispatchTouchEvent(event: MotionEvent): Boolean {
@@ -72,7 +76,7 @@ class MainActivity : ReactActivity() {
         override fun getLaunchOptions(): Bundle? {
           if (!BuildConfig.PERFORMANCE_BENCHMARK) return null
           val scenario = intent.getStringExtra("performanceScenario")
-          if (scenario != "gallery") return null
+          if (scenario !in listOf("gallery", "trips", "wallet")) return null
           return Bundle().apply {
             putString("performanceScenario", scenario)
           }

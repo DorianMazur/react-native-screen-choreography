@@ -1,4 +1,4 @@
-import { useLayoutEffect, useRef } from 'react';
+import { useEffect, useLayoutEffect, useRef } from 'react';
 import {
   Image,
   ScrollView,
@@ -19,6 +19,8 @@ import { theme } from '../theme';
 import { AppIcon } from '../AppChrome';
 import type { Trip } from './data';
 import type { TripPickupMetadata } from './tripPickup';
+import type { ExampleObservation } from '../ExampleObservation';
+import { useRenderObservation } from '../useRenderObservation';
 import {
   tripHorizontalProgress,
   tripActivityProgress,
@@ -37,13 +39,21 @@ export function TripHero({
   height,
   topInset,
   bottomInset,
+  observation,
 }: {
   trip: Trip;
   width: number;
   height: number;
   topInset: number;
   bottomInset: number;
+  observation?: ExampleObservation;
 }) {
+  useRenderObservation(
+    observation?.rendered
+      ? (phase) => observation.rendered?.('hero', phase, trip.id)
+      : undefined
+  );
+  useEffect(() => observation?.mounted(trip.id), [observation, trip.id]);
   const {
     presentationProgress,
     transitioning,
@@ -143,6 +153,8 @@ export function TripHero({
     >
       <Animated.Image
         source={trip.image}
+        onLoad={observation ? () => observation.loaded(trip.id) : undefined}
+        onError={observation ? () => observation.failed(trip.id) : undefined}
         resizeMode="cover"
         fadeDuration={0}
         style={[
