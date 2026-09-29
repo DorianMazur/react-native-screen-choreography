@@ -9,7 +9,7 @@ Screen Choreography includes native code. Install the dependencies, configure wo
 
 ## Compatibility
 
-These are the package's declared peer ranges, not a guarantee that every combination works together. Choose React Native, Reanimated, Worklets, and Screens versions that also support each other.
+These are the package's declared peer ranges, not a guarantee that every combination works together. Choose React Native, Reanimated, and Worklets versions that also support each other.
 
 | Dependency                             | Declared requirement                     |
 | -------------------------------------- | ---------------------------------------- |
@@ -17,7 +17,6 @@ These are the package's declared peer ranges, not a guarantee that every combina
 | React                                  | `>= 18`                                  |
 | Reanimated                             | `>= 4`                                   |
 | React Native Worklets                  | `>= 0.8`                                 |
-| React Native Screens                   | `>= 4`                                   |
 | React Native Teleport                  | `>= 1.2.2`                               |
 | React Navigation native + native stack | `>= 6`, when using that integration      |
 | Expo Router                            | `>= 56.1.1`, when using that integration |
@@ -34,6 +33,8 @@ npm install react-native-reanimated react-native-worklets react-native-teleport
 npm install @react-navigation/native @react-navigation/native-stack
 npm install react-native-screens react-native-safe-area-context
 ```
+
+`react-native-screens` and `react-native-safe-area-context` are dependencies of the navigation setup. Screen Choreography's core does not depend on `react-native-screens`.
 
 Add the Worklets Babel plugin **last** in your existing plugins list:
 
