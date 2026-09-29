@@ -71,8 +71,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 @implementation ScreenChoreographyView {
   ScreenChoreographyWindowContainer *_windowContainer;
   __weak UIWindow *_lastWindow;
-  UIView *_hostView;
-  UIView *_dismissalFrame;
   RCTSurfaceTouchHandler *_foregroundTouchHandler;
   BOOL _foreground;
   BOOL _active;
@@ -103,13 +101,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 
     _windowContainer = [[ScreenChoreographyWindowContainer alloc] initWithFrame:CGRectZero];
     _windowContainer.anchor = self;
-    _hostView = [[UIView alloc] initWithFrame:CGRectZero];
-    _hostView.autoresizingMask = UIViewAutoresizingFlexibleWidth | UIViewAutoresizingFlexibleHeight;
-    _hostView.backgroundColor = UIColor.clearColor;
-    _hostView.userInteractionEnabled = NO;
-    _hostView.clipsToBounds = NO;
-    _hostView.hidden = YES;
-    [_windowContainer addSubview:_hostView];
 
     self.backgroundColor = UIColor.clearColor;
     self.opaque = NO;
@@ -164,7 +155,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   UIWindow *window = _windowContainer.window;
   if (window != nil) {
     _windowContainer.frame = window.bounds;
-    _hostView.frame = _windowContainer.bounds;
   }
   if (_active) {
     [self presentWindowContainer];
@@ -194,7 +184,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   if (self.window != nil) {
     _lastWindow = self.window;
   }
-  _hostView.hidden = NO;
   if (_windowContainer.superview != window) {
     [_windowContainer removeFromSuperview];
     _windowContainer.frame = window.bounds;
@@ -205,7 +194,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
     [_foregroundTouchHandler attachToView:_windowContainer];
   }
   _windowContainer.frame = window.bounds;
-  _hostView.frame = _windowContainer.bounds;
   [self acknowledgeAttachmentIfReady];
   [self schedulePresentationReady];
 }
@@ -248,9 +236,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   [_presentationDisplayLink invalidate];
   _presentationDisplayLink = nil;
   _dismissalRequestId += 1;
-  [_dismissalFrame removeFromSuperview];
-  _dismissalFrame = nil;
-  _hostView.hidden = YES;
   [_foregroundTouchHandler detachFromView:_windowContainer];
   _foregroundTouchHandler = nil;
   [_windowContainer removeFromSuperview];
@@ -352,9 +337,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 
     if (_active) {
       _dismissalRequestId += 1;
-      [_dismissalFrame removeFromSuperview];
-      _dismissalFrame = nil;
-      _hostView.hidden = NO;
       [self presentWindowContainer];
     } else {
       if (_foreground) {
@@ -365,39 +347,25 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
       _presentationCheckPending = NO;
       [_presentationDisplayLink invalidate];
       _presentationDisplayLink = nil;
-      UIView *snapshot = nil;
-      if (_hostView.window != nil && !CGRectIsEmpty(_hostView.bounds)) {
-        snapshot = [_hostView snapshotViewAfterScreenUpdates:NO];
-      }
-
-      [_dismissalFrame removeFromSuperview];
-      _dismissalFrame = nil;
-      _hostView.hidden = YES;
-
-      if (snapshot != nil) {
-        snapshot.frame = _hostView.frame;
-        snapshot.userInteractionEnabled = NO;
-        snapshot.isAccessibilityElement = NO;
-        snapshot.accessibilityElementsHidden = YES;
-        [_windowContainer addSubview:snapshot];
-        _dismissalFrame = snapshot;
-
-        NSUInteger dismissalId = ++_dismissalRequestId;
-        __weak __typeof(self) weakSelf = self;
-        // Allow pending UI commits to settle; queue hops do not guarantee display frames.
-        dispatch_async(dispatch_get_main_queue(), ^{
-          dispatch_async(dispatch_get_main_queue(), ^{
-            __strong __typeof(weakSelf) strongSelf = weakSelf;
-            if (strongSelf == nil || strongSelf->_active ||
-                dismissalId != strongSelf->_dismissalRequestId) {
-              return;
-            }
-            [strongSelf detachWindowContainer];
-          });
-        });
-      } else {
+      if (_windowContainer.window == nil || CGRectIsEmpty(_windowContainer.bounds)) {
         [self detachWindowContainer];
+        return;
       }
+
+      NSUInteger dismissalId = ++_dismissalRequestId;
+      __weak __typeof(self) weakSelf = self;
+      // Keep the live container attached while pending portal commits settle.
+      // Preserve the existing queue delay; it does not guarantee display frames.
+      dispatch_async(dispatch_get_main_queue(), ^{
+        dispatch_async(dispatch_get_main_queue(), ^{
+          __strong __typeof(weakSelf) strongSelf = weakSelf;
+          if (strongSelf == nil || strongSelf->_active ||
+              dismissalId != strongSelf->_dismissalRequestId) {
+            return;
+          }
+          [strongSelf detachWindowContainer];
+        });
+      });
     }
   }
 }

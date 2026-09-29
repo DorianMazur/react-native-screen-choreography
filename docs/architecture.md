@@ -153,8 +153,8 @@ The native overlay presents above native-stack containers. Overlay content
 reports readiness in a layout effect; the native host acknowledges presentation.
 Animation waits for those readiness signals, with a bounded safety path. Do not
 start hiding or moving content based only on an eager session-activation callback.
-The native host's dismissal protection is separate from the removed outgoing
-screen capture implementation.
+The iOS host defers window detachment while pending portal commits settle.
+Android retains its host-only teardown frame, separate from shared content.
 Both transition hosts exclude themselves and their children from touch hit testing.
 On Android this is enforced in `ScreenChoreographyView`, since its custom
 `ViewGroupManager` does not apply the JSX `pointerEvents` prop. This lets the
@@ -166,7 +166,11 @@ destination accept input while the overlay finishes its remaining motion.
 lifetime. Its native window container is attached only while presenting a
 transition or finishing the native dismissal handoff. Live React children mount
 into that container; the anchor itself never moves out of its React parent.
-The host-only dismissal snapshot remains separate from those live children.
+Dismissal keeps the live container attached across two main-queue callbacks
+before detaching it. This delay is not a display-frame guarantee. Reactivation,
+removal, or recycling invalidates pending dismissal callbacks; detached or
+zero-sized containers and foreground overlays detach immediately. No iOS
+dismissal snapshot is captured.
 
 The container uses the anchor's actual `UIWindow`. If a native full-screen modal
 temporarily detaches an ancestor, it can keep using that anchor's last known
