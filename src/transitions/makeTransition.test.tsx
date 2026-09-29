@@ -6,9 +6,10 @@ import type {
   SharedElementTransitionSide,
 } from '../types';
 import { makeTransition } from './makeTransition';
-import { TransitionPortalHost as PortalHost } from '../native/TransitionPortalHost';
+import { PortalHost } from 'react-native-teleport';
+import { View } from 'react-native';
 
-jest.mock('react-native-teleport', () => ({}));
+jest.mock('react-native-teleport', () => ({ PortalHost: 'PortalHost' }));
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -105,6 +106,11 @@ describe('makeTransition', () => {
       expect(host.props.name).toBe(
         'screen-choreography:live:overlay:["feed:one","detail:two","media","player"]'
       );
+      const marker = host.findByType(View);
+      expect(marker.props.nativeID).toBe(host.props.name);
+      expect(marker.props.testID).toBeUndefined();
+      expect(marker.props.collapsable).toBe(false);
+      expect(marker.props.children).toBeUndefined();
     } finally {
       await act(async () => tree?.unmount());
     }

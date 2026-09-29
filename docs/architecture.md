@@ -119,6 +119,8 @@ transfer prevents Teleport from falling back to a hidden owner during Back.
 Attachment stays latched for the session despite React prop updates. Native
 acknowledges presentation only when every expected host is attached, has nonzero
 bounds, and contains its live child.
+An empty marker with a `nativeID` inside the public `PortalHost` identifies its native parent;
+the marker itself never counts as live content.
 
 Forward motion starts on the UI thread after both the matching presentation
 acknowledgment and animation configuration arrive, in either order. A final native

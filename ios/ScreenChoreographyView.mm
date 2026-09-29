@@ -396,14 +396,16 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
                remaining:(NSMutableSet<NSString *> *)remaining
 {
   const BOOL isVisible = visible && !view.hidden && view.alpha > 0 && view.layer.opacity > 0;
-  NSString *name = view.accessibilityIdentifier;
+  NSString *name = [view isKindOfClass:RCTViewComponentView.class] ? ((RCTViewComponentView *)view).nativeId : nil;
+  UIView *host = view.superview;
+  // The marker is a child of the public PortalHost, never transferred content.
   if (name != nil && [remaining containsObject:name] && (!requireLiveChildren || isVisible) &&
-      view.window == _windowContainer.window && !CGRectIsEmpty(view.bounds)) {
+      host.window == _windowContainer.window && !CGRectIsEmpty(host.bounds)) {
     if (!requireLiveChildren) {
       [remaining removeObject:name];
     } else {
-      for (UIView *child in view.subviews) {
-        if (child.window == _windowContainer.window && !CGRectIsEmpty(child.bounds)) {
+      for (UIView *child in host.subviews) {
+        if (child != view && child.window == _windowContainer.window && !CGRectIsEmpty(child.bounds)) {
           [remaining removeObject:name];
           break;
         }

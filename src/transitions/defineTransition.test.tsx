@@ -1,4 +1,4 @@
-import { TransitionPortalHost } from '../native/TransitionPortalHost';
+import { PortalHost } from 'react-native-teleport';
 import { StyleSheet } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -157,11 +157,11 @@ test.each(['bounds', 'surface'] as const)(
       return <Renderer {...props} />;
     };
     const tree = await mount(render('forward'));
-    const host = tree.root.findByType(TransitionPortalHost);
+    const host = tree.root.findByType(PortalHost);
     for (const direction of ['forward', 'backward'] as const) {
       await act(async () => tree.update(withProviders(render(direction))));
-      expect(tree.root.findAllByType(TransitionPortalHost)).toHaveLength(1);
-      expect(tree.root.findByType(TransitionPortalHost)).toBe(host);
+      expect(tree.root.findAllByType(PortalHost)).toHaveLength(1);
+      expect(tree.root.findByType(PortalHost)).toBe(host);
       const primitive = tree.root.findByType(
         kind === 'bounds' ? TransitionFrame : TransitionSurface
       );

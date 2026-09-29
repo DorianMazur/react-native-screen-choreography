@@ -300,15 +300,17 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     val remaining = expectedHostNames.toMutableSet()
     fun visit(view: View, visible: Boolean) {
       val isVisible = visible && view.visibility == View.VISIBLE && view.alpha > 0f
-      val name = view.getTag(R.id.react_test_id) as? String
-      if (name != null && remaining.contains(name) && (!requireLiveChildren || isVisible) && view is ViewGroup &&
-        view.isAttachedToWindow && view.windowToken == windowToken && view.width > 0 && view.height > 0) {
+      val name = view.getTag(R.id.view_tag_native_id) as? String
+      val host = view.parent as? ViewGroup
+      // The marker is a child of the public PortalHost, never transferred content.
+      if (name != null && remaining.contains(name) && (!requireLiveChildren || isVisible) && host != null &&
+        host.isAttachedToWindow && host.windowToken == windowToken && host.width > 0 && host.height > 0) {
         if (!requireLiveChildren) {
           remaining.remove(name)
         } else {
-          for (index in 0 until view.childCount) {
-            val child = view.getChildAt(index)
-            if (child.isAttachedToWindow && child.windowToken == windowToken && child.width > 0 && child.height > 0) {
+          for (index in 0 until host.childCount) {
+            val child = host.getChildAt(index)
+            if (child !== view && child.isAttachedToWindow && child.windowToken == windowToken && child.width > 0 && child.height > 0) {
               remaining.remove(name)
               break
             }
