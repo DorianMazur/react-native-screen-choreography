@@ -3,7 +3,6 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
-import { FullWindowOverlay } from 'react-native-screens';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
@@ -25,12 +24,6 @@ jest.mock('react-native-reanimated', () => {
     cancelAnimation: jest.fn(),
   };
 });
-
-jest.mock('react-native-screens', () => ({
-  FullWindowOverlay: jest.fn(
-    ({ children }: { children: React.ReactNode }) => children
-  ),
-}));
 
 jest.mock('react-native-teleport', () => ({
   PortalProvider: ({ children }: { children: React.ReactNode }) => children,
@@ -87,7 +80,6 @@ describe('ChoreographyProvider lifecycle', () => {
                 tags
               )
     );
-    jest.mocked(FullWindowOverlay).mockClear();
   });
 
   afterEach(() => {
@@ -579,7 +571,6 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(
           tree!.root.findByType('ScreenChoreographyView' as React.ElementType)
         ).toBe(persistentNativeView);
-        expect(FullWindowOverlay).not.toHaveBeenCalled();
         expect(context.progressOwnership.hasSession).toBe(false);
         expect(onTransitionEnd).toHaveBeenCalledTimes(1);
         expect(onTransitionEnd).toHaveBeenCalledWith(session);

@@ -24,9 +24,6 @@ jest.mock('react-native-reanimated', () => ({
   __esModule: true,
   cancelAnimation: jest.fn(),
 }));
-jest.mock('react-native-screens', () => ({
-  FullWindowOverlay: ({ children }: { children: React.ReactNode }) => children,
-}));
 jest.mock('react-native-teleport', () => ({
   Portal: 'Portal',
   PortalHost: 'PortalHost',

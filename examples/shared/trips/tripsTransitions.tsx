@@ -34,23 +34,16 @@ function TripExpansion({
     };
     const point = pickupMetadata?.pickup.value;
     const landing = pickupMetadata?.landing.value ?? 1;
-    const position = point?.active
-      ? tripPickupPosition(frame, point, landing)
-      : frame;
+    if (!point?.active) return frame;
     return {
-      width: frame.width,
-      height: frame.height,
-      borderRadius: frame.borderRadius,
-      transformOrigin: point?.active
-        ? [point.anchorX * frame.width, point.anchorY * frame.height, 0]
-        : [frame.width / 2, frame.height / 2, 0],
-      transform: [
-        { translateX: position.left },
-        { translateY: position.top },
-        {
-          rotate: `${point?.active ? point.tilt * (1 - t) * (1 - landing) : 0}deg`,
-        },
+      ...frame,
+      ...tripPickupPosition(frame, point, landing),
+      transformOrigin: [
+        point.anchorX * frame.width,
+        point.anchorY * frame.height,
+        0,
       ],
+      transform: [{ rotate: `${point.tilt * (1 - t) * (1 - landing)}deg` }],
     };
   });
   const shadowStyle = useAnimatedStyle(() => ({
@@ -86,7 +79,7 @@ export const tripsTransition = defineTransition({
 });
 
 const styles = StyleSheet.create({
-  position: { position: 'absolute', left: 0, top: 0 },
+  position: { position: 'absolute' },
   frame: { overflow: 'hidden', borderRadius: theme.radius.lg },
   shadow: {
     borderRadius: theme.radius.lg,

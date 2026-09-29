@@ -22,9 +22,6 @@ jest.mock('react-native-reanimated', () => {
     cancelAnimation: jest.fn(),
   };
 });
-jest.mock('react-native-screens', () => ({
-  FullWindowOverlay: ({ children }: { children: React.ReactNode }) => children,
-}));
 jest.mock('react-native-teleport', () => ({
   PortalProvider: ({ children }: { children: React.ReactNode }) => children,
   Portal: 'Portal',
