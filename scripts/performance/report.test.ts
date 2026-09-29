@@ -248,14 +248,18 @@ test('invalid or missing requested startup diagnostics fail atomically', () => {
   }
 });
 
-test('overlay timeouts are counted separately and excluded from acknowledged timing distributions', () => {
+test('overlay timeouts fail validation while preserving diagnostic samples', () => {
   const input = documents();
   withPreparationTrace(input[0].data);
   const journey = input[0].data.journeys[0];
   journey.preparationTrace.outcome = 'overlay-timeout';
   delete journey.requestToOverlayReadyMs;
   const summary = summarize(input, options);
-  assert.equal(summary.valid, true, summary.errors.join());
+  assert.equal(summary.valid, false);
+  assert.match(
+    summary.errors.join(),
+    /gallery.forward: 1\/1 transitions did not confirm overlay presentation/
+  );
   assert.deepEqual(summary.preparationDiagnostics['gallery.forward'], {
     tracedJourneys: 1,
     overlayAcknowledgedJourneys: 0,

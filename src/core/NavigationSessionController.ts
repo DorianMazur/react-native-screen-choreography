@@ -3,6 +3,7 @@ import type {
   TransitionSessionData,
 } from '../types';
 import type { PreparationTrace } from './preparationTrace';
+import type { PresentationFailureDetails } from './nativePresentation';
 
 export interface PendingNavigationRequest {
   targetScreenId: string;
@@ -36,7 +37,7 @@ interface PrepareForwardTransitionArgs {
   }) => Promise<TransitionSessionData | null>;
   waitForOverlayReady: (
     sessionId: string,
-    onUnavailable?: () => void
+    onUnavailable?: (details: PresentationFailureDetails) => void
   ) => Promise<boolean>;
   onSessionPrepared?: (session: TransitionSessionData) => void;
   isOverlayPresented?: (sessionId: string) => boolean;
@@ -212,8 +213,8 @@ export class NavigationSessionController {
       const overlayReady = await waitForOverlayReady(
         session.id,
         trace
-          ? () => {
-              endOverlay?.({ ready: false, acknowledged: false });
+          ? (details) => {
+              endOverlay?.({ ...details, ready: false, acknowledged: false });
               trace.finish('overlay-timeout');
             }
           : undefined

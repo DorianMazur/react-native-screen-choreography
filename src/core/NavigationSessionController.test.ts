@@ -16,6 +16,63 @@ function createSession(id: string): TransitionSessionData {
 }
 
 describe('NavigationSessionController', () => {
+  test('preserves the failed presentation phase before session settlement', async () => {
+    jest.useFakeTimers();
+    try {
+      const observer = jest.fn();
+      const controller = new NavigationSessionController();
+      const session = createSession('failed-presentation');
+      const details = {
+        reason: 'timeout',
+        phase: 'attaching',
+        contentReady: true,
+        hostAcknowledged: false,
+      } as const;
+      let current = true;
+      const result = await controller.prepareForwardTransition({
+        groupId: 'group',
+        sourceScreenId: 'source',
+        targetScreenId: 'target',
+        isAndroid: false,
+        trace: new PreparationTrace(
+          {
+            groupId: 'group',
+            sourceScreenId: 'source',
+            targetScreenId: 'target',
+            direction: 'forward',
+          },
+          observer
+        ),
+        captureSourceGroup: async () => {},
+        setPendingTargetScreen: () => {},
+        dispatchNavigation: () => {},
+        waitForScreenReady: async () => true,
+        waitForNextFrame: async () => {},
+        startTransition: async () => session,
+        waitForOverlayReady: async (_id, onUnavailable) => {
+          onUnavailable?.(details);
+          current = false;
+          return false;
+        },
+        isSessionCurrent: () => current,
+      });
+      expect(result).toBeNull();
+      jest.runOnlyPendingTimers();
+      expect(observer).toHaveBeenCalledTimes(1);
+      expect(observer.mock.calls[0]![0]).toMatchObject({
+        outcome: 'overlay-timeout',
+        stages: expect.arrayContaining([
+          expect.objectContaining({
+            name: 'overlay-ready',
+            details: { ...details, ready: false, acknowledged: false },
+          }),
+        ]),
+      });
+    } finally {
+      jest.useRealTimers();
+    }
+  });
+
   test('buffers forward stage durations through overlay readiness without changing order', async () => {
     jest.useFakeTimers();
     try {

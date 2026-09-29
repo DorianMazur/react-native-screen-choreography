@@ -207,8 +207,8 @@ export async function runReverseTransition(
     const overlayReady = await waitForOverlayReady(
       reverseSession.id,
       trace
-        ? () => {
-            endOverlay?.({ ready: false, acknowledged: false });
+        ? (details) => {
+            endOverlay?.({ ...details, ready: false, acknowledged: false });
             trace.finish('overlay-timeout');
           }
         : undefined

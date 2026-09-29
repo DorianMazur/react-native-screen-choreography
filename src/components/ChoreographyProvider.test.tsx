@@ -5,6 +5,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import { PRESENTATION_TIMEOUT_MS } from '../core/nativePresentation';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyControls } from '../hooks/useChoreographyProgress';
 import { ScreenIdContext } from '../core/screenIdContext';
@@ -347,6 +348,110 @@ describe('ChoreographyProvider lifecycle', () => {
     }
   );
 
+  test.each([
+    'late-native',
+    'ui-ready',
+    'timeout',
+    'invalidated',
+    'cancel',
+    'unmount',
+  ] as const)(
+    'bounds delayed presentation without losing readiness: %s',
+    async (outcome) => {
+      jest.useFakeTimers();
+      let context!: ChoreographyContextType;
+      let tree!: ReactTestRenderer;
+      function Consumer() {
+        context = useContext(ChoreographyContext)!;
+        return null;
+      }
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider>
+              <FabricScreens />
+              <Consumer />
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        await act(async () => {
+          const preparing = context.startTransition({
+            groupId: 'group',
+            sourceScreenId: 'list',
+            targetScreenId: 'detail',
+            direction: 'forward',
+          });
+          await jest.runAllTimersAsync();
+          await preparing;
+        });
+        const session = context.activeSession!;
+        const presentation = session.presentation!;
+        const host = tree.root.findByType(NativeTransitionHost).props;
+        const ready = jest.fn();
+        const unavailable = jest.fn();
+        const waiting = context
+          .waitForOverlayReady(session.id, unavailable)
+          .then(ready);
+        presentation.phase.value = 1;
+        await act(async () => jest.advanceTimersByTimeAsync(500));
+        expect(ready).not.toHaveBeenCalled();
+        expect(context.activeSession?.id).toBe(session.id);
+        expect(context.isElementHidden('card', 'list', 'group').value).toBe(0);
+        if (outcome === 'unmount') await act(async () => tree.unmount());
+        await act(async () => {
+          if (outcome === 'late-native' || outcome === 'ui-ready') {
+            presentation.phase.value = 2;
+            if (outcome === 'late-native') host.onPresentationReady(session.id);
+          }
+          if (outcome === 'invalidated') {
+            presentation.valid.value = false;
+            host.onPresentationFailed(session.id, 'invalidated');
+          }
+          if (outcome === 'cancel') context.cancelTransition(session.id);
+          // Explicit failure/cancellation settles immediately, without the deadline.
+          if (outcome !== 'ui-ready' && outcome !== 'timeout') await waiting;
+          await jest.advanceTimersByTimeAsync(PRESENTATION_TIMEOUT_MS - 500);
+          await waiting;
+        });
+        const success = outcome === 'late-native' || outcome === 'ui-ready';
+        expect(ready).toHaveBeenCalledTimes(1);
+        expect(ready).toHaveBeenCalledWith(success);
+        if (success) {
+          expect(context.isOverlayPresented!(session.id)).toBe(true);
+          expect(context.activeSession?.id).toBe(session.id);
+        }
+        if (outcome === 'timeout' || outcome === 'invalidated') {
+          expect(unavailable).toHaveBeenCalledTimes(1);
+          expect(unavailable).toHaveBeenCalledWith({
+            reason: outcome === 'timeout' ? 'timeout' : 'invalidated',
+            phase: 'transferring',
+            contentReady: true,
+            hostAcknowledged: false,
+          });
+          expect(context.activeSession).toBeNull();
+          await act(async () => host.onPresentationReady(session.id));
+          expect(context.activeSession).toBeNull();
+          expect(context.isOverlayPresented!(session.id)).toBe(false);
+        } else {
+          expect(unavailable).not.toHaveBeenCalled();
+        }
+      } finally {
+        await act(async () => tree?.unmount());
+        jest.useRealTimers();
+      }
+    }
+  );
+
   test('unregistering the preparation source invalidates its dispatch and queue', async () => {
     let context!: ChoreographyContextType;
     let navigation!: ReturnType<typeof useChoreographyNavigator>;
@@ -535,7 +640,9 @@ describe('ChoreographyProvider lifecycle', () => {
             await waiting;
           });
         } else {
-          await act(async () => jest.advanceTimersByTimeAsync(149));
+          await act(async () =>
+            jest.advanceTimersByTimeAsync(PRESENTATION_TIMEOUT_MS - 1)
+          );
           expect(hidden.value).toBe(0);
           expect(ready).not.toHaveBeenCalled();
           await act(async () => {

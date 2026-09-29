@@ -163,7 +163,8 @@ test.each(['cancel', 'replace', 'identity'] as const)(
       (r.presentation.validate as jest.Mock).mockReturnValue(false);
     await r.ack();
     expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
-    if (reason === 'identity') expect(r.failed).toHaveBeenCalledWith('A');
+    if (reason === 'identity')
+      expect(r.failed).toHaveBeenCalledWith('A', 'invalidated');
   }
 );
 test.each([-1, 1])(
@@ -178,6 +179,7 @@ test.each([-1, 1])(
     await r.tick(2000);
     expect(r.presentation.valid.value).toBe(false);
     expect(r.failed).toHaveBeenCalledTimes(1);
+    expect(r.failed).toHaveBeenCalledWith('A', 'timeout');
     expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
   }
 );

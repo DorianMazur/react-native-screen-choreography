@@ -49,6 +49,11 @@ import { NavigationSessionController } from '../core/NavigationSessionController
 import { useReverseTransitionCommit } from '../hooks/useReverseTransitionCommit';
 import { scheduleOnUI } from 'react-native-worklets';
 import { TRANSITION_LAYER_Z_INDEX } from '../core/layers';
+import {
+  PRESENTATION_TIMEOUT_MS,
+  type PresentationFailureDetails,
+  type PresentationFailureReason,
+} from '../core/nativePresentation';
 
 function TransitionHostPortal({
   active,
@@ -91,7 +96,7 @@ interface ChoreographyProviderProps {
 interface OverlayWaiter {
   resolve: (ready: boolean) => void;
   timeoutId: ReturnType<typeof setTimeout>;
-  onUnavailable?: () => void;
+  onUnavailable?: (details: PresentationFailureDetails) => void;
 }
 
 function resolveDebugConfig(debug: ChoreographyDebugConfig | undefined) {
@@ -537,13 +542,26 @@ export function ChoreographyProvider({
   );
 
   const handlePresentationFailed = useCallback(
-    (sessionId: string) => {
+    (sessionId: string, reason: PresentationFailureReason) => {
       const session = activeSessionRef.current;
       // Record unconfirmed presentation before settlement invalidates the
       // session and resolves its waiters as cancelled.
       if (session?.id === sessionId) {
         overlayWaitersRef.current.get(sessionId)?.forEach((waiter) => {
-          waiter.onUnavailable?.();
+          const phase = session.presentation?.phase.value;
+          waiter.onUnavailable?.({
+            reason,
+            phase:
+              phase === 2
+                ? 'presented'
+                : phase === 1
+                  ? 'transferring'
+                  : phase === -1
+                    ? 'attaching'
+                    : 'mounting',
+            contentReady: overlayContentReadySessionIdRef.current === sessionId,
+            hostAcknowledged: hostPresentedSessionIdRef.current === sessionId,
+          });
         });
       }
       if (
@@ -563,7 +581,10 @@ export function ChoreographyProvider({
   );
 
   const waitForOverlayReady = useCallback(
-    async (sessionId: string, onUnavailable?: () => void) => {
+    async (
+      sessionId: string,
+      onUnavailable?: (details: PresentationFailureDetails) => void
+    ) => {
       if (
         hostPresentedSessionIdRef.current === sessionId &&
         overlayContentReadySessionIdRef.current === sessionId
@@ -586,14 +607,17 @@ export function ChoreographyProvider({
           }
           if (
             overlayContentReadySessionIdRef.current !== sessionId ||
+            !session.presentation?.valid.value ||
             session.presentation?.phase.value !== 2
           ) {
-            handlePresentationFailed(sessionId);
+            handlePresentationFailed(sessionId, 'timeout');
             return;
           }
-          syncHiddenElements();
-          settleOverlayWaiters(sessionId, true);
-        }, 150);
+          // The UI thread already accepted native presentation; only its RN
+          // callback was delayed. Preserve that proof in the readiness trace.
+          hostPresentedSessionIdRef.current = sessionId;
+          resolveOverlayWaitersIfReady(sessionId);
+        }, PRESENTATION_TIMEOUT_MS);
 
         const waiter: OverlayWaiter = { resolve, timeoutId, onUnavailable };
         waiters.add(waiter);
@@ -604,7 +628,6 @@ export function ChoreographyProvider({
       handlePresentationFailed,
       resolveOverlayWaitersIfReady,
       settleOverlayWaiters,
-      syncHiddenElements,
     ]
   );
 

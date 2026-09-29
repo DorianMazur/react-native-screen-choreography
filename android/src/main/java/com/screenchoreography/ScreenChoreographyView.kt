@@ -49,7 +49,6 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     pointerEvents = PointerEvents.NONE
     alpha = 0f
     visibility = View.INVISIBLE
-    // dispatchDraw needs to run even when the view group has no background.
     setWillNotDraw(false)
   }
 
@@ -293,8 +292,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     pendingPresentationAck = true
     invalidate()
 
-    // If drawing is delayed, the provider's 150ms timeout is the safety net.
-    // A fixed 32ms timer cannot prove that any native frame was presented.
+    // If drawing is delayed, the provider's one-second timeout is the safety net.
   }
 
   private fun transitionHostsAreReady(requireLiveChildren: Boolean): Boolean {

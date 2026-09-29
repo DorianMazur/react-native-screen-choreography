@@ -1,4 +1,5 @@
 import type { PreparationTrace } from './preparationTrace';
+import type { PresentationFailureDetails } from './nativePresentation';
 import { createContext } from 'react';
 import type { ProgressOwnership } from './ProgressOwnership';
 import type { NavigationSessionController } from './NavigationSessionController';
@@ -108,7 +109,7 @@ export interface ChoreographyContextType {
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (
     sessionId: string,
-    onUnavailable?: () => void
+    onUnavailable?: (details: PresentationFailureDetails) => void
   ) => Promise<boolean>;
   isOverlayPresented?: (sessionId: string) => boolean;
   startTransition: (config: {

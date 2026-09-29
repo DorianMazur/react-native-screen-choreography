@@ -14,7 +14,11 @@ import { scheduleOnRN } from 'react-native-worklets';
 import NativeScreenChoreographyView, {
   type PresentationReadyEvent,
 } from './ScreenChoreographyViewNativeComponent';
-import type { NativePresentation } from '../core/nativePresentation';
+import {
+  PRESENTATION_TIMEOUT_MS,
+  type NativePresentation,
+  type PresentationFailureReason,
+} from '../core/nativePresentation';
 import {
   startOwnedProgressOnUI,
   type ProgressOwnership,
@@ -32,7 +36,10 @@ interface NativeTransitionHostProps {
   presentation?: NativePresentation;
   children?: React.ReactNode;
   onPresentationReady?: (sessionId: string) => void;
-  onPresentationFailed: (sessionId: string) => void;
+  onPresentationFailed: (
+    sessionId: string,
+    reason: PresentationFailureReason
+  ) => void;
 }
 
 export function NativeTransitionHost({
@@ -59,10 +66,13 @@ export function NativeTransitionHost({
     )
       return;
     if (deadline.value?.id !== sessionId)
-      deadline.value = { id: sessionId, at: timestamp + 1000 };
+      deadline.value = {
+        id: sessionId,
+        at: timestamp + PRESENTATION_TIMEOUT_MS,
+      };
     if (timestamp >= deadline.value!.at) {
       presentation.valid.value = false;
-      scheduleOnRN(onPresentationFailed, sessionId);
+      scheduleOnRN(onPresentationFailed, sessionId, 'timeout');
       return;
     }
     if (presentation.phase.value === 0) {
@@ -91,7 +101,7 @@ export function NativeTransitionHost({
       if (event.stage !== 'presented' || presentation.phase.value !== 1) return;
       if (!presentation.validate()) {
         presentation.valid.value = false;
-        scheduleOnRN(onPresentationFailed, sessionId);
+        scheduleOnRN(onPresentationFailed, sessionId, 'invalidated');
         return;
       }
       presentation.phase.value = 2;

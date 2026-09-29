@@ -127,7 +127,13 @@ Session IDs and ownership tokens reject stale transfers and animation starts.
 Reverse and interactive navigation share this preparation and presentation protocol
 with their existing progress/commit controllers.
 
-A one-second UI deadline and the 150ms RN overlay-readiness deadline bound the wait.
+A one-second RN overlay-readiness deadline bounds the complete mount, attachment,
+content transfer, and presentation handshake. The UI driver and native retries
+also use one-second limits. Successful acknowledgments resolve immediately;
+these deadlines add no delay to a ready transition. If native presentation is
+already confirmed on the UI thread but its RN callback is delayed, the RN safety
+check preserves that confirmation. Failure traces include the last presentation
+phase, content readiness, and whether the failure was a timeout or invalidation.
 Unconfirmed presentation after a forward push settles content onto the destination
 without animation; a removed destination cancels toward the source. Registration
 or readiness changes revoke pending presentation, release navigation, and invalidate
