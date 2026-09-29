@@ -75,21 +75,3 @@ Transition recipes live alongside their screens in [the shared source](../shared
 The definitions coordinate endpoints and local section reveals. Internal layout and visual changes stay inside retained
 components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
 ordinary screen content, not to content hosted on another route.
-
-## Test animations under JS load
-
-In a development build, tap **JS stress** at the bottom right of any demo.
-The menu uses [`ChoreographyOverlay`](../../docs/api/components.md#choreographyoverlay)
-to stay above transitions.
-
-- **Heavy load · 30 s** repeats 80 ms of busy work with at least 20 ms free.
-- **Super heavy load · 30 s** repeats 500 ms of busy work with at least 20 ms free.
-- **Stop JS load** cancels after the current busy interval finishes.
-
-The badge shows the active mode. Load stops after 30 seconds, on backgrounding,
-or when the menu unmounts. The menu and load are disabled in release builds.
-
-Compare the same round trip with and without load, watching for flashes, frozen
-motion, late handoffs, or missing content. Delayed JS tap handlers are expected.
-This stresses JavaScript, not the GPU or native UI thread; use release profiling
-on a physical device to measure performance.
