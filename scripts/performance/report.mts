@@ -168,7 +168,7 @@ function readFixture(
   const directions = new Set<string>();
   if (
     (report.fixtureVersion === 6 || report.motionTracing !== undefined) &&
-    (report.motionTracing?.version !== 1 ||
+    (![1, 2].includes(report.motionTracing?.version) ||
       report.motionTracing.clock !== 'rn-worklets-steady-clock-ms')
   )
     throw new Error('Missing or unknown motion tracing definition');
@@ -419,7 +419,9 @@ export function summarize(
             ? 'preparation-tracing-v2-both-directions'
             : 'preparation-tracing-disabled') +
             (data.renderCounting ? '+committed-render-counts-v1' : '') +
-            (data.motionTracing ? '+ui-motion-v1' : '')
+            (data.motionTracing
+              ? `+ui-motion-v${data.motionTracing.version}`
+              : '')
         );
         fixtures.add(data.scenario);
         sources.push(file);
@@ -585,7 +587,11 @@ async function main() {
     JSON.stringify(summary, null, 2) + '\n'
   );
   await writeFile(path.join(args.output, 'summary.md'), markdown(summary));
-  if (!summary.valid) process.exitCode = 1;
+  if (!summary.valid) {
+    console.error('Performance collection failed:');
+    for (const error of summary.errors) console.error(`- ${error}`);
+    process.exitCode = 1;
+  }
 }
 
 if (

@@ -61,7 +61,7 @@ export interface BenchmarkReport {
   };
   limitations: string[];
   renderCounting?: { version: 1; observed: RenderComponent[] };
-  motionTracing?: { version: 1; clock: 'rn-worklets-steady-clock-ms' };
+  motionTracing?: { version: 2; clock: 'rn-worklets-steady-clock-ms' };
 }
 
 const MAX_SAMPLES = 4096;
@@ -441,7 +441,7 @@ export class BenchmarkCollector {
       ...(this.options.motionTracing
         ? {
             motionTracing: {
-              version: 1 as const,
+              version: 2 as const,
               clock: 'rn-worklets-steady-clock-ms' as const,
             },
           }
