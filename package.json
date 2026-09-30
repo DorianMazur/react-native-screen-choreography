@@ -1,6 +1,6 @@
 {
   "name": "react-native-screen-choreography",
-  "version": "0.6.6",
+  "version": "0.6.7-alpha.0",
   "description": "Choreographed shared element transitions for React Native — fluid, multi-element, native-feeling screen transitions",
   "main": "./lib/module/entries/index.js",
   "types": "./lib/typescript/src/entries/index.d.ts",
@@ -86,7 +86,7 @@
   "homepage": "https://screen-choreography.dev",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
-    "tag": "latest"
+    "tag": "alpha"
   },
   "devDependencies": {
     "@eslint/compat": "^2.0.3",
