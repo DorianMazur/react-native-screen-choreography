@@ -1,0 +1,17 @@
+{
+  "run": {
+    "id": 36702551759,
+    "run_attempt": 1,
+    "event": "push",
+    "status": "completed",
+    "conclusion": "cancelled",
+    "head_sha": "3e54f17f34b7c1132af7f459adac9ee9a6ece36e",
+    "head_branch": "main",
+    "created_at": "2026-09-30T10:27:37Z",
+    "html_url": "https://github.com/DorianMazur/react-native-screen-choreography/actions/runs/36702551759",
+    "repository": {
+      "full_name": "DorianMazur/react-native-screen-choreography"
+    }
+  },
+  "reports": {}
+}
