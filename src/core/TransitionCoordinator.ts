@@ -49,12 +49,17 @@ export class TransitionCoordinator {
   private releaseMountSubscription: (() => void) | undefined;
   private sourceCaptureGeneration = 0;
   private sourceCaptures = new Map<string, SourceCapture>();
+  private pendingAttachment:
+    | { sessionId: string; resolve: (attached: boolean) => void }
+    | undefined;
   constructor(
     registry: ElementRegistry,
     progress: SharedValue<number>,
     private readonly nativeReadiness?: {
       getScreenRef: (screenId: string) => NodeHandleRef | undefined;
       isScreenReady: (screenId: string) => boolean;
+      /** Hold sessions in `preparing` until the native host reports attachment. */
+      waitsForAttachment?: boolean;
     }
   ) {
     this.registry = registry;
@@ -117,6 +122,32 @@ export class TransitionCoordinator {
     const cancellers = [...this.preparationCancellers];
     this.preparationCancellers.clear();
     cancellers.forEach((cancel) => cancel());
+  }
+
+  /** Native attachment: overlay hosts are mounted, in the window, and sized. */
+  acknowledgeAttachment(sessionId: string): void {
+    const pending = this.pendingAttachment;
+    if (pending?.sessionId !== sessionId) return;
+    this.pendingAttachment = undefined;
+    pending.resolve(true);
+  }
+
+  private waitForAttachment(sessionId: string): Promise<boolean> {
+    return new Promise((resolve) => {
+      const cancel = () => {
+        if (this.pendingAttachment?.sessionId === sessionId)
+          this.pendingAttachment = undefined;
+        resolve(false);
+      };
+      this.preparationCancellers.add(cancel);
+      this.pendingAttachment = {
+        sessionId,
+        resolve: (attached) => {
+          this.preparationCancellers.delete(cancel);
+          resolve(attached);
+        },
+      };
+    });
   }
 
   setDebug(enabled: boolean) {
@@ -450,7 +481,13 @@ export class TransitionCoordinator {
       sourcePresentation: source.getPresentation(),
       targetPresentation: target.getPresentation(),
     }));
-    const endCapture = config.trace?.start('fabric-mounted-capture');
+    const endCaptureStage = config.trace?.start('fabric-mounted-capture');
+    let captureEnded = false;
+    const endCapture = (details: { ready: boolean }) => {
+      if (captureEnded) return;
+      captureEnded = true;
+      endCaptureStage?.(details);
+    };
     const capture = prepareFabricLayout({
       entries,
       isCurrent,
@@ -478,18 +515,23 @@ export class TransitionCoordinator {
           : [];
       });
       if (!pairs.length) {
-        endCapture?.({ ready: false });
+        endCapture({ ready: false });
         unavailable();
         return null;
       }
       const endpoint = direction === 'forward' ? 1 : 0;
       this.progress.value = config.reducedMotion ? endpoint : 1 - endpoint;
-      const active: TransitionSessionData = {
+      // Content moves only in the commit that activates the session, after the
+      // overlay hosts are attached; preparing renders empty, hidden hosts.
+      const gated =
+        !config.reducedMotion &&
+        Boolean(this.nativeReadiness?.waitsForAttachment);
+      const prepared: TransitionSessionData = {
         id: sessionId,
         groupId,
         sourceScreenId,
         targetScreenId,
-        state: 'active',
+        state: gated ? 'preparing' : 'active',
         presentation: createNativePresentation(
           pairs.map((pair) =>
             getLiveOverlayHostName(
@@ -508,7 +550,11 @@ export class TransitionCoordinator {
       };
       this.releaseMountSubscription = subscribeToFabricMounts(() => {
         const current = this.activeSession;
-        if (current?.id !== sessionId || current.state !== 'active') return;
+        if (
+          current?.id !== sessionId ||
+          (current.state !== 'active' && current.state !== 'preparing')
+        )
+          return;
         const targetEntries = this.entries(
           current.pairs.map((pair) => pair.target)
         );
@@ -525,10 +571,28 @@ export class TransitionCoordinator {
         if (changed && this.activeSession?.id === sessionId)
           this.updateSession({ ...current, pairs: nextPairs });
       });
-      this.updateSession(active);
-      session = active;
+      // Register before publishing: attachment can be reported during that commit.
+      const attachment = gated ? this.waitForAttachment(sessionId) : null;
+      endCapture({ ready: true });
+      const endAttachment = attachment
+        ? config.trace?.start('native-attachment')
+        : undefined;
+      this.updateSession(prepared);
+      if (attachment) {
+        const attached = await attachment;
+        endAttachment?.({ ready: attached });
+        if (attached && ownsOperation() && isCurrent()) {
+          const current = this.activeSession!;
+          session = { ...current, state: 'active' };
+          this.updateSession(session);
+        } else if (ownsOperation()) {
+          this.failPresentation(sessionId);
+        }
+      } else {
+        session = prepared;
+      }
     }
-    endCapture?.({ ready: Boolean(session) });
+    endCapture({ ready: false });
     if (!session) unavailable();
     debugTrace(
       `[Coordinator] Fabric preparation session="${sessionId}" ready=${!!session} duration=${elapsedMs(transitionStartedAt)}`

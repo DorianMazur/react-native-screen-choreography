@@ -11,6 +11,7 @@ module.exports = {
     'node_modules/(?!(react-native|@react-native|react-native-reanimated)/)',
   ],
   moduleFileExtensions: ['ts', 'tsx', 'js', 'jsx'],
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
   transform: {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },

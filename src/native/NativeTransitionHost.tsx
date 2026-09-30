@@ -36,6 +36,8 @@ interface NativeTransitionHostProps {
   presentation?: NativePresentation;
   children?: React.ReactNode;
   onPresentationReady?: (sessionId: string) => void;
+  /** Overlay hosts are attached; the session may now move content into them. */
+  onAttached?: (sessionId: string) => void;
   onPresentationFailed: (
     sessionId: string,
     reason: PresentationFailureReason
@@ -50,6 +52,7 @@ export function NativeTransitionHost({
   presentation,
   children,
   onPresentationReady,
+  onAttached,
   onPresentationFailed,
 }: NativeTransitionHostProps) {
   const { width, height } = useWindowDimensions();
@@ -96,6 +99,7 @@ export function NativeTransitionHost({
         return;
       if (event.stage === 'attached' && presentation.phase.value <= 0) {
         presentation.phase.value = 1;
+        if (onAttached) scheduleOnRN(onAttached, sessionId);
         return;
       }
       // Native presentation proves attachment and content as well. Its earlier

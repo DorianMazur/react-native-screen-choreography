@@ -16,6 +16,7 @@ test('overlay renders frozen endpoint data without copying children or hiding re
   const session = {
     id: 's',
     groupId: 'g',
+    state: 'active',
     direction: 'forward',
     pairs: [
       {

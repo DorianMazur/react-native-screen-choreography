@@ -15,6 +15,10 @@ export function getLiveOverlayHostName(
   return `screen-choreography:live:overlay:${JSON.stringify([sourceScreenId, targetScreenId, groupId, id])}`;
 }
 
+export function getLiveContentMarkerId(hostName: string) {
+  return `${hostName}:content`;
+}
+
 export function getLivePortalName(
   screenId: string,
   id: string,

@@ -116,26 +116,51 @@ are released on completion, cancellation, or disposal.
 
 ### React rendering and native presentation
 
-React mounts each renderer with one registered receiving host. On Android, content
-still at its original owner requests the overlay host in that same React commit;
-native suppresses the overlay until every receiving host has live content. Content
-already retained at another destination waits for the matching attachment
-acknowledgment before transferring. This keeps Back from falling through to a
-hidden original owner while the new receiver is being registered. iOS uses the
-attachment acknowledgment before either transfer. Attachment stays latched for
-the session despite React prop updates. Native
-acknowledges presentation only when every expected host is attached, has nonzero
-bounds, and contains its live child.
+On iOS a session reaches the screen in two steps. Preparation is asynchronous
+and invisible; the handoff is a single commit. iOS needs the extra step because a
+portal host registers before its window container is attached.
+
+- **Preparing.** The session carries its pairs and native presentation, but is
+  published only to the transition host and to paired owners
+  (`PreparingSessionContext`). React mounts each renderer with one registered,
+  still empty receiving host. Screens keep their measuring phase, owners keep
+  their content where it rests, and `transitioning` stays `false`. Native
+  attaches the transparent container and reports `attached` once every expected
+  host is in the window with nonzero bounds.
+- **Active.** Attachment promotes the session in one coordinator change. That
+  commit retargets every paired portal into its already-attached overlay host
+  and flips `transitioning` for all of them at once. No element waits for its
+  own acknowledgment.
+
+Android skips preparation. Hosts and content mount in the same native
+transaction, and the host stays hidden until every receiving host holds its
+content, so the session activates as soon as geometry is captured and content
+moves in the commit that mounts the overlay.
+
+Native acknowledges presentation only when every expected host is attached, has
+nonzero bounds, and contains its transferred content. If preparation fails, a
+pushed destination still receives its content without animation, because paired
+owners already know they participate.
+
 An empty marker with a `nativeID` inside the public `PortalHost` identifies its native parent;
-the marker itself never counts as live content.
+the marker itself never counts as content. Each retained portal carries a second
+empty marker named after its committed receiving host (`<host>:content`), so
+content without native views of its own, or with zero size, still proves arrival.
+Renderer opacity is not part of readiness: a renderer may be fully faded at the
+session's starting progress, as reverse sessions start at 1.
 
 Both platforms prepare the host from the React mount and arm content readiness
 after confirming attachment. The bounded UI-thread command retries preparation
 and can replay already-confirmed readiness if an early event preceded handler
-installation. iOS still waits for attachment before transferring content: portal
-registration alone does not prove that the receiving host has a window. Its
-presentation acknowledgment checks live content in the Core Animation transaction
-completion; this is a hierarchy readiness check, not a scanout timestamp.
+installation. Portal registration alone does not prove that a receiving host has
+a window, which is why content moves only after attachment. The iOS
+window container stays transparent while a session is unacknowledged, because
+renderers paint their own surfaces and would otherwise cover the source before its
+content arrives. The host observes Fabric mounting transactions and checks
+readiness right after each one, so the transaction that transfers content also
+reveals the container before Core Animation commits it. A Core Animation
+completion check and bounded display-link retries remain as fallbacks; this is a
+hierarchy readiness check, not a scanout timestamp.
 
 Android acknowledges presentation after its content draw traversal. This
 acknowledgment uses an asynchronous main
@@ -184,7 +209,9 @@ reports readiness in a layout effect; the native host acknowledges presentation.
 Animation waits for those readiness signals, with a bounded safety path. Do not
 start hiding or moving content based only on an eager session-activation callback.
 The iOS host defers window detachment while pending portal commits settle.
-Android retains its host-only teardown frame, separate from shared content.
+Android keeps drawing the live host after deactivation only while its hosts still
+hold transferred content, for at most two frames. It captures no dismissal snapshot,
+so returned content never appears twice.
 Both transition hosts exclude themselves and their children from touch hit testing.
 On Android this is enforced in `ScreenChoreographyView`, since its custom
 `ViewGroupManager` does not apply the JSX `pointerEvents` prop. This lets the

@@ -21,6 +21,8 @@ using namespace facebook;
 using namespace facebook::react;
 
 namespace {
+constexpr int kCommitRaceAttempts = 3;
+
 struct CapturedFrame {
   double pageX;
   double pageY;
@@ -105,26 +107,40 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
     if (invalidated_.load()) return jsi::Value::null();
     std::shared_ptr<NativeCaptureRequest> request;
     RootShadowNode::Shared committedRoot;
-    manager_.getShadowTreeRegistry().enumerate([&](const ShadowTree &tree, bool &stop) {
-      const auto root = tree.getCurrentRevision().rootShadowNode;
-      if (!root || !find(*root, screens.front())) return;
-      auto candidate = std::make_shared<NativeCaptureRequest>();
-      candidate->surface = root->getSurfaceId();
-      candidate->screens = screens;
-      candidate->tags = tags;
-      for (size_t i = 0; i < tags.size(); ++i) {
-        const auto screen = find(*root, screens[i]);
-        const auto node = screen ? find(*screen, tags[i]) : nullptr;
-        if (!node) return;
-        candidate->screenFamilies.push_back(screen->getFamilyShared());
-        candidate->families.push_back(node->getFamilyShared());
+    // Other threads commit too (Reanimated applies animated props on the UI
+    // thread), so the root can advance while identities are collected. Retry
+    // against the newer revision instead of dropping the transition.
+    for (int attempt = 0; attempt < kCommitRaceAttempts && !request; ++attempt) {
+      bool advanced = false;
+      manager_.getShadowTreeRegistry().enumerate([&](const ShadowTree &tree, bool &stop) {
+        const auto root = tree.getCurrentRevision().rootShadowNode;
+        if (!root || !find(*root, screens.front())) return;
+        auto candidate = std::make_shared<NativeCaptureRequest>();
+        candidate->surface = root->getSurfaceId();
+        candidate->screens = screens;
+        candidate->tags = tags;
+        for (size_t i = 0; i < tags.size(); ++i) {
+          const auto screen = find(*root, screens[i]);
+          const auto node = screen ? find(*screen, tags[i]) : nullptr;
+          if (!node) return;
+          candidate->screenFamilies.push_back(screen->getFamilyShared());
+          candidate->families.push_back(node->getFamilyShared());
+        }
+        stop = true;
+        if (tree.getCurrentRevision().rootShadowNode != root) {
+          advanced = true;
+          return;
+        }
+        request = std::move(candidate);
+        committedRoot = root;
+      });
+      if (request && !isCommitted(committedRoot)) {
+        request.reset();
+        advanced = true;
       }
-      if (tree.getCurrentRevision().rootShadowNode != root) return;
-      request = std::move(candidate);
-      committedRoot = root;
-      stop = true;
-    });
-    if (!request || !isCommitted(committedRoot)) return jsi::Value::null();
+      if (!advanced) break;
+    }
+    if (!request) return jsi::Value::null();
 
     RootShadowNode::Shared mountedRoot;
     {
@@ -309,20 +325,29 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
       if (request->invalidated) return false;
     }
     bool valid = false;
-    manager_.getShadowTreeRegistry().visit(request->surface, [&](const ShadowTree &tree) {
-      const auto root = tree.getCurrentRevision().rootShadowNode;
-      if (!root || root->getSurfaceId() != request->surface) return;
-      for (size_t i = 0; i < request->tags.size(); ++i) {
-        const auto expectedScreen = request->screenFamilies[i].lock();
-        const auto expectedNode = request->families[i].lock();
-        if (!expectedScreen || !expectedNode) return;
-        const auto screen = find(*root, request->screens[i]);
-        const auto node = screen ? find(*screen, request->tags[i]) : nullptr;
-        if (!screen || !node || &screen->getFamily() != expectedScreen.get() ||
-            &node->getFamily() != expectedNode.get()) return;
-      }
-      valid = tree.getCurrentRevision().rootShadowNode == root;
-    });
+    // Identity is what matters here. A commit landing mid-check (for example an
+    // animated prop update) re-checks the newer revision; identities confirmed on
+    // a committed revision stay valid, and presentation validates again later.
+    for (int attempt = 0; attempt < kCommitRaceAttempts; ++attempt) {
+      bool advanced = false;
+      valid = false;
+      manager_.getShadowTreeRegistry().visit(request->surface, [&](const ShadowTree &tree) {
+        const auto root = tree.getCurrentRevision().rootShadowNode;
+        if (!root || root->getSurfaceId() != request->surface) return;
+        for (size_t i = 0; i < request->tags.size(); ++i) {
+          const auto expectedScreen = request->screenFamilies[i].lock();
+          const auto expectedNode = request->families[i].lock();
+          if (!expectedScreen || !expectedNode) return;
+          const auto screen = find(*root, request->screens[i]);
+          const auto node = screen ? find(*screen, request->tags[i]) : nullptr;
+          if (!screen || !node || &screen->getFamily() != expectedScreen.get() ||
+              &node->getFamily() != expectedNode.get()) return;
+        }
+        valid = true;
+        advanced = tree.getCurrentRevision().rootShadowNode != root;
+      });
+      if (!valid || !advanced) break;
+    }
     std::lock_guard lock(request->mutex);
     return valid && !invalidated_.load() && !request->invalidated;
   }
