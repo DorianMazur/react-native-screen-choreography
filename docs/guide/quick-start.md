@@ -168,7 +168,7 @@ const styles = StyleSheet.create({
 
 ## What makes it work
 
-The provider stays mounted above the navigator. Each route uses a stable, explicit `screenId` matching its route name; the adapter tracks the actual route instance internally.
+The provider stays mounted above the navigator. Give each route a stable, explicit `screenId` matching its route name.
 
 Both endpoints share the role `hero` and the group `artwork.sunrise`. The source `Element` owns the artwork. The empty `Element.Target` defines its destination bounds. Give it an explicit height because it has no content to determine its size before the artwork arrives.
 

@@ -1,9 +1,9 @@
 ---
-title: Interactive back
+title: Interactive back gestures
 description: Drive reverse navigation with your own gesture, then finish or cancel it safely.
 ---
 
-# Let the gesture lead.
+# Interactive back gestures
 
 `useInteractiveGestureLifecycle` connects a custom gesture to interactive back preparation, progress, and settlement. It buffers updates and early releases while the overlay becomes ready. Native-stack swipe progress is **not** connected automatically.
 
@@ -86,7 +86,7 @@ export function DismissGesture({
 
 Gesture Handler remains an optional application dependency; use your application's existing `GestureHandlerRootView` setup. The lifecycle hook is also exported from `/core` and `/expo-router`.
 
-`begin`, `update`, and `release` are worklets. There is no application-side `scheduleOnRN` call or wait for an `isActive` render. `begin()` returns a ticket identifying the attempt, or `0` when disabled or busy; updates and releases for obsolete tickets are ignored. `release(ticket)` can omit progress to use the last update. Finalization cancels only failed attempts, so it does not undo a successful release.
+`begin`, `update`, and `release` are worklets, so call them directly from Gesture Handler callbacks. `begin()` returns a ticket identifying the attempt, or `0` when disabled or busy. Pass the same ticket to updates and release; obsolete tickets are ignored. `release(ticket)` can omit progress to use the last update. The example's finalization callback cancels only failed attempts, so it does not undo a successful release.
 
 ::: tip Normalize velocity too
 Divide gesture translation and velocity by the same positive dismissal distance. Velocity must be in **progress units per second**, positive toward completing back. The example uses 320 layout points; choose a distance appropriate for your layout.
@@ -100,9 +100,9 @@ Finish and cancel use a fast spring by default. Pass `spring` to tune it or `dur
 
 The controller uses the group and source recorded by successful choreography navigation. Override these with `group` and `targetScreenId` when needed. Set `scopeKey` when an application-specific identity changes, such as the selected gallery item. Changing those identity options, `enabled`, or `animate`, or unmounting, abandons the current attempt and cancels pending preparation or the acquired session.
 
-After an accepted release hands Back completion to the library, cleanup leaves that navigation handoff running. Motion settings are captured when an attempt begins; fallback dismissal uses the latest committed `onFallbackFinish` callback.
+Changing those options or unmounting after a release has been accepted does not undo the Back navigation. Each attempt uses the motion settings from when it began; fallback dismissal calls the current `onFallbackFinish` callback.
 
-## A handle that travels with the card
+## Keep the visual handle inside the card
 
 Use `defineTransition` and `useSharedElementPresentation` to render the visible handle inside a retained card. It then moves with the same content in the row, overlay, and expanded detail. Keep the gesture responder on a stationary view in the destination route: the overlay is non-interactive, and the retained card keeps its source route's React ancestry. The Wallet example uses this arrangement with a full-row expansion.
 
@@ -116,7 +116,7 @@ If your interaction has a separate docking animation, use the lower-level sessio
 
 ## Keep direct control when needed
 
-The existing `useInteractiveTransition` API remains available. `beginBack()` now returns a session-bound handle with the existing `id` and `progress` fields plus `setProgress`, `finish`, and `cancel`:
+Use `useInteractiveTransition` to control preparation and settlement yourself. `beginBack()` returns a handle for that transition with `id`, `progress`, `setProgress`, `finish`, and `cancel`:
 
 ```tsx
 const interactive = useInteractiveTransition();

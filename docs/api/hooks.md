@@ -5,7 +5,16 @@ description: Shared progress, retained presentation, readiness, reveal helpers, 
 
 # Hooks and utilities
 
-These exports are available from `/core` and both integration entries. Hooks require a provider. Place screen-specific hooks in components beneath `ChoreographyScreen`; place the retained-presentation hook inside the shared owner.
+These hooks are available from `/core` and both integration entries, and require a `ChoreographyProvider`.
+
+| What you want to do                                          | Hook                           | Where to call it                                                         |
+| ------------------------------------------------------------ | ------------------------------ | ------------------------------------------------------------------------ |
+| Animate a screen's backdrop or supporting content            | `useChoreographyProgress`      | Beneath `ChoreographyScreen`                                             |
+| Finish motion when the user starts scrolling or interacting  | `useChoreographyControls`      | Beneath `ChoreographyScreen`                                             |
+| Adapt a shared component to its source and destination sizes | `useSharedElementPresentation` | Inside the `SharedElement` owner                                         |
+| Wait for a child to finish loading or layout                 | `useChoreographyBlocker`       | Beneath `ChoreographyScreen`                                             |
+| Delay rendering an expensive supporting section              | `useLatchedReveal`             | Beneath `ChoreographyScreen`                                             |
+| Fade or move content that is already mounted                 | `useRevealStyle`               | Beneath `ChoreographyScreen`, or inside an owner with presentation scope |
 
 ## `useChoreographyProgress`
 
@@ -46,7 +55,7 @@ Within `ChoreographyScreen`, progress follows that screen's lifetime. On Android
 
 ## `useChoreographyControls`
 
-Reads the screen-scoped interaction control without subscribing to session state.
+Provides `settleTransition` when you only need to finish motion in response to interaction. Use `useChoreographyProgress` when you also need progress or transition state.
 
 ```tsx
 const { settleTransition } = useChoreographyControls();
@@ -80,13 +89,22 @@ interface SharedElementEndpoint {
 }
 ```
 
-`progress` is the provider-wide expansion clock; it remains unchanged for compatibility and can be driven by another element or group. `presentationProgress` is a read-only Reanimated derived value belonging to this retained owner: it follows `progress` during participation, stays at `0` when settled at the original source (collapsed), and stays at `1` when settled at the destination (expanded). Unrelated transitions leave it unchanged. Backward transitions run from `1` to `0`; cancellation returns it to the endpoint where the element settles. If the destination screen unmounts without a completed return, for example through a navigation reset, the owner settles collapsed at its source. `transitioning` identifies active participation by this owner once its content is in the overlay. On iOS the transfer waits for native attachment, so it can become `true` a few frames after the session starts; a copy that hides on this flag stays visible until the overlay holds the content. `settled` identifies its resting endpoint when no motion is active. Before the first transition, metrics are `null` and the initial endpoint presentation comes from the owner.
+Use `presentationProgress` for animations inside shared content. It follows this element's motion and holds its resting value when another group transitions.
 
-This hook does not change React ownership. The retained component still uses the original source context; use these explicit endpoints for its visual adaptation. Narrow `metadata` before reading it and keep metadata objects immutable during a session.
+| Value                   | Meaning                                                                                                     |
+| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
+| `presentationProgress`  | Read-only progress for this owner: `0` at the source, `1` at the destination; back moves from `1` to `0`    |
+| `progress`              | Provider-wide expansion clock, which can also be driven by other elements or groups                         |
+| `collapsed`, `expanded` | Original source and expanded destination geometry, styles, and metadata, regardless of navigation direction |
+| `transitioning`         | `true` while this owner's content is in the transition overlay; `false` during preparation and at rest      |
+| `direction`             | This owner's participating navigation direction; `null` during preparation or when it does not participate  |
+| `settled`               | The endpoint where the content rests after motion                                                           |
 
-`direction` is the participating owner's active session direction, or `null` while it is at rest or another owner is transitioning. It describes navigation intent, so reversing a drag does not change it. Read it here when adapting retained content instead of subscribing to the screen-wide progress state only for direction.
+Before the first transition, endpoint metrics are `null` and presentation data comes from the owner. Guard against null metrics before calculating layout. Narrow `metadata` before reading it and keep metadata objects immutable during a session.
 
-`transitioning` is `true` exactly while this owner's content is in the transition overlay. It flips in the commit that moves the content there and in the commit that moves it back, never while native is still preparing the overlay, so visible copies elsewhere can be hidden on this flag without a gap. `direction` follows the same rule.
+Cancellation returns progress to the endpoint where the content settles. If the destination unmounts through a navigation reset or another removal without a completed return, the content returns to its source and progress holds at `0`.
+
+The retained component keeps its original source context. Use this hook for its visual adaptation and transition direction. `direction` describes navigation intent, so changing drag direction does not change it. `transitioning` becomes true when content moves into the overlay, which can happen after preparation has started; use it when coordinating visibility with that transfer. With reduced motion, content moves directly to its endpoint and `transitioning` stays false.
 
 ## `useChoreographyBlocker`
 
@@ -112,9 +130,9 @@ useLatchedReveal(config?: {
 }): boolean;
 ```
 
-The gate opens when this screen participates in an active transition and progress reaches `startProgress`. Threshold checks run on the UI thread, including when the hook mounts after progress has already passed the threshold. Once content becomes visible, either at its threshold or through the inactive fallback, the gate stays open as progress reverses, after settlement, and during later transitions. Changing `resetKey` starts a fresh gate; changing `startProgress` affects a gate that has not opened yet.
+Returns `true` when this screen's active transition reaches `startProgress`, including if the hook mounts after that threshold. Once visible, content stays visible through reverse motion, settlement, and later transitions. Changing `resetKey` starts a fresh gate; changing `startProgress` affects a gate that has not opened yet.
 
-An unopened gate on a pending forward destination stays closed while preparing, including before a session exists and when the shared progress still holds a previous transition's value. By default, an idle screen or a screen outside the current transition remains readable. `visibleWhenInactive: false` disables that fallback; it does not close an already opened gate. A reused destination retains its already visible content; change `resetKey` when its content identity changes and needs a new reveal. Queued reveal callbacks from an earlier session, reset key, or threshold cannot open a newer gate.
+New content on a forward destination stays hidden during preparation. Idle screens and screens outside the current transition show their content by default, so direct entry and ordinary navigation remain readable. Set `visibleWhenInactive: false` to disable that fallback; it does not close an already opened gate. For a reused screen, set `resetKey` to the content's identity if new content should reveal again.
 
 It does not animate the mounted content and should not delay mounting shared targets that must be measured. Use a named `Enter` role for an animated reveal.
 
@@ -155,7 +173,7 @@ interface RevealOptions {
 }
 ```
 
-`RevealRecipe` accepts `during`, `stagger`, `translateX`, `translateY`, and `scale`; see [reveal recipes](./transitions.md#definetransition) for defaults, interval calculation, and validation. Unlike the legacy stagger helper, staggering and translation default to zero. `mode: 'exit'` reverses opacity and uses the default exit interval `[0.1, 0.4]` instead of the enter interval `[0.55, 0.9]`.
+`RevealRecipe` accepts `during`, `stagger`, `translateX`, `translateY`, and `scale`; see [reveal recipes](./transitions.md#definetransition) for defaults, interval calculation, and validation. Staggering and translation default to zero. `mode: 'exit'` reverses opacity and uses the default exit interval `[0.1, 0.4]` instead of the enter interval `[0.55, 0.9]`.
 
 Screen scope leaves idle and unrelated screens visible. Presentation scope requires a retained owner and follows its resting collapsed/expanded endpoint as well as transitions. Reduced motion removes translation and scale, preserving opacity. The hook does not mount/unmount children or manage touches and accessibility.
 

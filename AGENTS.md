@@ -37,6 +37,7 @@ Use these files as the source of truth:
 - `docs/`: Markdown documentation and a VitePress site in a Yarn workspace; custom theme in `docs/.vitepress/`
 - `__tests__/`: Jest coverage for core utilities and infrastructure
 - `android/` and `ios/`: native transition host implementation
+- `cpp/`: runtime-owned Fabric mount observation and layout capture
 
 ## Public API Surface
 
@@ -68,15 +69,18 @@ Current important exports include:
 - the coordinator captures a frozen `ElementPresentation` per pair at session start; the overlay must read those presentations, never live `SharedElement` props
 - real elements are hidden in the same frame the overlay first paints (driven by `handleOverlayReady` / `handleHostPresentationReady`), not when the session activates
 - the provider exposes two contexts: stable `ChoreographyActionsContext` for lifecycle callbacks and volatile `ChoreographyContext` for active-session state — keep registration effects depending on the actions context only
+- select each live owner's participating pair before the memoized presentation boundary; unrelated groups, elements, and pending screens must not propagate through that boundary. Preserve normal application prop updates and direct progress subscriptions.
+- retain collapsed/expanded presentation data after settlement, never whole pairs or registrations/refs belonging to removed screens; portal retargeting must share the commit that removes the overlay
 - screen-level visibility lives in `src/core/screenVisibility.ts` and must stay direction-agnostic: derive `(role, phase)` from the session, then compute opacity and pointer-events from `(direction, role, phase, progress)`. Do not add forward-only special cases back to `ChoreographyScreen`.
 
 ## Current Feature Boundaries
 
 - custom gesture progress is exposed through `useInteractiveTransition`; native-stack swipe progress is not connected automatically yet
-- startup captures source and target layout from completed Fabric mounts on RN 0.81+; pending mounts are retried with bounded waits, without measurement APIs or a target metrics cache
+- startup captures source and target layout from completed Fabric mounts on RN 0.81+; initialize the observer before rendering descendant screens. Validate root/commit/mounting identity and reject pending, invalid, or partial batches. Pending mounts use bounded waits, without JavaScript polling, Reanimated `measure()`, `measureInWindow()`, native layout sampling, or a target metrics cache.
+- pre-navigation source geometry is scoped to one navigation, checked against native node identity, and consumed by the next preparation; do not turn it into a reusable endpoint cache
 - transition renderers receive frozen metadata, style, and metrics plus one library-owned portal host child; they must render that child exactly once
 - the registry is keyed by compound `(screenId, groupId, id)` identity, and pair discovery is scoped to the source screen's group
-- rapid interruption paths are actively hardened and should be regression-tested after changes
+- shared transitions retain one live subtree; do not introduce rendered-content or dismissal snapshots, copied image/text content, duplicate render paths, or unpaired overlay tracks. Visibility-registry bookkeeping does not authorize duplicate-content hiding for live owners.
 
 ## Working Conventions
 
@@ -90,6 +94,9 @@ Current important exports include:
 - never call `syncHiddenElements()` eagerly when a session activates — hiding must remain driven by the overlay's `useLayoutEffect` and the native host's presentation ack; the one-second `waitForOverlayReady` safety net may only recover an already confirmed UI-thread presentation
 - `ChoreographyScreen` visibility must gate on BOTH `pendingTargetScreenId === screenId` and `(role === 'target' && phase === 'preparing')` — the new screen mounts ~150ms before the session activates, so role-only gating leaves a visible window
 - the static visibility gate must live on a plain outer `View` with inline `opacity`, not merged into an `Animated.View` style array; on Android Fabric, Reanimated's first style commit can lag one frame and a single `Animated.View` flashes
+- keep provider/session cleanup independent of the outgoing route's lifetime; navigation ownership and queued-request replay belong to `NavigationSessionController`
+- let Reanimated completion or explicit navigation interruption own animation settlement; JavaScript timers must not force completion
+- reject queued reveal callbacks after their observer unmounts or their session, reset key, or threshold changes; a fresh `useLatchedReveal` observer must still reveal when mounted beyond its threshold
 
 ## Commands
 
@@ -102,6 +109,10 @@ Run these from the repository root unless noted otherwise:
 - `cd examples/react-navigation && yarn android`
 - `cd examples/expo-router && yarn ios`
 - `cd examples/expo-router && yarn android`
+
+## Lifecycle Verification
+
+When changing preparation, presentation, navigation, or retained-content ownership, cover rapid forward interruption, repeated Back/return, interactive cancellation, queued navigation after confirmed removal, missing endpoints, and layout changes. Check both iOS attachment gating and Android content presentation. Include removed/recycled endpoints and stale callbacks where the change affects asynchronous ownership.
 
 ## Areas To Inspect First
 
@@ -117,8 +128,9 @@ When debugging or extending behavior, start here:
 
 ## Documentation Expectations
 
-- public docs should explain how to integrate and use the library from an application developer perspective
-- contributor docs should explain current runtime behavior and extension points
+- write guides and API reference for application developers: use task-oriented headings, concrete examples, and observable behavior
+- keep source-file maps, repository change constraints, and regression checklists in `AGENTS.md`; `docs/architecture.md` is a human contributor reference that explains current runtime design, purpose, and extension points
+- avoid narrating current APIs as "now", "legacy", or "removed" outside an explicit migration section
 - avoid stale references to missing files or removed APIs
 - keep examples realistic and aligned with the example app in this repository
 

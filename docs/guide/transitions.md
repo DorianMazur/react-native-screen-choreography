@@ -3,7 +3,7 @@ title: Defining motion
 description: Compose shared geometry, local reveals, and custom motion with reusable transition definitions.
 ---
 
-# Define motion once.
+# Defining motion
 
 Keep a screen's motion in one module. `defineTransition` gives shared elements and local content named roles, then exposes components that apply those roles consistently.
 
@@ -201,7 +201,7 @@ Reuse `heroTransition` on both `SharedElement` and `SharedElement.Target`, or as
 Always render the supplied `children` exactly once throughout a session. Do not replace it with another copy of your artwork, conditionally remove it, or move it between different renderer branches during the animation.
 :::
 
-All renderers use native geometry preparation. React still mounts the renderer and transfers its content, so JavaScript load can delay startup. Motion starts once the overlay's live content is ready and runs on the UI thread. See the [startup lifecycle](../architecture.md#react-rendering-and-native-presentation) for details.
+Heavy JavaScript work can delay the start of a transition. Once the shared content is ready in the overlay, motion runs on the UI thread. Keep expensive work out of screen mounting when possible; see [loading and layout readiness](./readiness.md).
 
 `progress` is expansion progress. `source` and `target` describe the current navigation direction. If you interpolate their metrics directly, derive `t = direction === 'backward' ? 1 - progress.value : progress.value` in a worklet. `TransitionFrame` and `TransitionSurface` already do this.
 

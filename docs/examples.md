@@ -2,7 +2,7 @@
 title: See the motion
 description: Real native app recordings and runnable examples for React Navigation and Expo Router.
 layout: page
-sidebar: false
+sidebar: true
 ---
 
 <div class="ch-examples-page">
@@ -23,7 +23,7 @@ Real transitions, recorded in the native examples. Watch the demos, then explore
 
 ## Make it yours
 
-Both example apps use the same shared demo screens and transition implementations. They use module-scoped `defineTransition` recipes, one retained owner per shared role, and local companion reveals.
+The React Navigation and Expo Router apps share demo screens, so you can compare the two integrations using the same transitions. Each demo combines shared elements with reveals for supporting content. Explore the `defineTransition` definitions to adapt the motion to your own app.
 
 - **React Navigation:** follow the [bare example setup](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/react-navigation/README.md) to install dependencies, build, and run on iOS or Android.
 - **Expo Router:** follow the [Expo example setup](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/expo-router/README.md). Use a native development build; Expo Go does not include this library’s native host.

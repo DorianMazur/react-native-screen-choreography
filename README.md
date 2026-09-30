@@ -16,7 +16,7 @@ Choreograph shared elements, companion reveals, and custom back gestures with on
   <img src="docs/Wallet_demo_new.gif" width="200" />
 </p>
 
-## One owner. One receiving target.
+## How shared elements work
 
 The source owns a component. The destination declares its bounds. The library moves the same native subtree through an overlay into the destination using `react-native-teleport`; React state and context stay with the original owner.
 
@@ -53,8 +53,8 @@ The checked-in examples use React Native 0.83 and Expo SDK 57. Native-stack swip
 
 ## Documentation
 
-| Start here                                         | Build with motion                                  | Go deeper                                        |
-| -------------------------------------------------- | -------------------------------------------------- | ------------------------------------------------ |
+| Start here                                                                      | Build with motion                                                               | Go deeper                                                                     |
+| ------------------------------------------------------------------------------- | ------------------------------------------------------------------------------- | ----------------------------------------------------------------------------- |
 | [Introduction](https://screen-choreography.dev/guide/introduction.html)         | [Transition recipes](https://screen-choreography.dev/guide/transitions.html)    | [Component reference](https://screen-choreography.dev/api/components.html)    |
 | [Installation](https://screen-choreography.dev/guide/installation.html)         | [Interactive Back](https://screen-choreography.dev/guide/interactive-back.html) | [Navigation reference](https://screen-choreography.dev/api/navigation.html)   |
 | [Your first transition](https://screen-choreography.dev/guide/quick-start.html) | [Readiness and loading](https://screen-choreography.dev/guide/readiness.html)   | [Transitions reference](https://screen-choreography.dev/api/transitions.html) |
@@ -64,23 +64,11 @@ Contributor material: [runtime architecture](https://screen-choreography.dev/arc
 
 ## Example apps
 
-Both integrations use the same shared demo screens and module-scoped `defineTransition` recipes. Browse the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and links to their source.
+Both integrations use the same demo screens and shared `defineTransition` definitions. Browse the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and links to their source.
 
 - [React Navigation example setup](examples/react-navigation/README.md)
 - [Expo Router example setup](examples/expo-router/README.md)
 - [Shared example source](examples/shared)
-
-## Work on the documentation
-
-The documentation is a static VitePress site. Most edits are ordinary Markdown; native dependencies are not needed to build it. Node.js 22 or newer is required for the docs toolchain.
-
-```sh
-yarn install
-yarn docs:dev
-yarn docs:build
-```
-
-The docs are a Yarn workspace. You can also run `yarn dev` from `docs/`. For documentation-only work, use `yarn workspaces focus screen-choreography-docs` instead of `yarn install` to install only the docs dependencies.
 
 ## License
 

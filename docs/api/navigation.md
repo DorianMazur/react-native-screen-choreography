@@ -23,7 +23,7 @@ navigate(
 goBack(options?: ChoreographyNavigationOptions): Promise<void>;
 ```
 
-Pass the current screen's React Navigation `navigation` object. `navigate` dispatches `navigation.navigate` and resolves the actual destination route instance for pairing.
+Pass the current screen's React Navigation `navigation` object. `navigate` uses `navigation.navigate` to open the destination and coordinates the shared transition.
 
 ```tsx
 void navigate(
@@ -52,7 +52,7 @@ interface ChoreographyNavigationOptions {
 
 Forward navigation defaults to `Springs.default`. A positive `duration` selects a timing animation in milliseconds with cubic ease-out. Keep timing values finite and positive.
 
-Reverse behavior uses stored navigation lineage and the screen removal adapter. The forward spring is remembered; forward `duration` is not.
+Back returns shared content to the screen it came from and reuses the forward spring. A forward timing `duration` is not reused on return.
 
 See [quick start](../guide/quick-start.md) for the required stack setup.
 
@@ -85,7 +85,7 @@ void push({
 });
 ```
 
-Match `currentScreenId` to the current wrapper and `targetScreenId` to the destination wrapper. Push and navigate preserve their corresponding router operation. The adapter keeps transition lineage in the provider, without adding private metadata to the URL.
+Match `currentScreenId` to the current wrapper and `targetScreenId` to the destination wrapper. `push` adds a route and `navigate` uses the router's navigation behavior; both coordinate shared motion. URLs only need your application's route parameters.
 
 The same timing and promise caveats as the React Navigation adapter apply. See [Expo Router](../guide/expo-router.md).
 
@@ -128,7 +128,7 @@ interface InteractiveGestureRelease {
 }
 ```
 
-All three callbacks are worklets. `begin()` returns an attempt ticket, or `0` when disabled or busy. Pass that ticket to every update and release. Obsolete tickets and duplicate releases are ignored. Updates are clamped to `[0, 1]` and buffered until preparation completes; a release before readiness is buffered too. The hook bridges lifecycle operations to JavaScript internally.
+All three callbacks are worklets, so you can call them directly from gesture handlers. `begin()` returns an attempt ticket, or `0` when disabled or busy. Pass that ticket to every update and release to keep them tied to the same gesture. Updates are clamped to `[0, 1]`. Movement and release are buffered while the transition prepares, so a quick drag still works before the overlay is ready. Obsolete tickets and duplicate releases are ignored.
 
 Release uses the same projected-progress decision as `settle` below. `cancelled: true` always cancels. If no session is available, `onFallbackFinish` runs on JavaScript only when the release qualifies to finish. `animate: false` skips preparation and uses that fallback path, so applications can respect reduced motion without disabling dismissal.
 
@@ -184,7 +184,7 @@ Settlement defaults to a fast spring. `settle` finishes when clamped `progress +
 
 ### `InteractiveTransitionHandle`
 
-`beginBack()` retains the existing `InteractiveTransitionSession` fields and adds callbacks bound to that acquired session:
+`beginBack()` returns an `InteractiveTransitionHandle` with the session's `id` and `progress`, plus callbacks bound to that transition:
 
 ```ts
 interface InteractiveTransitionHandle extends InteractiveTransitionSession {

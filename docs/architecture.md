@@ -1,353 +1,345 @@
 # Runtime architecture
 
-## Source organization
+This page explains how the library moves live content between screens and how
+its JavaScript, UI-thread, and native layers coordinate that movement. It is
+intended for developers extending or debugging the library. For application
+integration, start with the [quick start guide](./guide/quick-start.md).
 
-- `src/entries/core.ts` defines the shared public API. The root and Expo Router
-  entries re-export it and add their navigation adapters.
-- `src/components` contains the provider, screen wrapper, and shared owner/target.
-- `src/core` contains registration, pairing, preparation, navigation ownership,
-  overlay rendering, and screen visibility.
-- `src/hooks` coordinates navigation, reverse commits, gestures, and progress.
-- `src/transitions/makeTransition.tsx` adapts renderers to the retained portal host.
-- `src/standin` contains `TransitionFrame`, `TransitionSurface`, and surface-style
-  extraction. Despite the directory name, these wrap live content.
-- `src/native`, `ios`, and `android` implement the native overlay and preparation.
+## Runtime overview
 
-The supported runtime is Fabric with Reanimated and react-native-teleport. Use
-native-stack with `animation: 'none'` and transparent detail presentation so the
-native navigator does not compete with shared motion.
+A transition keeps one React-owned subtree alive while moving its native views
+from the source screen, through an overlay, to the destination. Three layers
+share the work:
 
-## Ownership and registration
+- **JavaScript / TypeScript** registers endpoints, pairs elements, prepares
+  screens, and coordinates navigation and content ownership.
+- **Reanimated** drives shared progress and visual interpolation on the UI
+  thread after preparation.
+- **The native host** presents the overlay above native-stack containers and
+  confirms that the transferred content is ready to appear.
 
-`SharedElement` owns one React subtree. `SharedElement.Target` contributes a
-measured wrapper and an empty receiving `PortalHost`. During a transition,
+The runtime uses Fabric, Reanimated, and react-native-teleport. The recommended
+native-stack configuration uses `animation: 'none'` and transparent detail
+presentation, giving the overlay control of the shared motion.
+
+At a high level, a transition follows five steps:
+
+1. Acquire navigation ownership, capture the source, and prepare the target screen.
+2. Resolve matching endpoints and freeze their presentation data.
+3. Attach overlay hosts, transfer retained content, and confirm presentation.
+4. Drive shared progress; shared and companion views derive their visual styles.
+5. Return content to its endpoint and release the overlay and navigation session.
+
+## Content ownership and registration
+
+`SharedElement` owns the React subtree. `SharedElement.Target` supplies a measured
+wrapper and an empty receiving `PortalHost`. During a transition,
 react-native-teleport moves the native subtree into the overlay; at completion
 it moves into the destination host or back home. The React owner and its context
-remain on the original route, which must stay mounted.
+remain on the original route, so that route must stay mounted while its content
+is retained elsewhere.
 
-Registration is stable per `(route instance, groupId, id)`. Latest-value refs
-supply presentation metadata without unregistering on render. Registration
-uses the stable actions context; active-session consumers use the volatile
-context. Repeated instances of the same logical route remain distinct.
+Registration identifies each endpoint by `(screenId, groupId, id)`, using the
+adapter's resolved route-instance identity for `screenId`. This keeps repeated
+instances of the same logical screen label distinct. Latest-value refs provide
+current presentation metadata while registration remains stable. The provider separates lifecycle actions in
+`ChoreographyActionsContext` from active-session state in `ChoreographyContext`.
 
-Each live owner selects its participating pair before a memoized payload boundary.
-Pending-screen changes and unrelated groups or elements do not propagate through
-the owner's presentation context. Pair replacement still updates frozen metrics,
-and settlement retargets the portal during the same render/commit that removes
-the overlay. This boundary does not suppress application prop changes or direct
-subscriptions to the screen-wide progress context.
+Each owner selects its participating pair before a memoized presentation
+boundary. Unrelated elements, groups, and pending screens therefore do not
+update that owner's retained presentation. Application prop changes and direct
+subscriptions to screen-wide progress still update normally. A participating
+pair can receive refreshed bounds, and settlement retargets its portal in the
+commit that removes the overlay.
 
-While content is away, the owner reserves its intrinsic measured dimensions.
-This prevents empty text/icon wrappers collapsing and delaying return measurement.
-The reservation is a layout-only style, separate from frozen presentation data;
-explicit sizes and flex height are not replaced. A changed orientation or font
-scale can still require the application to reconsider intrinsic layout.
+While content is away, the owner reserves its measured intrinsic dimensions.
+This keeps empty text or icon wrappers from collapsing and changing their return
+position. The reservation is a layout style, separate from presentation data;
+explicit dimensions and flexible height retain their application-defined rules.
+Orientation or font-scale changes can still require the application to adjust
+its intrinsic layout.
 
-`useSharedElementPresentation` exposes canonical collapsed/expanded endpoint
-metrics, styles, metadata, shared expansion progress, the participating session's
-direction (null while settled), and the settled endpoint.
-Owners retain endpoint data, not whole pairs or references to popped screens.
-Initial metrics are null. The owner derives `presentationProgress` from its
-participation and settled endpoint: it follows the shared clock during its own
-transition and holds 0 or 1 otherwise. The existing `progress` remains the global
-clock, which can subsequently belong to a different group.
-An owner stays settled at a destination only while that screen is mounted. A
-fallback Back that removes the route completes its session on the returned screen,
-and a destination removed any other way returns the owner to its source, collapsed.
+### Retained presentation
+
+`useSharedElementPresentation` exposes the collapsed and expanded endpoints,
+including metrics, styles, and metadata. Initial metrics are null. Owners retain
+this endpoint data after settlement without keeping registrations or references
+to screens that have been removed.
+
+The hook offers two clocks. `progress` is the provider's shared expansion clock,
+which can later belong to another group. `presentationProgress` follows that
+clock while this owner participates, then holds 0 at its collapsed endpoint or
+1 at its expanded endpoint. `direction` is null while settled, and
+`transitioning` becomes true when the content transfers into the overlay. On
+iOS, this happens after native attachment, as described in the presentation
+protocol below.
+
+An owner remains settled at its destination only while that screen is mounted.
+A fallback Back completes its session on the returned screen. If the destination
+is removed through another route operation, its receiving host disappears and
+the owner returns home, collapsed.
 
 ## Pairing and frozen presentations
 
-The registry is keyed by route/group/element identity. Pair discovery is scoped
-to the requested source group and requires both endpoints. The coordinator
-captures each endpoint's style, transition, and metadata once per session.
-Metadata is retained by reference; there is no deep clone or copied React content.
+Pair discovery is scoped to the requested source group and requires both
+endpoints. The coordinator captures each endpoint's style, transition, and
+metadata once per session. Metadata is retained by reference, so this is a
+stable presentation boundary rather than a deep clone.
 
-`makeTransition` supplies exactly one portal-host child to a custom renderer.
-Renderers must keep this child mounted and render it once. `TransitionOverlay`
-sorts pairs by z-index and passes their frozen presentations and metrics to the
-factory adapter. It does not create image copies or crossfade duplicate content.
+`TransitionOverlay` sorts pairs by z-index and passes their frozen presentations
+and current metrics to the transition adapter. `makeTransition` supplies one
+library-owned portal-host child to each custom renderer. Keeping this child
+mounted and rendering it exactly once preserves the single retained subtree
+throughout the handoff.
 
 `TransitionFrame` interpolates window bounds and optional radius.
-`TransitionSurface` adds background/radius interpolation and a static expanded
-shadow layer whose opacity changes. Android shadow parameters must not animate
-per frame because they recreate drawables.
+`TransitionSurface` adds background and radius interpolation, plus a static
+expanded shadow layer whose opacity changes. This keeps Android shadow
+parameters fixed, avoiding drawable recreation on every animation frame.
 
-## Geometry and fixed content layout
+## Geometry and Fabric preparation
 
-Default shared bounds and the geometry primitives position their frames with
-`translateX`/`translateY`, anchored at layout `left: 0, top: 0`. Width and height
-continue interpolating so retained children can reflow without scaling their
-content. The default shared bounds renderer retains its existing height
-expansion curve. Transform updates can still use Fabric commits and perform
-native rendering work; the library does not enable Reanimated flags that bypass
-those commits.
+The default shared-bounds renderer and geometry primitives anchor frames at
+layout `left: 0, top: 0`, then position them with `translateX` and `translateY`.
+Width and height interpolate as well, allowing retained children to reflow
+without scaling their content. The default renderer uses its own height
+expansion curve. Transform updates still pass through Fabric commits and native
+rendering work.
 
-## Preparation and Fabric layout
+On RN 0.81 and newer, a runtime-owned C++ binding observes completed Fabric
+mounts. The provider initializes it before rendering descendant screens, so it
+sees their first mount even when native modules are loaded lazily. The binding
+keeps weak references to mounted roots and reads geometry without changing mount
+transactions. A capture validates the current commit and mounting base before
+and after reading layout, with no pending transactions. Endpoints are scoped to
+their registered screens, and a batch succeeds only when all endpoints have
+finite, nonempty geometry.
 
-On RN 0.81 and newer, a runtime-owned C++ binding observes completed Fabric mounts.
-The provider initializes this binding before rendering its descendant screens, so
-the observer sees their first mount even when native modules are loaded lazily.
-It retains weak mounted-root references and reads geometry without modifying
-mount transactions. Each batch validates that its root matches the current commit
-and mounting base, with no pending transactions, before and after reading layout.
-Every endpoint is scoped to its registered screen. Non-finite, empty, missing, or
-partially captured batches are rejected.
+Before navigation, the coordinator captures source geometry for that navigation.
+This preserves the departing bounds if native-stack detaches the screen. The
+capture is tied to native node identity and consumed by the next preparation.
+When no source capture is available, preparation reads source and target
+together from one mounted root.
 
-Before navigation, the coordinator captures a one-navigation source snapshot.
-This preserves the departing geometry if native-stack detaches its screen.
-The snapshot is checked against native node identity and consumed by the next
-preparation; it is not a reusable destination cache. Without a source snapshot,
-source and target are captured together from one mounted root.
+Both transition directions wait for screen readiness and matching
+registrations, freeze presentations, and issue one native request. That request
+binds weak node-family identities and gathers geometry from completed mounts.
+JavaScript consumes the batch immediately when ready, or after a coalesced mount
+notification, within a one-second deadline. Ready endpoints can publish a
+session synchronously; pending mounts follow the bounded asynchronous path.
+Cancellation or runtime replacement invalidates the request, and consumption
+ends geometry collection. An unavailable endpoint skips animation.
 
-Both directions wait for screen readiness and matching registrations, freeze
-presentations, then issue one native request. It binds weak node-family identities
-and collects geometry from completed mounts. JavaScript consumes the batch once,
-immediately or on a coalesced mount notification, within a one-second deadline.
-Already-ready registrations and captures do not introduce a Promise wait before
-publishing the session; pending mounts retain the same bounded asynchronous path.
-There is no JavaScript polling. Cancellation and runtime replacement invalidate
-requests; consumed requests stop collecting geometry. Unavailable endpoints skip
-animation.
+During preparation and animation, coalesced mount notifications refresh target
+bounds, including safe-area changes, while styles and metadata remain frozen.
+Interrupted returns refresh their original source separately. The numeric
+geometry feeds renderers and `useSharedElementPresentation`. Subscriptions end
+on completion, cancellation, or disposal.
 
-Numeric geometry feeds the React renderer and `useSharedElementPresentation`.
-During animation, coalesced mount notifications refresh endpoint bounds, including
-safe-area changes, while preserving frozen styles and metadata. Subscriptions
-are released on completion, cancellation, or disposal.
+Fabric geometry describes the shadow tree. Native-only transforms outside that
+tree are not reflected in captured bounds, so applications must keep endpoint
+layout and scroll state stable during the overlay handoff.
 
-### React rendering and native presentation
+## React rendering and native presentation
 
-On iOS a session reaches the screen in two steps. Preparation is asynchronous
-and invisible; the handoff is a single commit. iOS needs the extra step because a
-portal host registers before its window container is attached.
+Geometry readiness and presentation readiness are separate. Captured bounds
+allow the overlay to mount, but motion starts only after its receiving hosts are
+attached and contain the transferred content.
 
-- **Preparing.** The session carries its pairs and native presentation, but is
-  published only to the transition host and to paired owners
-  (`PreparingSessionContext`). React mounts each renderer with one registered,
-  still empty receiving host. Screens keep their measuring phase, owners keep
-  their content where it rests, and `transitioning` stays `false`. Native
-  attaches the transparent container and reports `attached` once every expected
-  host is in the window with nonzero bounds.
-- **Active.** Attachment promotes the session in one coordinator change. That
-  commit retargets every paired portal into its already-attached overlay host
-  and flips `transitioning` for all of them at once. No element waits for its
-  own acknowledgment.
+### iOS preparation and activation
 
-Android skips preparation. Hosts and content mount in the same native
-transaction, and the host stays hidden until every receiving host holds its
-content, so the session activates as soon as geometry is captured and content
-moves in the commit that mounts the overlay.
+On iOS, a portal host can register before its window container is attached.
+Preparation therefore happens in two stages:
 
-Native acknowledges presentation only when every expected host is attached, has
-nonzero bounds, and contains its transferred content. If preparation fails, a
-pushed destination still receives its content without animation, because paired
-owners already know they participate.
+- **Preparing.** The session is published to the transition host and paired
+  owners through `PreparingSessionContext`. React mounts each renderer with a
+  registered, empty receiving host. Screens keep their measuring phase, owners
+  keep content at its resting endpoint, and `transitioning` remains false.
+  Native attaches the transparent container and reports `attached` when every
+  expected host is in the window with nonzero bounds.
+- **Active.** Attachment promotes the session in one coordinator change. The
+  resulting commit transfers all paired portals into the attached overlay hosts
+  and makes their retained presentations `transitioning` together.
 
-An empty marker with a `nativeID` inside the public `PortalHost` identifies its native parent;
-the marker itself never counts as content. Each retained portal carries a second
-empty marker named after its committed receiving host (`<host>:content`), so
-content without native views of its own, or with zero size, still proves arrival.
-Renderer opacity is not part of readiness: a renderer may be fully faded at the
-session's starting progress, as reverse sessions start at 1.
+The iOS container stays transparent until content arrives. It observes Fabric
+mounting transactions and checks readiness after each one, allowing the same
+transaction that transfers content to reveal the container before Core Animation
+commits it. A Core Animation completion check and bounded display-link retries
+provide fallbacks. This confirms hierarchy readiness, rather than the instant
+pixels reach the display.
 
-Both platforms prepare the host from the React mount and arm content readiness
-after confirming attachment. The bounded UI-thread command retries preparation
-and can replay already-confirmed readiness if an early event preceded handler
-installation. Portal registration alone does not prove that a receiving host has
-a window, which is why content moves only after attachment. The iOS
-window container stays transparent while a session is unacknowledged, because
-renderers paint their own surfaces and would otherwise cover the source before its
-content arrives. The host observes Fabric mounting transactions and checks
-readiness right after each one, so the transaction that transfers content also
-reveals the container before Core Animation commits it. A Core Animation
-completion check and bounded display-link retries remain as fallbacks; this is a
-hierarchy readiness check, not a scanout timestamp.
+### Android activation
 
-Android acknowledges presentation after its content draw traversal. This
-acknowledgment uses an asynchronous main
-queue message so a pending frame's synchronization barrier does not defer it by
-another frame. It still checks session identity, request identity, attachment and
-live content before dispatch. The native visibility gate ends at presentation;
-individual renderers can then fade independently without hiding other pairs.
+Android mounts hosts and content in the same native transaction, so the session
+activates as soon as geometry is captured. The host remains hidden until every
+receiving host contains its content. Android acknowledges presentation after
+the content draw traversal, using an asynchronous main-queue message to avoid
+an extra frame behind a pending synchronization barrier. It validates session
+and request identity, attachment, and live content before dispatching the event.
 
-Forward motion starts on the UI thread after both the matching presentation
-acknowledgment and animation configuration arrive, in either order. A final native
-identity check rejects removed or recycled endpoints without recapturing geometry.
-Session IDs and ownership tokens reject stale transfers and animation starts.
-Reverse and interactive navigation share this preparation and presentation protocol
-with their existing progress/commit controllers.
+### Content readiness and animation start
 
-A one-second RN overlay-readiness deadline bounds the complete mount, attachment,
-content transfer, and presentation handshake. The UI driver and native retries
-also use one-second limits. Successful acknowledgments resolve immediately;
-these deadlines add no delay to a ready transition. If native presentation is
-already confirmed on the UI thread but its RN callback is delayed, the RN safety
-check preserves that confirmation. Failure traces include the last presentation
-phase, content readiness, and whether the failure was a timeout or invalidation.
-Unconfirmed presentation after a forward push settles content onto the destination
-without animation; a removed destination cancels toward the source. Registration
-or readiness changes revoke pending presentation, release navigation, and invalidate
-late acknowledgments. Reduced motion hands content directly to its endpoint.
+Both platforms acknowledge presentation only after all expected hosts are
+attached, have nonzero bounds, and contain transferred content. An empty marker
+inside each public `PortalHost` identifies its native parent. A second marker,
+named `<host>:content`, travels with the retained portal and confirms arrival
+even for content that has no native views of its own or has zero size. Host
+markers alone do not count as content. Renderer opacity is independent of
+readiness, allowing a renderer to start fully faded during a reverse session.
 
-React mounting, portal transfer, animation arming, and final settlement still need
-JavaScript. Load during startup delays motion while content stays at its previous
-endpoint. Once prepared and armed, native acknowledgment can start forward motion
-while JavaScript is busy.
+The native host prepares from the React mount and arms content readiness after
+attachment. A bounded UI-thread command retries preparation and can replay a
+confirmation that arrived before its event handler was installed. Forward
+motion starts on the UI thread once both the matching presentation acknowledgment
+and animation configuration have arrived, in either order. A final native
+identity check rejects removed or recycled endpoints. Session IDs and ownership
+tokens reject stale transfers and animation starts. Reverse and interactive
+navigation use the same presentation protocol with their own progress and
+commit controllers.
 
-There are no Reanimated `measure()`, native-ref `measureInWindow()`, native layout
-sampling, or cached-target measurement paths. Fabric geometry does not describe
-native-only transforms that bypass its shadow tree; applications must keep endpoint
-layout and scroll state stable during the handoff to the overlay.
+The React Native overlay-readiness deadline, UI driver, and native retries each
+use one-second limits. These bound failures without delaying ready transitions.
+If native presentation is already confirmed on the UI thread but its React
+Native callback is delayed, the overlay safety check preserves the confirmation.
+Failure traces report the last presentation phase, content readiness, and
+timeout or invalidation.
 
-`onPreparationTrace` exposes source capture, target registration, Fabric preparation,
-and overlay readiness timings. See [troubleshooting](./guide/troubleshooting.md#turn-on-diagnostics)
-for application diagnostics.
+After an unconfirmed forward push, content settles onto the destination without
+animation. A removed destination cancels toward the source. Registration or
+readiness changes revoke pending presentation and release navigation. Reduced
+motion transfers content directly to its endpoint.
+
+React mounting, portal transfer, animation configuration, and settlement still
+require JavaScript. Startup load can delay motion while content stays at its
+previous endpoint. Once prepared and configured, native acknowledgment can
+start forward motion while JavaScript is busy.
 
 ## Overlay and screen visibility
 
-The native overlay presents above native-stack containers. Overlay content
-reports readiness in a layout effect; the native host acknowledges presentation.
-Animation waits for those readiness signals, with a bounded safety path. Do not
-start hiding or moving content based only on an eager session-activation callback.
-The iOS host defers window detachment while pending portal commits settle.
-Android keeps drawing the live host after deactivation only while its hosts still
-hold transferred content, for at most two frames. It captures no dismissal snapshot,
-so returned content never appears twice.
-Both transition hosts exclude themselves and their children from touch hit testing.
-On Android this is enforced in `ScreenChoreographyView`, since its custom
-`ViewGroupManager` does not apply the JSX `pointerEvents` prop. This lets the
-destination accept input while the overlay finishes its remaining motion.
+The native overlay sits above native-stack containers. Its React layout effect
+reports overlay readiness, and the native host confirms presentation. Those
+signals coordinate visible content with the first overlay paint.
+
+On dismissal, iOS keeps its window container attached while pending portal
+commits settle. Android keeps drawing the live host while it still holds
+transferred content, for at most two frames. Both platforms finish the handoff
+with live content. Transition hosts and their children are excluded from touch
+hit testing so the destination can accept input during remaining motion.
+Android enforces this in `ScreenChoreographyView` because its custom
+`ViewGroupManager` does not apply the JSX `pointerEvents` prop.
+
+Screen opacity and input gating come from `screenVisibility.ts`, using
+`(direction, role, phase, progress)`. Expansion progress remains 0 at the list
+and 1 at the detail, including during a return. A plain outer view applies the
+pending or preparing-target visibility gate before Reanimated's initial style
+commit, preventing an Android mount flash. Active motion runs on an animated
+inner view.
+
+The `screenFade` prop controls active decorative opacity, with a default
+expansion interval of `[0, 0.4]` or a custom increasing interval within `[0, 1]`.
+`keepVisible` keeps the screen opaque. Preparation visibility and input gates
+operate independently of these appearance settings.
 
 ### iOS window ownership and accessibility
 
-`ScreenChoreographyView` stays mounted as a Fabric-owned anchor for the provider's
-lifetime. Its native window container is attached only while presenting a
-transition or finishing the native dismissal handoff. Live React children mount
-into that container; the anchor itself never moves out of its React parent.
-Dismissal keeps the live container attached across two main-queue callbacks
-before detaching it. This delay is not a display-frame guarantee. Reactivation,
-removal, or recycling invalidates pending dismissal callbacks; detached or
-zero-sized containers and foreground overlays detach immediately. No iOS
-dismissal snapshot is captured.
+`ScreenChoreographyView` remains a Fabric-owned anchor for the provider's
+lifetime. Live React children mount into its window container, which is attached
+only during presentation or the dismissal handoff. The anchor itself stays
+under its React parent.
 
-The container uses the anchor's actual `UIWindow`. If a native full-screen modal
-temporarily detaches an ancestor, it can keep using that anchor's last known
-window while the anchor remains mounted. Removing or recycling the anchor clears
-this association and removes the container. Deferred presentation and dismissal
-callbacks are invalidated across interruption and recycling.
+Dismissal retains the container across two main-queue callbacks before detaching
+it; this delay is not a display-frame guarantee. Reactivation, removal, and
+recycling invalidate pending callbacks. Detached or zero-sized containers and
+foreground overlays detach immediately.
 
-Window containers sit above attached controller content and below independent
-window overlays such as React Native's FPS monitor. `ChoreographyOverlay` stays
-above transition containers independently of their sessions and acknowledgments.
-Its iOS foreground container uses a Fabric touch handler; Android uses a
-`box-none` sibling above the transition portal. Only its controls receive touches;
-empty space passes through, and it does not act as an accessibility modal.
+The container uses the anchor's actual `UIWindow`. If a full-screen native modal
+temporarily detaches an ancestor, the mounted anchor can retain its last known
+window association. Removing or recycling the anchor clears that association
+and removes the container.
+
+Window containers sit above controller content and below independent window
+overlays, such as React Native's FPS monitor. `ChoreographyOverlay` stays above
+transition containers, independently of their sessions and acknowledgments. Its
+iOS foreground container uses a Fabric touch handler; Android uses a `box-none`
+sibling above the transition portal. Only controls receive touches, empty space
+passes through, and the foreground container does not act as an accessibility
+modal.
 
 A weak responder-chain link to the Fabric anchor lets nested modals find their
 original presenting controller. Once attached, a foreground container keeps its
-position so rerenders and rotation cannot raise it above a modal it presented.
+position so rerenders and rotation do not raise it above a modal it presented.
 
-Screen opacity and input gating are defined in `screenVisibility.ts`, from
-(direction, role, phase, progress). Expansion progress is 0 at the list and 1 at
-the detail, including during a return. A plain outer view applies the pending
-or preparing-target visibility gate before Reanimated's initial style commit;
-this avoids an Android mount flash. Active motion runs on the animated inner view.
-The per-screen `screenFade` prop configures only that active decorative opacity:
-it defaults to the expansion interval `[0, 0.4]` and accepts a custom increasing
-interval within `[0, 1]`. The separate `keepVisible` prop overrides the fade to
-keep the screen opaque. Preparation visibility and input gates remain independent
-of these settings.
-
-The provider still contains visibility-registry bookkeeping used by its lifecycle
-and progress handoff. Live owners do not register duplicate-content hiding styles.
-Do not treat that bookkeeping as a reason to add snapshot render paths.
-
-## Forward and reverse lifecycle
-
-1. Acquire navigation ownership, measure the source, and mount/prepare the target.
-2. Resolve pairs and freeze endpoint presentations.
-3. Mount overlay hosts, move retained content, and await overlay presentation.
-4. Drive shared progress with Reanimated; companion content derives its own styles.
-5. At completion, retarget content to its endpoint and release the overlay/session.
+## Reverse transitions and interruption
 
 After a settled forward transition, Back prepares a reverse session while the
-outgoing route remains mounted. During committed settlement, a UI-thread reaction
-asks `ReverseTransitionController` to remove the outgoing route once expansion
-progress reaches 0.10. This is remaining expansion, not elapsed animation time;
-the threshold starts dismissal and does not itself confirm input readiness.
-Retained content stays in the overlay until the spring finishes. After confirmed
-route removal, a new navigation tap can finish that remaining motion immediately;
-it does not wait for the spring's settling tail. Exact animation completion also
-commits navigation if the earlier reaction has not run. There is no outgoing-screen
-snapshot component. Cancelling an interactive return keeps the detail route.
-On Android, each screen exposes its own derived progress to companion animations.
-Before dispatching removal, the controller freezes the outgoing screen's progress
-and pointer events, then crosses two UI animation frames to drain queued mapper
-and Fabric prop updates. The provider's overlay progress continues throughout;
-retained presentation progress also remains on that clock. This prevents updates
-to deleted route views without delaying removal until the spring completes.
-A rejected removal resumes the screen; a superseded commit cannot remove another
-route or resume a newer suspension.
-Once animation completion and route removal are confirmed, the provider enqueues
-the UI input handoff and completes the session in the same JavaScript turn.
-Portal retargeting and navigation unlock do not wait for a UI-to-JavaScript
-acknowledgment. The handoff is queued before completion invalidates UI ownership.
+outgoing route remains mounted. During committed settlement, a UI-thread
+reaction asks `ReverseTransitionController` to remove that route when expansion
+progress reaches 0.10. This threshold measures remaining expansion, starts
+dismissal, and leaves retained content in the overlay until the spring finishes.
+Exact animation completion also commits navigation if the early reaction has
+not run. Cancelling an interactive return keeps the detail route.
 
-An interrupted active forward transition refreshes its source metrics and uses
-the same return controller, with the original source as its return destination.
-Confirmed removal enables that destination's input when interaction during
-transitions is allowed. It also wakes queued navigation, including when focus
-arrives before the removal result. The remaining animation still owns the
-overlay until completion or a new navigation tap. Progress ownership
-rejects callbacks from replaced animations. JavaScript timers do not force
-animation completion; Reanimated's completion callback or an explicit navigation
-interruption owns that decision.
+On Android, each screen has derived progress for companion animations. Before
+removing a route, the controller freezes its progress and pointer events, then
+crosses two UI animation frames to drain queued mapper and Fabric prop updates.
+The overlay and retained presentation clocks keep running. A rejected removal
+resumes the screen, while ownership checks prevent an older commit from removing
+another route or resuming a newer suspension.
 
-Navigation lineage records source route identity, group, and requested spring.
-Removal interception routes hardware and navigator Back through the same reverse
-preparation. On Android, Back from a detail whose opening animation is still
-active reuses the in-app Back reversal and refreshes the original source metrics
-before returning. It does not remove that route underneath the forward animation.
-If Back removes the Android destination before preparation finishes, the pending
-opening is cancelled instead of animating an unmounted route.
-`NavigationSessionController` owns locks, queued requests, and replay
-checks. Keep provider cleanup independent of an outgoing route's lifetime.
+Confirmed route removal allows a new navigation tap to finish the remaining
+motion immediately instead of waiting for the spring tail. Once animation
+completion and route removal are both confirmed, the provider queues the UI
+input handoff and completes the session in the same JavaScript turn. The handoff
+is queued before completion invalidates UI ownership, allowing portal retargeting
+and navigation unlock without another UI-to-JavaScript round trip.
 
-## Companion motion and extensions
+An interrupted forward transition refreshes source metrics and uses the same
+return controller, with the original source as its destination. Confirmed removal
+enables that destination's input when interaction during transitions is allowed
+and wakes queued navigation, including when focus arrives before the removal
+result. The remaining animation owns the overlay until completion or a new
+navigation tap. Progress ownership rejects callbacks from replaced animations;
+Reanimated completion or explicit navigation interruption determines settlement.
+
+Navigation lineage records the source route instance, group, and spring.
+Removal interception routes hardware and navigator Back through reverse
+preparation. On Android, Back during an active opening refreshes original source
+metrics and follows the in-app reversal. If Back removes the destination before
+preparation finishes, the pending opening is cancelled.
+`NavigationSessionController` owns navigation locks, queued requests, and replay
+checks for these paths.
+
+## Transition composition and companion motion
+
+`defineTransition` compiles named bounds and surface recipes into module-stable
+`makeTransition` adapters. Typed owner and target wrappers resolve the same role
+while preserving the retained subtree. Recipes copy their scalar configuration
+at definition time; the coordinator captures endpoint presentation data at
+session start. Custom renderers remain module-scoped and keep their host mounted
+throughout a session.
 
 `useChoreographyProgress` subscribes to screen-visible session state.
-`useChoreographyControls` provides a stable screen-qualified settle callback.
-`useLatchedReveal` builds on shared progress. `useRevealStyle` and named `Enter`/`Exit` components scope reveals to the participating screen or an explicitly selected retained presentation. Each list item owns its hooks; stagger intervals fit within the configured group window.
-`useInteractiveTransition` exposes gesture-normalized progress (0 at detail,
-1 at completed return), velocity-aware settlement, and cancellation; it does not
-subscribe to native-stack's built-in swipe gesture.
+`useChoreographyControls` provides a stable, screen-qualified settle callback.
+`useLatchedReveal` mounts companion content after a progress threshold, while
+`useRevealStyle` and named `Enter` / `Exit` components animate local views.
+These local views use screen progress and do not participate in pair discovery
+or overlay readiness. Each list item owns its hooks, with stagger intervals
+inside the configured group window. Reveals use direction-specific preparation
+endpoints and suppress translation under reduced motion.
 
-Add visual recipes through `makeTransition`, or derive retained child layout
-through `useSharedElementPresentation`. Keep renderers module-scoped and avoid
-remounting their host during a session. Do not introduce copied-content or
-unpaired-element paths.
+Retained descendants use `useSharedElementPresentation` for their internal
+motion. `useInteractiveTransition` exposes gesture-normalized progress (0 at
+detail, 1 at completed return), velocity-aware settlement, and cancellation.
+Connecting it to a gesture is explicit; native-stack's built-in swipe gesture
+does not supply this progress automatically.
 
-## Debugging and verification
-
-Use the provider's boolean or `{ level, categories?, logEveryFrame? }` debug
-configuration. Applying configuration must not recreate the coordinator or
-registry. Use preparation traces to distinguish time before animation from
-animation duration. Test rapid interruption, repeated return, layout changes,
-and missing endpoint handling when modifying lifecycle code.
+## Diagnostics
 
 The two example apps share screen implementations and transition recipes.
-
-## Declarative composition
-
-`defineTransition` compiles named bounds/surface recipes into module-stable
-`makeTransition` adapters. Typed owner/target wrappers resolve the same role
-without adding another component representation. Recipes copy their scalar
-configuration when defined; endpoint presentation data is still frozen by the
-coordinator at session start.
-
-Enter/exit roles render local animated views driven by screen progress. They do
-not participate in pair discovery or overlay readiness. There are no unpaired
-tracks or copied image/text recipes. The shared examples demonstrate how to
-combine retained content, named shared roles, and local section reveals.
-Reveals use direction-specific preparation endpoints and suppress translation
-under reduced-motion settings. They read screen state, so retained descendants
-continue to use `useSharedElementPresentation` for their own internal motion.
+Provider debug logs and `onPreparationTrace` help distinguish startup work from
+animation duration. Traces cover source capture, target registration, Fabric
+preparation, and overlay readiness. See
+[troubleshooting](./guide/troubleshooting.md#turn-on-diagnostics) for application
+diagnostics, and
+[contributing](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/CONTRIBUTING.md)
+for the development workflow.

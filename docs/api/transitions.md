@@ -57,13 +57,16 @@ The result contains:
 
 Default enter interval: `[0.55, 0.9]`. Default exit interval: `[0.1, 0.4]`. Translations default to `0`; hidden scale defaults to `1`. The visible endpoint always has zero translation and scale `1`. Reduced motion disables both translation and scale; opacity remains progress-driven. Shared recipes default to `zIndex: 100` through the transition factory.
 
-Shared recipes interpolate width and height so live children can reflow. Position uses translations from a fixed layout origin. See [choosing content layout](../guide/transitions.md#choose-how-content-changes-size).
+Shared recipes change the frame's width and height so live children can reflow as they move. See [choosing content layout](../guide/transitions.md#choose-how-content-changes-size).
 
 `index` defaults to `0` and `count` to `1`. For a dynamic list, pass each item's current index and the list length. Each component owns its hooks, so inserting, removing, and reordering keyed items is supported. `during` is the whole group's interval. The effective stagger is `min(stagger, (end - start) / count)`; the remaining interval is each item's animation duration. This compresses excessive staggering so all items finish by `end`. Forward expansion starts lower indices first; reversing progress reverses the sequence. Changes to index or count immediately recompute the interval.
 
 `count` must be a positive safe integer and `index` an integer in `[0, count)`. An empty list simply renders no reveal components. Translations must be finite; scale and stagger must be finite and nonnegative. Definitions capture their recipes at creation.
 
-`scope` defaults to `'screen'`: the reveal follows the enclosing screen only when it participates in a transition, and is fully visible while idle or inactive. Incoming screens prepare from their starting endpoint even before they have a session role. Use `scope="presentation"` inside a retained `SharedElement` owner: the reveal follows that owner's `presentationProgress`, including its resting endpoint, independently of other groups. Presentation enter content stays hidden when collapsed; presentation exit content stays hidden when expanded. This scope requires an owner and does not change React ownership.
+Choose `scope` based on where the content lives:
+
+- `'screen'` (default): ordinary screen content follows that screen's transition and is fully visible while idle or unrelated to the current motion. An incoming screen starts its reveal at the appropriate endpoint during preparation.
+- `'presentation'`: content inside a retained `SharedElement` owner follows that owner's `presentationProgress`, including at rest and while other groups transition. Enter content stays hidden when collapsed; exit content stays hidden when expanded. This scope requires an owner.
 
 Reveals animate opacity and transforms only. They keep children mounted and do not change touch or accessibility behavior. They own the wrapper's opacity and transform; put additional transforms on a nested view. For the same behavior on an existing animated view, use [`useRevealStyle`](./hooks.md#userevealstyle).
 
@@ -90,7 +93,7 @@ Render `children` **exactly once**, continuously through the session. It is the 
 
 `anchors` is a read-only map keyed by element ID containing only the current session's matched elements (including the renderer's own element). Each `TransitionAnchor` contains `collapsed` and `expanded` rectangles with `pageX`, `pageY`, `width`, and `height`. These names always mean expansion endpoints, including on back: collapsed is the forward source / backward target; expanded is the forward target / backward source. Interpolate these endpoints using expansion `progress` directly.
 
-Anchors update together with renderer endpoint metrics when the session's measurements refresh. They contain geometry only, with no native refs, registrations, styles, metadata, or React content. Optional or unmatched elements have no entry; guard lookups such as `anchors?.artwork` before using them. The prop remains optional for renderers invoked outside the overlay.
+Use anchors to position one shared element relative to another. They contain geometry and update along with endpoint metrics when the library refreshes session measurements. Optional or unmatched elements have no entry; guard lookups such as `anchors?.artwork` before using them. The prop remains optional for renderers invoked outside the overlay.
 
 ## `TransitionFrame`
 

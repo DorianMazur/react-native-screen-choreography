@@ -3,7 +3,7 @@ title: Introduction
 description: Bring screens together with one retained element and one shared animation clock.
 ---
 
-# A transition is more than a moving card.
+# Introduction
 
 Screen Choreography coordinates shared elements and companion content across React Native screens. A single Reanimated progress value drives the motion, while a native overlay presents it above the navigator.
 
@@ -59,7 +59,7 @@ Custom back gestures expose a separate **gesture progress**: `0` means an untouc
 
 Use Screen Choreography for coordinated card-to-detail transitions on **iOS and Android with Fabric**. React Navigation's native stack and Expo Router's native stack are the documented integrations.
 
-The current version is pre-1.0, and minor releases may introduce breaking changes. Native-stack swipe progress is not connected automatically; custom gesture control is available through a hook. Shared elements must be mounted and measurable when a session is prepared.
+The current version is pre-1.0, and minor releases may introduce breaking changes. Native-stack swipe progress is not connected automatically; custom gesture control is available through a hook. Shared elements must be mounted and measurable before a transition begins.
 
 ## Start building
 

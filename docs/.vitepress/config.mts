@@ -99,6 +99,7 @@ export default defineConfig({
           { text: 'Interactive Back', link: '/guide/interactive-back' },
           { text: 'Readiness & loading', link: '/guide/readiness' },
           { text: 'Troubleshooting', link: '/guide/troubleshooting' },
+          { text: 'Example apps', link: '/examples' },
         ],
       },
       {
@@ -111,10 +112,13 @@ export default defineConfig({
         ],
       },
       {
-        text: 'GO DEEPER',
+        text: 'FOR CONTRIBUTORS',
         items: [
-          { text: 'Example apps', link: '/examples' },
-          { text: 'Architecture', link: '/architecture' },
+          { text: 'Runtime architecture', link: '/architecture' },
+          {
+            text: 'Contributing',
+            link: `${repository}/blob/main/CONTRIBUTING.md`,
+          },
         ],
       },
     ],

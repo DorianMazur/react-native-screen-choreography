@@ -3,7 +3,7 @@ title: Troubleshooting
 description: Resolve missing pairs, startup flashes, native build issues, and unexpected retained content behavior.
 ---
 
-# Find the missing connection.
+# Troubleshooting
 
 Most integration issues come from mismatched IDs, layout, or competing screen animations. Compare your setup with the complete [quick start](./quick-start.md).
 
@@ -21,13 +21,13 @@ Check these connections in order:
 4. Both endpoints are mounted and measure to nonzero width and height.
 5. The provider remains mounted above the navigator.
 
-For Expo Router, `targetScreenId` must match the destination wrapper's `screenId`. For React Navigation, use a `screenId` matching the route name. Internally, adapters distinguish route instances by route key.
+For Expo Router, `targetScreenId` must match the destination wrapper's `screenId`. For React Navigation, use a `screenId` matching the route name.
 
 When a deep link opens the destination without a source owner, render fallback content there. An empty target alone does not create content.
 
 ## “No valid pairs found”
 
-The coordinator could not find measurable matching endpoints. Inspect the group and element IDs first, then the target size. A virtualized item outside the rendered window is not a usable endpoint. Keep the returning source item mounted and visible enough to measure.
+The library could not find matching elements with usable layout. Inspect the group and element IDs first, then the target size. A virtualized item outside the rendered window is not a usable endpoint. Keep the returning source item mounted and visible enough to measure.
 
 Do not gate required targets with `useLatchedReveal`. Hold the screen's [readiness](./readiness.md) while required layout is being prepared.
 

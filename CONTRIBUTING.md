@@ -75,9 +75,29 @@ To fix formatting errors, run the following:
 yarn lint --fix
 ```
 
+## Documentation development
 
+The documentation is a static VitePress site in the `docs/` Yarn workspace. Most edits are ordinary Markdown; native dependencies are not needed to build it. Node.js 22 or newer is required for the docs toolchain.
 
-### Scripts
+From the repository root, install dependencies and start the local site:
+
+```sh
+yarn install
+yarn docs:dev
+```
+
+For documentation-only work, use `yarn workspaces focus screen-choreography-docs` instead of `yarn install` to install only the docs dependencies. You can also run `yarn dev` from `docs/`.
+
+Before submitting documentation changes, check formatting and build the site:
+
+```sh
+yarn workspace screen-choreography-docs format:check
+yarn docs:build
+```
+
+The build validates links and API reference coverage. Keep integration guides in `docs/guide/`, public API documentation in `docs/api/`, and runtime internals in `docs/architecture.md`.
+
+## Scripts
 
 The `package.json` file contains various scripts for common tasks:
 
@@ -87,8 +107,8 @@ The `package.json` file contains various scripts for common tasks:
     - `yarn example start`: start the Metro server for the example app.
 - `yarn example android`: run the example app on Android.
 - `yarn example ios`: run the example app on iOS.
-  
-### Sending a pull request
+
+## Sending a pull request
 
 > **Working on your first pull request?** You can learn how from this _free_ series: [How to Contribute to an Open Source Project on GitHub](https://app.egghead.io/playlists/how-to-contribute-to-an-open-source-project-on-github).
 

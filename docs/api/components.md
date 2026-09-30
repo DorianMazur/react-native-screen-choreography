@@ -37,7 +37,7 @@ stay above the transition host automatically.
 
 ## `ChoreographyProvider`
 
-Owns the shared progress clock, transition sessions, element registry, and native overlay. Mount one stable provider above the navigator.
+Coordinates shared transitions, their progress, and the native overlay. Mount one provider above the navigator and keep it mounted as routes change.
 
 ```tsx
 <ChoreographyProvider debug={false}>
@@ -53,11 +53,9 @@ Owns the shared progress clock, transition sessions, element registry, and nativ
 | `onTransitionEnd`    | Session callback                                | Called when a session completes **or is cancelled**      |
 | `onPreparationTrace` | `(trace: ChoreographyPreparationTrace) => void` | Optional deferred startup diagnostics                    |
 
-Derive callback types from the component when you need a named application handler; the internal session type is not separately exported from the public entry.
+The provider waits briefly for both screens to finish layout before starting motion. If usable shared-element geometry is unavailable, navigation continues without a shared transition.
 
-Shared transitions read source and target geometry directly from completed Fabric
-mounts on React Native 0.81 and newer. Preparation waits briefly for pending layout; if a valid
-snapshot is unavailable, navigation continues without a shared transition.
+Use `ComponentProps` to type a callback defined outside the provider:
 
 ```tsx
 import type { ComponentProps } from 'react';
@@ -68,7 +66,7 @@ const onStart: ProviderProps['onTransitionStart'] = (session) => {
 };
 ```
 
-Preparation traces include a group, source and target screen IDs, direction, outcome, and timed stages. The clock is `js-performance-now`; outcomes include `overlay-ready`, `overlay-timeout`, `cancelled`, `unavailable`, and `failed`. Treat this as preparation diagnostics, not an animation completion event or frame-rate benchmark.
+Preparation traces help diagnose a delay between navigation and the start of motion. They include the group, source and target screen IDs, direction, outcome, and timed stages from the JavaScript performance clock (`js-performance-now`). Outcomes include `overlay-ready`, `overlay-timeout`, `cancelled`, `unavailable`, and `failed`. Use lifecycle callbacks for session events; traces report startup timing rather than animation duration or frame rate.
 
 ### Debug configuration
 
@@ -86,7 +84,7 @@ Object configuration defaults to level `info`. Identical consecutive messages ar
 
 ## `ChoreographyScreen`
 
-Identifies a screen and coordinates its readiness, visibility, removal handling, and screen-scoped progress context. Available only from the integration entries.
+Wraps each route participating in shared transitions. It waits for layout, manages the screen's visibility and input during motion, and connects Back navigation to the return transition. Available only from the integration entries.
 
 ```ts
 {
@@ -99,15 +97,17 @@ Identifies a screen and coordinates its readiness, visibility, removal handling,
 }
 ```
 
-Use a stable application label for `screenId`. For React Navigation, match the route name; for Expo Router, match `targetScreenId` on navigation requests. Adapters use the actual route key internally to distinguish multiple instances.
+Use a stable application label for `screenId`. For React Navigation, match the route name; for Expo Router, match `targetScreenId` on navigation requests. Multiple instances of the same route can use the same label.
 
-`allowInteractionDuringTransition` defaults to `true` on both iOS and Android and lets the arriving screen receive touches during active motion, for example so a back button can interrupt an opening transition. Set it to `false` to block touches on the arriving screen, including its back button, until the transition completes. Preparation and the outgoing screen remain blocked unless that source is explicitly driving a gesture with `useInteractiveTransition`. A gesture source keeps its visibility and input until finish or cancel, so collapsing the shared content does not terminate the held touch. Shared content in the native overlay remains non-interactive; place the back button’s touch target on the destination screen. Other destination controls should disable themselves while transitioning if they are not safe to use.
+`allowInteractionDuringTransition` defaults to `true` on both platforms. The arriving screen can receive touches during motion, so a Back button can interrupt an opening transition. Set it to `false` to block those touches until motion completes. Disable individual controls while transitioning if using them would conflict with your screen's state.
+
+Screens remain blocked during preparation, and the outgoing screen is blocked during motion. A screen driving a custom gesture with `useInteractiveTransition` keeps its visibility and input until finish or cancel, so the gesture can continue. Shared content in the overlay cannot receive touches; place a Back button or gesture responder in ordinary destination content.
 
 `ready` adds an application gate after the screen lays out. It does not replace layout readiness. Readiness also waits for acquired blockers. See [readiness](../guide/readiness.md).
 
-`keepVisible` keeps the screen at full opacity while a session runs instead of cross-fading it with the other endpoint. Set it on the source screen when the destination is transparent and the source is its backdrop, for example a preview presented over the list it came from. It takes precedence over `screenFade`. It does not change readiness, interaction blocking, or the pre-activation gate on a forward destination.
+`keepVisible` keeps the screen at full opacity during motion. Set it on the source screen when a transparent destination uses the source as its backdrop, such as a preview over a list. It takes precedence over `screenFade`. A forward destination still stays hidden during preparation, and readiness and input behavior remain the same.
 
-The wrapper handles eligible single-route back removal for reverse choreography. Multi-route resets and removals outside the recorded return path are not equivalent to a shared reverse transition.
+Back to the recorded source route uses a shared return transition. Multi-route resets and removals outside that return path use ordinary navigation.
 
 ### `ScreenFadeConfig`
 
@@ -123,7 +123,7 @@ Each screen configures its own opacity. Use the same interval on both screens fo
 
 An explicitly owned gesture source stays fully visible regardless of the fade interval until finish or cancel.
 
-This setting does not change readiness, the pending/preparing visibility gates, interaction blocking, or shared-element overlay motion.
+The fade controls screen opacity during motion. Readiness and input rules still apply, and shared elements animate independently in the overlay.
 
 ## `SharedElement`
 
@@ -145,7 +145,7 @@ Owns the **one live content subtree**. Pair it with `SharedElement.Target` on th
 | `portalStyle` | `StyleProp<ViewStyle>` | Payload layout overrides, after the portal's fill defaults                 |
 | `metadata`    | `unknown`              | Endpoint data captured by reference at session start                       |
 
-`SharedElementProps` is exported. Registration identity is the tuple of screen, group, and element ID. Normal prop updates do not re-register the element; the session captures endpoint presentations when it starts.
+`SharedElementProps` is exported for typing your own wrappers. Keep `id` and `groupId` stable for the same content. Each transition captures endpoint styles and metadata when it starts; later changes to those inputs apply to subsequent transitions. The live child component can continue updating during motion.
 
 The owner keeps its original React context when moved into the overlay or destination. Keep it mounted for the lifetime of the retained content. Use [`useSharedElementPresentation`](./hooks.md#usesharedelementpresentation) for endpoint-specific layout inside it.
 

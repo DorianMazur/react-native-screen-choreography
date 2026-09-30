@@ -1,6 +1,6 @@
 ---
 title: Expo Router
-description: Connect file-based routes to choreography without adding transition metadata to your URLs.
+description: Add shared transitions to file-based routes in an Expo development build.
 ---
 
 # Expo Router
@@ -128,7 +128,7 @@ export default function ArtworkDetail() {
 }
 ```
 
-`targetScreenId` must match the destination wrapper's `screenId`. It is an application label, separate from the URL; the adapter resolves the mounted route instance internally. Transition lineage stays in the provider rather than private URL parameters.
+`targetScreenId` must match the destination wrapper's `screenId`. It identifies the screen for choreography; `href` identifies the URL to open. No additional transition parameters are needed in the URL.
 
 ## Push, navigate, and back
 
