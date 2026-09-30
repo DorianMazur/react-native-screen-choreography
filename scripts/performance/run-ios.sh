@@ -7,6 +7,12 @@ mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
 [[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 100 ]] || { echo 'Cycle count must be in 1..100.' >&2; exit 2; }
+# RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
+# need it in their environment; otherwise RN's wrappers silently call clang alone.
+if [[ "${USE_CCACHE:-0}" == 1 ]]; then
+  CCACHE_BINARY="$(command -v ccache)" || { echo 'USE_CCACHE=1 requires ccache on PATH.' >&2; exit 2; }
+  export CCACHE_BINARY
+fi
 output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/ios-$mode-$(date -u +%Y%m%dT%H%M%SZ)}"
 [[ ! -e "$output" ]] || { echo "Use a fresh PERFORMANCE_OUTPUT directory: $output" >&2; exit 2; }
 cmp -s examples/react-navigation/ios/Podfile.lock examples/react-navigation/ios/Pods/Manifest.lock || {
