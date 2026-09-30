@@ -15,6 +15,12 @@ const config = withMetroConfig(getDefaultConfig(__dirname), {
   dirname: __dirname,
 });
 
-config.transformer.publicPath = '/assets/?unstable_path=.';
+// The query form lets Metro serve assets outside the app directory. Offline
+// bundles need file paths: a query string makes iOS truncate the asset URL.
+config.transformer.publicPath = process.argv.some(
+  (arg) => arg === '--assets-dest' || arg.startsWith('--assets-dest=')
+)
+  ? '/assets'
+  : '/assets/?unstable_path=.';
 
 module.exports = config;
