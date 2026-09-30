@@ -611,7 +611,7 @@ function withMotion(data: InputRecord) {
 }
 
 for (const platform of ['android', 'ios']) {
-  test(`${platform}: reports all three same-clock metrics for both directions and every example`, () => {
+  test(`${platform}: reports preparation and all three motion metrics for every example`, () => {
     const input = documents();
     input.forEach(({ data }) => {
       withMotion(data);
@@ -624,9 +624,16 @@ for (const platform of ['android', 'ios']) {
     });
     const summary = summarize(input, { ...options, platform });
     assert.equal(summary.valid, true, summary.errors.join());
+    const body = markdown(summary);
     for (const scenario of SCENARIO_IDS)
       for (const direction of ['forward', 'backward']) {
         const prefix = `${scenario}.${direction}`;
+        assert.match(
+          body,
+          new RegExp(
+            `${SCENARIOS[scenario].label} · ${direction === 'forward' ? 'open' : 'return'} preparation \\(ms\\) \\| — \\| 40 \\| —`
+          )
+        );
         assert.equal(summary.metrics[`${prefix}.tapToMotion`]!.median, 70);
         assert.equal(
           summary.metrics[`${prefix}.transitionDuration`]!.median,
@@ -638,10 +645,7 @@ for (const platform of ['android', 'ios']) {
           'rn-worklets-steady-clock-ms'
         );
       }
-    assert.doesNotMatch(
-      markdown(summary),
-      /preparation\.[a-z-]+Ms|requestToOverlayReadyMs/
-    );
+    assert.doesNotMatch(body, /preparation\.[a-z-]+Ms|requestToOverlayReadyMs/);
     input[0].data.native.platform = platform === 'ios' ? 'android' : 'ios';
     assert.equal(
       summarize(input, { ...options, platform }).valid,

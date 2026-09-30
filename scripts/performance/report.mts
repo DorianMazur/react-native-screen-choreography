@@ -517,7 +517,7 @@ export function markdown(
     '',
     summaryTable(summary, base),
     '',
-    'Tap timing starts at the JS tap handler and ends at the first UI progress change. Transition duration runs from first progress change to the endpoint; handoff runs from that endpoint to UI visibility/input release. These are runtime observations, not display presentation timestamps. Detailed preparation stages remain in summary.json.',
+    'Preparation runs from the navigation request to session activation. Tap timing starts at the JS tap handler and ends at the first UI progress change. Transition duration runs from first progress change to the endpoint; handoff runs from that endpoint to UI visibility/input release. These are runtime observations, not display presentation timestamps. Detailed preparation stages remain in summary.json.',
     ...(renders ? ['', '### Committed React renders', '', renders] : []),
     '',
     '',

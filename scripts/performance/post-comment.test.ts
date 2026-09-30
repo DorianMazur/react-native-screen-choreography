@@ -22,6 +22,8 @@ const report = {
   mode: 'native-release',
   valid: true,
   metrics: {
+    'gallery.forward.requestToSessionActiveMs': { count: 20, median: 30 },
+    'gallery.backward.requestToSessionActiveMs': { count: 20, median: 15 },
     'gallery.forward.tapToMotion': { count: 20, median: 40 },
     'gallery.backward.tapToMotion': { count: 20, median: 25 },
     'gallery.forward.preparation.overlay-readyMs': { count: 20, median: 100 },
@@ -46,11 +48,13 @@ test('only the current open PR head in this repository can receive a comment', (
   assert.equal(isCurrentPullRequest(pr, run, 'other/repo'), false);
 });
 
-test('comment omits optional startup timings and profiling durations', () => {
+test('comment includes preparation and motion but omits detailed startup timings', () => {
   const body = renderComment(run, { [artifact]: report });
   assert.ok(body.includes(COMMENT_MARKER));
   assert.match(body, /Android release: \*\*passed\*\*/);
   assert.match(body, /No compatible baseline/);
+  assert.match(body, /open preparation \(ms\) \| — \| 30 \| —/);
+  assert.match(body, /return preparation \(ms\) \| — \| 15 \| —/);
   assert.match(body, /tap to motion \(ms\) \| — \| 40 \| —/);
   assert.match(body, /back tap to motion \(ms\) \| — \| 25 \| —/);
   assert.doesNotMatch(
@@ -59,7 +63,7 @@ test('comment omits optional startup timings and profiling durations', () => {
   );
   assert.equal(
     body.split('\n').filter((line) => /^\| Gallery/.test(line)).length,
-    6
+    8
   );
 });
 
@@ -186,5 +190,7 @@ test('iOS is validated, rendered and compared independently of Android', async (
     /Android release: \*\*missing\*\* · iOS release: \*\*passed\*\*/
   );
   assert.match(body, /iOS release measurements/);
+  assert.match(body, /open preparation \(ms\) \| — \| 30 \| —/);
+  assert.match(body, /return preparation \(ms\) \| — \| 15 \| —/);
   assert.match(body, /tap to motion \(ms\) \| — \| 40 \| —/);
 });

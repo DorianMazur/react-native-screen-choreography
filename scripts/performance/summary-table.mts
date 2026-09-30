@@ -85,9 +85,11 @@ export function environmentChanges(current: InputRecord, base?: InputRecord) {
 export function headlineMetrics() {
   return SCENARIO_IDS.flatMap((scenario) =>
     [
+      ['forward.requestToSessionActiveMs', 'open preparation'],
       ['forward.tapToMotion', 'tap to motion'],
       ['forward.transitionDuration', 'open transition duration'],
       ['forward.handoffDuration', 'open handoff duration'],
+      ['backward.requestToSessionActiveMs', 'return preparation'],
       ['backward.tapToMotion', 'back tap to motion'],
       ['backward.transitionDuration', 'return transition duration'],
       ['backward.handoffDuration', 'return handoff duration'],

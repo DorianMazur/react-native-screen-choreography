@@ -24,6 +24,8 @@ test('standalone markdown renders compatible baseline and deltas alongside diagn
       nodeVersion: '24',
     },
     metrics: {
+      'gallery.forward.requestToSessionActiveMs': { count: 20, median: 80 },
+      'gallery.backward.requestToSessionActiveMs': { count: 20, median: 35 },
       'gallery.forward.tapToMotion': { count: 20, median: 100 },
       'gallery.backward.tapToMotion': { count: 20, median: 50 },
       'gallery.backward.preparation.coordinatorMs': {
@@ -39,6 +41,8 @@ test('standalone markdown renders compatible baseline and deltas alongside diagn
     },
   };
   const current = structuredClone(base);
+  current.metrics['gallery.forward.requestToSessionActiveMs'].median = 60;
+  current.metrics['gallery.backward.requestToSessionActiveMs'].median = 30;
   current.metrics['gallery.backward.tapToMotion'].median = 40;
   current.metrics['gallery.backward.preparation.coordinatorMs'].median = 30;
   current.metrics['gallery.backward.preparation.overlay-readyMs'].median = 108;
@@ -48,6 +52,8 @@ test('standalone markdown renders compatible baseline and deltas alongside diagn
     'Base: test'
   );
   assert.match(body, /Base: test/);
+  assert.match(body, /open preparation \(ms\) \| 80 \| 60 \| -20 ms/);
+  assert.match(body, /return preparation \(ms\) \| 35 \| 30 \| -5 ms/);
   assert.match(body, /50 \| 40 \| -10 ms/);
   assert.doesNotMatch(
     body,
