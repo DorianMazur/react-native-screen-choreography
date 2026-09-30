@@ -35,6 +35,7 @@ export function useTripPickup(topInset: number) {
   const pickup = useSharedValue(IDLE);
   const landing = useSharedValue(0);
   const collapse = useSharedValue(0);
+  const driving = useSharedValue(false);
   const activityHeight = useSharedValue(300);
   const [pickedUp, setPickedUp] = useState(false);
   const phase = useRef<Phase>('idle');
@@ -49,9 +50,9 @@ export function useTripPickup(topInset: number) {
   useAnimatedReaction(
     () => collapse.value,
     (value) => {
-      if (isActive) setProgress(value);
+      if (isActive && driving.value) setProgress(value);
     },
-    [isActive, setProgress]
+    [isActive, setProgress, driving]
   );
 
   // Keep this JS callback alive until Reanimated has delivered completion.
@@ -86,19 +87,6 @@ export function useTripPickup(topInset: number) {
     },
     [collapse, landing, completeLanding]
   );
-
-  useEffect(() => {
-    if (!isActive || phase.current !== 'preparing') return;
-    if (release.current) {
-      settle(release.current === 'restoring');
-    } else {
-      phase.current = 'held';
-      collapse.value = withSpring(1, {
-        duration: reduceMotion ? 1 : 320,
-        dampingRatio: 1,
-      });
-    }
-  }, [isActive, collapse, reduceMotion, settle]);
 
   useEffect(() => {
     mounted.current = true;
@@ -148,6 +136,7 @@ export function useTripPickup(topInset: number) {
         timer.current = setTimeout(() => {
           timer.current = null;
           phase.current = 'preparing';
+          driving.value = false;
           collapse.value = 0;
           landing.value = 0;
           pickup.value = {
@@ -167,6 +156,19 @@ export function useTripPickup(topInset: number) {
                 phase.current = 'idle';
                 pickup.value = IDLE;
                 setPickedUp(false);
+                return;
+              }
+              // An interrupted opening keeps its current visual progress.
+              collapse.value = session.progress.value;
+              driving.value = true;
+              if (release.current) {
+                settle(release.current === 'restoring');
+              } else {
+                phase.current = 'held';
+                collapse.value = withSpring(1, {
+                  duration: latest.current.reduceMotion ? 1 : 320,
+                  dampingRatio: 1,
+                });
               }
             })
             .catch(() => {
@@ -202,7 +204,7 @@ export function useTripPickup(topInset: number) {
       onPanResponderTerminationRequest: () =>
         phase.current === 'waiting' || phase.current === 'idle',
     });
-  }, [activityHeight, collapse, landing, pickup, settle]);
+  }, [activityHeight, collapse, driving, landing, pickup, settle]);
 
   const metadata = useMemo<TripPickupMetadata>(
     () => ({ pickup, landing, activityHeight }),

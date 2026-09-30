@@ -74,10 +74,11 @@ export function deriveScreenOpacity(
   phase: SessionPhase,
   progressValue: number,
   screenFade?: ScreenFadeConfig,
-  isInteractiveSource = false
+  isInteractiveScreen = false
 ): number {
   'worklet';
-  if (role === 'source' && isInteractiveSource) return 1;
+  if (isInteractiveScreen && (role === 'source' || phase === 'active'))
+    return 1;
   if (
     role === 'inactive' ||
     phase === 'idle' ||
@@ -107,10 +108,11 @@ export function shouldBlockInteraction(
   phase: SessionPhase,
   allowInteractionDuringTransition = true,
   isReturnTarget = false,
-  isInteractiveSource = false
+  isInteractiveScreen = false
 ): boolean {
   'worklet';
-  if (role === 'source' && isInteractiveSource) return false;
+  if (isInteractiveScreen && (role === 'source' || phase === 'active'))
+    return false;
   if (role === 'inactive') return false;
   return (
     phase === 'preparing' ||
