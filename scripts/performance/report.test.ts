@@ -162,12 +162,12 @@ function withPreparationTrace(data: InputRecord) {
   });
 }
 
-test('optional startup diagnostics use definition 4 and aggregate repeated stages per journey', () => {
+test('optional startup diagnostics use definition 5 and aggregate repeated stages per journey', () => {
   const input = documents();
   withPreparationTrace(input[0].data);
   const summary = summarize(input, options);
   assert.equal(summary.valid, true, summary.errors.join());
-  assert.equal(summary.measurementDefinitionVersion, 4);
+  assert.equal(summary.measurementDefinitionVersion, 5);
   assert.equal(
     summary.metrics['gallery.forward.requestToSessionActiveMs']!.median,
     40
@@ -196,7 +196,7 @@ test('optional startup diagnostics use definition 4 and aggregate repeated stage
     summary.metrics['gallery.forward.requestToOverlayReadyMs']!.median,
     60
   );
-  assert.match(markdown(summary), /not first presented motion/);
+  assert.match(markdown(summary), /not display presentation timestamps/);
 });
 
 test('invalid or missing requested startup diagnostics fail atomically', () => {
@@ -273,8 +273,11 @@ test('overlay timeouts fail validation while preserving diagnostic samples', () 
     summary.metrics['gallery.forward.requestToSessionActiveMs']!.median,
     40
   );
-  assert.match(markdown(summary), /Overlay timeout/);
-  assert.match(markdown(summary), /gallery.forward \| 1 \| 0 \| 1/);
+  assert.doesNotMatch(markdown(summary), /Optional startup diagnostics/);
+  assert.match(
+    markdown(summary),
+    /1\/1 transitions did not confirm overlay presentation/
+  );
 
   journey.requestToOverlayReadyMs = 60;
   const invalid = summarize(input, options);
@@ -453,7 +456,7 @@ test('reports 20 round trips with preparation traces in both directions', () => 
     metadata: { timingCycles: 20 },
   });
   assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(summary.measurementDefinitionVersion, 4);
+  assert.equal(summary.measurementDefinitionVersion, 5);
   for (const scenario of SCENARIO_IDS) {
     for (const direction of ['forward', 'backward']) {
       assert.equal(
@@ -505,8 +508,8 @@ test('requires every example and never merges their readings or workload definit
       new RegExp(`Missing valid ${scenario} fixture run`)
     );
   });
-  assert.match(markdown(summary), /Trips · open preparation/);
-  assert.match(markdown(summary), /Wallet · return preparation/);
+  assert.match(markdown(summary), /Trips · tap to motion/);
+  assert.match(markdown(summary), /Wallet · back tap to motion/);
 });
 
 test("instrumentation changes in one example do not invalidate another example's definitions", () => {
@@ -581,7 +584,107 @@ test('rejects every fixture version before the actual Gallery workload', () => {
 
 test('rejects unsupported benchmark platforms', () => {
   assert.throws(
-    () => summarize(documents(), { ...options, platform: 'ios' }),
+    () => summarize(documents(), { ...options, platform: 'web' }),
     /platform must be android/
   );
+});
+
+function withMotion(data: InputRecord) {
+  data.fixtureVersion = 6;
+  data.motionTracing = { version: 1, clock: 'rn-worklets-steady-clock-ms' };
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    const offset = index * 1000;
+    Object.assign(journey, {
+      requestId: index + 1,
+      requestJsMs: offset + 100,
+      sessionActiveJsMs: offset + 140,
+      motion: {
+        requestId: index + 1,
+        firstMotionMs: offset + 170,
+        motionEndMs: offset + 470,
+        handoffMs: offset + 480,
+      },
+    });
+    journey.probe.handlerJsMs = offset + 600;
+  });
+  return data;
+}
+
+for (const platform of ['android', 'ios']) {
+  test(`${platform}: reports all three same-clock metrics for both directions and every example`, () => {
+    const input = documents();
+    input.forEach(({ data }) => {
+      withMotion(data);
+      data.native.platform = platform;
+      data.native.clock = `${platform}-uptime-ms`;
+      data.native.touches.forEach((touch: InputRecord) => {
+        touch.kind =
+          platform === 'ios' ? 'window-touch-ended' : 'activity-action-up';
+      });
+    });
+    const summary = summarize(input, { ...options, platform });
+    assert.equal(summary.valid, true, summary.errors.join());
+    for (const scenario of SCENARIO_IDS)
+      for (const direction of ['forward', 'backward']) {
+        const prefix = `${scenario}.${direction}`;
+        assert.equal(summary.metrics[`${prefix}.tapToMotion`]!.median, 70);
+        assert.equal(
+          summary.metrics[`${prefix}.transitionDuration`]!.median,
+          300
+        );
+        assert.equal(summary.metrics[`${prefix}.handoffDuration`]!.median, 10);
+        assert.equal(
+          summary.metricDefinitions[`${prefix}.tapToMotion`].clock,
+          'rn-worklets-steady-clock-ms'
+        );
+      }
+    assert.doesNotMatch(
+      markdown(summary),
+      /preparation\.[a-z-]+Ms|requestToOverlayReadyMs/
+    );
+    input[0].data.native.platform = platform === 'ios' ? 'android' : 'ios';
+    assert.equal(
+      summarize(input, { ...options, platform }).valid,
+      false,
+      'native evidence must match the lane'
+    );
+  });
+}
+
+test('missing or inconsistent motion evidence fails the whole fixture without partial new metrics', () => {
+  for (const mutate of [
+    (data: InputRecord) => {
+      delete data.motionTracing;
+    },
+    (data: InputRecord) => {
+      data.motionTracing.clock = 'ios-uptime-ms';
+    },
+    (data: InputRecord) => {
+      delete data.journeys[0].motion;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.requestId = 2;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.firstMotionMs = 139;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.motionEndMs = 170;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.handoffMs = 469;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.handoffMs = 601;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.motionEndMs = NaN;
+    },
+  ]) {
+    const data = withMotion(fixture('gallery'));
+    mutate(data);
+    const summary = summarize(documents([data]), options);
+    assert.equal(summary.valid, false);
+    assert.equal(summary.metrics['gallery.forward.tapToMotion'], undefined);
+  }
 });

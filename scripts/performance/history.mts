@@ -6,6 +6,10 @@ import type { InputRecord } from './types.ts';
 export const HISTORY_BRANCH = 'performance-history';
 export const MAIN_BRANCH = 'main';
 export const SUMMARY_ARTIFACT = 'performance-summary-android-native-release';
+export const SUMMARY_ARTIFACTS = [
+  SUMMARY_ARTIFACT,
+  'performance-summary-ios-native-release',
+];
 type Api = ReturnType<typeof createGitHubApi>;
 export type SavedRun = {
   run: InputRecord;
@@ -120,14 +124,19 @@ export async function archiveRun(
   const content = JSON.stringify(saved, null, 2) + '\n';
   if (Buffer.byteLength(content) > 900 * 1024)
     throw new Error('Archived report exceeds size limit');
-  const report = reports[SUMMARY_ARTIFACT] ?? {
-    platform: 'android',
-    mode: 'native-release',
-    valid: false,
-    errors: ['No validated summary was produced. Check the run logs.'],
-  };
+  const summaries = SUMMARY_ARTIFACTS.map(
+    (artifact) =>
+      reports[artifact] ?? {
+        platform: artifact.includes('-ios-') ? 'ios' : 'android',
+        mode: 'native-release',
+        valid: false,
+        errors: ['No validated summary was produced. Check the run logs.'],
+      }
+  );
   const body = [
-    markdown(report, undefined, 'Saved main-branch readings.'),
+    ...summaries.map((report) =>
+      markdown(report, undefined, 'Saved main-branch readings.')
+    ),
     `Commit: \`${run.head_sha}\` · Run: ${run.id}, attempt ${run.run_attempt ?? 1}.`,
     '',
     `[Saved readings, definitions, and environment](${run.run_attempt ?? 1}.json)`,
@@ -156,7 +165,7 @@ export async function archiveRun(
       });
     if (
       run.conclusion === 'success' &&
-      report?.valid === true &&
+      summaries.every((report) => report.valid === true) &&
       newerRun(run, latest)
     )
       files.push({

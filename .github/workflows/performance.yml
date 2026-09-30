@@ -84,3 +84,56 @@ jobs:
           path: ${{ env.PERFORMANCE_OUTPUT }}/
           if-no-files-found: warn
           retention-days: 7
+
+  ios:
+    needs: collectors
+    runs-on: macos-15
+    timeout-minutes: 60
+    env:
+      PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-native-release
+      PERFORMANCE_TIMING_CYCLES: '20'
+      RCT_USE_RN_DEP: '1'
+      RCT_USE_PREBUILT_RNCORE: '1'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: ./.github/actions/setup
+      - name: Select Xcode
+        uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
+        with:
+          xcode-version: '26'
+      - name: Set up Ruby and locked gems
+        uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1
+        with:
+          ruby-version: '3.4.3'
+          bundler-cache: true
+          working-directory: examples/react-navigation
+      - name: Install CocoaPods
+        working-directory: examples/react-navigation
+        run: bundle exec pod install --repo-update --project-directory=ios
+      - name: Collect iOS release measurements
+        run: bash scripts/performance/run-ios.sh native-release
+      - name: Add timing summary
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: node --experimental-transform-types scripts/performance/workflow-summary.mts
+      - name: Upload compact summary for PR comment
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-summary-ios-native-release
+          path: ${{ env.PERFORMANCE_OUTPUT }}/report/
+          if-no-files-found: warn
+          retention-days: 30
+      - name: Upload raw measurements and XCTest results
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-ios-native-release
+          path: |
+            ${{ env.PERFORMANCE_OUTPUT }}/
+            !${{ env.PERFORMANCE_OUTPUT }}/build/
+          if-no-files-found: warn
+          retention-days: 7

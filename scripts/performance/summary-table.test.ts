@@ -1,10 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import {
-  compatible,
-  startupDiagnostics,
-  summaryTable,
-} from './summary-table.mts';
+import { compatible, summaryTable } from './summary-table.mts';
 import type { InputRecord } from './types.ts';
 import { selectBaselineRun } from './post-comment.mts';
 import { metricDefinition } from './metric-definitions.mts';
@@ -30,11 +26,11 @@ function report() {
       runnerImage: 'ubuntu-1',
     },
     metrics: {
-      'gallery.backward.requestToSessionActiveMs': {
+      'gallery.backward.tapToMotion': {
         count: 3,
         median: 0,
       },
-      'gallery.forward.requestToSessionActiveMs': { count: 1, median: 40 },
+      'gallery.forward.tapToMotion': { count: 1, median: 40 },
     },
   };
 }
@@ -42,8 +38,8 @@ function report() {
 test('shows absolute deltas including zero baselines, negative timing changes', () => {
   const base = report();
   const current = report();
-  current.metrics['gallery.backward.requestToSessionActiveMs'].median = 5;
-  current.metrics['gallery.forward.requestToSessionActiveMs'].median = 30;
+  current.metrics['gallery.backward.tapToMotion'].median = 5;
+  current.metrics['gallery.forward.tapToMotion'].median = 30;
   assert.equal(compatible(current, base), true);
   const table = summaryTable(current, base);
   assert.match(table, /0 \| 5 \| \+5 ms/);
@@ -85,7 +81,7 @@ test('compares measurements across runner image versions or missing runner image
 
 test('does not display nonnumeric metrics or compare invalid collections', () => {
   const current = report();
-  current.metrics['gallery.forward.requestToSessionActiveMs'].median = NaN;
+  current.metrics['gallery.forward.tapToMotion'].median = NaN;
   assert.doesNotMatch(summaryTable(current), /NaN/);
   assert.equal(compatible(current, { ...report(), valid: false }), false);
 });
@@ -135,8 +131,7 @@ test('explicit definitions survive implementation changes and compare each metri
   current.metadata.reanimatedVersion = 'next';
   assert.equal(compatible(current, base), true);
   assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
-  current.metricDefinitions['gallery.forward.requestToSessionActiveMs']
-    .version++;
+  current.metricDefinitions['gallery.forward.tapToMotion'].version++;
   assert.match(summaryTable(current, base), /— \| 40 \| —/);
   assert.match(summaryTable(current, base), /0 \| 0 \| 0 ms/);
   current.metadata.deviceModel = 'other';
@@ -173,39 +168,26 @@ test('unknown, changed, or missing measurement semantics never get a numeric com
 
 test('does not compare rows collected with different sample counts', () => {
   const base = report();
-  base.metrics['gallery.forward.requestToSessionActiveMs'].count = 2;
+  base.metrics['gallery.forward.tapToMotion'].count = 2;
   assert.match(
     summaryTable(report(), base),
-    /open preparation \(ms\) \| — \| 40 \| —/
+    /tap to motion \(ms\) \| — \| 40 \| —/
   );
 });
 
-test('diagnostics compare zero baselines and omit unavailable or incompatible comparisons', () => {
-  const key = 'gallery.backward.preparation.coordinatorMs';
-  const current: InputRecord = report();
-  current.metrics[key] = { count: 3, median: 5, p95: 10 };
+test('iOS toolchains and platforms must match for comparisons', () => {
+  const current = {
+    ...report(),
+    platform: 'ios',
+    metadata: {
+      ...report().metadata,
+      xcodeVersion: 'Xcode 26.2',
+      apiLevel: 'not-applicable',
+    },
+  };
   const base = structuredClone(current);
-  base.metrics[key].median = 0;
-  assert.match(
-    startupDiagnostics(current, base),
-    /coordinatorMs \| 3 \| 0.00 \| 5.00 \| \+5.00 ms \| 10.00/
-  );
-  for (const candidate of [
-    undefined,
-    { ...base, valid: false },
-    { ...base, fixtureVersion: 999 },
-    { ...base, metrics: {} },
-    ...[
-      { count: 2, median: 0 },
-      { count: 3, median: -1 },
-      { count: 3, median: NaN },
-      { count: 3, median: Infinity },
-      { count: 3, median: '0' },
-    ].map((metric) => ({ ...base, metrics: { [key]: metric } })),
-  ]) {
-    assert.match(
-      startupDiagnostics(current, candidate),
-      /coordinatorMs \| 3 \| — \| 5.00 \| — \| 10.00/
-    );
-  }
+  assert.equal(compatible(current, base), true);
+  base.metadata.xcodeVersion = 'Xcode 26.1';
+  assert.equal(compatible(current, base), false);
+  assert.equal(compatible(current, report()), false);
 });

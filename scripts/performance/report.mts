@@ -1,8 +1,4 @@
-import {
-  summaryTable,
-  startupDiagnostics,
-  renderCountsTable,
-} from './summary-table.mts';
+import { summaryTable, renderCountsTable } from './summary-table.mts';
 import { metricDefinition } from './metric-definitions.mts';
 import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
 import type {
@@ -129,8 +125,12 @@ function readPreparationTrace(
   }
 }
 
-function readFixture(report: InputRecord, metrics: MetricSamples) {
-  if (report.schemaVersion !== 1 || report.fixtureVersion !== 5) {
+function readFixture(
+  report: InputRecord,
+  metrics: MetricSamples,
+  platform: string
+) {
+  if (report.schemaVersion !== 1 || ![5, 6].includes(report.fixtureVersion)) {
     throw new Error('Unsupported fixture schema/version');
   }
   if (!SCENARIO_IDS.includes(report.scenario))
@@ -167,6 +167,12 @@ function readFixture(report: InputRecord, metrics: MetricSamples) {
     throw new Error('Unknown preparation tracing definition');
   const directions = new Set<string>();
   if (
+    (report.fixtureVersion === 6 || report.motionTracing !== undefined) &&
+    (report.motionTracing?.version !== 1 ||
+      report.motionTracing.clock !== 'rn-worklets-steady-clock-ms')
+  )
+    throw new Error('Missing or unknown motion tracing definition');
+  if (
     report.renderCounting !== undefined &&
     (report.renderCounting?.version !== 1 ||
       !Array.isArray(report.renderCounting.observed) ||
@@ -194,6 +200,36 @@ function readFixture(report: InputRecord, metrics: MetricSamples) {
       throw new Error('Unknown probe timing definition');
     }
     const prefix = `${report.scenario}.${journey.direction}`;
+    if (report.motionTracing) {
+      const motion = journey.motion;
+      if (
+        !motion ||
+        motion.requestId !== journey.requestId ||
+        journey.requestId !== index + 1
+      )
+        throw new Error('Missing or mismatched motion observation');
+      const request = finite(journey.requestJsMs, 'tap handler timestamp');
+      const active = finite(journey.sessionActiveJsMs, 'active timestamp');
+      const first = finite(motion.firstMotionMs, 'first motion timestamp');
+      const end = finite(motion.motionEndMs, 'motion end timestamp');
+      const handoff = finite(motion.handoffMs, 'handoff timestamp');
+      const probe = finite(journey.probe.handlerJsMs, 'probe timestamp');
+      if (
+        active < request ||
+        first < active ||
+        end <= first ||
+        handoff < end ||
+        probe < handoff
+      )
+        throw new Error(
+          'Motion timestamps must be ordered on the shared steady clock'
+        );
+      add(metrics, `${prefix}.tapToMotion`, first - request);
+      add(metrics, `${prefix}.transitionDuration`, end - first);
+      add(metrics, `${prefix}.handoffDuration`, handoff - end);
+    } else if (journey.motion !== undefined) {
+      throw new Error('Motion observations lack a measurement definition');
+    }
     if (report.renderCounting) {
       for (const component of ['list', 'detail', 'hero']) {
         for (const phase of ['mount', 'update']) {
@@ -235,18 +271,18 @@ function readFixture(report: InputRecord, metrics: MetricSamples) {
   finite(report.payloadUnmounts, 'payloadUnmounts');
   if (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
     throw new Error('Live payload owner must stay mounted');
-  readAndroidInput(report);
+  readNativeInput(report, platform);
 }
 
-function readAndroidInput(report: InputRecord) {
+function readNativeInput(report: InputRecord, platform: string) {
   const native = report.native;
   if (
     !native ||
-    native.platform !== 'android' ||
-    native.clock !== 'android-uptime-ms'
+    native.platform !== platform ||
+    native.clock !== `${platform}-uptime-ms`
   ) {
     throw new Error(
-      'Missing Android input measurements or unknown native clock domain'
+      'Missing native input measurements or unknown native clock domain'
     );
   }
   if (native.droppedSamples !== 0)
@@ -290,7 +326,10 @@ function readAndroidInput(report: InputRecord) {
     const touchIndex = native.touches.findIndex(
       (touch: InputRecord, candidate: number) =>
         !usedTouches.has(candidate) &&
-        touch.kind === 'activity-action-up' &&
+        touch.kind ===
+          (platform === 'android'
+            ? 'activity-action-up'
+            : 'window-touch-ended') &&
         touch.eventUptimeMs === eventTime
     );
     if (touchIndex === -1)
@@ -332,7 +371,8 @@ export function summarize(
     metadata = {},
   }: { platform: string; mode: string; metadata?: Record<string, unknown> }
 ) {
-  if (platform !== 'android') throw new Error('platform must be android');
+  if (!['android', 'ios'].includes(platform))
+    throw new Error('platform must be android or ios');
   if (!MODES.includes(mode)) throw new Error('Unknown build mode');
   const metrics: MetricSamples = {};
   const errors = [];
@@ -362,7 +402,7 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
-        readFixture(data, documentMetrics);
+        readFixture(data, documentMetrics, platform);
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
             const key = `${data.scenario}.${direction}.requestToSessionActiveMs`;
@@ -378,7 +418,8 @@ export function summarize(
           (data.preparationTracing?.requested === true
             ? 'preparation-tracing-v2-both-directions'
             : 'preparation-tracing-disabled') +
-            (data.renderCounting ? '+committed-render-counts-v1' : '')
+            (data.renderCounting ? '+committed-render-counts-v1' : '') +
+            (data.motionTracing ? '+ui-motion-v1' : '')
         );
         fixtures.add(data.scenario);
         sources.push(file);
@@ -409,10 +450,10 @@ export function summarize(
   }
   return {
     schemaVersion: 1,
-    measurementDefinitionVersion: 4,
+    measurementDefinitionVersion: 5,
     platform,
     mode,
-    fixtureVersion: 5,
+    fixtureVersion: 6,
     policy: 'informational-performance-require-overlay-presentation',
     metadata,
     valid: errors.length === 0,
@@ -460,7 +501,6 @@ export function markdown(
   base?: InputRecord,
   baselineNote = 'No baseline supplied. Local runs do not fetch baselines.'
 ) {
-  const diagnostics = startupDiagnostics(summary, base);
   const renders = renderCountsTable(summary, base);
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
@@ -476,10 +516,9 @@ export function markdown(
     baselineNote,
     '',
     summaryTable(summary, base),
+    '',
+    'Tap timing starts at the JS tap handler and ends at the first UI progress change. Transition duration runs from first progress change to the endpoint; handoff runs from that endpoint to UI visibility/input release. These are runtime observations, not display presentation timestamps. Detailed preparation stages remain in summary.json.',
     ...(renders ? ['', '### Committed React renders', '', renders] : []),
-    ...(diagnostics
-      ? ['', '### Optional startup diagnostics', '', diagnostics]
-      : []),
     '',
     '',
   ].join('\n');

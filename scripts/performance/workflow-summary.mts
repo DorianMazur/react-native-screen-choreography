@@ -35,7 +35,9 @@ async function main() {
       Number(process.env.GITHUB_RUN_ID)
     );
     const candidate =
-      baseline?.reports['performance-summary-android-native-release'];
+      baseline?.reports[
+        `performance-summary-${summary.platform}-${summary.mode}`
+      ];
     base = candidate;
     if (compatible(summary, candidate)) {
       note = baselineNote(baseline!, summary);
