@@ -1,13 +1,10 @@
 import { createNativePresentation } from './nativePresentation';
 import { getLiveOverlayHostName } from './liveHostNames';
 import {
-  captureFabricLayout,
-  subscribeToFabricMounts,
-  requestFabricLayout,
-  prepareFabricLayout,
-  type FabricLayoutEntry,
-  type FabricLayoutSnapshot,
-} from './fabricLayout';
+  requestMeasuredLayout,
+  type MeasuredLayoutEntry,
+  type MeasuredLayoutSnapshot,
+} from './measuredLayout';
 import type { PreparationTrace } from './preparationTrace';
 import { type SharedValue } from 'react-native-reanimated';
 import type {
@@ -15,7 +12,6 @@ import type {
   ElementTransitionPair,
   RegisteredElement,
   ElementMetrics,
-  NodeHandleRef,
 } from '../types';
 import type { ElementRegistry } from './ElementRegistry';
 import { debugLog, debugTrace, debugWarn } from '../debug/logger';
@@ -32,7 +28,7 @@ function elapsedMs(startedAt: number): string {
 
 type SourceCapture = {
   elements: RegisteredElement[];
-  snapshot: FabricLayoutSnapshot;
+  snapshot: MeasuredLayoutSnapshot;
 };
 
 export class TransitionCoordinator {
@@ -46,14 +42,13 @@ export class TransitionCoordinator {
     () => {};
   private hiddenElements = new Set<string>();
   // A one-navigation source snapshot, consumed when preparation starts.
-  private releaseMountSubscription: (() => void) | undefined;
+  private layoutRefreshScheduled = false;
   private sourceCaptureGeneration = 0;
   private sourceCaptures = new Map<string, SourceCapture>();
   constructor(
     registry: ElementRegistry,
     progress: SharedValue<number>,
     private readonly nativeReadiness?: {
-      getScreenRef: (screenId: string) => NodeHandleRef | undefined;
       isScreenReady: (screenId: string) => boolean;
     }
   ) {
@@ -65,15 +60,14 @@ export class TransitionCoordinator {
     return JSON.stringify([screenId, groupId]);
   }
 
-  private entries(elements: RegisteredElement[]): FabricLayoutEntry[] | null {
-    const result: FabricLayoutEntry[] = [];
+  private entries(elements: RegisteredElement[]): MeasuredLayoutEntry[] | null {
+    const result: MeasuredLayoutEntry[] = [];
     for (const element of elements) {
-      const screenRef = this.nativeReadiness?.getScreenRef(element.screenId);
-      if (!screenRef) return null;
+      if (!element.measurementRef) return null;
       result.push({
         id: JSON.stringify([element.screenId, element.groupId, element.id]),
         ref: element.ref,
-        screenRef,
+        measurementRef: element.measurementRef,
       });
     }
     return result;
@@ -91,7 +85,7 @@ export class TransitionCoordinator {
   }
 
   private metricsFor(
-    snapshot: FabricLayoutSnapshot,
+    snapshot: MeasuredLayoutSnapshot,
     element: RegisteredElement
   ): ElementMetrics {
     return snapshot.metrics.get(
@@ -109,8 +103,6 @@ export class TransitionCoordinator {
   private invalidateOperations(): void {
     const valid = this.activeSession?.presentation?.valid;
     if (valid) valid.value = false;
-    this.releaseMountSubscription?.();
-    this.releaseMountSubscription = undefined;
     this.operationGeneration += 1;
     this.sourceCaptureGeneration += 1;
     this.sourceCaptures.clear();
@@ -182,7 +174,7 @@ export class TransitionCoordinator {
     const elements = this.registry.getGroupElements(groupId, screenId);
     const entries = this.entries(elements);
     if (!entries?.length) return;
-    const snapshot = await requestFabricLayout({
+    const snapshot = await requestMeasuredLayout({
       entries,
       isCurrent: () =>
         this.operationGeneration === generation &&
@@ -212,7 +204,7 @@ export class TransitionCoordinator {
     );
     const entries = this.entries(elements);
     if (!entries) return;
-    const snapshot = await requestFabricLayout({
+    const snapshot = await requestMeasuredLayout({
       entries,
       isCurrent: () =>
         this.activeSession?.id === session.id &&
@@ -239,6 +231,26 @@ export class TransitionCoordinator {
         : { ...pair, targetMetrics: metrics };
     });
     if (changed) this.updateSession({ ...currentSession, pairs });
+  }
+
+  /** Remeasure changed target layout, coalescing one React layout batch. */
+  onElementLayout(id: string, screenId: string, groupId?: string): void {
+    const session = this.activeSession;
+    if (
+      session?.state !== 'active' ||
+      session.targetScreenId !== screenId ||
+      !session.pairs.some(
+        (pair) => pair.id === id && pair.target.groupId === groupId
+      ) ||
+      this.layoutRefreshScheduled
+    )
+      return;
+    this.layoutRefreshScheduled = true;
+    Promise.resolve().then(() => {
+      this.layoutRefreshScheduled = false;
+      if (this.activeSession?.id === session.id)
+        this.refreshActiveSessionMetrics('target');
+    });
   }
 
   private waitForTargets(
@@ -442,7 +454,7 @@ export class TransitionCoordinator {
       this.elementsAreCurrent([...sources, ...targets]) &&
       (!canUseSourceCapture || sourceCapture!.snapshot.isCurrent()) &&
       Boolean(this.nativeReadiness?.isScreenReady(targetScreenId));
-    // App presentation getters can mutate registration; run them before native capture.
+    // Freeze app presentation before reading the mounted endpoint geometry.
     const presentations = candidates.map(({ id, source, target }) => ({
       id,
       source,
@@ -450,13 +462,12 @@ export class TransitionCoordinator {
       sourcePresentation: source.getPresentation(),
       targetPresentation: target.getPresentation(),
     }));
-    const endCapture = config.trace?.start('fabric-mounted-capture');
-    const capture = prepareFabricLayout({
+    const endCapture = config.trace?.start('ui-measurement');
+    const snapshot = await requestMeasuredLayout({
       entries,
       isCurrent,
       cancellers: this.preparationCancellers,
     });
-    const snapshot = capture instanceof Promise ? await capture : capture;
     let session: TransitionSessionData | null = null;
     if (snapshot && snapshot.isCurrent() && isCurrent()) {
       const pairs: ElementTransitionPair[] = presentations.flatMap((pair) => {
@@ -498,40 +509,20 @@ export class TransitionCoordinator {
               pair.id,
               groupId
             )
-          ),
-          snapshot.validateNative
+          )
         ),
         pairs,
         progress: this.progress,
         direction,
         reducedMotion: config.reducedMotion,
       };
-      this.releaseMountSubscription = subscribeToFabricMounts(() => {
-        const current = this.activeSession;
-        if (current?.id !== sessionId || current.state !== 'active') return;
-        const targetEntries = this.entries(
-          current.pairs.map((pair) => pair.target)
-        );
-        if (!targetEntries) return;
-        const updated = captureFabricLayout(targetEntries);
-        if (!updated) return;
-        let changed = false;
-        const nextPairs = current.pairs.map((pair) => {
-          const metrics = this.metricsFor(updated, pair.target);
-          if (this.metricsAreClose(metrics, pair.targetMetrics)) return pair;
-          changed = true;
-          return { ...pair, targetMetrics: metrics };
-        });
-        if (changed && this.activeSession?.id === sessionId)
-          this.updateSession({ ...current, pairs: nextPairs });
-      });
       this.updateSession(active);
       session = active;
     }
     endCapture?.({ ready: Boolean(session) });
     if (!session) unavailable();
     debugTrace(
-      `[Coordinator] Fabric preparation session="${sessionId}" ready=${!!session} duration=${elapsedMs(transitionStartedAt)}`
+      `[Coordinator] Measured preparation session="${sessionId}" ready=${!!session} duration=${elapsedMs(transitionStartedAt)}`
     );
     return session;
   }

@@ -1,13 +1,8 @@
 import React, { useEffect } from 'react';
 import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
-  useAnimatedProps,
   useEvent,
-  useFrameCallback,
-  useSharedValue,
-  useAnimatedRef,
   useAnimatedReaction,
-  dispatchCommand,
   type SharedValue,
 } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
@@ -54,37 +49,6 @@ export function NativeTransitionHost({
 }: NativeTransitionHostProps) {
   const { width, height } = useWindowDimensions();
   const { owner, handoff } = ownership;
-  const hostRef =
-    useAnimatedRef<React.ComponentRef<typeof NativeScreenChoreographyView>>();
-  const deadline = useSharedValue<{ id: string; at: number } | null>(null);
-  const frame = useFrameCallback(({ timestamp }) => {
-    if (
-      !active ||
-      !presentation ||
-      !presentation.valid.value ||
-      presentation.phase.value === 2
-    )
-      return;
-    if (deadline.value?.id !== sessionId)
-      deadline.value = {
-        id: sessionId,
-        at: timestamp + PRESENTATION_TIMEOUT_MS,
-      };
-    if (timestamp >= deadline.value!.at) {
-      presentation.valid.value = false;
-      scheduleOnRN(onPresentationFailed, sessionId, 'timeout');
-      return;
-    }
-    if (presentation.phase.value <= 0) {
-      presentation.phase.value = -1;
-      dispatchCommand(hostRef, 'prepare', [sessionId]);
-    }
-  }, false);
-  const animatedProps = useAnimatedProps(() => ({
-    presentationRequested: Boolean(
-      presentation && presentation.valid.value && presentation.phase.value >= 1
-    ),
-  }));
   const onReady = useEvent<PresentationReadyEvent>(
     (event) => {
       'worklet';
@@ -94,18 +58,7 @@ export function NativeTransitionHost({
         !presentation?.valid.value
       )
         return;
-      if (event.stage === 'attached' && presentation.phase.value <= 0) {
-        presentation.phase.value = 1;
-        return;
-      }
-      // Native presentation proves attachment and content as well. Its earlier
-      // attachment event can arrive before the UI event handler is installed.
       if (event.stage !== 'presented' || presentation.phase.value === 2) return;
-      if (!presentation.validate()) {
-        presentation.valid.value = false;
-        scheduleOnRN(onPresentationFailed, sessionId, 'invalidated');
-        return;
-      }
       presentation.phase.value = 2;
       if (onPresentationReady) scheduleOnRN(onPresentationReady, sessionId);
     },
@@ -131,16 +84,19 @@ export function NativeTransitionHost({
     }
   );
   useEffect(() => {
-    frame.setActive(Boolean(active && presentation));
-    return () => frame.setActive(false);
-  }, [frame, active, presentation]);
+    if (!active || !presentation) return;
+    const timeout = setTimeout(() => {
+      if (!presentation.valid.value || presentation.phase.value === 2) return;
+      presentation.valid.value = false;
+      onPresentationFailed(sessionId, 'timeout');
+    }, PRESENTATION_TIMEOUT_MS);
+    return () => clearTimeout(timeout);
+  }, [active, presentation, sessionId, onPresentationFailed]);
   return (
     <AnimatedHost
-      ref={hostRef}
       active={active && Boolean(presentation)}
       sessionId={sessionId}
       expectedHostNames={presentation?.hostNames}
-      animatedProps={animatedProps}
       collapsable={false}
       pointerEvents="none"
       style={

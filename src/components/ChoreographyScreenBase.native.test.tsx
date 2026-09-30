@@ -90,7 +90,7 @@ async function nextFrame() {
   await act(async () => callback!(0));
 }
 
-test('publishes application readiness immediately while Fabric owns the mount check', async () => {
+test('publishes application readiness immediately while UI measurement owns the mount check', async () => {
   const screen = await mountScreen();
   expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
     'detail',

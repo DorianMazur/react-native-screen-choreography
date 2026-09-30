@@ -27,7 +27,6 @@
     "lib",
     "android",
     "ios",
-    "cpp",
     "*.podspec",
     "!ios/build",
     "!android/build",
@@ -171,15 +170,12 @@
   },
   "codegenConfig": {
     "name": "ScreenChoreographyViewSpec",
-    "type": "all",
+    "type": "components",
     "jsSrcsDir": "src",
     "android": {
       "javaPackageName": "com.screenchoreography"
     },
     "ios": {
-      "modulesProvider": {
-        "ScreenChoreographyPreparation": "ScreenChoreographyPreparation"
-      },
       "components": {
         "ScreenChoreographyView": {
           "className": "ScreenChoreographyView"

@@ -35,29 +35,15 @@ apply plugin: "com.facebook.react"
 android {
   namespace "com.screenchoreography"
 
-  if (rootProject.ext.has("ndkVersion")) {
-    ndkVersion rootProject.ext.ndkVersion
-  }
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
-    externalNativeBuild {
-      cmake {
-        arguments "-DANDROID_STL=c++_shared",
-                  "-DANDROID_SUPPORT_FLEXIBLE_PAGE_SIZES=ON"
-      }
-    }
-  }
-
-  externalNativeBuild {
-    cmake { path "CMakeLists.txt" }
   }
 
   buildFeatures {
     buildConfig true
-    prefab true
   }
 
   buildTypes {

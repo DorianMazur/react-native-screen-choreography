@@ -45,7 +45,7 @@ test.each([
     });
     const session: TransitionSessionData = {
       id: 'opening',
-      presentation: createNativePresentation([], () => true),
+      presentation: createNativePresentation([]),
       sourceScreenId: 'list-route',
       targetScreenId: 'detail-route',
       groupId: 'trip',

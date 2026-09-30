@@ -7,7 +7,6 @@
 #import <react/renderer/components/ScreenChoreographyViewSpec/ComponentDescriptors.h>
 #import <react/renderer/components/ScreenChoreographyViewSpec/EventEmitters.h>
 #import <react/renderer/components/ScreenChoreographyViewSpec/Props.h>
-#import <react/renderer/components/ScreenChoreographyViewSpec/RCTComponentViewHelpers.h>
 
 #import "RCTFabricComponentsPlugins.h"
 
@@ -65,9 +64,6 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 
 @end
 
-@interface ScreenChoreographyView () <RCTScreenChoreographyViewViewProtocol>
-@end
-
 @implementation ScreenChoreographyView {
   ScreenChoreographyWindowContainer *_windowContainer;
   __weak UIWindow *_lastWindow;
@@ -75,8 +71,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   BOOL _foreground;
   BOOL _active;
   BOOL _prepared;
-  BOOL _attachmentAcknowledged;
-  BOOL _presentationRequested;
+  BOOL _attachmentReady;
   BOOL _presentationAcknowledged;
   BOOL _presentationCheckPending;
   CFTimeInterval _attachmentDeadline;
@@ -194,7 +189,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
     [_foregroundTouchHandler attachToView:_windowContainer];
   }
   _windowContainer.frame = window.bounds;
-  [self acknowledgeAttachmentIfReady];
+  [self markAttachmentReady];
   [self schedulePresentationReady];
 }
 
@@ -248,8 +243,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   _foreground = NO;
   _windowContainer.foreground = NO;
   _prepared = NO;
-  _attachmentAcknowledged = NO;
-  _presentationRequested = NO;
+  _attachmentReady = NO;
   _presentationAcknowledged = NO;
   _expectedHostNames = nil;
   _sessionId.clear();
@@ -274,8 +268,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
     [_presentationDisplayLink invalidate];
     _presentationDisplayLink = nil;
     _prepared = NO;
-    _attachmentAcknowledged = NO;
-    _presentationRequested = NO;
+    _attachmentReady = NO;
     _presentationAcknowledged = NO;
     _presentationDeadline = 0;
     _sessionId = newViewProps.sessionId;
@@ -293,61 +286,29 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
     }
   }
   _expectedHostNames = hostNames;
-  if (newViewProps.presentationRequested && !_presentationRequested && !_sessionId.empty()) {
-    // React may reapply false animated props; latch until the session changes.
-    _presentationRequested = YES;
-    _presentationDeadline = CACurrentMediaTime() + 1.0;
-  }
-
   [super updateProps:props oldProps:oldProps];
 
-  [self applyActive:(newViewProps.active || _prepared)];
+  [self applyActive:newViewProps.active];
   if (_active && (sessionChanged || _prepared || _foreground)) {
     [self presentWindowContainer];
   }
 }
 
-- (void)handleCommand:(const NSString *)commandName args:(const NSArray *)args
-{
-  RCTScreenChoreographyViewHandleCommand(self, commandName, args);
-}
-
 - (void)finalizeUpdates:(RNComponentViewUpdateMask)updateMask
 {
   [super finalizeUpdates:updateMask];
-  const auto &viewProps = *std::static_pointer_cast<ScreenChoreographyViewProps const>(_props);
-  // Start attachment from the React mount; the UI command remains a bounded retry.
-  if (viewProps.active && !_foreground && _expectedHostNames.count > 0) {
-    [self prepare:[NSString stringWithUTF8String:_sessionId.c_str()]];
-  }
+  [self prepareFromReact];
 }
 
-- (void)prepare:(NSString *)sessionId
+- (void)prepareFromReact
 {
-  if (sessionId.length == 0 || _sessionId != std::string(sessionId.UTF8String)) {
-    return;
-  }
-  const BOOL replayPresentation = _presentationAcknowledged;
-  const BOOL replayAttachment = _attachmentAcknowledged;
+  if (!_active || _foreground || _sessionId.empty() || _expectedHostNames.count == 0) return;
   if (!_prepared) {
     _prepared = YES;
     _attachmentDeadline = CACurrentMediaTime() + 1.0;
   }
-  [self applyActive:YES];
   [self presentWindowContainer];
-  // Early native events may precede installation of the Reanimated handler.
-  // Replay only readiness already confirmed for this still-attached session.
-  if (_active && self.superview != nil && _windowContainer.window != nil &&
-      _sessionId == std::string(sessionId.UTF8String)) {
-    if (replayPresentation && [self transitionHostsAreReady:YES]) {
-      [self emitPresentationStage:"presented"];
-    } else if (replayAttachment && CACurrentMediaTime() < _attachmentDeadline &&
-               [self transitionHostsAreReady:NO]) {
-      [self emitPresentationStage:"attached"];
-    }
-  }
-  if (_active && _prepared && _sessionId == std::string(sessionId.UTF8String) &&
-      !_attachmentAcknowledged && _presentationDisplayLink == nil && CACurrentMediaTime() < _attachmentDeadline) {
+  if (!_attachmentReady && _presentationDisplayLink == nil && CACurrentMediaTime() < _attachmentDeadline) {
     _presentationDisplayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(retryPresentation:)];
     [_presentationDisplayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
   }
@@ -405,18 +366,13 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   });
 }
 
-- (void)acknowledgeAttachmentIfReady
+- (void)markAttachmentReady
 {
-  if (!_prepared || _attachmentAcknowledged || !_active || self.superview == nil ||
+  if (!_prepared || _attachmentReady || !_active || self.superview == nil ||
       _windowContainer.window == nil || _eventEmitter == nullptr ||
       CACurrentMediaTime() >= _attachmentDeadline || ![self transitionHostsAreReady:NO]) return;
-  _attachmentAcknowledged = YES;
-  // Arm before emitting: an event handler may synchronously update native props.
-  if (!_presentationRequested) {
-    _presentationRequested = YES;
-    _presentationDeadline = CACurrentMediaTime() + 1.0;
-  }
-  [self emitPresentationStage:"attached"];
+  _attachmentReady = YES;
+  _presentationDeadline = CACurrentMediaTime() + 1.0;
 }
 
 - (void)collectReadyHosts:(UIView *)view
@@ -458,15 +414,14 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 - (void)retryPresentation:(CADisplayLink *)displayLink
 {
   if (!_active || !_prepared || _presentationAcknowledged ||
-      (!_attachmentAcknowledged && CACurrentMediaTime() >= _attachmentDeadline) ||
-      (_attachmentAcknowledged && (!_presentationRequested || CACurrentMediaTime() >= _presentationDeadline))) {
+      (!_attachmentReady && CACurrentMediaTime() >= _attachmentDeadline) ||
+      (_attachmentReady && CACurrentMediaTime() >= _presentationDeadline)) {
     [_presentationDisplayLink invalidate];
     _presentationDisplayLink = nil;
     return;
   }
-  if (!_attachmentAcknowledged) {
-    [self acknowledgeAttachmentIfReady];
-    return;
+  if (!_attachmentReady) {
+    [self markAttachmentReady];
   }
   [self schedulePresentationReady];
 }
@@ -476,7 +431,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   UIWindow *window = _windowContainer.window;
   if (!_prepared || _foreground || !_active || _presentationAcknowledged || _presentationCheckPending || self.superview == nil ||
       window == nil || CGRectIsEmpty(_windowContainer.bounds) ||
-      !_presentationRequested || CACurrentMediaTime() >= _presentationDeadline) {
+      !_attachmentReady || CACurrentMediaTime() >= _presentationDeadline) {
     return;
   }
 

@@ -17,7 +17,6 @@ interface PrepareForwardTransitionArgs {
   groupId: string;
   sourceScreenId: string;
   targetScreenId: string;
-  isAndroid: boolean;
   trace?: PreparationTrace;
   captureSourceGroup: (groupId: string, screenId: string) => Promise<void>;
   setPendingTargetScreen: (
@@ -27,7 +26,6 @@ interface PrepareForwardTransitionArgs {
   dispatchNavigation: () => void;
   resolveTargetScreenId?: () => Promise<string | null>;
   waitForScreenReady: (screenId: string) => Promise<boolean>;
-  waitForNextFrame: () => Promise<void>;
   startTransition: (config: {
     groupId: string;
     sourceScreenId: string;
@@ -132,14 +130,12 @@ export class NavigationSessionController {
     groupId,
     sourceScreenId,
     targetScreenId,
-    isAndroid,
     trace,
     captureSourceGroup,
     setPendingTargetScreen,
     dispatchNavigation,
     resolveTargetScreenId,
     waitForScreenReady,
-    waitForNextFrame,
     startTransition,
     waitForOverlayReady,
     onSessionPrepared,
@@ -180,13 +176,6 @@ export class NavigationSessionController {
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
         return null;
-      }
-
-      if (isAndroid) {
-        const framePassed = trace?.start('android-frame');
-        await waitForNextFrame();
-        framePassed?.();
-        if (!isPreparationCurrent()) return null;
       }
 
       const coordinatorReady = trace?.start('coordinator');

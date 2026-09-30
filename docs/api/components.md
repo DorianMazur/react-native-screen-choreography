@@ -55,9 +55,9 @@ Owns the shared progress clock, transition sessions, element registry, and nativ
 
 Derive callback types from the component when you need a named application handler; the internal session type is not separately exported from the public entry.
 
-Shared transitions read source and target geometry directly from completed Fabric
-mounts on React Native 0.81 and newer. Preparation waits briefly for pending layout; if a valid
-snapshot is unavailable, navigation continues without a shared transition.
+Shared transitions measure mounted source and target views on the UI thread using
+Reanimated. Preparation retries briefly when layout is unavailable; if a valid
+batch cannot be captured, navigation continues without a shared transition.
 
 ```tsx
 import type { ComponentProps } from 'react';

@@ -18,6 +18,7 @@ import type {
 } from '../types';
 
 export interface ChoreographyActionsType {
+  onElementLayout?: (id: string, screenId: string, groupId?: string) => void;
   registerElement: (element: RegisteredElement) => void;
   unregisterElement: (
     id: string,

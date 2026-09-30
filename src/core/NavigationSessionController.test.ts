@@ -33,7 +33,7 @@ describe('NavigationSessionController', () => {
         groupId: 'group',
         sourceScreenId: 'source',
         targetScreenId: 'target',
-        isAndroid: false,
+
         trace: new PreparationTrace(
           {
             groupId: 'group',
@@ -47,7 +47,7 @@ describe('NavigationSessionController', () => {
         setPendingTargetScreen: () => {},
         dispatchNavigation: () => {},
         waitForScreenReady: async () => true,
-        waitForNextFrame: async () => {},
+
         startTransition: async () => session,
         waitForOverlayReady: async (_id, onUnavailable) => {
           onUnavailable?.(details);
@@ -100,7 +100,7 @@ describe('NavigationSessionController', () => {
           groupId: 'group',
           sourceScreenId: 'source',
           targetScreenId: 'target',
-          isAndroid: true,
+
           trace,
           captureSourceGroup: async () => {
             now += 5;
@@ -116,9 +116,6 @@ describe('NavigationSessionController', () => {
           waitForScreenReady: async () => {
             now += 20;
             return true;
-          },
-          waitForNextFrame: async () => {
-            now += 16;
           },
           startTransition,
           waitForOverlayReady: async () => {
@@ -136,7 +133,7 @@ describe('NavigationSessionController', () => {
       expect(report.outcome).toBe('overlay-ready');
       expect(report.sessionId).toBe('traced-session');
       expect(report.targetScreenId).toBe('target:instance');
-      expect(report.completedAtMs - report.startedAtMs).toBe(83);
+      expect(report.completedAtMs - report.startedAtMs).toBe(67);
       expect(
         report.stages.map(
           ({ name, durationMs }: { name: string; durationMs: number }) => [
@@ -148,7 +145,6 @@ describe('NavigationSessionController', () => {
         ['source-capture', 5],
         ['navigation-instance', 5],
         ['screen-ready', 20],
-        ['android-frame', 16],
         ['coordinator', 30],
         ['overlay-ready', 7],
       ]);
@@ -176,13 +172,13 @@ describe('NavigationSessionController', () => {
           groupId: 'group',
           sourceScreenId: 'source',
           targetScreenId: 'target',
-          isAndroid: true,
+
           trace,
           captureSourceGroup: async () => {},
           setPendingTargetScreen: () => {},
           dispatchNavigation: () => {},
           waitForScreenReady: async () => false,
-          waitForNextFrame: async () => {},
+
           startTransition: async () => null,
           waitForOverlayReady: async () => true,
         })
@@ -231,13 +227,13 @@ describe('NavigationSessionController', () => {
           groupId: 'group',
           sourceScreenId: 'source',
           targetScreenId: 'target',
-          isAndroid: false,
+
           trace,
           captureSourceGroup: async () => {},
           setPendingTargetScreen: () => {},
           dispatchNavigation: () => {},
           waitForScreenReady: async () => true,
-          waitForNextFrame: async () => {},
+
           startTransition: async () => session,
           waitForOverlayReady: async () => {
             now += 150;
@@ -323,65 +319,52 @@ describe('NavigationSessionController', () => {
     expect(controller.isCurrentSession('session-2')).toBe(true);
   });
 
-  test.each([
-    ['iOS', false, false],
-    ['Android', true, true],
-  ] as const)(
-    'prepares a %s forward transition after explicit readiness',
-    async (_platform, isAndroid, waitsForExtraFrame) => {
-      const controller = new NavigationSessionController();
-      const calls: string[] = [];
-      const session = createSession('session-1');
-      controller.acquireNavigationLock();
+  test('prepares forward motion after explicit readiness without an extra platform frame', async () => {
+    const controller = new NavigationSessionController();
+    const calls: string[] = [];
+    const session = createSession('session-1');
+    controller.acquireNavigationLock();
 
-      const result = await controller.prepareForwardTransition({
-        groupId: 'group',
-        sourceScreenId: 'source',
-        targetScreenId: 'target',
-        isAndroid,
-        captureSourceGroup: async () => {
-          calls.push('measure');
-        },
-        setPendingTargetScreen: (screenId) => {
-          calls.push(`pending:${screenId ?? 'none'}`);
-        },
-        dispatchNavigation: () => {
-          calls.push('navigate');
-        },
-        waitForScreenReady: async () => {
-          calls.push('screen-ready');
-          return true;
-        },
-        waitForNextFrame: async () => {
-          calls.push('frame');
-        },
-        startTransition: async () => {
-          calls.push('start');
-          return session;
-        },
-        waitForOverlayReady: async () => {
-          calls.push('overlay-ready');
-          return true;
-        },
-      });
+    const result = await controller.prepareForwardTransition({
+      groupId: 'group',
+      sourceScreenId: 'source',
+      targetScreenId: 'target',
+      captureSourceGroup: async () => {
+        calls.push('measure');
+      },
+      setPendingTargetScreen: (screenId) => {
+        calls.push(`pending:${screenId ?? 'none'}`);
+      },
+      dispatchNavigation: () => {
+        calls.push('navigate');
+      },
+      waitForScreenReady: async () => {
+        calls.push('screen-ready');
+        return true;
+      },
+      startTransition: async () => {
+        calls.push('start');
+        return session;
+      },
+      waitForOverlayReady: async () => {
+        calls.push('overlay-ready');
+        return true;
+      },
+    });
 
-      expect(result).toBe(session);
-      const expectedCalls = [
-        'measure',
-        'pending:target',
-        'navigate',
-        'screen-ready',
-        'start',
-        'overlay-ready',
-        'pending:none',
-      ];
-      if (waitsForExtraFrame) {
-        expectedCalls.splice(4, 0, 'frame');
-      }
-      expect(calls).toEqual(expectedCalls);
-      expect(controller.isNavigationLocked()).toBe(true);
-    }
-  );
+    expect(result).toBe(session);
+    const expectedCalls = [
+      'measure',
+      'pending:target',
+      'navigate',
+      'screen-ready',
+      'start',
+      'overlay-ready',
+      'pending:none',
+    ];
+    expect(calls).toEqual(expectedCalls);
+    expect(controller.isNavigationLocked()).toBe(true);
+  });
 
   test.each(['detail-second', null])(
     'resolves the target instance as %s before readiness',
@@ -395,13 +378,13 @@ describe('NavigationSessionController', () => {
         groupId: 'group',
         sourceScreenId: 'detail-first',
         targetScreenId: 'Detail',
-        isAndroid: false,
+
         captureSourceGroup: async () => {},
         setPendingTargetScreen,
         dispatchNavigation: () => {},
         resolveTargetScreenId: async () => targetInstanceId,
         waitForScreenReady,
-        waitForNextFrame: async () => {},
+
         startTransition,
         waitForOverlayReady: async () => true,
       });
@@ -437,12 +420,12 @@ describe('NavigationSessionController', () => {
       groupId: 'group',
       sourceScreenId: 'source',
       targetScreenId: 'target',
-      isAndroid: false,
+
       captureSourceGroup: async () => {},
       setPendingTargetScreen: (screenId) => pendingScreens.push(screenId),
       dispatchNavigation,
       waitForScreenReady: async () => false,
-      waitForNextFrame: async () => {},
+
       startTransition,
       waitForOverlayReady: async () => true,
     });
@@ -463,12 +446,12 @@ describe('NavigationSessionController', () => {
       groupId: 'group',
       sourceScreenId: 'source',
       targetScreenId: 'target',
-      isAndroid: false,
+
       captureSourceGroup: async () => {},
       setPendingTargetScreen: (screenId) => pendingScreens.push(screenId),
       dispatchNavigation: () => {},
       waitForScreenReady: async () => true,
-      waitForNextFrame: async () => {},
+
       startTransition: async () => createSession('replaced-session'),
       waitForOverlayReady: async () => false,
     });
@@ -487,12 +470,12 @@ describe('NavigationSessionController', () => {
       groupId: 'group',
       sourceScreenId: 'source',
       targetScreenId: 'target',
-      isAndroid: false,
+
       captureSourceGroup: async () => {},
       setPendingTargetScreen: (screenId) => pendingScreens.push(screenId),
       dispatchNavigation: () => {},
       waitForScreenReady: async () => true,
-      waitForNextFrame: async () => {},
+
       startTransition: async () => null,
       waitForOverlayReady: async () => true,
     });

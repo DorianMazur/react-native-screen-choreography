@@ -82,100 +82,72 @@ expansion curve. Transform updates can still use Fabric commits and perform
 native rendering work; the library does not enable Reanimated flags that bypass
 those commits.
 
-## Preparation and Fabric layout
+## Preparation and measured layout
 
-On RN 0.81 and newer, a runtime-owned C++ binding observes completed Fabric mounts.
-The provider initializes this binding before rendering its descendant screens, so
-the observer sees their first mount even when native modules are loaded lazily.
-It retains weak mounted-root references and reads geometry without modifying
-mount transactions. Each batch validates that its root matches the current commit
-and mounting base, with no pending transactions, before and after reading layout.
-Every endpoint is scoped to its registered screen. Non-finite, empty, missing, or
-partially captured batches are rejected.
+Endpoints use stable Reanimated animated refs alongside their registration refs.
+The coordinator requests a batch of `measure()` calls in one UI-thread task.
+Every rectangle must have finite coordinates and positive dimensions. If any
+endpoint is unavailable, the entire batch retries on a UI animation frame,
+within a one-second deadline. There are no custom C++ layout bindings, native
+mount subscriptions, per-platform frame waits, or reusable destination caches.
 
 Before navigation, the coordinator captures a one-navigation source snapshot.
-This preserves the departing geometry if native-stack detaches its screen.
-The snapshot is checked against native node identity and consumed by the next
-preparation; it is not a reusable destination cache. Without a source snapshot,
-source and target are captured together from one mounted root.
+This preserves departing geometry if native-stack detaches its screen. The
+snapshot retains endpoint/ref identity and is consumed by the next preparation.
+Without it, source and target endpoints are measured together in one UI task.
+A batch shares a UI observation boundary; it does not claim a Fabric commit
+revision or a display scanout timestamp.
 
-Both directions wait for screen readiness and matching registrations, freeze
-presentations, then issue one native request. It binds weak node-family identities
-and collects geometry from completed mounts. JavaScript consumes the batch once,
-immediately or on a coalesced mount notification, within a one-second deadline.
-Already-ready registrations and captures do not introduce a Promise wait before
-publishing the session; pending mounts retain the same bounded asynchronous path.
-There is no JavaScript polling. Cancellation and runtime replacement invalidate
-requests; consumed requests stop collecting geometry. Unavailable endpoints skip
-animation.
+Both directions wait for application screen readiness and matching registrations,
+freeze presentations, and request the geometry. The result returns to RN to build
+renderer inputs. Cancellation removes its receiver, stops retries, and rejects
+late results. Ref replacement or operation-generation changes invalidate a batch.
+Unavailable endpoints skip the morph and preserve the intended navigation.
 
-Numeric geometry feeds the React renderer and `useSharedElementPresentation`.
-During animation, coalesced mount notifications refresh endpoint bounds, including
-safe-area changes, while preserving frozen styles and metadata. Subscriptions
-are released on completion, cancellation, or disposal.
+Target `onLayout` events coalesce into an asynchronous remeasurement while a
+session is active. Geometry can update without changing the frozen styles and
+metadata. There is no continuous mount observer. Keep endpoint layout, ancestor
+transforms and scroll state stable while content moves into the overlay; an
+ancestor transform or scroll alone need not emit an endpoint layout event.
 
 ### React rendering and native presentation
 
-React mounts each renderer with one registered receiving host. On Android, content
-still at its original owner requests the overlay host in that same React commit;
-native suppresses the overlay until every receiving host has live content. Content
-already retained at another destination waits for the matching attachment
-acknowledgment before transferring. This keeps Back from falling through to a
-hidden original owner while the new receiver is being registered. iOS uses the
-attachment acknowledgment before either transfer. Attachment stays latched for
-the session despite React prop updates. Native
-acknowledges presentation only when every expected host is attached, has nonzero
-bounds, and contains its live child.
-An empty marker with a `nativeID` inside the public `PortalHost` identifies its native parent;
-the marker itself never counts as live content.
+React mounts each renderer with one registered receiving host. Retained content
+keeps its previous host until the UI runtime observes the new overlay session;
+Android content still at its original owner may request the receiver immediately.
+This transfer scheduling uses the session and validity guards, without a separate
+native attachment event. Native presentation remains distinct from measurement:
+a measured rectangle does not prove that the live content has moved.
 
-Both platforms prepare the host from the React mount and arm content readiness
-after confirming attachment. The bounded UI-thread command retries preparation
-and can replay already-confirmed readiness if an early event preceded handler
-installation. iOS still waits for attachment before transferring content: portal
-registration alone does not prove that the receiving host has a window. Its
-presentation acknowledgment checks live content in the Core Animation transaction
-completion; this is a hierarchy readiness check, not a scanout timestamp.
+The native overlay prepares from its React commit. It checks that every expected
+receiving host is attached, has nonzero bounds, and contains its live child. An
+empty `nativeID` marker identifies the public `PortalHost` parent and never counts
+as live content. There are no public prepare commands, command retries, or
+presentation-request prop handshakes.
 
-Android acknowledges presentation after its content draw traversal. This
-acknowledgment uses an asynchronous main
-queue message so a pending frame's synchronization barrier does not defer it by
-another frame. It still checks session identity, request identity, attachment and
-live content before dispatch. The native visibility gate ends at presentation;
-individual renderers can then fade independently without hiding other pairs.
+Android suppresses partial content and acknowledges presentation after its draw
+traversal, using an asynchronous main-queue message. iOS verifies live content at
+Core Animation transaction completion. Both recheck session identity, attachment
+and live content. These are presentation readiness checks, not scanout timestamps.
 
 Forward motion starts on the UI thread after both the matching presentation
-acknowledgment and animation configuration arrive, in either order. A final native
-identity check rejects removed or recycled endpoints without recapturing geometry.
-Session IDs and ownership tokens reject stale transfers and animation starts.
-Reverse and interactive navigation share this preparation and presentation protocol
-with their existing progress/commit controllers.
+acknowledgement and owned animation configuration arrive, in either order.
+Return navigation waits for overlay readiness before starting its animation
+through the reverse controller. Registration and application-readiness changes
+revoke pending presentation. Session IDs and progress ownership tokens reject
+stale transfers and animation starts. Reduced motion transfers content directly
+to its endpoint.
 
-A one-second RN overlay-readiness deadline bounds the complete mount, attachment,
-content transfer, and presentation handshake. The UI driver and native retries
-also use one-second limits. Successful acknowledgments resolve immediately;
-these deadlines add no delay to a ready transition. If native presentation is
-already confirmed on the UI thread but its RN callback is delayed, the RN safety
-check preserves that confirmation. Failure traces include the last presentation
-phase, content readiness, and whether the failure was a timeout or invalidation.
-Unconfirmed presentation after a forward push settles content onto the destination
-without animation; a removed destination cancels toward the source. Registration
-or readiness changes revoke pending presentation, release navigation, and invalidate
-late acknowledgments. Reduced motion hands content directly to its endpoint.
+A one-second RN deadline bounds overlay readiness, with bounded native content
+checks. Already-confirmed UI presentation remains valid if the RN callback is
+late. Unconfirmed presentation after a forward push settles onto the destination;
+a removed destination cancels toward the source. React rendering, portal transfer,
+and final settlement still require JavaScript. Once prepared and armed, the
+presentation event can start UI motion while JavaScript is busy.
 
-React mounting, portal transfer, animation arming, and final settlement still need
-JavaScript. Load during startup delays motion while content stays at its previous
-endpoint. Once prepared and armed, native acknowledgment can start forward motion
-while JavaScript is busy.
-
-There are no Reanimated `measure()`, native-ref `measureInWindow()`, native layout
-sampling, or cached-target measurement paths. Fabric geometry does not describe
-native-only transforms that bypass its shadow tree; applications must keep endpoint
-layout and scroll state stable during the handoff to the overlay.
-
-`onPreparationTrace` exposes source capture, target registration, Fabric preparation,
-and overlay readiness timings. See [troubleshooting](./guide/troubleshooting.md#turn-on-diagnostics)
-for application diagnostics.
+`onPreparationTrace` exposes source capture, target registration, UI measurement,
+and overlay readiness timings. See
+[troubleshooting](./guide/troubleshooting.md#turn-on-diagnostics) for diagnostics.
 
 ## Overlay and screen visibility
 

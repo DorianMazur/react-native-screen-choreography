@@ -20,10 +20,8 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
   private var active = false
   private var foregroundLayer = false
-  private var reactActive = false
   private var prepared = false
-  private var attachmentAcknowledged = false
-  private var presentationRequested = false
+  private var attachmentReady = false
   private var presentationAcknowledged = false
   private var attachmentDeadline = 0L
   private var presentationDeadline = 0L
@@ -42,6 +40,9 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private val mainHandler = Handler(Looper.getMainLooper())
   private val contentReadiness = ViewTreeObserver.OnPreDrawListener {
     if (active && prepared) {
+      // Receivers can finish mounting after prepareFromReact. Arm presentation
+      // here even while the live-content gate keeps this host at alpha zero.
+      markAttachmentReady()
       // Readiness gates only startup. A renderer may intentionally fade a pair
       // out after presentation without hiding the other pairs in the host.
       val ready = presentationAcknowledged || transitionHostsAreReady(true)
@@ -65,8 +66,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   fun setActive(value: Boolean) {
-    reactActive = value
-    updateActive(value || prepared)
+    updateActive(value)
   }
 
   fun setForegroundLayer(value: Boolean) {
@@ -135,7 +135,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     alpha = 1f
     visibility = View.VISIBLE
     invalidate()
-    acknowledgeAttachmentIfReady()
+    markAttachmentReady()
     schedulePresentationReady()
   }
 
@@ -147,59 +147,35 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     cancelPresentationReady()
     sessionId = value
     prepared = false
-    attachmentAcknowledged = false
-    presentationRequested = false
+    attachmentReady = false
     presentationAcknowledged = false
     presentationDeadline = 0L
-    updateActive(reactActive)
     if (active) {
       schedulePresentationReady()
     }
   }
 
-  fun prepare(expectedSessionId: String) {
-    if (expectedSessionId.isEmpty() || expectedSessionId != sessionId) return
-    val replayPresentation = presentationAcknowledged
-    val replayAttachment = attachmentAcknowledged
+  fun prepareFromReact() {
+    if (!active || foregroundLayer || sessionId.isEmpty() || expectedHostNames.isEmpty()) return
     if (!prepared) {
       prepared = true
       attachmentDeadline = SystemClock.uptimeMillis() + 1000L
     }
-    updateActive(true)
-    acknowledgeAttachmentIfReady()
-    if (replayPresentation && active && isAttachedToWindow && windowToken != null &&
-      transitionHostsAreReady(true)) {
-      onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "presented")
-    } else if (replayAttachment && active && isAttachedToWindow && windowToken != null &&
-      SystemClock.uptimeMillis() < attachmentDeadline && transitionHostsAreReady(false)) {
-      onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "attached")
-    }
-    if (!attachmentAcknowledged && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
-  }
-
-  fun prepareFromReact() {
-    if (reactActive && !foregroundLayer && expectedHostNames.isNotEmpty()) prepare(sessionId)
-  }
-
-  fun setPresentationRequested(value: Boolean) {
-    // React may reapply false animated props; latch until the session changes.
-    if (!value || sessionId.isEmpty() || presentationRequested) return
-    presentationRequested = true
-    presentationDeadline = SystemClock.uptimeMillis() + 1000L
-    schedulePresentationReady()
+    markAttachmentReady()
+    if (!attachmentReady && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
   }
 
   fun setExpectedHostNames(names: List<String>) {
     expectedHostNames = names
-    if (prepared && presentationRequested) schedulePresentationReady()
+    if (prepared && attachmentReady) schedulePresentationReady()
   }
 
-  private fun acknowledgeAttachmentIfReady() {
-    if (!prepared || attachmentAcknowledged || !active || !isAttachedToWindow || windowToken == null ||
+  private fun markAttachmentReady() {
+    if (!prepared || attachmentReady || !active || !isAttachedToWindow || windowToken == null ||
       SystemClock.uptimeMillis() >= attachmentDeadline || !transitionHostsAreReady(false)) return
-    attachmentAcknowledged = true
-    onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "attached")
-    setPresentationRequested(true)
+    attachmentReady = true
+    presentationDeadline = SystemClock.uptimeMillis() + 1000L
+    schedulePresentationReady()
   }
 
   fun cancelPresentationReady() {
@@ -224,9 +200,9 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     }
     super.dispatchDraw(canvas)
 
-    if (prepared && !attachmentAcknowledged) {
-      acknowledgeAttachmentIfReady()
-      if (!attachmentAcknowledged && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
+    if (prepared && !attachmentReady) {
+      markAttachmentReady()
+      if (!attachmentReady && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
     }
 
     if (pendingPresentationAck && active) {
@@ -294,7 +270,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     super.onAttachedToWindow()
     viewTreeObserver.addOnPreDrawListener(contentReadiness)
     if (active) {
-      acknowledgeAttachmentIfReady()
+      markAttachmentReady()
       schedulePresentationReady()
     }
   }
@@ -303,7 +279,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     if (viewTreeObserver.isAlive) viewTreeObserver.removeOnPreDrawListener(contentReadiness)
     super.onDetachedFromWindow()
     cancelPresentationReady()
-    attachmentAcknowledged = false
+    attachmentReady = false
     dismissalRequestId += 1
     clearDismissalFrame()
   }
@@ -318,7 +294,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
   private fun schedulePresentationReady() {
     if (!prepared || foregroundLayer || !active || windowToken == null || presentationAcknowledged ||
-      !presentationRequested || SystemClock.uptimeMillis() >= presentationDeadline) {
+      !attachmentReady || SystemClock.uptimeMillis() >= presentationDeadline) {
       return
     }
 

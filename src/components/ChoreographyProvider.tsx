@@ -17,7 +17,6 @@ import { PortalProvider } from 'react-native-teleport';
 import type {
   ChoreographyDebugConfig,
   ChoreographyPreparationTrace,
-  NodeHandleRef,
   ChoreographyNavigationLineage,
   RegisteredElement,
   TransitionSessionData,
@@ -27,7 +26,6 @@ import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { TransitionCoordinator } from '../core/TransitionCoordinator';
-import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { TransitionOverlay } from '../core/TransitionOverlay';
 import {
   ChoreographyContext,
@@ -218,7 +216,6 @@ export function ChoreographyProvider({
   );
   const screenReadinessRef = useRef(new ScreenReadinessRegistry());
   const screenNamesRef = useRef(new Map<string, string>());
-  const nativeScreenRefs = useRef(new Map<string, NodeHandleRef>());
   // Unlike presentation refs, membership survives presentation re-registration.
   const mountedScreensRef = useRef(new Set<string>());
   const screenRemovalListenersRef = useRef(new Map<string, Set<() => void>>());
@@ -230,14 +227,10 @@ export function ChoreographyProvider({
     registryRef.current = new ElementRegistry();
   }
   if (!coordinatorRef.current) {
-    // Install before descendants commit: lazy native-module loading on the
-    // first transition misses the source mount and waits for the capture timeout.
-    hasFabricLayoutCapture();
     coordinatorRef.current = new TransitionCoordinator(
       registryRef.current,
       progress,
       {
-        getScreenRef: (screenId) => nativeScreenRefs.current.get(screenId),
         isScreenReady: (screenId) =>
           screenReadinessRef.current.isReady(screenId),
       }
@@ -334,6 +327,13 @@ export function ChoreographyProvider({
     registryRef.current!.register(element);
     coordinatorRef.current?.revalidatePresentation();
   }, []);
+
+  const onElementLayout = useCallback(
+    (id: string, screenId: string, groupId?: string) => {
+      coordinatorRef.current?.onElementLayout(id, screenId, groupId);
+    },
+    []
+  );
 
   const unregisterElement = useCallback(
     (id: string, screenId: string, groupId: string | undefined) => {
@@ -678,7 +678,6 @@ export function ChoreographyProvider({
     ChoreographyActionsType['registerScreenPresentation']
   >(
     (screenId, ref, animationLifetime) => {
-      nativeScreenRefs.current.set(screenId, ref);
       mountedScreensRef.current.add(screenId);
       const release = registerReverseScreenPresentation(
         screenId,
@@ -686,8 +685,6 @@ export function ChoreographyProvider({
         animationLifetime
       );
       return () => {
-        if (nativeScreenRefs.current.get(screenId) === ref)
-          nativeScreenRefs.current.delete(screenId);
         release();
       };
     },
@@ -782,6 +779,7 @@ export function ChoreographyProvider({
   const actionsValue = useMemo<ChoreographyActionsType>(
     () => ({
       registerElement,
+      onElementLayout,
       unregisterElement,
       isElementHidden,
       setScreenReady,
@@ -794,6 +792,7 @@ export function ChoreographyProvider({
     }),
     [
       registerElement,
+      onElementLayout,
       unregisterElement,
       isElementHidden,
       setScreenReady,

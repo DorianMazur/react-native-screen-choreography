@@ -55,11 +55,6 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     view?.setSessionId(sessionId ?: "")
   }
 
-  @ReactProp(name = "presentationRequested", defaultBoolean = false)
-  override fun setPresentationRequested(view: ScreenChoreographyView?, value: Boolean) {
-    view?.setPresentationRequested(value)
-  }
-
   @ReactProp(name = "expectedHostNames")
   override fun setExpectedHostNames(view: ScreenChoreographyView?, names: ReadableArray?) {
     val values = mutableListOf<String>()
@@ -74,10 +69,6 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
       }
     }
     view?.setExpectedHostNames(values)
-  }
-
-  override fun prepare(view: ScreenChoreographyView?, sessionId: String?) {
-    view?.prepare(sessionId ?: "")
   }
 
   override fun onDropViewInstance(view: ScreenChoreographyView) {

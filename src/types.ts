@@ -1,7 +1,7 @@
 import type { NativePresentation } from './core/nativePresentation';
 import type { ComponentType, ReactElement } from 'react';
-import type { SharedValue } from 'react-native-reanimated';
-import type { ViewStyle } from 'react-native';
+import type { AnimatedRef, SharedValue } from 'react-native-reanimated';
+import type { View, ViewStyle } from 'react-native';
 
 export type SpringConfig = {
   mass?: number;
@@ -102,6 +102,8 @@ export interface RegisteredElement {
   groupId?: string;
   screenId: string;
   ref: NodeHandleRef;
+  /** UI-runtime measurement handle; registration and native ref stay stable. */
+  measurementRef?: AnimatedRef<View>;
   metrics: ElementMetrics | null;
   /** Captures metadata, style, and transition once at session start. */
   getPresentation: () => ElementPresentation;

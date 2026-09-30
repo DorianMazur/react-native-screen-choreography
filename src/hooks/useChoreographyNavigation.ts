@@ -1,4 +1,3 @@
-import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { PreparationTrace } from '../core/preparationTrace';
 import { useCallback, useContext, useEffect } from 'react';
 import type { CommitBackNavigation } from '../core/navigationCommit';
@@ -303,7 +302,6 @@ export function useChoreographyNavigator({
           groupId,
           sourceScreenId,
           targetScreenId,
-          isAndroid: Platform.OS === 'android' && !hasFabricLayoutCapture(),
           trace: ctx.onPreparationTrace
             ? new PreparationTrace(
                 {
@@ -349,7 +347,6 @@ export function useChoreographyNavigator({
             return ready;
           },
           isOverlayPresented: ctx.isOverlayPresented,
-          waitForNextFrame,
           startTransition,
           onSessionPrepared: (prepared) => {
             setNavigationLineage({
@@ -431,7 +428,6 @@ export function useChoreographyNavigator({
       startTransition,
       waitForOverlayReady,
       waitForScreenReady,
-      waitForNextFrame,
     ]
   );
 

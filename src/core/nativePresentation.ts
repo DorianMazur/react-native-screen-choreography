@@ -20,22 +20,19 @@ export interface PresentationAnimation {
 }
 
 export interface NativePresentation {
-  /** 0: mount; -1: attaching; 1: transfer; 2: presented. */
+  /** 1: mounting/transferring retained content; 2: presented. */
   phase: SharedValue<number>;
   valid: SharedValue<boolean>;
   animation: SharedValue<PresentationAnimation | null>;
   hostNames: string[];
-  validate: () => boolean;
 }
 
 export function createNativePresentation(
-  hostNames: string[],
-  validate: () => boolean
+  hostNames: string[]
 ): NativePresentation {
   return {
     hostNames,
-    validate,
-    phase: makeMutable(0),
+    phase: makeMutable(1),
     valid: makeMutable(true),
     animation: makeMutable<PresentationAnimation | null>(null),
   };

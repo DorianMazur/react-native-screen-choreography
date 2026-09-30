@@ -1,4 +1,4 @@
-import { findNodeHandle } from 'react-native';
+import { requestMeasuredLayout } from './measuredLayout';
 import { TransitionCoordinator } from './TransitionCoordinator';
 import { ElementRegistry } from './ElementRegistry';
 import type {
@@ -7,16 +7,8 @@ import type {
   RegisteredElement,
 } from '../types';
 
-jest.mock('../native/NativeChoreographyPreparation', () => ({
-  __esModule: true,
-  default: null,
-}));
+jest.mock('./measuredLayout', () => ({ requestMeasuredLayout: jest.fn() }));
 
-const globals = globalThis as typeof globalThis & {
-  __screenChoreographyRequestFabricLayout?: jest.Mock;
-  __screenChoreographyCaptureFabricLayout?: jest.Mock;
-  __screenChoreographySubscribeFabricMount?: jest.Mock;
-};
 const sourceMetrics = { pageX: 10, pageY: 20, width: 50, height: 50 };
 const targetMetrics = { pageX: 0, pageY: 0, width: 200, height: 200 };
 const transition = { renderer: () => null };
@@ -32,12 +24,6 @@ let ready: boolean;
 let capture: jest.Mock;
 let layouts: Map<number, ElementMetrics>;
 let nextTag: number;
-let mountListeners: Set<() => void>;
-const screenRefs = new Map([
-  ['list', { current: { tag: 100 } }],
-  ['detail', { current: { tag: 200 } }],
-  ['other', { current: { tag: 300 } }],
-]);
 
 function register(
   screenId: string,
@@ -54,6 +40,7 @@ function register(
     screenId,
     groupId: 'group',
     ref: { current: node },
+    measurementRef: Object.assign(() => node, { current: node }) as any,
     metrics: null,
     getPresentation: jest.fn(() => presentation.current),
     ...overrides,
@@ -64,41 +51,59 @@ function register(
 
 beforeEach(() => {
   jest.useFakeTimers();
-  jest
-    .spyOn(require('react-native'), 'findNodeHandle')
-    .mockImplementation((node: any) => node.tag);
   registry = new ElementRegistry();
   ready = true;
   nextTag = 0;
   layouts = new Map();
-  mountListeners = new Set();
-  globals.__screenChoreographySubscribeFabricMount = jest.fn((callback) => {
-    mountListeners.add(callback);
-    return () => mountListeners.delete(callback);
-  });
-  capture = jest.fn((_screens: number[], tags: number[]) => {
+  capture = jest.fn((tags: number[]) => {
     const values = tags.map((tag) => layouts.get(tag));
     return values.every(Boolean) ? values : null;
   });
-  globals.__screenChoreographyCaptureFabricLayout = capture;
-  globals.__screenChoreographyRequestFabricLayout = jest.fn(
-    (screens, tags) => (validate?: boolean) =>
-      validate === true
-        ? true
-        : validate === false
-          ? undefined
-          : capture(screens, tags)
-  );
+  jest
+    .mocked(requestMeasuredLayout)
+    .mockImplementation(({ entries, isCurrent, cancellers }) => {
+      const nodes = entries.map((e) =>
+        typeof e.ref === 'function' ? e.ref() : e.ref.current
+      );
+      const refsCurrent = () =>
+        entries.every(
+          (e, i) =>
+            (typeof e.ref === 'function' ? e.ref() : e.ref.current) === nodes[i]
+        );
+      return new Promise((resolve) => {
+        let timer: ReturnType<typeof setTimeout>;
+        let attempts = 0;
+        const finish = (value: any) => {
+          clearTimeout(timer);
+          cancellers.delete(cancel);
+          resolve(value);
+        };
+        const cancel = () => finish(null);
+        const attempt = () => {
+          if (!isCurrent() || !refsCurrent() || attempts++ > 60) {
+            finish(null);
+            return;
+          }
+          const batch = capture(nodes.map((n) => n.tag));
+          if (!batch) {
+            timer = setTimeout(attempt, 16);
+            return;
+          }
+          finish({
+            metrics: new Map(entries.map((e, i) => [e.id, batch[i]])),
+            isCurrent: refsCurrent,
+          });
+        };
+        cancellers.add(cancel);
+        attempt();
+      });
+    });
   coordinator = new TransitionCoordinator(registry, { value: 0 } as any, {
-    getScreenRef: (id) => screenRefs.get(id),
     isScreenReady: () => ready,
   });
 });
 afterEach(() => {
   coordinator.dispose();
-  delete globals.__screenChoreographyCaptureFabricLayout;
-  delete globals.__screenChoreographyRequestFabricLayout;
-  delete globals.__screenChoreographySubscribeFabricMount;
   jest.restoreAllMocks();
   jest.useRealTimers();
 });
@@ -106,12 +111,11 @@ afterEach(() => {
 async function start(direction: 'forward' | 'backward' = 'forward') {
   const pending = coordinator.startTransition({ ...config, direction });
   await jest.advanceTimersByTimeAsync(0);
-  mountListeners.forEach((listener) => listener());
   await jest.runAllTimersAsync();
   return pending;
 }
 
-test('publishes a ready capture in the same turn as measuring, without an empty intermediate render', async () => {
+test('publishes active pairs after the UI measurement result', async () => {
   register('list', sourceMetrics);
   register('detail', targetMetrics);
   const states: string[] = [];
@@ -119,11 +123,12 @@ test('publishes a ready capture in the same turn as measuring, without an empty 
     if (session) states.push(session.state);
   });
   const pending = coordinator.startTransition(config);
-  expect(states).toEqual(['measuring', 'active']);
+  expect(states).toEqual(['measuring']);
   expect((await pending)?.pairs).toHaveLength(1);
+  expect(states).toEqual(['measuring', 'active']);
 });
 
-test('keeps waiting when the native mounted batch is not ready', async () => {
+test('keeps waiting when the UI measurement batch is not ready', async () => {
   register('list', sourceMetrics);
   register('detail', targetMetrics);
   const states: string[] = [];
@@ -134,13 +139,13 @@ test('keeps waiting when the native mounted batch is not ready', async () => {
   const pending = coordinator.startTransition(config);
   expect(states).toEqual(['measuring']);
   capture.mockReturnValue([sourceMetrics, targetMetrics]);
-  mountListeners.forEach((listener) => listener());
+  await jest.advanceTimersByTimeAsync(16);
   expect((await pending)?.state).toBe('active');
   expect(states).toEqual(['measuring', 'active']);
 });
 
 test.each(['forward', 'backward'] as const)(
-  'captures both endpoints in one mounted root for %s',
+  'captures both endpoints in one measurement batch for %s',
   async (direction) => {
     register('list', sourceMetrics);
     register('detail', targetMetrics);
@@ -148,8 +153,7 @@ test.each(['forward', 'backward'] as const)(
     expect(session?.state).toBe('active');
     expect(session?.pairs[0]?.sourceMetrics).toEqual(sourceMetrics);
     expect(session?.pairs[0]?.targetMetrics).toEqual(targetMetrics);
-    expect(capture).toHaveBeenCalledWith([100, 200], [1, 2]);
-    expect(findNodeHandle).toHaveBeenCalled();
+    expect(capture).toHaveBeenCalledWith([1, 2]);
   }
 );
 
@@ -161,12 +165,12 @@ test('consumes source geometry captured before navigation without re-reading a d
   capture.mockClear();
   const session = await start();
   expect(session?.pairs[0]?.sourceMetrics).toEqual(sourceMetrics);
-  expect(capture).toHaveBeenCalledWith([200], [2]);
+  expect(capture).toHaveBeenCalledWith([2]);
   coordinator.completeTransition();
   expect(await start()).toBeNull(); // The consumed source snapshot cannot be reused.
 });
 
-test('does not use stale registry metrics when Fabric capture fails', async () => {
+test('does not use stale registry metrics when measurement fails', async () => {
   register('list', sourceMetrics, { metrics: sourceMetrics });
   register('detail', targetMetrics, { metrics: targetMetrics });
   capture.mockReturnValue(null);
@@ -190,7 +194,7 @@ test('waits for a pending mount and uses its current geometry', async () => {
   expect(capture).toHaveBeenCalledTimes(2);
 });
 
-test('freezes presentation getters before the native geometry request', async () => {
+test('freezes presentation getters before the UI measurement request', async () => {
   register('list', sourceMetrics);
   const target = register('detail', targetMetrics);
   const fresh = { ...targetMetrics, pageY: 99 };
@@ -329,14 +333,14 @@ test('completion and cancellation release hidden elements and settle on the corr
   expect(coordinator.getSettledScreenId()).toBe('list');
 });
 
-test('mount notifications update active target layout and retain frozen presentation', async () => {
+test('layout notifications update active target layout and retain frozen presentation', async () => {
   register('list', sourceMetrics);
   const target = register('detail', targetMetrics);
   const session = await start();
   const frozen = session!.pairs[0]!.targetPresentation;
-  expect(mountListeners.size).toBe(1);
   layouts.set(target.node.tag, { ...targetMetrics, pageY: 62 });
-  [...mountListeners].forEach((notify) => notify());
+  coordinator.onElementLayout('card', 'detail', 'group');
+  await jest.advanceTimersByTimeAsync(0);
   expect(coordinator.getActiveSession()!.pairs[0]!.targetMetrics.pageY).toBe(
     62
   );
@@ -344,18 +348,16 @@ test('mount notifications update active target layout and retain frozen presenta
     frozen
   );
   coordinator.completeTransition();
-  expect(mountListeners.size).toBe(0);
 });
 
-test('late mount notifications cannot update a cancelled session', async () => {
+test('late layout notifications cannot update a cancelled session', async () => {
   register('list', sourceMetrics);
   register('detail', targetMetrics);
   await start();
-  const notification = [...mountListeners][0]!;
   coordinator.cancelTransition();
-  notification();
+  coordinator.onElementLayout('card', 'detail', 'group');
+  await jest.advanceTimersByTimeAsync(0);
   expect(coordinator.getActiveSession()).toBeNull();
-  expect(mountListeners.size).toBe(0);
 });
 
 test.each(['forward', 'backward'] as const)(

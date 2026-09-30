@@ -15,10 +15,12 @@ import {
 import {
   type StyleProp,
   type ViewStyle,
+  type View,
   StyleSheet,
   Platform,
 } from 'react-native';
 import Animated, {
+  useAnimatedRef,
   useAnimatedReaction,
   useDerivedValue,
 } from 'react-native-reanimated';
@@ -95,13 +97,14 @@ function SharedElementRegistration({
   metadata,
 }: SharedElementRegistrationProps) {
   const viewNodeRef = useRef<any>(null);
+  const measurementRef = useAnimatedRef<View>();
   const actions = useContext(ChoreographyActionsContext);
   if (!actions) {
     throw new Error(
       'SharedElement must be used within a <ChoreographyProvider>'
     );
   }
-  const { registerElement, unregisterElement } = actions;
+  const { registerElement, unregisterElement, onElementLayout } = actions;
   const screenId = useScreenId();
 
   const flattenedStyle = useMemo(
@@ -127,9 +130,16 @@ function SharedElementRegistration({
   const getTransition = useCallback(() => transitionRef.current, []);
 
   const getNode = useCallback(() => viewNodeRef.current, []);
-  const setRefs = useCallback((node: any) => {
-    viewNodeRef.current = node;
-  }, []);
+  const setRefs = useCallback(
+    (node: any) => {
+      viewNodeRef.current = node;
+      measurementRef(node);
+    },
+    [measurementRef]
+  );
+  const handleLayout = useCallback(() => {
+    onElementLayout?.(id, screenId, groupId);
+  }, [onElementLayout, id, screenId, groupId]);
 
   // Stable registration. Effect deps are all stable identities.
   useEffect(() => {
@@ -138,6 +148,7 @@ function SharedElementRegistration({
       groupId,
       screenId,
       ref: getNode,
+      measurementRef,
       metrics: null,
       getPresentation,
       getTransition,
@@ -151,6 +162,7 @@ function SharedElementRegistration({
     groupId,
     screenId,
     getNode,
+    measurementRef,
     getPresentation,
     getTransition,
     registerElement,
@@ -160,6 +172,7 @@ function SharedElementRegistration({
   return (
     <Animated.View
       ref={setRefs}
+      onLayout={handleLayout}
       style={[style, layoutStyle]}
       collapsable={false}
     >
@@ -466,8 +479,8 @@ function useRetainedPortalHost(
       }
     }
   );
-  // Android gates the receiving host's draw natively. On iOS, registration can
-  // precede window attachment, so even the original owner waits for the ack.
+  // A retained payload stays in its previous host until the UI runtime has
+  // observed the new overlay session. Final presentation is still gated natively.
   const hostName =
     (Platform.OS === 'android' && previousHost.current === undefined) ||
     !presentation ||

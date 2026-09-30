@@ -11,6 +11,8 @@ import {
 import { ScreenIdContext, useScreenId } from '../core/screenIdContext';
 import { ChoreographyScreen as NavigationScreen } from './react-navigation';
 import { ChoreographyScreen as RouterScreen } from './expo-router';
+import { requestMeasuredLayout } from '../core/measuredLayout';
+import type { NodeHandleRef } from '../types';
 
 jest.mock('react-native-reanimated', () => {
   const { useRef } = jest.requireActual('react');
@@ -18,7 +20,6 @@ jest.mock('react-native-reanimated', () => {
     ...jest.requireActual('../../__mocks__/react-native-reanimated'),
     __esModule: true,
     useSharedValue: (value: number) => useRef({ value }).current,
-    useAnimatedRef: () => useRef(() => {}).current,
     cancelAnimation: jest.fn(),
   };
 });
@@ -45,6 +46,9 @@ jest.mock('@react-navigation/native', () => {
 jest.mock('expo-router', () => jest.requireMock('@react-navigation/native'));
 jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: jest.fn(),
+}));
+jest.mock('../core/measuredLayout', () => ({
+  requestMeasuredLayout: jest.fn(),
 }));
 
 const { RouteContext } = jest.requireMock('@react-navigation/native');
@@ -92,32 +96,33 @@ test.each([
   '%s isolates repeated screen instances',
   async (_adapter, Screen) => {
     jest.useFakeTimers();
-    const globals = globalThis as typeof globalThis & {
-      __screenChoreographyRequestFabricLayout?: jest.Mock;
-      __screenChoreographySubscribeFabricMount?: () => () => void;
-      __screenChoreographyCaptureFabricLayout?: jest.Mock;
-    };
-    jest
-      .spyOn(require('react-native'), 'findNodeHandle')
-      .mockImplementation((node: any) => node.tag);
-    globals.__screenChoreographyRequestFabricLayout = jest.fn(
-      (screens, tags) => (validate?: boolean) =>
-        validate === true
-          ? true
-          : validate === false
-            ? undefined
-            : globals.__screenChoreographyCaptureFabricLayout!(screens, tags)
-    );
-    globals.__screenChoreographySubscribeFabricMount = () => () => {};
-    globals.__screenChoreographyCaptureFabricLayout = jest.fn(
-      (_screens, tags) =>
-        tags.map((pageX: number) => ({
-          pageX,
-          pageY: 0,
-          width: 100,
-          height: 100,
-        }))
-    );
+    jest.mocked(requestMeasuredLayout).mockImplementation(async (request) => {
+      if (!request.isCurrent()) return null;
+      const nodeFor = (ref: NodeHandleRef) =>
+        typeof ref === 'function' ? ref() : ref.current;
+      const refs = request.entries.map((entry) => entry.ref);
+      const nodes = refs.map(nodeFor);
+      const measurementRefs = request.entries.map(
+        (entry) => entry.measurementRef
+      );
+      return {
+        metrics: new Map(
+          request.entries.map((entry, index) => [
+            entry.id,
+            { pageX: nodes[index].tag, pageY: 0, width: 100, height: 100 },
+          ])
+        ),
+        isCurrent: () =>
+          request.entries.every(
+            (entry, index) =>
+              Boolean(nodes[index]) &&
+              entry.ref === refs[index] &&
+              entry.measurementRef === measurementRefs[index] &&
+              nodeFor(entry.ref) === nodes[index] &&
+              entry.measurementRef.current === nodes[index]
+          ),
+      };
+    });
 
     let tree: ReactTestRenderer | undefined;
     let context!: ChoreographyContextType;
@@ -132,12 +137,14 @@ test.each([
           current: { tag: pageX + 1000 },
         } as any);
 
+        const ref = { current: { tag: pageX } };
         actions.registerElement({
           id: 'card',
           groupId: 'group',
           screenId,
           metrics: { pageX, pageY: 0, width: 100, height: 100 },
-          ref: { current: { tag: pageX } },
+          ref,
+          measurementRef: Object.assign(() => ref.current, ref) as any,
           getPresentation: () => ({
             content: null,
             transition: { renderer: () => null },
@@ -246,9 +253,7 @@ test.each([
       expect(await context.waitForScreenReady('detail-first')).toBe(true);
     } finally {
       await act(async () => tree?.unmount());
-      delete globals.__screenChoreographyCaptureFabricLayout;
-      delete globals.__screenChoreographyRequestFabricLayout;
-      delete globals.__screenChoreographySubscribeFabricMount;
+      jest.mocked(requestMeasuredLayout).mockReset();
       jest.restoreAllMocks();
       jest.useRealTimers();
     }

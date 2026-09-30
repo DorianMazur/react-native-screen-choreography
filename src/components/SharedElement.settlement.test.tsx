@@ -17,7 +17,8 @@ import { runReverseTransition } from '../core/runReverseTransition';
 import { makeTransition } from '../transitions/makeTransition';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { PreparationTrace } from '../core/preparationTrace';
-import type { ChoreographyPreparationTrace } from '../types';
+import { requestMeasuredLayout } from '../core/measuredLayout';
+import type { ChoreographyPreparationTrace, NodeHandleRef } from '../types';
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -38,15 +39,12 @@ jest.mock(
 jest.mock('../core/TransitionOverlay', () => ({
   TransitionOverlay: () => null,
 }));
+jest.mock('../core/measuredLayout', () => ({
+  requestMeasuredLayout: jest.fn(),
+}));
 
 const { Portal } = jest.requireMock('react-native-teleport') as {
   Portal: React.ElementType;
-};
-
-const fabricGlobals = globalThis as typeof globalThis & {
-  __screenChoreographyCaptureFabricLayout?: jest.Mock;
-  __screenChoreographyRequestFabricLayout?: jest.Mock;
-  __screenChoreographySubscribeFabricMount?: jest.Mock;
 };
 
 const GROUP = 'rewards';
@@ -194,34 +192,33 @@ describe('SharedElement owner settlement when the destination route goes away', 
   beforeEach(async () => {
     jest.useFakeTimers();
     onPreparationTrace.mockClear();
-    // Mocked composite views expose instances instead of host nodes.
-    const nodeTags = new WeakMap<object, number>();
-    let nextTag = 0;
-    jest
-      .spyOn(require('react-native'), 'findNodeHandle')
-      .mockImplementation((node: any) => {
-        if (!node) return null;
-        if (!nodeTags.has(node)) nodeTags.set(node, ++nextTag);
-        return nodeTags.get(node)!;
-      });
-    fabricGlobals.__screenChoreographyCaptureFabricLayout = jest.fn(
-      (_screens: number[], tags: number[]) =>
-        tags.map(() => ({ pageX: 10, pageY: 20, width: 100, height: 100 }))
-    );
-    fabricGlobals.__screenChoreographySubscribeFabricMount = jest.fn(
-      () => () => {}
-    );
-    fabricGlobals.__screenChoreographyRequestFabricLayout = jest.fn(
-      (screens, tags) => (validate?: boolean) =>
-        validate === true
-          ? true
-          : validate === false
-            ? undefined
-            : fabricGlobals.__screenChoreographyCaptureFabricLayout!(
-                screens,
-                tags
-              )
-    );
+    jest.mocked(requestMeasuredLayout).mockImplementation(async (request) => {
+      if (!request.isCurrent()) return null;
+      const nodeFor = (ref: NodeHandleRef) =>
+        typeof ref === 'function' ? ref() : ref.current;
+      const refs = request.entries.map((entry) => entry.ref);
+      const nodes = refs.map(nodeFor);
+      const measurementRefs = request.entries.map(
+        (entry) => entry.measurementRef
+      );
+      return {
+        metrics: new Map(
+          request.entries.map((entry) => [
+            entry.id,
+            { pageX: 10, pageY: 20, width: 100, height: 100 },
+          ])
+        ),
+        isCurrent: () =>
+          request.entries.every(
+            (entry, index) =>
+              Boolean(nodes[index]) &&
+              entry.ref === refs[index] &&
+              entry.measurementRef === measurementRefs[index] &&
+              nodeFor(entry.ref) === nodes[index] &&
+              entry.measurementRef.current === nodes[index]
+          ),
+      };
+    });
     await act(async () => {
       tree = create(<App detail />, { createNodeMock: () => ({}) });
     });
@@ -235,9 +232,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
   afterEach(async () => {
     await act(async () => tree?.unmount());
     tree = undefined;
-    delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
-    delete fabricGlobals.__screenChoreographyRequestFabricLayout;
-    delete fabricGlobals.__screenChoreographySubscribeFabricMount;
+    jest.mocked(requestMeasuredLayout).mockReset();
     jest.restoreAllMocks();
     jest.useRealTimers();
   });
@@ -271,13 +266,11 @@ describe('SharedElement owner settlement when the destination route goes away', 
           groupId: GROUP,
           sourceScreenId: 'list',
           targetScreenId: 'detail',
-          isAndroid: false,
           trace,
           captureSourceGroup: context.captureSourceGroup,
           setPendingTargetScreen: context.setPendingTargetScreen,
           dispatchNavigation: () => {},
           waitForScreenReady: context.waitForScreenReady,
-          waitForNextFrame: async () => {},
           startTransition: context.startTransition,
           waitForOverlayReady: context.waitForOverlayReady,
           isSessionCurrent: (id) => context.progressOwnership.isSession(id),
@@ -364,9 +357,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
 
   test('back that pops because no reverse session could be prepared returns the owner home', async () => {
     await openDetail();
-    fabricGlobals.__screenChoreographyCaptureFabricLayout!.mockReturnValue(
-      null
-    );
+    jest.mocked(requestMeasuredLayout).mockResolvedValue(null);
     await goBack();
     await removeDetailRoute();
     expectCollapsedAtHome();

@@ -203,7 +203,7 @@ export function ChoreographyScreenBase({
       return;
     }
 
-    // Application readiness only. Completed mounting is verified by Fabric capture.
+    // Application readiness only. Mounted endpoint geometry is checked by UI-thread measurement.
     layoutReadyRef.current = true;
     setScreenReady(screenId, readyRef.current);
   }, [screenId, setScreenReady]);

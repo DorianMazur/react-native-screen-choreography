@@ -137,7 +137,7 @@ describe('SharedElement live endpoints', () => {
       }))
     )
   )(
-    'keeps the $platform $direction image visible through delayed attachment ($outcome)',
+    'keeps the $platform $direction image visible through a delayed UI transfer notification ($outcome)',
     async ({ platform, direction, retained, outcome }) => {
       const originalOS = Platform.OS;
       Platform.OS = platform;
@@ -176,10 +176,9 @@ describe('SharedElement live endpoints', () => {
           direction === 'backward'
             ? session('detail', 'list', direction)
             : session('list', 'detail');
-        back.presentation = createNativePresentation(['overlay'], () => true);
+        back.presentation = createNativePresentation(['overlay']);
         await update(back);
         expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
-        back.presentation.phase.value = -1;
         await update({ ...back });
         expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
 
@@ -200,7 +199,7 @@ describe('SharedElement live endpoints', () => {
           const replacement = {
             ...back,
             id: `${back.id}:replacement`,
-            presentation: createNativePresentation(['overlay'], () => true),
+            presentation: createNativePresentation(['overlay']),
           };
           if (outcome === 'invalid') back.presentation.valid.value = false;
           else if (outcome === 'replace') await update(replacement);
@@ -268,15 +267,11 @@ describe('SharedElement live endpoints', () => {
         });
         expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
         const forward = session('list', 'detail');
-        forward.presentation = createNativePresentation(
-          ['overlay'],
-          () => true
-        );
+        forward.presentation = createNativePresentation(['overlay']);
         await update(forward);
         const overlayHost = tree.root.findByType(Portal).props.hostName;
         expect(overlayHost).toContain('overlay');
-        expect(forward.presentation.phase.value).toBe(0);
-        forward.presentation.phase.value = -1;
+        expect(forward.presentation.phase.value).toBe(1);
         await update({ ...forward });
         expect(tree.root.findByType(Portal).props.hostName).toBe(overlayHost);
 
