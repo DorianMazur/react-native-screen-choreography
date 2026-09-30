@@ -26,12 +26,14 @@ import { ElementRegistry } from '../core/ElementRegistry';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import { hostsReportAttachment } from '../native/attachmentCapability';
 import { TransitionCoordinator } from '../core/TransitionCoordinator';
 import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { TransitionOverlay } from '../core/TransitionOverlay';
 import {
   ChoreographyContext,
   ChoreographyActionsContext,
+  PreparingSessionContext,
   ChoreographyControlsContext,
   type ChoreographyContextType,
   type ChoreographyActionsType,
@@ -151,16 +153,22 @@ export function ChoreographyProvider({
   );
   const [activeSession, setActiveSession] =
     useState<TransitionSessionData | null>(null);
+  const [overlaySession, setOverlaySession] =
+    useState<TransitionSessionData | null>(null);
   const [pendingTargetScreenId, setPendingTargetScreenId] = useState<
     string | null
   >(null);
   const [pendingSourceScreenId, setPendingSourceScreenId] = useState<
     string | null
   >(null);
+  // Preparing mounts empty overlay hosts so native can attach them first.
   const isOverlayActive =
-    activeSession?.state === 'active' &&
-    activeSession.pairs.length > 0 &&
-    !activeSession.reducedMotion;
+    (overlaySession?.state === 'active' ||
+      overlaySession?.state === 'preparing') &&
+    overlaySession.pairs.length > 0 &&
+    !overlaySession.reducedMotion;
+  const preparingSession =
+    overlaySession?.state === 'preparing' ? overlaySession : null;
   const activeSessionRef = useRef<TransitionSessionData | null>(null);
   const hostPresentedSessionIdRef = useRef<string | null>(null);
   const overlayContentReadySessionIdRef = useRef<string | null>(null);
@@ -240,6 +248,7 @@ export function ChoreographyProvider({
         getScreenRef: (screenId) => nativeScreenRefs.current.get(screenId),
         isScreenReady: (screenId) =>
           screenReadinessRef.current.isReady(screenId),
+        waitsForAttachment: hostsReportAttachment,
       }
     );
   }
@@ -261,7 +270,9 @@ export function ChoreographyProvider({
       }
       const previousSession = activeSessionRef.current;
       activeSessionRef.current = session;
-      setActiveSession(session);
+      setOverlaySession(session);
+      // Screens treat preparing like measuring; skip an app-wide render.
+      if (session?.state !== 'preparing') setActiveSession(session);
       if (previousSession && previousSession.id !== session?.id) {
         settleOverlayWaiters(previousSession.id, false);
       }
@@ -719,6 +730,10 @@ export function ChoreographyProvider({
     [resolveOverlayWaitersIfReady]
   );
 
+  const handleHostAttached = useCallback((sessionId: string) => {
+    coordinatorRef.current?.acknowledgeAttachment(sessionId);
+  }, []);
+
   const handleHostPresentationReady = useCallback(
     (sessionId: string) => {
       const session = activeSessionRef.current;
@@ -884,28 +899,31 @@ export function ChoreographyProvider({
       <ChoreographyActionsContext.Provider value={actionsValue}>
         <ChoreographyControlsContext.Provider value={controlsValue}>
           <ChoreographyContext.Provider value={contextValue}>
-            <ChoreographyProgressProvider>
-              {children}
-              <TransitionHostPortal
-                active={Boolean(isOverlayActive && activeSession)}
-              >
-                <NativeTransitionHost
-                  ownership={progressOwnership}
-                  progress={progress}
-                  sessionId={activeSession?.id}
-                  presentation={activeSession?.presentation}
-                  onPresentationFailed={handlePresentationFailed}
-                  active={Boolean(isOverlayActive && activeSession)}
-                  onPresentationReady={handleHostPresentationReady}
+            <PreparingSessionContext.Provider value={preparingSession}>
+              <ChoreographyProgressProvider>
+                {children}
+                <TransitionHostPortal
+                  active={Boolean(isOverlayActive && overlaySession)}
                 >
-                  <TransitionOverlay
-                    session={activeSession}
+                  <NativeTransitionHost
+                    ownership={progressOwnership}
                     progress={progress}
-                    onReady={handleOverlayReady}
-                  />
-                </NativeTransitionHost>
-              </TransitionHostPortal>
-            </ChoreographyProgressProvider>
+                    sessionId={overlaySession?.id}
+                    presentation={overlaySession?.presentation}
+                    onPresentationFailed={handlePresentationFailed}
+                    active={Boolean(isOverlayActive && overlaySession)}
+                    onPresentationReady={handleHostPresentationReady}
+                    onAttached={handleHostAttached}
+                  >
+                    <TransitionOverlay
+                      session={overlaySession}
+                      progress={progress}
+                      onReady={handleOverlayReady}
+                    />
+                  </NativeTransitionHost>
+                </TransitionHostPortal>
+              </ChoreographyProgressProvider>
+            </PreparingSessionContext.Provider>
           </ChoreographyContext.Provider>
         </ChoreographyControlsContext.Provider>
       </ChoreographyActionsContext.Provider>

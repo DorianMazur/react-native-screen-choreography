@@ -139,6 +139,83 @@ test('keeps waiting when the native mounted batch is not ready', async () => {
   expect(states).toEqual(['measuring', 'active']);
 });
 
+describe('native attachment gate', () => {
+  let gated: TransitionCoordinator;
+  let states: string[];
+  beforeEach(() => {
+    gated = new TransitionCoordinator(registry, { value: 0 } as any, {
+      getScreenRef: (id) => screenRefs.get(id),
+      isScreenReady: () => ready,
+      waitsForAttachment: true,
+    });
+    states = [];
+    gated.setOnSessionChange((session) => {
+      if (session) states.push(session.state);
+    });
+    register('list', sourceMetrics);
+    register('detail', targetMetrics);
+  });
+  afterEach(() => gated.dispose());
+
+  test('prepares hosts before activating in a single session change', async () => {
+    const pending = gated.startTransition(config);
+    await jest.advanceTimersByTimeAsync(0);
+    expect(states).toEqual(['measuring', 'preparing']);
+    const prepared = gated.getActiveSession()!;
+    expect(prepared.pairs).toHaveLength(1);
+    expect(prepared.presentation?.hostNames).toHaveLength(1);
+
+    gated.acknowledgeAttachment('unrelated');
+    await jest.advanceTimersByTimeAsync(0);
+    expect(states).toEqual(['measuring', 'preparing']);
+
+    gated.acknowledgeAttachment(prepared.id);
+    const session = await pending;
+    expect(states).toEqual(['measuring', 'preparing', 'active']);
+    expect(session).toMatchObject({ id: prepared.id, state: 'active' });
+    expect(session!.pairs).toBe(prepared.pairs);
+  });
+
+  test('a cancelled preparation never activates', async () => {
+    const pending = gated.startTransition(config);
+    await jest.advanceTimersByTimeAsync(0);
+    const prepared = gated.getActiveSession()!;
+    gated.cancelTransition(prepared.id);
+    gated.acknowledgeAttachment(prepared.id);
+    expect(await pending).toBeNull();
+    expect(states).toEqual(['measuring', 'preparing']);
+    expect(gated.getActiveSession()).toBeNull();
+  });
+
+  test('a failed forward preparation completes at its target', async () => {
+    const progress = { value: 0 };
+    const failing = new TransitionCoordinator(registry, progress as any, {
+      getScreenRef: (id) => screenRefs.get(id),
+      isScreenReady: () => ready,
+      waitsForAttachment: true,
+    });
+    try {
+      const pending = failing.startTransition(config);
+      await jest.advanceTimersByTimeAsync(0);
+      failing.failPresentation(failing.getActiveSession()!.id);
+      expect(await pending).toBeNull();
+      expect(failing.getSettledScreenId()).toBe('detail');
+      expect(progress.value).toBe(1);
+    } finally {
+      failing.dispose();
+    }
+  });
+
+  test('reduced motion skips preparation', async () => {
+    const session = await gated.startTransition({
+      ...config,
+      reducedMotion: true,
+    });
+    expect(session?.state).toBe('active');
+    expect(states).toEqual(['measuring', 'active']);
+  });
+});
+
 test.each(['forward', 'backward'] as const)(
   'captures both endpoints in one mounted root for %s',
   async (direction) => {

@@ -1,7 +1,6 @@
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import * as Reanimated from 'react-native-reanimated';
 import type {
   ElementTransitionPair,
   Transition,
@@ -19,7 +18,7 @@ import { ScreenIdContext } from '../core/screenIdContext';
 import { makeTransition } from '../transitions/makeTransition';
 import { SharedElement } from './SharedElement';
 import { createNativePresentation } from '../core/nativePresentation';
-import { useAnimatedReaction } from 'react-native-reanimated';
+import { getLiveDestinationHostName } from '../core/liveHostNames';
 import { ChoreographyScreenBase } from './ChoreographyScreenBase';
 import { useChoreographyProgress } from '../hooks/useChoreographyProgress';
 import type { ScreenAnimationLifetime } from '../hooks/useScreenAnimationLifetime';
@@ -124,28 +123,33 @@ function choreography(
 
 describe('SharedElement live endpoints', () => {
   test.each(
-    (
-      [
-        { platform: 'ios', direction: 'forward', retained: false },
-        { platform: 'ios', direction: 'backward', retained: true },
-        { platform: 'android', direction: 'backward', retained: true },
-      ] as const
-    ).flatMap((scenario) =>
-      (['present', 'cancel', 'replace', 'invalid'] as const).map((outcome) => ({
-        ...scenario,
-        outcome,
-      }))
+    (['ios', 'android'] as const).flatMap((platform) =>
+      (
+        [
+          { direction: 'forward', retained: false },
+          { direction: 'backward', retained: false },
+          { direction: 'backward', retained: true },
+        ] as const
+      ).flatMap((scenario) =>
+        (['present', 'cancel', 'fail'] as const).map((outcome) => ({
+          platform,
+          ...scenario,
+          outcome,
+        }))
+      )
     )
   )(
-    'keeps the $platform $direction image visible through delayed attachment ($outcome)',
+    'moves $platform $direction content only in the activating commit (retained: $retained, $outcome)',
     async ({ platform, direction, retained, outcome }) => {
       const originalOS = Platform.OS;
       Platform.OS = platform;
       const state = makeContexts();
       let tree!: ReactTestRenderer;
+      let presentation!: SharedElementPresentation;
       const mounted = jest.fn();
       function Content() {
         useEffect(mounted, []);
+        presentation = useSharedElementPresentation();
         return null;
       }
       const render = (activeSession: TransitionSessionData | null) => (
@@ -162,6 +166,12 @@ describe('SharedElement live endpoints', () => {
       const update = async (active: TransitionSessionData | null) => {
         await act(async () => tree.update(render(active)));
       };
+      const host = () => tree.root.findByType(Portal).props.hostName;
+      const detailHost = getLiveDestinationHostName(
+        'detail',
+        'player',
+        'media'
+      );
       try {
         await act(async () => {
           tree = create(render(null));
@@ -171,134 +181,35 @@ describe('SharedElement live endpoints', () => {
           state.settle('detail');
           await update(null);
         }
-        const destination = tree.root.findByType(Portal).props.hostName;
-        const back =
+        const resting = host();
+        expect(resting).toBe(retained ? detailHost : undefined);
+        const active =
           direction === 'backward'
             ? session('detail', 'list', direction)
             : session('list', 'detail');
-        back.presentation = createNativePresentation(['overlay'], () => true);
-        await update(back);
-        expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
-        back.presentation.phase.value = -1;
-        await update({ ...back });
-        expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+        active.presentation = createNativePresentation(['overlay'], () => true);
+        await update({ ...active, state: 'preparing' });
+        // Native is still attaching the overlay: nothing moves or restyles.
+        expect(host()).toBe(resting);
+        expect(presentation.transitioning).toBe(false);
+        expect(presentation.presentationProgress.value).toBe(retained ? 1 : 0);
 
-        let deliver!: () => void;
-        const { scheduleOnRN } = jest.requireMock('react-native-worklets');
-        scheduleOnRN.mockImplementationOnce(
-          (fn: (...args: unknown[]) => void, ...args: unknown[]) => {
-            deliver = () => fn(...args);
-          }
-        );
-        back.presentation.phase.value = 1;
-        const [read, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
-          -1
-        )!;
-        react(read(), null);
-        expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
-        if (outcome !== 'present') {
-          const replacement = {
-            ...back,
-            id: `${back.id}:replacement`,
-            presentation: createNativePresentation(['overlay'], () => true),
-          };
-          if (outcome === 'invalid') back.presentation.valid.value = false;
-          else if (outcome === 'replace') await update(replacement);
-          else {
-            state.settle(back.sourceScreenId);
-            await update(null);
-          }
-          await act(async () => deliver());
-          expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
-          expect(mounted).toHaveBeenCalledTimes(1);
-          expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
-          return;
-        }
-        await act(async () => deliver());
-        expect(tree.root.findByType(Portal).props.hostName).toContain(
-          'overlay'
-        );
-
-        state.settle(back.targetScreenId);
-        await update(null);
-        if (direction === 'backward')
-          expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
-        else
-          expect(tree.root.findByType(Portal).props.hostName).toContain(
-            'destination'
+        if (outcome === 'present') {
+          await update(active);
+          expect(host()).toContain('overlay');
+          expect(presentation.transitioning).toBe(true);
+          state.settle(active.targetScreenId);
+        } else {
+          // Cancel settles at the source; a failed opening completes at its target.
+          state.settle(
+            outcome === 'cancel' ? active.sourceScreenId : active.targetScreenId
           );
-        expect(mounted).toHaveBeenCalledTimes(1);
-        expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
-      } finally {
-        await act(async () => tree?.unmount());
-        Platform.OS = originalOS;
-      }
-    }
-  );
-
-  test.each(['present', 'cancel'] as const)(
-    'Android transfers an original-owner payload in the overlay commit (%s)',
-    async (outcome) => {
-      const originalOS = Platform.OS;
-      Platform.OS = 'android';
-      const state = makeContexts();
-      const mounted = jest.fn();
-      let tree!: ReactTestRenderer;
-      function Content() {
-        useEffect(mounted, []);
-        return null;
-      }
-      const render = (active: TransitionSessionData | null) => (
-        <ChoreographyActionsContext.Provider value={state.actions}>
-          <ChoreographyContext.Provider value={choreography(active)}>
-            <ScreenIdContext.Provider value="list">
-              <SharedElement id="player" groupId="media">
-                <Content />
-              </SharedElement>
-            </ScreenIdContext.Provider>
-          </ChoreographyContext.Provider>
-        </ChoreographyActionsContext.Provider>
-      );
-      const update = async (active: TransitionSessionData | null) => {
-        await act(async () => tree.update(render(active)));
-      };
-      try {
-        await act(async () => {
-          tree = create(render(null));
-        });
-        expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
-        const forward = session('list', 'detail');
-        forward.presentation = createNativePresentation(
-          ['overlay'],
-          () => true
-        );
-        await update(forward);
-        const overlayHost = tree.root.findByType(Portal).props.hostName;
-        expect(overlayHost).toContain('overlay');
-        expect(forward.presentation.phase.value).toBe(0);
-        forward.presentation.phase.value = -1;
-        await update({ ...forward });
-        expect(tree.root.findByType(Portal).props.hostName).toBe(overlayHost);
-
-        let deliver!: () => void;
-        const { scheduleOnRN } = jest.requireMock('react-native-worklets');
-        scheduleOnRN.mockImplementationOnce(
-          (fn: (...args: unknown[]) => void, ...args: unknown[]) => {
-            deliver = () => fn(...args);
-          }
-        );
-        forward.presentation.phase.value = 1;
-        const [read, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
-          -1
-        )!;
-        react(read(), null);
-        if (outcome === 'cancel') forward.presentation.valid.value = false;
-        state.settle(outcome === 'present' ? 'detail' : 'list');
+        }
         await update(null);
-        await act(async () => deliver());
-        const finalHost = tree.root.findByType(Portal).props.hostName;
-        if (outcome === 'present') expect(finalHost).toContain('destination');
-        else expect(finalHost).toBeUndefined();
+        const settledAt =
+          outcome === 'cancel' ? active.sourceScreenId : active.targetScreenId;
+        expect(host()).toBe(settledAt === 'list' ? undefined : detailHost);
+        expect(presentation.transitioning).toBe(false);
         expect(mounted).toHaveBeenCalledTimes(1);
         expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
         expect(state.actions.unregisterElement).not.toHaveBeenCalled();
@@ -308,68 +219,6 @@ describe('SharedElement live endpoints', () => {
       }
     }
   );
-
-  test('unrelated context updates skip payload work when an element factory adds fresh refs', async () => {
-    const runtime =
-      jest.requireActual<typeof import('react/jsx-runtime')>(
-        'react/jsx-runtime'
-      );
-    const originalJsx = runtime.jsx;
-    const factory = jest
-      .spyOn(runtime, 'jsx')
-      .mockImplementation((type, props, key) => {
-        const elementType: unknown = type;
-        return originalJsx(
-          type,
-          typeof elementType === 'object' &&
-            elementType !== null &&
-            '$$typeof' in elementType &&
-            elementType.$$typeof === Symbol.for('react.memo')
-            ? { ...(props as object), ref: () => {} }
-            : props,
-          key
-        );
-      });
-    const payloadWork = jest.spyOn(Reanimated, 'useDerivedValue');
-    const state = makeContexts();
-    const context = choreography(null);
-    const owner = (
-      <SharedElement id="player" groupId="media">
-        <View />
-      </SharedElement>
-    );
-    const render = (activeSession: TransitionSessionData | null) => (
-      <ChoreographyActionsContext.Provider value={state.actions}>
-        <ChoreographyContext.Provider value={{ ...context, activeSession }}>
-          <ScreenIdContext.Provider value="list">
-            {owner}
-          </ScreenIdContext.Provider>
-        </ChoreographyContext.Provider>
-      </ChoreographyActionsContext.Provider>
-    );
-    let tree!: ReactTestRenderer;
-    try {
-      await act(async () => {
-        tree = create(render(null));
-      });
-      const initialWork = payloadWork.mock.calls.length;
-      expect(initialWork).toBeGreaterThan(0);
-      await act(async () =>
-        tree.update(render(session('other', 'other-detail')))
-      );
-      await act(async () => tree.update(render(null)));
-      expect(payloadWork).toHaveBeenCalledTimes(initialWork);
-      await act(async () => tree.update(render(session('list', 'detail'))));
-      expect(payloadWork).toHaveBeenCalledTimes(initialWork + 1);
-      expect(tree.root.findByType(Portal).props.hostName).toContain('overlay');
-      expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
-      expect(state.actions.unregisterElement).not.toHaveBeenCalled();
-    } finally {
-      await act(async () => tree?.unmount());
-      payloadWork.mockRestore();
-      factory.mockRestore();
-    }
-  });
 
   test('reduced motion transfers the same content directly to each endpoint, including rejected Back', async () => {
     const state = makeContexts();
@@ -556,18 +405,19 @@ describe('SharedElement live endpoints', () => {
         await act(async () =>
           tree.update(render({ ...active, state: 'preparing' }, 'detail'))
         );
+        // Preparing pairs the owner without changing what it presents.
         expect(presentations).toEqual(initial);
-        renders.forEach((renderCount) =>
-          expect(renderCount).toHaveBeenCalledTimes(1)
+        renders.forEach((renderCount, index) =>
+          expect(renderCount).toHaveBeenCalledTimes(index === 0 ? 2 : 1)
         );
 
         await act(async () => tree.update(render(active, 'detail')));
-        expect(renders[0]).toHaveBeenCalledTimes(2);
+        expect(renders[0]).toHaveBeenCalledTimes(3);
         const participating = presentations[0];
         // Pending cleanup and cloned session envelopes do not change the pair.
         await act(async () => tree.update(render({ ...active })));
         expect(presentations[0]).toBe(participating);
-        expect(renders[0]).toHaveBeenCalledTimes(2);
+        expect(renders[0]).toHaveBeenCalledTimes(3);
 
         const updated = {
           ...active,
@@ -578,11 +428,11 @@ describe('SharedElement live endpoints', () => {
         };
         await act(async () => tree.update(render(updated)));
         expect(presentations[0]!.expanded.metrics!.width).toBe(350);
-        expect(renders[0]).toHaveBeenCalledTimes(3);
+        expect(renders[0]).toHaveBeenCalledTimes(4);
         state.settle('detail');
         await act(async () => tree.update(render(null)));
         expect(presentations[0]!.settled).toBe('expanded');
-        expect(renders[0]).toHaveBeenCalledTimes(4);
+        expect(renders[0]).toHaveBeenCalledTimes(5);
         expect(tree.root.findAllByType(Portal)[0]!.props.hostName).toContain(
           'destination:'
         );
@@ -605,7 +455,7 @@ describe('SharedElement live endpoints', () => {
             })
           )
         );
-        expect(renders[0]).toHaveBeenCalledTimes(4);
+        expect(renders[0]).toHaveBeenCalledTimes(5);
         for (let index = 1; index < count; index++) {
           expect(renders[index]).toHaveBeenCalledTimes(1);
           expect(presentations[index]).toBe(initial[index]);
@@ -989,6 +839,55 @@ describe('SharedElement live endpoints', () => {
       await act(async () => tree.update(render(null)));
       expect(hostName()).toBeUndefined();
       expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
+
+  test('marks retained content with its receiving host, including empty content', async () => {
+    const state = makeContexts();
+    let tree!: ReactTestRenderer;
+    const render = (activeSession: TransitionSessionData | null) => (
+      <ChoreographyActionsContext.Provider value={state.actions}>
+        <ChoreographyContext.Provider value={choreography(activeSession)}>
+          <ScreenIdContext.Provider value="list">
+            <SharedElement
+              id="player"
+              groupId="media"
+              transition={noopTransition}
+            >
+              {null}
+            </SharedElement>
+          </ScreenIdContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const portal = () => tree.root.findByType(Portal);
+    const contentMarker = () =>
+      portal().findAll(
+        (node) =>
+          node.type === View &&
+          StyleSheet.flatten(node.props.style)?.width === 0 &&
+          node.props.collapsable === false
+      );
+
+    try {
+      await act(async () => {
+        tree = create(render(null));
+      });
+      expect(contentMarker()).toHaveLength(1);
+      expect(contentMarker()[0]!.props.nativeID).toBeUndefined();
+
+      await act(async () => tree.update(render(session('list', 'detail'))));
+      expect(contentMarker()[0]!.props.nativeID).toBe(
+        `${portal().props.hostName}:content`
+      );
+
+      state.settle('detail');
+      await act(async () => tree.update(render(null)));
+      expect(contentMarker()[0]!.props.nativeID).toBe(
+        'screen-choreography:live:destination:["detail","media","player"]:content'
+      );
     } finally {
       await act(async () => tree?.unmount());
     }

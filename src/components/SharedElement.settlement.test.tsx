@@ -176,8 +176,8 @@ describe('SharedElement owner settlement when the destination route goes away', 
     });
     if (rendersActiveSession) {
       expect(context.activeSession?.direction).toBe('backward');
-      // Without an attachment acknowledgment, content stays at its destination.
-      expect(ownerHostName()).toContain('destination');
+      // Without a native host the session activates, and moves, immediately.
+      expect(ownerHostName()).toContain('overlay');
       await act(async () => {
         if (presentationFailure === 'native') {
           tree!.root
