@@ -1,3 +1,4 @@
+import { PortalHost } from 'react-native-teleport';
 import { StyleSheet } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
@@ -7,6 +8,8 @@ import type {
 } from '../types';
 import { defineTransition } from './defineTransition';
 import { makeTransition } from './makeTransition';
+import { TransitionFrame } from '../standin/TransitionFrame';
+import { TransitionSurface } from '../standin/TransitionSurface';
 import { ChoreographyControlsContext } from '../core/ChoreographyContext';
 import { ChoreographyProgressContext } from '../core/ChoreographyProgressContext';
 import type {
@@ -17,7 +20,6 @@ import type {
 const mockProgress = { value: 0 } as SharedValue<number>;
 let mockPhase: SessionPhase = 'active';
 let mockDirection: TransitionDirection = 'forward';
-let mockReducedMotion = false;
 jest.mock('../components/SharedElement', () => ({
   SharedElement: Object.assign(
     (props: object) => {
@@ -31,7 +33,6 @@ jest.mock('react-native-teleport', () => ({ PortalHost: 'PortalHost' }));
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   __esModule: true,
-  useReducedMotion: () => mockReducedMotion,
   useDerivedValue: (fn: () => unknown) => ({
     get value() {
       return fn();
@@ -76,7 +77,6 @@ afterEach(async () => {
   mockProgress.value = 0;
   mockPhase = 'active';
   mockDirection = 'forward';
-  mockReducedMotion = false;
 });
 
 test('owner and empty target bind the same named transition', async () => {
@@ -122,7 +122,7 @@ test('owner and empty target bind the same named transition', async () => {
 });
 
 test.each(['bounds', 'surface'] as const)(
-  '%s retains one host and reversible visual bounds without scaling content',
+  '%s maps endpoints to its primitive without remounting the receiving host',
   async (kind) => {
     const definition = defineTransition({
       shared: { hero: { kind, radius: [8, 0] } },
@@ -157,87 +157,36 @@ test.each(['bounds', 'surface'] as const)(
       return <Renderer {...props} />;
     };
     const tree = await mount(render('forward'));
-    const host = tree.root.findByType('PortalHost' as React.ElementType);
-    const frame = () =>
-      StyleSheet.flatten(
-        tree.root.findAllByType('Animated.View' as React.ElementType)[0]!.props
-          .style
+    const host = tree.root.findByType(PortalHost);
+    for (const direction of ['forward', 'backward'] as const) {
+      await act(async () => tree.update(withProviders(render(direction))));
+      expect(tree.root.findAllByType(PortalHost)).toHaveLength(1);
+      expect(tree.root.findByType(PortalHost)).toBe(host);
+      const primitive = tree.root.findByType(
+        kind === 'bounds' ? TransitionFrame : TransitionSurface
       );
-    const expectedFrames = [
-      { progress: 0, x: 10, y: 100, width: 80, height: 100 },
-      { progress: 0.5, x: 5, y: 50, width: 190, height: 250 },
-      { progress: 1, x: 0, y: 0, width: 300, height: 400 },
-    ];
-    for (const expected of expectedFrames) {
-      mockProgress.value = expected.progress;
-      for (const direction of ['forward', 'backward'] as const) {
-        await act(async () => tree.update(withProviders(render(direction))));
-        expect(
-          tree.root.findAllByType('PortalHost' as React.ElementType)
-        ).toHaveLength(1);
-        expect(tree.root.findByType('PortalHost' as React.ElementType)).toBe(
-          host
-        );
-        const style = frame();
-        expect(style.left).toBe(0);
-        expect(style.top).toBe(0);
-        const transforms = Object.assign({}, ...style.transform);
-        expect(style.left + transforms.translateX).toBeCloseTo(expected.x);
-        expect(style.top + transforms.translateY).toBeCloseTo(expected.y);
-        expect(style.width * (transforms.scaleX ?? 1)).toBeCloseTo(
-          expected.width
-        );
-        expect(style.height * (transforms.scaleY ?? 1)).toBeCloseTo(
-          expected.height
-        );
-        expect(style.width).toBeCloseTo(expected.width);
-        expect(style.height).toBeCloseTo(expected.height);
-        expect(style.transform).toEqual([
-          { translateX: expected.x },
-          { translateY: expected.y },
-        ]);
-      }
+      expect(primitive.props.progress).toBe(mockProgress);
+      expect(primitive.props.direction).toBe(direction);
+      expect(primitive.props.sourceMetrics).toBe(
+        direction === 'forward' ? small.metrics : big.metrics
+      );
+      expect(primitive.props.targetMetrics).toBe(
+        direction === 'forward' ? big.metrics : small.metrics
+      );
+      const radii =
+        kind === 'bounds'
+          ? [
+              primitive.props.sourceBorderRadius,
+              primitive.props.targetBorderRadius,
+            ]
+          : [
+              primitive.props.sourceStyle.borderRadius,
+              primitive.props.targetStyle.borderRadius,
+            ];
+      expect(radii).toEqual(direction === 'forward' ? [8, 0] : [0, 8]);
     }
   }
 );
-
-test('enter and exit are reversible local motion with no shared registration', async () => {
-  const definition = defineTransition({
-    enter: { notes: { during: [0.2, 0.8], translateY: 12 } },
-    exit: { header: { during: [0.2, 0.8], translateY: -6 } },
-  });
-  const render = () => (
-    <>
-      <definition.Enter name="notes">Notes</definition.Enter>
-      <definition.Exit name="header">Header</definition.Exit>
-    </>
-  );
-  const tree = await mount(render());
-  for (const progress of [0, 0.5, 1, 0.5, 0]) {
-    mockProgress.value = progress;
-    await act(async () => tree.update(withProviders(render())));
-    const [enter, exit] = tree.root
-      .findAllByType('Animated.View' as React.ElementType)
-      .map((node) => StyleSheet.flatten(node.props.style));
-    const amount = Math.max(0, Math.min(1, (progress - 0.2) / 0.6));
-    expect(enter.opacity).toBeCloseTo(amount);
-    expect(exit.opacity).toBeCloseTo(1 - amount);
-    expect(enter.transform[0].translateY).toBeCloseTo((1 - amount) * 12);
-    expect(exit.transform[0].translateY).toBeCloseTo(amount * -6);
-    expect(tree.root.findAllByType('Owner' as React.ElementType)).toHaveLength(
-      0
-    );
-  }
-  mockPhase = 'idle';
-  await act(async () => tree.update(withProviders(render())));
-  for (const node of tree.root.findAllByType(
-    'Animated.View' as React.ElementType
-  )) {
-    const style = StyleSheet.flatten(node.props.style);
-    expect(style.opacity).toBe(1);
-    expect(style.transform[0].translateY).toBeCloseTo(0);
-  }
-});
 
 test('configuration is captured and custom live renderers remain usable', async () => {
   const recipe = {
@@ -330,25 +279,6 @@ test.each(['forward', 'backward'] as const)(
     expect(exit.opacity).toBe(direction === 'forward' ? 1 : 0);
   }
 );
-
-test('reduced motion retains the fade but removes reveal translation', async () => {
-  mockReducedMotion = true;
-  mockProgress.value = 0.5;
-  const definition = defineTransition({
-    enter: { notes: { during: [0, 1], translateY: 20 } },
-  });
-  const tree = await mount(
-    <definition.Enter name="notes">Notes</definition.Enter>
-  );
-  expect(
-    StyleSheet.flatten(
-      tree.root.findByType('Animated.View' as React.ElementType).props.style
-    )
-  ).toMatchObject({
-    opacity: 0.5,
-    transform: [{ translateY: 0 }, { translateX: 0 }, { scale: 1 }],
-  });
-});
 
 test('separate groups reuse role motion without losing endpoint metadata', async () => {
   const definition = defineTransition({

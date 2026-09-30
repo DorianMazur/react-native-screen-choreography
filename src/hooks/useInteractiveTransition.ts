@@ -111,9 +111,18 @@ export function useInteractiveTransitionNavigator({
       sessionIdRef.current = null;
       setGestureToken(0);
       setIsActive(false);
-      cancelTransition(sessionId);
+      if (navigationController.getActiveSession()?.direction === 'forward') {
+        completeTransition(sessionId);
+      } else {
+        cancelTransition(sessionId);
+      }
     },
-    [cancelTransition, progressOwnership]
+    [
+      cancelTransition,
+      completeTransition,
+      navigationController,
+      progressOwnership,
+    ]
   );
 
   const animateSettlement = useCallback(
@@ -191,18 +200,18 @@ export function useInteractiveTransitionNavigator({
         return null;
       }
 
+      const opening = progressOwnership.hasSession
+        ? navigationController.getActiveSession()
+        : null;
       if (progressOwnership.hasSession) {
-        const opening = navigationController.getActiveSession();
         if (
           opening?.direction !== 'forward' ||
           opening.state !== 'active' ||
-          opening.targetScreenId !== screenId
+          opening.targetScreenId !== screenId ||
+          !progressOwnership.isSession(opening.id) ||
+          reverseController.owns(opening.id)
         )
           return null;
-        const token = progressOwnership.claim(opening.id);
-        if (token === null) return null;
-        setOwnedProgress(progressOwnership, token, opening.id, progress, 1);
-        completeTransition(opening.id);
       }
 
       const lineage = getNavigationLineage(screenId);
@@ -221,15 +230,26 @@ export function useInteractiveTransitionNavigator({
           : targetScreenHint;
 
       if (!groupId || !targetScreenId) return null;
-      if (!navigationController.acquireNavigationLock(screenId)) return null;
+      if (
+        opening &&
+        (opening.groupId !== groupId ||
+          opening.sourceScreenId !== targetScreenId)
+      )
+        return null;
+      if (!opening && !navigationController.acquireNavigationLock(screenId))
+        return null;
       const navigationToken = navigationController.getNavigationLockToken();
       preparingRef.current = true;
       setInteractiveScreen(screenId, true);
       const beginToken = ++beginTokenRef.current;
-      progressOwnership.invalidate();
+      // Keep the opening session, its frozen presentations and its portal alive.
+      // Claiming progress revokes the spring's completion without a handoff.
+      const openingToken = opening ? progressOwnership.claim(opening.id) : null;
+      if (!opening) progressOwnership.invalidate();
+      else navigationController.clearQueuedNavigation();
       const preparationVersion = progressOwnership.version;
-      let preparationSessionId: string | null = null;
-      let preparationOwner: number | null = null;
+      let preparationSessionId: string | null = opening?.id ?? null;
+      let preparationOwner: number | null = openingToken;
       let startedTransition = false;
       let returnedHandle = false;
       const isCurrent = () =>
@@ -267,7 +287,18 @@ export function useInteractiveTransitionNavigator({
         )
           return;
         if (sessionIdRef.current === sessionId) sessionIdRef.current = null;
-        cancelTransition(sessionId);
+        if (opening && preparationOwner !== null) {
+          setOwnedProgress(
+            progressOwnership,
+            preparationOwner,
+            sessionId,
+            progress,
+            1
+          );
+          completeTransition(sessionId);
+        } else {
+          cancelTransition(sessionId);
+        }
       };
       const releasePreparationLock = () => {
         if (
@@ -293,18 +324,21 @@ export function useInteractiveTransitionNavigator({
       signal?.addEventListener('abort', cancelPreparation, { once: true });
 
       try {
-        await captureSourceGroup(groupId, screenId);
-        if (!isCurrent() || progressOwnership.version !== preparationVersion)
-          return null;
-        startedTransition = true;
-        const pendingSession = startTransition({
-          groupId,
-          sourceScreenId: screenId,
-          targetScreenId,
-          direction: 'backward',
-        });
-        capturePreparingSession();
-        const session = await pendingSession;
+        let session = opening;
+        if (!session) {
+          await captureSourceGroup(groupId, screenId);
+          if (!isCurrent() || progressOwnership.version !== preparationVersion)
+            return null;
+          startedTransition = true;
+          const pendingSession = startTransition({
+            groupId,
+            sourceScreenId: screenId,
+            targetScreenId,
+            direction: 'backward',
+          });
+          capturePreparingSession();
+          session = await pendingSession;
+        }
         if (!session) return null;
         if (!preparationSessionId) {
           preparationSessionId = session.id;
@@ -314,7 +348,9 @@ export function useInteractiveTransitionNavigator({
         }
         if (!isCurrent()) return null;
 
-        const token = progressOwnership.claim(session.id);
+        const token = opening
+          ? openingToken
+          : progressOwnership.claim(session.id);
         if (token === null) return null;
         preparationOwner = token;
         sessionIdRef.current = session.id;
@@ -328,7 +364,8 @@ export function useInteractiveTransitionNavigator({
           return null;
 
         const sessionId = session.id;
-        setOwnedProgress(progressOwnership, token, sessionId, progress, 1);
+        if (!opening)
+          setOwnedProgress(progressOwnership, token, sessionId, progress, 1);
         setGestureToken(token);
         setIsActive(true);
         returnedHandle = true;

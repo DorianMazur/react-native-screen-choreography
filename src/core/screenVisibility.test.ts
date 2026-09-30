@@ -93,6 +93,15 @@ describe('deriveScreenOpacity', () => {
     ).toBe(0);
   });
 
+  it('keeps an interrupted opening gesture visible at collapsed progress', () => {
+    expect(
+      deriveScreenOpacity('forward', 'target', 'active', 0, undefined, true)
+    ).toBe(1);
+    expect(shouldBlockInteraction('target', 'active', false, false, true)).toBe(
+      false
+    );
+  });
+
   it('retraces custom screen fades and clamps spring overshoot', () => {
     const fade = { during: [0.2, 0.8] as const };
     for (const [progress, opacity] of [

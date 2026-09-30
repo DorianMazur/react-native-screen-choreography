@@ -108,7 +108,7 @@ Use `defineTransition` and `useSharedElementPresentation` to render the visible 
 
 Drive retained children with `presentationProgress`, which stays still for other cards. Mount expensive detail-only content while the card is transitioning or settled expanded. Keep that content at its expanded dimensions and animate transforms inside the card's clipping frame to avoid laying out the chart and scroll view on every update.
 
-While a gesture owns the return, its source screen stays visible and accepts touches, including at gesture progress `1`. Use a transparent source background when the shrinking card should reveal the screen underneath.
+While a gesture owns the return, the screen holding the gesture stays visible and accepts touches, including at gesture progress `1`. Use a transparent source background when the shrinking card should reveal the screen underneath.
 
 Map distance to progress in your gesture binding. Set `velocityImpact: 0` for a decision based only on distance; for example, a 280-point full range and `threshold: 0.5` commits at 140 points. Keep custom geometry, gesture recognition, and hit targets in the application; the lifecycle hook owns readiness, buffering, cancellation, and settlement.
 
@@ -129,6 +129,8 @@ async function prepareBack(signal?: AbortSignal) {
   handle.cancel({ duration: 220 });
 }
 ```
+
+If the destination is still opening, `beginBack()` takes over that transition without replacing its overlay. The handle preserves the current visual progress, which can be greater than `0`. Seed application-owned animation values from `handle.progress.value` before driving them. Cancelling returns to the expanded destination; finishing returns to the original source.
 
 The handle is ready to use when the promise resolves and cannot control a later session. A `null` result means no session was acquired. An optional `AbortSignal` cancels preparation only; after readiness, use `handle.cancel()`.
 

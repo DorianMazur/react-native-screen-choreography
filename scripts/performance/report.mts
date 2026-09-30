@@ -396,13 +396,24 @@ export function summarize(
     if (!fixtures.has(scenario))
       errors.push(`Missing valid ${scenario} fixture run`);
   }
+  // A usable destination can be reached through unanimated fallback. Keep its
+  // samples for diagnosis, but never pass a transition benchmark on that basis.
+  for (const [name, values] of Object.entries(metrics)) {
+    if (!name.endsWith('.overlayReadinessTimeout')) continue;
+    const failures = values.reduce((sum, value) => sum + value, 0);
+    if (failures) {
+      errors.push(
+        `${name.slice(0, -'.overlayReadinessTimeout'.length)}: ${failures}/${values.length} transitions did not confirm overlay presentation`
+      );
+    }
+  }
   return {
     schemaVersion: 1,
     measurementDefinitionVersion: 4,
     platform,
     mode,
     fixtureVersion: 5,
-    policy: 'informational-performance-fail-invalid-collection',
+    policy: 'informational-performance-require-overlay-presentation',
     metadata,
     valid: errors.length === 0,
     errors,
@@ -455,7 +466,7 @@ export function markdown(
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
     summary.valid
-      ? 'Collection passed. Performance results are informational.'
+      ? 'Collection and overlay presentation passed. Performance timings are informational.'
       : '**Collection failed. Do not interpret missing data as an improvement.**',
     '',
     ...(summary.errors ?? []).map(

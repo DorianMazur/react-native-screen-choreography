@@ -1,4 +1,5 @@
 export { ChoreographyProvider } from '../components/ChoreographyProvider';
+export { ChoreographyOverlay } from '../components/ChoreographyOverlay';
 export {
   SharedElement,
   type SharedElementProps,

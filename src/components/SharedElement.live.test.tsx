@@ -18,6 +18,8 @@ import {
 import { ScreenIdContext } from '../core/screenIdContext';
 import { makeTransition } from '../transitions/makeTransition';
 import { SharedElement } from './SharedElement';
+import { createNativePresentation } from '../core/nativePresentation';
+import { useAnimatedReaction } from 'react-native-reanimated';
 import { ChoreographyScreenBase } from './ChoreographyScreenBase';
 import { useChoreographyProgress } from '../hooks/useChoreographyProgress';
 import type { ScreenAnimationLifetime } from '../hooks/useScreenAnimationLifetime';
@@ -37,6 +39,10 @@ jest.mock('react-native-reanimated', () => {
 jest.mock('react-native-teleport', () => ({
   Portal: 'Portal',
   PortalHost: 'PortalHost',
+}));
+jest.mock('react-native-worklets', () => ({
+  ...jest.requireActual('../../__mocks__/react-native-worklets'),
+  scheduleOnRN: jest.fn((fn, ...args) => fn(...args)),
 }));
 
 const { Portal, PortalHost } = jest.requireMock('react-native-teleport') as {
@@ -117,6 +123,192 @@ function choreography(
 }
 
 describe('SharedElement live endpoints', () => {
+  test.each(
+    (
+      [
+        { platform: 'ios', direction: 'forward', retained: false },
+        { platform: 'ios', direction: 'backward', retained: true },
+        { platform: 'android', direction: 'backward', retained: true },
+      ] as const
+    ).flatMap((scenario) =>
+      (['present', 'cancel', 'replace', 'invalid'] as const).map((outcome) => ({
+        ...scenario,
+        outcome,
+      }))
+    )
+  )(
+    'keeps the $platform $direction image visible through delayed attachment ($outcome)',
+    async ({ platform, direction, retained, outcome }) => {
+      const originalOS = Platform.OS;
+      Platform.OS = platform;
+      const state = makeContexts();
+      let tree!: ReactTestRenderer;
+      const mounted = jest.fn();
+      function Content() {
+        useEffect(mounted, []);
+        return null;
+      }
+      const render = (activeSession: TransitionSessionData | null) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(activeSession)}>
+            <ScreenIdContext.Provider value="list">
+              <SharedElement id="player" groupId="media">
+                <Content />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const update = async (active: TransitionSessionData | null) => {
+        await act(async () => tree.update(render(active)));
+      };
+      try {
+        await act(async () => {
+          tree = create(render(null));
+        });
+        if (retained) {
+          await update(session('list', 'detail'));
+          state.settle('detail');
+          await update(null);
+        }
+        const destination = tree.root.findByType(Portal).props.hostName;
+        const back =
+          direction === 'backward'
+            ? session('detail', 'list', direction)
+            : session('list', 'detail');
+        back.presentation = createNativePresentation(['overlay'], () => true);
+        await update(back);
+        expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+        back.presentation.phase.value = -1;
+        await update({ ...back });
+        expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+
+        let deliver!: () => void;
+        const { scheduleOnRN } = jest.requireMock('react-native-worklets');
+        scheduleOnRN.mockImplementationOnce(
+          (fn: (...args: unknown[]) => void, ...args: unknown[]) => {
+            deliver = () => fn(...args);
+          }
+        );
+        back.presentation.phase.value = 1;
+        const [read, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
+          -1
+        )!;
+        react(read(), null);
+        expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+        if (outcome !== 'present') {
+          const replacement = {
+            ...back,
+            id: `${back.id}:replacement`,
+            presentation: createNativePresentation(['overlay'], () => true),
+          };
+          if (outcome === 'invalid') back.presentation.valid.value = false;
+          else if (outcome === 'replace') await update(replacement);
+          else {
+            state.settle(back.sourceScreenId);
+            await update(null);
+          }
+          await act(async () => deliver());
+          expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+          expect(mounted).toHaveBeenCalledTimes(1);
+          expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+          return;
+        }
+        await act(async () => deliver());
+        expect(tree.root.findByType(Portal).props.hostName).toContain(
+          'overlay'
+        );
+
+        state.settle(back.targetScreenId);
+        await update(null);
+        if (direction === 'backward')
+          expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
+        else
+          expect(tree.root.findByType(Portal).props.hostName).toContain(
+            'destination'
+          );
+        expect(mounted).toHaveBeenCalledTimes(1);
+        expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+      } finally {
+        await act(async () => tree?.unmount());
+        Platform.OS = originalOS;
+      }
+    }
+  );
+
+  test.each(['present', 'cancel'] as const)(
+    'Android transfers an original-owner payload in the overlay commit (%s)',
+    async (outcome) => {
+      const originalOS = Platform.OS;
+      Platform.OS = 'android';
+      const state = makeContexts();
+      const mounted = jest.fn();
+      let tree!: ReactTestRenderer;
+      function Content() {
+        useEffect(mounted, []);
+        return null;
+      }
+      const render = (active: TransitionSessionData | null) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(active)}>
+            <ScreenIdContext.Provider value="list">
+              <SharedElement id="player" groupId="media">
+                <Content />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const update = async (active: TransitionSessionData | null) => {
+        await act(async () => tree.update(render(active)));
+      };
+      try {
+        await act(async () => {
+          tree = create(render(null));
+        });
+        expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
+        const forward = session('list', 'detail');
+        forward.presentation = createNativePresentation(
+          ['overlay'],
+          () => true
+        );
+        await update(forward);
+        const overlayHost = tree.root.findByType(Portal).props.hostName;
+        expect(overlayHost).toContain('overlay');
+        expect(forward.presentation.phase.value).toBe(0);
+        forward.presentation.phase.value = -1;
+        await update({ ...forward });
+        expect(tree.root.findByType(Portal).props.hostName).toBe(overlayHost);
+
+        let deliver!: () => void;
+        const { scheduleOnRN } = jest.requireMock('react-native-worklets');
+        scheduleOnRN.mockImplementationOnce(
+          (fn: (...args: unknown[]) => void, ...args: unknown[]) => {
+            deliver = () => fn(...args);
+          }
+        );
+        forward.presentation.phase.value = 1;
+        const [read, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
+          -1
+        )!;
+        react(read(), null);
+        if (outcome === 'cancel') forward.presentation.valid.value = false;
+        state.settle(outcome === 'present' ? 'detail' : 'list');
+        await update(null);
+        await act(async () => deliver());
+        const finalHost = tree.root.findByType(Portal).props.hostName;
+        if (outcome === 'present') expect(finalHost).toContain('destination');
+        else expect(finalHost).toBeUndefined();
+        expect(mounted).toHaveBeenCalledTimes(1);
+        expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+        expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => tree?.unmount());
+        Platform.OS = originalOS;
+      }
+    }
+  );
+
   test('unrelated context updates skip payload work when an element factory adds fresh refs', async () => {
     const runtime =
       jest.requireActual<typeof import('react/jsx-runtime')>(

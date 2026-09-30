@@ -4,15 +4,26 @@ import {
   type ReactNode,
   useRef,
   useEffect,
-  useCallback,
   useLayoutEffect,
+  useState,
+  useCallback,
   useMemo,
   useContext,
   useReducer,
   memo,
 } from 'react';
-import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
-import Animated, { useDerivedValue } from 'react-native-reanimated';
+import {
+  type StyleProp,
+  type ViewStyle,
+  StyleSheet,
+  Platform,
+} from 'react-native';
+import Animated, {
+  useAnimatedReaction,
+  useDerivedValue,
+} from 'react-native-reanimated';
+import { scheduleOnRN } from 'react-native-worklets';
+import type { NativePresentation } from '../core/nativePresentation';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
   ElementPresentation,
@@ -181,6 +192,9 @@ function LiveSharedElement(props: SharedElementProps) {
   const direction = pair ? session!.direction : null;
   const sourceScreenId = pair ? session!.sourceScreenId : null;
   const targetScreenId = pair ? session!.targetScreenId : null;
+  const nativePresentation =
+    pair && !session!.reducedMotion ? session!.presentation : undefined;
+  const sessionId = pair ? session!.id : null;
   const { progress } = choreography;
   const { getSettledScreenId, subscribeToScreenRemoval } = actions;
 
@@ -196,6 +210,8 @@ function LiveSharedElement(props: SharedElementProps) {
         direction={direction}
         sourceScreenId={sourceScreenId}
         targetScreenId={targetScreenId}
+        nativePresentation={nativePresentation}
+        sessionId={sessionId}
         progress={progress}
         getSettledScreenId={getSettledScreenId}
         subscribeToScreenRemoval={subscribeToScreenRemoval}
@@ -209,6 +225,8 @@ function LiveSharedElement(props: SharedElementProps) {
       direction,
       sourceScreenId,
       targetScreenId,
+      nativePresentation,
+      sessionId,
       progress,
       getSettledScreenId,
       subscribeToScreenRemoval,
@@ -230,6 +248,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   direction,
   sourceScreenId,
   targetScreenId,
+  nativePresentation,
+  sessionId,
   progress,
   getSettledScreenId,
   subscribeToScreenRemoval,
@@ -240,6 +260,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   direction: TransitionSessionData['direction'] | null;
   sourceScreenId: string | null;
   targetScreenId: string | null;
+  nativePresentation?: NativePresentation;
+  sessionId: string | null;
   progress: TransitionSessionData['progress'];
   getSettledScreenId: () => string | null;
   subscribeToScreenRemoval: (
@@ -305,6 +327,12 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
         )
       : undefined;
   }
+
+  const committedHostName = useRetainedPortalHost(
+    hostName,
+    sessionId,
+    nativePresentation
+  );
 
   // The destination host unmounts with its screen, returning content to this portal.
   const settledTargetScreenId = settledTargetScreenIdRef.current;
@@ -388,7 +416,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       metadata={metadata}
     >
       <Portal
-        hostName={hostName}
+        hostName={committedHostName}
         name={getLivePortalName(screenId, id, groupId)}
         style={[styles.livePortal, portalStyle]}
       >
@@ -399,6 +427,58 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     </SharedElementRegistration>
   );
 });
+
+/** A missing Teleport host sends content back to its owner, which may be hidden. */
+function useRetainedPortalHost(
+  requestedHostName: string | undefined,
+  sessionId: string | null,
+  presentation: NativePresentation | undefined
+) {
+  const previousHost = useRef<string | undefined>(undefined);
+  const current = useRef<{
+    id: string | null;
+    presentation: NativePresentation;
+  } | null>(null);
+  const [attachedSessionId, setAttachedSessionId] = useState<string | null>(
+    null
+  );
+  useLayoutEffect(() => {
+    current.current = presentation ? { id: sessionId, presentation } : null;
+    return () => {
+      current.current = null;
+    };
+  }, [sessionId, presentation]);
+  const acceptAttachment = useCallback((id: string) => {
+    if (
+      current.current?.id === id &&
+      current.current.presentation.valid.value
+    ) {
+      setAttachedSessionId(id);
+    }
+  }, []);
+  const phase = presentation?.phase;
+  const valid = presentation?.valid;
+  useAnimatedReaction(
+    () => (valid?.value && phase && phase.value >= 1 ? sessionId : null),
+    (readyId, previousId) => {
+      if (readyId !== null && readyId !== previousId) {
+        scheduleOnRN(acceptAttachment, readyId);
+      }
+    }
+  );
+  // Android gates the receiving host's draw natively. On iOS, registration can
+  // precede window attachment, so even the original owner waits for the ack.
+  const hostName =
+    (Platform.OS === 'android' && previousHost.current === undefined) ||
+    !presentation ||
+    attachedSessionId === sessionId
+      ? requestedHostName
+      : previousHost.current;
+  useLayoutEffect(() => {
+    previousHost.current = hostName;
+  }, [hostName]);
+  return hostName;
+}
 
 function LiveSharedElementTarget({
   id,

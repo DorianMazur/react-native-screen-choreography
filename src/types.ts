@@ -1,3 +1,4 @@
+import type { NativePresentation } from './core/nativePresentation';
 import type { ComponentType, ReactElement } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
@@ -130,6 +131,7 @@ export interface ElementTransitionPair {
 }
 
 export interface TransitionSessionData {
+  presentation?: NativePresentation;
   id: string;
   groupId: string;
   sourceScreenId: string;

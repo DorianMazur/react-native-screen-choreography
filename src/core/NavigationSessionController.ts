@@ -3,6 +3,7 @@ import type {
   TransitionSessionData,
 } from '../types';
 import type { PreparationTrace } from './preparationTrace';
+import type { PresentationFailureDetails } from './nativePresentation';
 
 export interface PendingNavigationRequest {
   targetScreenId: string;
@@ -34,7 +35,11 @@ interface PrepareForwardTransitionArgs {
     direction: 'forward';
     trace?: PreparationTrace;
   }) => Promise<TransitionSessionData | null>;
-  waitForOverlayReady: (sessionId: string) => Promise<boolean>;
+  waitForOverlayReady: (
+    sessionId: string,
+    onUnavailable?: (details: PresentationFailureDetails) => void
+  ) => Promise<boolean>;
+  onSessionPrepared?: (session: TransitionSessionData) => void;
   isOverlayPresented?: (sessionId: string) => boolean;
   isPreparationCurrent?: () => boolean;
   isSessionCurrent?: (sessionId: string) => boolean;
@@ -137,6 +142,7 @@ export class NavigationSessionController {
     waitForNextFrame,
     startTransition,
     waitForOverlayReady,
+    onSessionPrepared,
     isOverlayPresented = () => true,
     isPreparationCurrent = () => true,
     isSessionCurrent = () => true,
@@ -202,8 +208,17 @@ export class NavigationSessionController {
       }
 
       trace?.setSession(session.id, targetInstanceId);
+      onSessionPrepared?.(session);
       const endOverlay = trace?.start('overlay-ready');
-      const overlayReady = await waitForOverlayReady(session.id);
+      const overlayReady = await waitForOverlayReady(
+        session.id,
+        trace
+          ? (details) => {
+              endOverlay?.({ ...details, ready: false, acknowledged: false });
+              trace.finish('overlay-timeout');
+            }
+          : undefined
+      );
       const acknowledged = trace
         ? overlayReady && isOverlayPresented(session.id)
         : overlayReady;

@@ -22,9 +22,6 @@ jest.mock('react-native-reanimated', () => {
     cancelAnimation: jest.fn(),
   };
 });
-jest.mock('react-native-screens', () => ({
-  FullWindowOverlay: ({ children }: { children: React.ReactNode }) => children,
-}));
 jest.mock('react-native-teleport', () => ({
   PortalProvider: ({ children }: { children: React.ReactNode }) => children,
   Portal: 'Portal',
@@ -96,11 +93,22 @@ test.each([
   async (_adapter, Screen) => {
     jest.useFakeTimers();
     const globals = globalThis as typeof globalThis & {
+      __screenChoreographyRequestFabricLayout?: jest.Mock;
+      __screenChoreographySubscribeFabricMount?: () => () => void;
       __screenChoreographyCaptureFabricLayout?: jest.Mock;
     };
     jest
       .spyOn(require('react-native'), 'findNodeHandle')
       .mockImplementation((node: any) => node.tag);
+    globals.__screenChoreographyRequestFabricLayout = jest.fn(
+      (screens, tags) => (validate?: boolean) =>
+        validate === true
+          ? true
+          : validate === false
+            ? undefined
+            : globals.__screenChoreographyCaptureFabricLayout!(screens, tags)
+    );
+    globals.__screenChoreographySubscribeFabricMount = () => () => {};
     globals.__screenChoreographyCaptureFabricLayout = jest.fn(
       (_screens, tags) =>
         tags.map((pageX: number) => ({
@@ -239,6 +247,8 @@ test.each([
     } finally {
       await act(async () => tree?.unmount());
       delete globals.__screenChoreographyCaptureFabricLayout;
+      delete globals.__screenChoreographyRequestFabricLayout;
+      delete globals.__screenChoreographySubscribeFabricMount;
       jest.restoreAllMocks();
       jest.useRealTimers();
     }

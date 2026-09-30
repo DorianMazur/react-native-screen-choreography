@@ -1,4 +1,5 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { withTiming } from 'react-native-reanimated';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
@@ -15,6 +16,7 @@ import type {
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   cancelAnimation: jest.fn(),
+  withTiming: jest.fn((value) => value),
   useDerivedValue: (compute: () => number) => ({
     get value() {
       return compute();
@@ -103,7 +105,13 @@ describe('interactive ownership', () => {
         return publishSession('A');
       }),
       waitForOverlayReady: jest.fn(async () => true),
-      completeTransition: jest.fn(),
+      completeTransition: jest.fn((sessionId: string) => {
+        if (!progressOwnership.isSession(sessionId)) return;
+        progressOwnership.setSession(null);
+        ctx.navigationController.setActiveSession(null);
+        ctx.navigationController.releaseNavigationLock();
+        ctx.activeSession = null;
+      }),
       cancelTransition: jest.fn((sessionId: string) => {
         if (!progressOwnership.isSession(sessionId)) return;
         progressOwnership.setSession(null);
@@ -158,30 +166,116 @@ describe('interactive ownership', () => {
     expect(ctx.setInteractiveScreen).toHaveBeenLastCalledWith('Detail', false);
   });
 
-  test('can grab the arriving screen before its forward spring settles', async () => {
-    const opening = {
-      id: 'opening',
+  function publishOpening() {
+    const opening: TransitionSessionData = {
+      ...publishSession('opening'),
       direction: 'forward',
-      state: 'active',
+      sourceScreenId: 'List',
       targetScreenId: 'Detail',
-    } as NonNullable<ChoreographyContextType['activeSession']>;
+    };
     ctx.navigationController.setActiveSession(opening);
     ctx.navigationController.acquireNavigationLock('List');
-    ctx.progressOwnership.setSession(opening.id);
-    ctx.progress.value = 0.98;
-    ctx.completeTransition = jest.fn(() => {
-      ctx.progressOwnership.setSession(null);
-      ctx.navigationController.releaseNavigationLock();
-      ctx.navigationController.setActiveSession(null);
-    });
+    ctx.activeSession = opening;
+    ctx.progress.value = 0.72;
+    return opening;
+  }
+
+  test('grabbing an opening preserves its progress, presentations and overlay identity', async () => {
+    const opening = publishOpening();
+    const previousOwner = ctx.progressOwnership.version;
     await act(async () => tree.update(render()));
     await act(async () => {
-      expect(await interactive.beginBack()).not.toBeNull();
+      const handle = await interactive.beginBack();
+      expect(handle?.id).toBe(opening.id);
+      expect(handle?.progress.value).toBeCloseTo(0.28);
     });
-    expect(ctx.completeTransition).toHaveBeenCalledWith('opening');
-    expect(ctx.startTransition).toHaveBeenCalledWith(
-      expect.objectContaining({ direction: 'backward' })
+    expect(ctx.navigationController.getActiveSession()).toBe(opening);
+    expect(ctx.progress.value).toBe(0.72);
+    expect(ctx.progressOwnership.isCurrent(previousOwner, opening.id)).toBe(
+      false
     );
+    expect(ctx.completeTransition).not.toHaveBeenCalled();
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
+    expect(ctx.startTransition).not.toHaveBeenCalled();
+    expect(ctx.navigationController.isNavigationLocked()).toBe(true);
+    expect(interactive.isActive).toBe(true);
+  });
+
+  test('finishing an interrupted opening reverses the same session across unmount', async () => {
+    publishOpening();
+    await act(async () => tree.update(render()));
+    await act(async () => {
+      const handle = await interactive.beginBack();
+      handle!.setProgress(0.6);
+      handle!.finish({ duration: 100 });
+      handle!.cancel();
+      handle!.setProgress(0.9);
+    });
+    expect(ctx.progress.value).toBeCloseTo(0.4);
+    expect(ctx.commitReverseTransition).toHaveBeenCalledWith({
+      sessionId: 'opening',
+      token: expect.any(Number),
+      navigateBack,
+      options: { duration: 100 },
+    });
+    await act(async () => tree.unmount());
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(ctx.completeTransition).not.toHaveBeenCalled();
+  });
+
+  test('cancelling an interrupted opening completes toward the detail screen', async () => {
+    publishOpening();
+    await act(async () => tree.update(render()));
+    await act(async () => {
+      const handle = await interactive.beginBack();
+      handle!.setProgress(0.6);
+      handle!.cancel({ duration: 100 });
+    });
+    const completion = jest.mocked(withTiming).mock.calls.at(-1)![2]!;
+    await act(async () => completion(true));
+    expect(ctx.progress.value).toBe(1);
+    expect(ctx.completeTransition).toHaveBeenCalledWith('opening');
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+    expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+    expect(interactive.isActive).toBe(false);
+  });
+
+  test.each([{ group: 'other' }, { targetScreenId: 'Other' }])(
+    'incompatible gesture options do not interrupt an opening: %s',
+    async (options) => {
+      const opening = publishOpening();
+      const owner = ctx.progressOwnership.version;
+      await act(async () => tree.update(render()));
+      expect(await interactive.beginBack(options)).toBeNull();
+      expect(ctx.progressOwnership.version).toBe(owner);
+      expect(ctx.navigationController.getActiveSession()).toBe(opening);
+      expect(ctx.completeTransition).not.toHaveBeenCalled();
+    }
+  );
+
+  test('aborting an opening pickup during readiness restores detail without activating a stale handle', async () => {
+    publishOpening();
+    const ready = deferred<boolean>();
+    const abort = new AbortController();
+    ctx.waitForOverlayReady = jest.fn(() => ready.promise);
+    await act(async () => tree.update(render()));
+    let pending!: ReturnType<Interactive['beginBack']>;
+    await act(async () => {
+      pending = interactive.beginBack({ signal: abort.signal });
+    });
+    await act(async () => abort.abort());
+    expect(ctx.completeTransition).toHaveBeenCalledTimes(1);
+    expect(ctx.completeTransition).toHaveBeenCalledWith('opening');
+    expect(ctx.cancelTransition).not.toHaveBeenCalled();
+    expect(ctx.progress.value).toBe(1);
+    expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+    await act(async () => {
+      ready.resolve(true);
+      expect(await pending).toBeNull();
+    });
+    expect(interactive.isActive).toBe(false);
   });
 
   test('does not interrupt an unrelated active transition', async () => {

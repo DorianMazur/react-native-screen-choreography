@@ -1,4 +1,5 @@
 import type { PreparationTrace } from './preparationTrace';
+import type { PresentationFailureDetails } from './nativePresentation';
 import { createContext } from 'react';
 import type { ProgressOwnership } from './ProgressOwnership';
 import type { NavigationSessionController } from './NavigationSessionController';
@@ -106,7 +107,10 @@ export interface ChoreographyContextType {
   setInteractiveScreen: (screenId: string, active: boolean) => void;
   captureSourceGroup: (groupId: string, screenId: string) => Promise<void>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
-  waitForOverlayReady: (sessionId: string) => Promise<boolean>;
+  waitForOverlayReady: (
+    sessionId: string,
+    onUnavailable?: (details: PresentationFailureDetails) => void
+  ) => Promise<boolean>;
   isOverlayPresented?: (sessionId: string) => boolean;
   startTransition: (config: {
     groupId: string;

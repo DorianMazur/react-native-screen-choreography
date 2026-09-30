@@ -15,14 +15,14 @@ import {
 } from '../core/SharedElementPresentation';
 import { runReverseTransition } from '../core/runReverseTransition';
 import { makeTransition } from '../transitions/makeTransition';
+import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import { PreparationTrace } from '../core/preparationTrace';
+import type { ChoreographyPreparationTrace } from '../types';
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   __esModule: true,
   cancelAnimation: jest.fn(),
-}));
-jest.mock('react-native-screens', () => ({
-  FullWindowOverlay: ({ children }: { children: React.ReactNode }) => children,
 }));
 jest.mock('react-native-teleport', () => ({
   Portal: 'Portal',
@@ -45,6 +45,7 @@ const { Portal } = jest.requireMock('react-native-teleport') as {
 
 const fabricGlobals = globalThis as typeof globalThis & {
   __screenChoreographyCaptureFabricLayout?: jest.Mock;
+  __screenChoreographyRequestFabricLayout?: jest.Mock;
   __screenChoreographySubscribeFabricMount?: jest.Mock;
 };
 
@@ -52,6 +53,7 @@ const GROUP = 'rewards';
 const transition = makeTransition({ renderer: () => null });
 
 describe('SharedElement owner settlement when the destination route goes away', () => {
+  const onPreparationTrace = jest.fn<void, [ChoreographyPreparationTrace]>();
   let context!: ChoreographyContextType;
   let actions!: ChoreographyActionsType;
   let presentation!: SharedElementPresentation;
@@ -70,7 +72,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
 
   function App({ detail }: { detail: boolean }) {
     return (
-      <ChoreographyProvider>
+      <ChoreographyProvider onPreparationTrace={onPreparationTrace}>
         <Consumer />
         <ChoreographyScreenBase screenId="list">
           <SharedElement id="medal" groupId={GROUP} transition={transition}>
@@ -145,7 +147,13 @@ describe('SharedElement owner settlement when the destination route goes away', 
    * `rendersActiveSession` controls whether React commits the prepared back
    * session before its fallback resolves. A busy JS thread can skip it.
    */
-  const goBack = async ({ rendersActiveSession = false } = {}) => {
+  const goBack = async ({
+    rendersActiveSession = false,
+    presentationFailure = 'timeout',
+  }: {
+    rendersActiveSession?: boolean;
+    presentationFailure?: 'timeout' | 'native';
+  } = {}) => {
     const popAction = jest.fn(async () => ({
       removed: true,
       presented: false,
@@ -168,8 +176,14 @@ describe('SharedElement owner settlement when the destination route goes away', 
     });
     if (rendersActiveSession) {
       expect(context.activeSession?.direction).toBe('backward');
-      expect(ownerHostName()).toContain('overlay');
+      // Without an attachment acknowledgment, content stays at its destination.
+      expect(ownerHostName()).toContain('destination');
       await act(async () => {
+        if (presentationFailure === 'native') {
+          tree!.root
+            .findByType(NativeTransitionHost)
+            .props.onPresentationFailed(context.activeSession!.id);
+        }
         await jest.runAllTimersAsync();
         await back;
       });
@@ -179,6 +193,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
 
   beforeEach(async () => {
     jest.useFakeTimers();
+    onPreparationTrace.mockClear();
     // Mocked composite views expose instances instead of host nodes.
     const nodeTags = new WeakMap<object, number>();
     let nextTag = 0;
@@ -196,6 +211,17 @@ describe('SharedElement owner settlement when the destination route goes away', 
     fabricGlobals.__screenChoreographySubscribeFabricMount = jest.fn(
       () => () => {}
     );
+    fabricGlobals.__screenChoreographyRequestFabricLayout = jest.fn(
+      (screens, tags) => (validate?: boolean) =>
+        validate === true
+          ? true
+          : validate === false
+            ? undefined
+            : fabricGlobals.__screenChoreographyCaptureFabricLayout!(
+                screens,
+                tags
+              )
+    );
     await act(async () => {
       tree = create(<App detail />, { createNodeMock: () => ({}) });
     });
@@ -210,6 +236,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
     await act(async () => tree?.unmount());
     tree = undefined;
     delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    delete fabricGlobals.__screenChoreographyRequestFabricLayout;
     delete fabricGlobals.__screenChoreographySubscribeFabricMount;
     jest.restoreAllMocks();
     jest.useRealTimers();
@@ -223,6 +250,68 @@ describe('SharedElement owner settlement when the destination route goes away', 
     await removeDetailRoute();
     expectCollapsedAtHome();
   });
+
+  test.each(['timeout', 'native', 'cancel'] as const)(
+    'forward preparation records %s before the provider clears its session',
+    async (failure) => {
+      const trace = new PreparationTrace(
+        {
+          groupId: GROUP,
+          sourceScreenId: 'list',
+          targetScreenId: 'detail',
+          direction: 'forward',
+        },
+        onPreparationTrace
+      );
+      let preparing!: ReturnType<
+        typeof context.navigationController.prepareForwardTransition
+      >;
+      await act(async () => {
+        preparing = context.navigationController.prepareForwardTransition({
+          groupId: GROUP,
+          sourceScreenId: 'list',
+          targetScreenId: 'detail',
+          isAndroid: false,
+          trace,
+          captureSourceGroup: context.captureSourceGroup,
+          setPendingTargetScreen: context.setPendingTargetScreen,
+          dispatchNavigation: () => {},
+          waitForScreenReady: context.waitForScreenReady,
+          waitForNextFrame: async () => {},
+          startTransition: context.startTransition,
+          waitForOverlayReady: context.waitForOverlayReady,
+          isSessionCurrent: (id) => context.progressOwnership.isSession(id),
+        });
+        await jest.advanceTimersByTimeAsync(0);
+      });
+      const sessionId = context.activeSession!.id;
+      await act(async () => {
+        if (failure === 'native') {
+          tree!.root
+            .findByType(NativeTransitionHost)
+            .props.onPresentationFailed(sessionId);
+        } else if (failure === 'cancel') {
+          context.cancelTransition(sessionId);
+        }
+        await jest.runAllTimersAsync();
+        expect(await preparing).toBeNull();
+      });
+      expect(context.activeSession).toBeNull();
+      expect(onPreparationTrace).toHaveBeenCalledTimes(1);
+      const report = onPreparationTrace.mock.calls[0]![0];
+      expect(report.outcome).toBe(
+        failure === 'cancel' ? 'cancelled' : 'overlay-timeout'
+      );
+      expect(report.sessionId).toBe(sessionId);
+      expect(report.stages.every((stage) => stage.completed)).toBe(true);
+      expect(report.stages.at(-1)).toMatchObject({
+        name: 'overlay-ready',
+        details: { ready: false, acknowledged: false },
+      });
+      if (failure === 'cancel') expectCollapsedAtHome();
+      else expectExpandedOnDetail();
+    }
+  );
 
   test('a rejected back keeps the owner on the still-mounted destination', async () => {
     await openDetail();
@@ -245,14 +334,26 @@ describe('SharedElement owner settlement when the destination route goes away', 
     expectExpandedOnDetail();
   });
 
-  test('back that pops after the overlay misses its readiness window returns the owner home', async () => {
-    await openDetail();
-    await goBack({ rendersActiveSession: true });
-    // The owner must not re-host into the screen that is being popped.
-    expectCollapsedAtHome();
-    await removeDetailRoute();
-    expectCollapsedAtHome();
-  });
+  test.each(['timeout', 'native'] as const)(
+    'back that pops after an overlay presentation failure (%s) returns the owner home',
+    async (presentationFailure) => {
+      await openDetail();
+      await goBack({ rendersActiveSession: true, presentationFailure });
+      expect(onPreparationTrace).toHaveBeenCalledTimes(1);
+      const report = onPreparationTrace.mock.calls[0]![0];
+      expect(report.outcome).toBe('overlay-timeout');
+      expect(report.direction).toBe('backward');
+      expect(report.stages.every((stage) => stage.completed)).toBe(true);
+      expect(report.stages.at(-1)).toMatchObject({
+        name: 'overlay-ready',
+        details: { ready: false, acknowledged: false },
+      });
+      // The owner must not re-host into the screen that is being popped.
+      expectCollapsedAtHome();
+      await removeDetailRoute();
+      expectCollapsedAtHome();
+    }
+  );
 
   test('back that pops before the active session ever renders returns the owner home', async () => {
     await openDetail();

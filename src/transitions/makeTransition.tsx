@@ -1,5 +1,5 @@
 import type { ComponentType } from 'react';
-import { StyleSheet } from 'react-native';
+import { StyleSheet, View } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
@@ -63,6 +63,12 @@ export function makeTransition({
       style: target.style,
       metadata: target.metadata,
     };
+    const hostName = getLiveOverlayHostName(
+      source.screenId,
+      target.screenId,
+      id,
+      groupId
+    );
 
     return (
       <Renderer
@@ -75,15 +81,15 @@ export function makeTransition({
         source={sourceSide}
         target={targetSide}
       >
-        <PortalHost
-          name={getLiveOverlayHostName(
-            source.screenId,
-            target.screenId,
-            id,
-            groupId
-          )}
-          style={styles.liveHost}
-        />
+        <PortalHost name={hostName} style={styles.liveHost}>
+          <View
+            nativeID={hostName}
+            collapsable={false}
+            accessible={false}
+            pointerEvents="none"
+            style={styles.hostMarker}
+          />
+        </PortalHost>
       </Renderer>
     );
   }
@@ -174,5 +180,10 @@ const styles = StyleSheet.create({
   },
   liveHost: {
     ...StyleSheet.absoluteFill,
+  },
+  hostMarker: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
   },
 });

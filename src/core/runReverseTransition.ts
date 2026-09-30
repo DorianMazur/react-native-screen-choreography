@@ -204,7 +204,15 @@ export async function runReverseTransition(
     if (animationToken === null) return;
 
     const endOverlay = trace?.start('overlay-ready');
-    const overlayReady = await waitForOverlayReady(reverseSession.id);
+    const overlayReady = await waitForOverlayReady(
+      reverseSession.id,
+      trace
+        ? (details) => {
+            endOverlay?.({ ...details, ready: false, acknowledged: false });
+            trace.finish('overlay-timeout');
+          }
+        : undefined
+    );
     const acknowledged =
       overlayReady && (ctx.isOverlayPresented?.(reverseSession.id) ?? true);
     endOverlay?.({ ready: overlayReady, acknowledged });

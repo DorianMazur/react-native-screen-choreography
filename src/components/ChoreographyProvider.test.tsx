@@ -3,9 +3,10 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
-import { FullWindowOverlay } from 'react-native-screens';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import NativePreparation from '../native/NativeChoreographyPreparation';
+import { PRESENTATION_TIMEOUT_MS } from '../core/nativePresentation';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyControls } from '../hooks/useChoreographyProgress';
 import { ScreenIdContext } from '../core/screenIdContext';
@@ -26,12 +27,6 @@ jest.mock('react-native-reanimated', () => {
   };
 });
 
-jest.mock('react-native-screens', () => ({
-  FullWindowOverlay: jest.fn(
-    ({ children }: { children: React.ReactNode }) => children
-  ),
-}));
-
 jest.mock('react-native-teleport', () => ({
   PortalProvider: ({ children }: { children: React.ReactNode }) => children,
 }));
@@ -41,7 +36,13 @@ jest.mock(
   () => 'ScreenChoreographyView'
 );
 
+jest.mock('../native/NativeChoreographyPreparation', () => ({
+  __esModule: true,
+  default: { install: jest.fn() },
+}));
+
 const fabricGlobals = globalThis as typeof globalThis & {
+  __screenChoreographyRequestFabricLayout?: jest.Mock;
   __screenChoreographyCaptureFabricLayout?: jest.Mock;
   __screenChoreographySubscribeFabricMount?: jest.Mock;
 };
@@ -75,14 +76,65 @@ describe('ChoreographyProvider lifecycle', () => {
     fabricGlobals.__screenChoreographySubscribeFabricMount = jest.fn(
       () => () => {}
     );
-    jest.mocked(FullWindowOverlay).mockClear();
+    fabricGlobals.__screenChoreographyRequestFabricLayout = jest.fn(
+      (screens, tags) => (validate?: boolean) =>
+        validate === true
+          ? true
+          : validate === false
+            ? undefined
+            : fabricGlobals.__screenChoreographyCaptureFabricLayout!(
+                screens,
+                tags
+              )
+    );
   });
 
   afterEach(() => {
     Platform.OS = originalPlatform;
     delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    delete fabricGlobals.__screenChoreographyRequestFabricLayout;
     delete fabricGlobals.__screenChoreographySubscribeFabricMount;
+    jest.mocked(NativePreparation!.install).mockReset();
     jest.restoreAllMocks();
+  });
+
+  test('installs the mount observer before descendant screens render, without reinstalling on updates', async () => {
+    const capture = fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    jest.mocked(NativePreparation!.install).mockImplementation(() => {
+      fabricGlobals.__screenChoreographyCaptureFabricLayout = capture;
+      return true;
+    });
+    const observedBindings: boolean[] = [];
+    function Screen() {
+      observedBindings.push(
+        typeof fabricGlobals.__screenChoreographyCaptureFabricLayout ===
+          'function'
+      );
+      return null;
+    }
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(
+          <ChoreographyProvider>
+            <Screen />
+          </ChoreographyProvider>
+        );
+      });
+      expect(observedBindings).toEqual([true]);
+      await act(async () => {
+        tree.update(
+          <ChoreographyProvider>
+            <Screen />
+          </ChoreographyProvider>
+        );
+      });
+      expect(observedBindings.every(Boolean)).toBe(true);
+      expect(NativePreparation!.install).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => tree.unmount());
+    }
   });
 
   test.each(['forward', 'backward'] as const)(
@@ -309,7 +361,7 @@ describe('ChoreographyProvider lifecycle', () => {
         const sessionId = context.activeSession!.id;
         const host = tree.root.findByType(NativeTransitionHost);
         if (hostAlreadyAcknowledged) {
-          await act(async () => host.props.onPresentationReady());
+          await act(async () => host.props.onPresentationReady(sessionId));
         }
         const ready = jest.fn();
         const waiting = context.waitForOverlayReady(sessionId).then(ready);
@@ -318,13 +370,14 @@ describe('ChoreographyProvider lifecycle', () => {
         ]);
         await act(async () => {
           const notifyMount =
-            fabricGlobals.__screenChoreographySubscribeFabricMount!.mock
-              .calls[0]![0];
+            fabricGlobals.__screenChoreographySubscribeFabricMount!.mock.calls.at(
+              -1
+            )![0];
           notifyMount();
         });
         expect(context.activeSession!.pairs[0]!.targetMetrics.pageY).toBe(80);
         if (!hostAlreadyAcknowledged) {
-          await act(async () => host.props.onPresentationReady());
+          await act(async () => host.props.onPresentationReady(sessionId));
         }
         await act(async () => {
           await jest.advanceTimersByTimeAsync(151);
@@ -334,6 +387,110 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(context.isOverlayPresented!(sessionId)).toBe(true);
         expect(context.activeSession?.id).toBe(sessionId);
         expect(onTransitionEnd).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => tree?.unmount());
+        jest.useRealTimers();
+      }
+    }
+  );
+
+  test.each([
+    'late-native',
+    'ui-ready',
+    'timeout',
+    'invalidated',
+    'cancel',
+    'unmount',
+  ] as const)(
+    'bounds delayed presentation without losing readiness: %s',
+    async (outcome) => {
+      jest.useFakeTimers();
+      let context!: ChoreographyContextType;
+      let tree!: ReactTestRenderer;
+      function Consumer() {
+        context = useContext(ChoreographyContext)!;
+        return null;
+      }
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider>
+              <FabricScreens />
+              <Consumer />
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        await act(async () => {
+          const preparing = context.startTransition({
+            groupId: 'group',
+            sourceScreenId: 'list',
+            targetScreenId: 'detail',
+            direction: 'forward',
+          });
+          await jest.runAllTimersAsync();
+          await preparing;
+        });
+        const session = context.activeSession!;
+        const presentation = session.presentation!;
+        const host = tree.root.findByType(NativeTransitionHost).props;
+        const ready = jest.fn();
+        const unavailable = jest.fn();
+        const waiting = context
+          .waitForOverlayReady(session.id, unavailable)
+          .then(ready);
+        presentation.phase.value = 1;
+        await act(async () => jest.advanceTimersByTimeAsync(500));
+        expect(ready).not.toHaveBeenCalled();
+        expect(context.activeSession?.id).toBe(session.id);
+        expect(context.isElementHidden('card', 'list', 'group').value).toBe(0);
+        if (outcome === 'unmount') await act(async () => tree.unmount());
+        await act(async () => {
+          if (outcome === 'late-native' || outcome === 'ui-ready') {
+            presentation.phase.value = 2;
+            if (outcome === 'late-native') host.onPresentationReady(session.id);
+          }
+          if (outcome === 'invalidated') {
+            presentation.valid.value = false;
+            host.onPresentationFailed(session.id, 'invalidated');
+          }
+          if (outcome === 'cancel') context.cancelTransition(session.id);
+          // Explicit failure/cancellation settles immediately, without the deadline.
+          if (outcome !== 'ui-ready' && outcome !== 'timeout') await waiting;
+          await jest.advanceTimersByTimeAsync(PRESENTATION_TIMEOUT_MS - 500);
+          await waiting;
+        });
+        const success = outcome === 'late-native' || outcome === 'ui-ready';
+        expect(ready).toHaveBeenCalledTimes(1);
+        expect(ready).toHaveBeenCalledWith(success);
+        if (success) {
+          expect(context.isOverlayPresented!(session.id)).toBe(true);
+          expect(context.activeSession?.id).toBe(session.id);
+        }
+        if (outcome === 'timeout' || outcome === 'invalidated') {
+          expect(unavailable).toHaveBeenCalledTimes(1);
+          expect(unavailable).toHaveBeenCalledWith({
+            reason: outcome === 'timeout' ? 'timeout' : 'invalidated',
+            phase: 'transferring',
+            contentReady: true,
+            hostAcknowledged: false,
+          });
+          expect(context.activeSession).toBeNull();
+          await act(async () => host.onPresentationReady(session.id));
+          expect(context.activeSession).toBeNull();
+          expect(context.isOverlayPresented!(session.id)).toBe(false);
+        } else {
+          expect(unavailable).not.toHaveBeenCalled();
+        }
       } finally {
         await act(async () => tree?.unmount());
         jest.useRealTimers();
@@ -524,12 +681,14 @@ describe('ChoreographyProvider lifecycle', () => {
         if (readiness === 'native') {
           await act(async () => {
             const host = tree!.root.findByType(NativeTransitionHost);
-            host.props.onPresentationReady();
-            host.props.onPresentationReady();
+            host.props.onPresentationReady(sessionId);
+            host.props.onPresentationReady(sessionId);
             await waiting;
           });
         } else {
-          await act(async () => jest.advanceTimersByTimeAsync(149));
+          await act(async () =>
+            jest.advanceTimersByTimeAsync(PRESENTATION_TIMEOUT_MS - 1)
+          );
           expect(hidden.value).toBe(0);
           expect(ready).not.toHaveBeenCalled();
           await act(async () => {
@@ -538,7 +697,11 @@ describe('ChoreographyProvider lifecycle', () => {
           });
         }
 
-        expect(ready).toHaveBeenCalledWith(true);
+        expect(ready).toHaveBeenCalledWith(readiness === 'native');
+        if (readiness === 'timeout') {
+          expect(context.progress.value).toBe(1);
+          expect(context.navigationController.isNavigationLocked()).toBe(false);
+        }
         expect(hidden.value).toBe(0);
         expect(writes[0]).not.toHaveBeenCalled();
         expect(writes[1]).not.toHaveBeenCalled();
@@ -561,7 +724,6 @@ describe('ChoreographyProvider lifecycle', () => {
         expect(
           tree!.root.findByType('ScreenChoreographyView' as React.ElementType)
         ).toBe(persistentNativeView);
-        expect(FullWindowOverlay).not.toHaveBeenCalled();
         expect(context.progressOwnership.hasSession).toBe(false);
         expect(onTransitionEnd).toHaveBeenCalledTimes(1);
         expect(onTransitionEnd).toHaveBeenCalledWith(session);

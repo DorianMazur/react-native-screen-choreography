@@ -478,6 +478,52 @@ test('unready overlay cancels its session when the fallback Back is rejected', a
   expect(ctx.completeTransition).not.toHaveBeenCalled();
 });
 
+test('failed Back presentation retains diagnostics and still commits fallback navigation', async () => {
+  jest.useFakeTimers();
+  try {
+    const onPreparationTrace = jest.fn();
+    const details = {
+      reason: 'invalidated',
+      phase: 'transferring',
+      contentReady: true,
+      hostAcknowledged: false,
+    } as const;
+    const ctx = createContext({
+      onPreparationTrace,
+      waitForOverlayReady: async (_id, onUnavailable) => {
+        onUnavailable?.(details);
+        return false;
+      },
+    });
+    const popAction = jest.fn(async () => ({
+      removed: true,
+      presented: false,
+    }));
+    await runReverseTransition({
+      ctx,
+      groupId: 'group',
+      sourceScreenId: 'list',
+      currentScreenId: 'detail',
+      popAction,
+    });
+    expect(popAction).toHaveBeenCalledTimes(1);
+    expect(ctx.commitReverseTransition).not.toHaveBeenCalled();
+    jest.runOnlyPendingTimers();
+    expect(onPreparationTrace).toHaveBeenCalledTimes(1);
+    expect(onPreparationTrace.mock.calls[0]![0]).toMatchObject({
+      outcome: 'overlay-timeout',
+      stages: expect.arrayContaining([
+        expect.objectContaining({
+          name: 'overlay-ready',
+          details: { ...details, ready: false, acknowledged: false },
+        }),
+      ]),
+    });
+  } finally {
+    jest.useRealTimers();
+  }
+});
+
 describe('fallback Back settlement ownership', () => {
   test.each([
     ['same session', true],

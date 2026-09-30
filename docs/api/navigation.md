@@ -195,6 +195,8 @@ interface InteractiveTransitionHandle extends InteractiveTransitionSession {
 }
 ```
 
+When the destination is still opening, `beginBack()` takes ownership of that session and preserves its current progress and overlay. Initialize any separate animation driver from `handle.progress.value`; an interrupted opening can return a value above `0`. Cancelling restores the destination, while finishing returns to the original source.
+
 The handle can be used immediately after `await beginBack()` without waiting for a React render. Its callbacks ignore stale ownership and cannot control a later session. Aborting `signal` cancels preparation before a handle is returned; after readiness, use `handle.cancel()`.
 
 ::: warning Lifecycle methods run on JavaScript

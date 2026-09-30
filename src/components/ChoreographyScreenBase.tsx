@@ -93,8 +93,8 @@ export function ChoreographyScreenBase({
       choreography?.pendingSourceScreenId !== screenId &&
       isFocused);
   const role = getScreenRole(session, screenId);
-  const isInteractiveSource =
-    role === 'source' && choreography?.interactiveScreenId === screenId;
+  const isInteractiveScreen =
+    role !== 'inactive' && choreography?.interactiveScreenId === screenId;
   const phase = getSessionPhase(
     session,
     isPendingTarget ? screenId : null,
@@ -119,7 +119,7 @@ export function ChoreographyScreenBase({
             phase,
             value,
             screenFade,
-            isInteractiveSource
+            isInteractiveScreen
           ),
     };
   }, [
@@ -129,7 +129,7 @@ export function ChoreographyScreenBase({
     progress,
     screenFade,
     keepVisible,
-    isInteractiveSource,
+    isInteractiveScreen,
   ]);
 
   const blockInteraction =
@@ -139,7 +139,7 @@ export function ChoreographyScreenBase({
       phase,
       allowInteractionDuringTransition,
       false,
-      isInteractiveSource
+      isInteractiveScreen
     );
   const interactionOwner = choreography?.interactionOwner;
   const reverseHandoff = choreography?.reverseHandoff;
@@ -162,7 +162,7 @@ export function ChoreographyScreenBase({
         phase,
         allowInteractionDuringTransition,
         isReturnTarget,
-        isInteractiveSource
+        isInteractiveScreen
       );
     return blocked && interactionOwner?.value !== screenId
       ? ('none' as const)
@@ -215,7 +215,7 @@ export function ChoreographyScreenBase({
         style={[styles.container, { opacity: staticOpacity }]}
         pointerEvents={
           isPendingTarget ||
-          (role !== 'inactive' && phase === 'preparing' && !isInteractiveSource)
+          (role !== 'inactive' && phase === 'preparing' && !isInteractiveScreen)
             ? 'none'
             : 'box-none'
         }
