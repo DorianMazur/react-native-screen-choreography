@@ -5,6 +5,7 @@ import { useReducedMotion } from 'react-native-reanimated';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import NativePreparation from '../native/NativeChoreographyPreparation';
 import { PRESENTATION_TIMEOUT_MS } from '../core/nativePresentation';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyControls } from '../hooks/useChoreographyProgress';
@@ -34,6 +35,11 @@ jest.mock(
   '../native/ScreenChoreographyViewNativeComponent',
   () => 'ScreenChoreographyView'
 );
+
+jest.mock('../native/NativeChoreographyPreparation', () => ({
+  __esModule: true,
+  default: { install: jest.fn() },
+}));
 
 const fabricGlobals = globalThis as typeof globalThis & {
   __screenChoreographyRequestFabricLayout?: jest.Mock;
@@ -88,7 +94,47 @@ describe('ChoreographyProvider lifecycle', () => {
     delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
     delete fabricGlobals.__screenChoreographyRequestFabricLayout;
     delete fabricGlobals.__screenChoreographySubscribeFabricMount;
+    jest.mocked(NativePreparation!.install).mockReset();
     jest.restoreAllMocks();
+  });
+
+  test('installs the mount observer before descendant screens render, without reinstalling on updates', async () => {
+    const capture = fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    delete fabricGlobals.__screenChoreographyCaptureFabricLayout;
+    jest.mocked(NativePreparation!.install).mockImplementation(() => {
+      fabricGlobals.__screenChoreographyCaptureFabricLayout = capture;
+      return true;
+    });
+    const observedBindings: boolean[] = [];
+    function Screen() {
+      observedBindings.push(
+        typeof fabricGlobals.__screenChoreographyCaptureFabricLayout ===
+          'function'
+      );
+      return null;
+    }
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(
+          <ChoreographyProvider>
+            <Screen />
+          </ChoreographyProvider>
+        );
+      });
+      expect(observedBindings).toEqual([true]);
+      await act(async () => {
+        tree.update(
+          <ChoreographyProvider>
+            <Screen />
+          </ChoreographyProvider>
+        );
+      });
+      expect(observedBindings.every(Boolean)).toBe(true);
+      expect(NativePreparation!.install).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => tree.unmount());
+    }
   });
 
   test.each(['forward', 'backward'] as const)(

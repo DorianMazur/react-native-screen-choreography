@@ -27,6 +27,7 @@ import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { TransitionCoordinator } from '../core/TransitionCoordinator';
+import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { TransitionOverlay } from '../core/TransitionOverlay';
 import {
   ChoreographyContext,
@@ -229,6 +230,9 @@ export function ChoreographyProvider({
     registryRef.current = new ElementRegistry();
   }
   if (!coordinatorRef.current) {
+    // Install before descendants commit: lazy native-module loading on the
+    // first transition misses the source mount and waits for the capture timeout.
+    hasFabricLayoutCapture();
     coordinatorRef.current = new TransitionCoordinator(
       registryRef.current,
       progress,

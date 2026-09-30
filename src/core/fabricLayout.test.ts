@@ -1,4 +1,8 @@
-import { captureFabricLayout, requestFabricLayout } from './fabricLayout';
+import {
+  captureFabricLayout,
+  prepareFabricLayout,
+  requestFabricLayout,
+} from './fabricLayout';
 import NativePreparation from '../native/NativeChoreographyPreparation';
 jest.mock('../native/NativeChoreographyPreparation', () => ({
   __esModule: true,
@@ -121,6 +125,32 @@ test('one native request waits for mount events, with no timed polling or repeat
   expect(reader).not.toHaveBeenCalledWith(false);
   expect(unsubscribe).toHaveBeenCalledTimes(1);
   expect(cancellers.size).toBe(0);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('returns an already mounted native batch synchronously and releases waiters', () => {
+  reader.mockImplementation((validate?: boolean) =>
+    validate === true
+      ? true
+      : validate === false
+        ? undefined
+        : [metrics, metrics]
+  );
+  const cancellers = new Set<() => void>();
+  const snapshot = prepareFabricLayout({
+    entries,
+    isCurrent: () => true,
+    cancellers,
+  });
+  expect(snapshot).not.toBeInstanceOf(Promise);
+  expect(snapshot).toMatchObject({
+    metrics: new Map([
+      ['a', metrics],
+      ['b', metrics],
+    ]),
+  });
+  expect(cancellers.size).toBe(0);
+  expect(unsubscribe).toHaveBeenCalledTimes(1);
   expect(jest.getTimerCount()).toBe(0);
 });
 test.each([

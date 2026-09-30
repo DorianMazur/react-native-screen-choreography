@@ -119,24 +119,36 @@ export function captureFabricLayout(
   }
 }
 
-export function requestFabricLayout({
-  entries,
-  isCurrent,
-  cancellers,
-  timeoutMs = 1000,
-}: {
+interface FabricLayoutRequest {
   entries: FabricLayoutEntry[];
   isCurrent: () => boolean;
   cancellers: Set<() => void>;
   timeoutMs?: number;
-}): Promise<NativeLayoutSnapshot | null> {
-  if (!entries.length || !hasFabricLayoutCapture() || !isCurrent())
-    return Promise.resolve(null);
+}
+
+export function requestFabricLayout(
+  request: FabricLayoutRequest
+): Promise<NativeLayoutSnapshot | null> {
+  return Promise.resolve(prepareFabricLayout(request));
+}
+
+/** Ready mounted snapshots stay in the caller's commit; pending mounts wait. */
+export function prepareFabricLayout({
+  entries,
+  isCurrent,
+  cancellers,
+  timeoutMs = 1000,
+}: FabricLayoutRequest):
+  | NativeLayoutSnapshot
+  | null
+  | Promise<NativeLayoutSnapshot | null> {
+  if (!entries.length || !hasFabricLayoutCapture() || !isCurrent()) return null;
   const globals = globalThis as FabricGlobal;
   const prepare = globals.__screenChoreographyRequestFabricLayout;
   const subscribe = globals.__screenChoreographySubscribeFabricMount;
-  if (!prepare || !subscribe) return Promise.resolve(null);
-  return new Promise((resolve) => {
+  if (!prepare || !subscribe) return null;
+  let immediate: NativeLayoutSnapshot | null | undefined;
+  const pending = new Promise<NativeLayoutSnapshot | null>((resolve) => {
     let reader: NativeCaptureReader | null = null;
     let unsubscribe: (() => void) | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
@@ -160,6 +172,7 @@ export function requestFabricLayout({
     const finish = (snapshot: NativeLayoutSnapshot | null) => {
       if (settled) return;
       cleanup(snapshot === null);
+      immediate = snapshot;
       resolve(snapshot);
     };
     const cancel = () => finish(null);
@@ -238,6 +251,7 @@ export function requestFabricLayout({
       finish(null);
     }
   });
+  return immediate === undefined ? pending : immediate;
 }
 
 /** Native mount events are coalesced and delivered on the React Native JS thread. */

@@ -124,15 +124,23 @@ function choreography(
 
 describe('SharedElement live endpoints', () => {
   test.each(
-    (['forward', 'backward'] as const).flatMap((direction) =>
+    (
+      [
+        { platform: 'ios', direction: 'forward', retained: false },
+        { platform: 'ios', direction: 'backward', retained: true },
+        { platform: 'android', direction: 'backward', retained: true },
+      ] as const
+    ).flatMap((scenario) =>
       (['present', 'cancel', 'replace', 'invalid'] as const).map((outcome) => ({
-        direction,
+        ...scenario,
         outcome,
       }))
     )
   )(
-    'keeps the $direction image visible through delayed attachment ($outcome)',
-    async ({ direction, outcome }) => {
+    'keeps the $platform $direction image visible through delayed attachment ($outcome)',
+    async ({ platform, direction, retained, outcome }) => {
+      const originalOS = Platform.OS;
+      Platform.OS = platform;
       const state = makeContexts();
       let tree!: ReactTestRenderer;
       const mounted = jest.fn();
@@ -158,7 +166,7 @@ describe('SharedElement live endpoints', () => {
         await act(async () => {
           tree = create(render(null));
         });
-        if (direction === 'backward') {
+        if (retained) {
           await update(session('list', 'detail'));
           state.settle('detail');
           await update(null);
@@ -223,6 +231,80 @@ describe('SharedElement live endpoints', () => {
         expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
       } finally {
         await act(async () => tree?.unmount());
+        Platform.OS = originalOS;
+      }
+    }
+  );
+
+  test.each(['present', 'cancel'] as const)(
+    'Android transfers an original-owner payload in the overlay commit (%s)',
+    async (outcome) => {
+      const originalOS = Platform.OS;
+      Platform.OS = 'android';
+      const state = makeContexts();
+      const mounted = jest.fn();
+      let tree!: ReactTestRenderer;
+      function Content() {
+        useEffect(mounted, []);
+        return null;
+      }
+      const render = (active: TransitionSessionData | null) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(active)}>
+            <ScreenIdContext.Provider value="list">
+              <SharedElement id="player" groupId="media">
+                <Content />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const update = async (active: TransitionSessionData | null) => {
+        await act(async () => tree.update(render(active)));
+      };
+      try {
+        await act(async () => {
+          tree = create(render(null));
+        });
+        expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
+        const forward = session('list', 'detail');
+        forward.presentation = createNativePresentation(
+          ['overlay'],
+          () => true
+        );
+        await update(forward);
+        const overlayHost = tree.root.findByType(Portal).props.hostName;
+        expect(overlayHost).toContain('overlay');
+        expect(forward.presentation.phase.value).toBe(0);
+        forward.presentation.phase.value = -1;
+        await update({ ...forward });
+        expect(tree.root.findByType(Portal).props.hostName).toBe(overlayHost);
+
+        let deliver!: () => void;
+        const { scheduleOnRN } = jest.requireMock('react-native-worklets');
+        scheduleOnRN.mockImplementationOnce(
+          (fn: (...args: unknown[]) => void, ...args: unknown[]) => {
+            deliver = () => fn(...args);
+          }
+        );
+        forward.presentation.phase.value = 1;
+        const [read, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
+          -1
+        )!;
+        react(read(), null);
+        if (outcome === 'cancel') forward.presentation.valid.value = false;
+        state.settle(outcome === 'present' ? 'detail' : 'list');
+        await update(null);
+        await act(async () => deliver());
+        const finalHost = tree.root.findByType(Portal).props.hostName;
+        if (outcome === 'present') expect(finalHost).toContain('destination');
+        else expect(finalHost).toBeUndefined();
+        expect(mounted).toHaveBeenCalledTimes(1);
+        expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+        expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => tree?.unmount());
+        Platform.OS = originalOS;
       }
     }
   );

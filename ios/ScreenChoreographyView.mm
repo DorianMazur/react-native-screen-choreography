@@ -312,18 +312,42 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   RCTScreenChoreographyViewHandleCommand(self, commandName, args);
 }
 
+- (void)finalizeUpdates:(RNComponentViewUpdateMask)updateMask
+{
+  [super finalizeUpdates:updateMask];
+  const auto &viewProps = *std::static_pointer_cast<ScreenChoreographyViewProps const>(_props);
+  // Start attachment from the React mount; the UI command remains a bounded retry.
+  if (viewProps.active && !_foreground && _expectedHostNames.count > 0) {
+    [self prepare:[NSString stringWithUTF8String:_sessionId.c_str()]];
+  }
+}
+
 - (void)prepare:(NSString *)sessionId
 {
   if (sessionId.length == 0 || _sessionId != std::string(sessionId.UTF8String)) {
     return;
   }
+  const BOOL replayPresentation = _presentationAcknowledged;
+  const BOOL replayAttachment = _attachmentAcknowledged;
   if (!_prepared) {
     _prepared = YES;
     _attachmentDeadline = CACurrentMediaTime() + 1.0;
   }
   [self applyActive:YES];
   [self presentWindowContainer];
-  if (!_attachmentAcknowledged && _presentationDisplayLink == nil && CACurrentMediaTime() < _attachmentDeadline) {
+  // Early native events may precede installation of the Reanimated handler.
+  // Replay only readiness already confirmed for this still-attached session.
+  if (_active && self.superview != nil && _windowContainer.window != nil &&
+      _sessionId == std::string(sessionId.UTF8String)) {
+    if (replayPresentation && [self transitionHostsAreReady:YES]) {
+      [self emitPresentationStage:"presented"];
+    } else if (replayAttachment && CACurrentMediaTime() < _attachmentDeadline &&
+               [self transitionHostsAreReady:NO]) {
+      [self emitPresentationStage:"attached"];
+    }
+  }
+  if (_active && _prepared && _sessionId == std::string(sessionId.UTF8String) &&
+      !_attachmentAcknowledged && _presentationDisplayLink == nil && CACurrentMediaTime() < _attachmentDeadline) {
     _presentationDisplayLink = [CADisplayLink displayLinkWithTarget:self selector:@selector(retryPresentation:)];
     [_presentationDisplayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
   }
@@ -387,6 +411,11 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
       _windowContainer.window == nil || _eventEmitter == nullptr ||
       CACurrentMediaTime() >= _attachmentDeadline || ![self transitionHostsAreReady:NO]) return;
   _attachmentAcknowledged = YES;
+  // Arm before emitting: an event handler may synchronously update native props.
+  if (!_presentationRequested) {
+    _presentationRequested = YES;
+    _presentationDeadline = CACurrentMediaTime() + 1.0;
+  }
   [self emitPresentationStage:"attached"];
 }
 

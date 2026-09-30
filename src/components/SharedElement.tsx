@@ -12,7 +12,12 @@ import {
   useReducer,
   memo,
 } from 'react';
-import { type StyleProp, type ViewStyle, StyleSheet } from 'react-native';
+import {
+  type StyleProp,
+  type ViewStyle,
+  StyleSheet,
+  Platform,
+} from 'react-native';
 import Animated, {
   useAnimatedReaction,
   useDerivedValue,
@@ -461,8 +466,12 @@ function useRetainedPortalHost(
       }
     }
   );
+  // Android gates the receiving host's draw natively. On iOS, registration can
+  // precede window attachment, so even the original owner waits for the ack.
   const hostName =
-    !presentation || attachedSessionId === sessionId
+    (Platform.OS === 'android' && previousHost.current === undefined) ||
+    !presentation ||
+    attachedSessionId === sessionId
       ? requestedHostName
       : previousHost.current;
   useLayoutEffect(() => {

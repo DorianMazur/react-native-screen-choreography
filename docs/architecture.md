@@ -85,6 +85,8 @@ those commits.
 ## Preparation and Fabric layout
 
 On RN 0.81 and newer, a runtime-owned C++ binding observes completed Fabric mounts.
+The provider initializes this binding before rendering its descendant screens, so
+the observer sees their first mount even when native modules are loaded lazily.
 It retains weak mounted-root references and reads geometry without modifying
 mount transactions. Each batch validates that its root matches the current commit
 and mounting base, with no pending transactions, before and after reading layout.
@@ -101,6 +103,8 @@ Both directions wait for screen readiness and matching registrations, freeze
 presentations, then issue one native request. It binds weak node-family identities
 and collects geometry from completed mounts. JavaScript consumes the batch once,
 immediately or on a coalesced mount notification, within a one-second deadline.
+Already-ready registrations and captures do not introduce a Promise wait before
+publishing the session; pending mounts retain the same bounded asynchronous path.
 There is no JavaScript polling. Cancellation and runtime replacement invalidate
 requests; consumed requests stop collecting geometry. Unavailable endpoints skip
 animation.
@@ -112,15 +116,33 @@ are released on completion, cancellation, or disposal.
 
 ### React rendering and native presentation
 
-React mounts each renderer with one registered receiving host while retained
-content stays at its previous destination. After native acknowledges attachment
-of the empty overlay, React transfers content to those hosts. Registering before
-transfer prevents Teleport from falling back to a hidden owner during Back.
-Attachment stays latched for the session despite React prop updates. Native
+React mounts each renderer with one registered receiving host. On Android, content
+still at its original owner requests the overlay host in that same React commit;
+native suppresses the overlay until every receiving host has live content. Content
+already retained at another destination waits for the matching attachment
+acknowledgment before transferring. This keeps Back from falling through to a
+hidden original owner while the new receiver is being registered. iOS uses the
+attachment acknowledgment before either transfer. Attachment stays latched for
+the session despite React prop updates. Native
 acknowledges presentation only when every expected host is attached, has nonzero
 bounds, and contains its live child.
 An empty marker with a `nativeID` inside the public `PortalHost` identifies its native parent;
 the marker itself never counts as live content.
+
+Both platforms prepare the host from the React mount and arm content readiness
+after confirming attachment. The bounded UI-thread command retries preparation
+and can replay already-confirmed readiness if an early event preceded handler
+installation. iOS still waits for attachment before transferring content: portal
+registration alone does not prove that the receiving host has a window. Its
+presentation acknowledgment checks live content in the Core Animation transaction
+completion; this is a hierarchy readiness check, not a scanout timestamp.
+
+Android acknowledges presentation after its content draw traversal. This
+acknowledgment uses an asynchronous main
+queue message so a pending frame's synchronization barrier does not defer it by
+another frame. It still checks session identity, request identity, attachment and
+live content before dispatch. The native visibility gate ends at presentation;
+individual renderers can then fade independently without hiding other pairs.
 
 Forward motion starts on the UI thread after both the matching presentation
 acknowledgment and animation configuration arrive, in either order. A final native

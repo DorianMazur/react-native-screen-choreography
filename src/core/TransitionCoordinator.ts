@@ -4,6 +4,7 @@ import {
   captureFabricLayout,
   subscribeToFabricMounts,
   requestFabricLayout,
+  prepareFabricLayout,
   type FabricLayoutEntry,
   type FabricLayoutSnapshot,
 } from './fabricLayout';
@@ -246,7 +247,7 @@ export class TransitionCoordinator {
     groupId: string,
     expectedIds?: string[],
     ownsOperation: () => boolean = () => true
-  ): Promise<void> {
+  ): Promise<void> | undefined {
     const waitStartedAt = nowMs();
     const requiredIds = expectedIds?.length ? expectedIds : elementIds;
     const requireAll = Boolean(expectedIds?.length);
@@ -268,7 +269,7 @@ export class TransitionCoordinator {
       debugTrace(
         `[Coordinator] Target elements ready screen="${targetScreenId}" count=${countReady()}/${requiredIds.length} duration=${elapsedMs(waitStartedAt)}`
       );
-      return Promise.resolve();
+      return undefined;
     }
 
     // Event-driven: resolve as soon as the registry mutation that satisfies
@@ -378,14 +379,16 @@ export class TransitionCoordinator {
     );
 
     const endRegistration = config.trace?.start('target-registration');
-    if (requiredTargetIds.length > 0)
-      await this.waitForTargets(
+    if (requiredTargetIds.length > 0) {
+      const pendingTargets = this.waitForTargets(
         requiredTargetIds,
         targetScreenId,
         groupId,
         requiredTargetIds,
         ownsOperation
       );
+      if (pendingTargets) await pendingTargets;
+    }
     endRegistration?.();
     if (!ownsOperation()) {
       return null;
@@ -448,11 +451,12 @@ export class TransitionCoordinator {
       targetPresentation: target.getPresentation(),
     }));
     const endCapture = config.trace?.start('fabric-mounted-capture');
-    const snapshot = await requestFabricLayout({
+    const capture = prepareFabricLayout({
       entries,
       isCurrent,
       cancellers: this.preparationCancellers,
     });
+    const snapshot = capture instanceof Promise ? await capture : capture;
     let session: TransitionSessionData | null = null;
     if (snapshot && snapshot.isCurrent() && isCurrent()) {
       const pairs: ElementTransitionPair[] = presentations.flatMap((pair) => {

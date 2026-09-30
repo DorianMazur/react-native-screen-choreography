@@ -1,4 +1,5 @@
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import { Platform } from 'react-native';
 import {
   dispatchCommand,
   makeMutable,
@@ -107,8 +108,7 @@ async function setup(armed = true) {
 test('accepts ordered acknowledgments and starts the prepared animation once', async () => {
   const r = await setup();
   const animation = r.presentation.animation.value;
-  await r.ack();
-  await r.ack('A', 'attached');
+  await r.ack('old');
   expect(r.presentation.phase.value).toBe(0);
   await r.tick(1);
   expect(dispatchCommand).toHaveBeenCalledWith(
@@ -117,7 +117,7 @@ test('accepts ordered acknowledgments and starts the prepared animation once', a
     ['A']
   );
   expect(r.presentation.phase.value).toBe(-1);
-  await r.ack();
+  await r.ack('old');
   await r.ack('old', 'attached');
   expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
   await r.ack('A', 'attached');
@@ -138,6 +138,57 @@ test('accepts ordered acknowledgments and starts the prepared animation once', a
   expect(r.presentation.animation.value).toBeNull();
   expect(r.ready).toHaveBeenCalledTimes(1);
   expect(r.failed).not.toHaveBeenCalled();
+});
+test.each(['ios', 'android'] as const)(
+  '%s prepares from the native commit before the first frame callback',
+  async (platform) => {
+    const originalOS = Platform.OS;
+    Platform.OS = platform;
+    try {
+      const r = await setup();
+      expect(
+        tree.root.findByType('ScreenChoreographyView' as React.ElementType)
+          .props.active
+      ).toBe(true);
+      await r.ack('old', 'attached');
+      expect(r.presentation.phase.value).toBe(0);
+      await r.ack('A', 'attached');
+      expect(r.presentation.phase.value).toBe(1);
+      expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
+      await r.tick(1);
+      expect(dispatchCommand).not.toHaveBeenCalled();
+      await r.ack();
+      expect(startOwnedProgressOnUI).toHaveBeenCalledTimes(1);
+    } finally {
+      Platform.OS = originalOS;
+    }
+  }
+);
+
+test.each([0, -1])(
+  'accepts confirmed presentation after a missed attachment in phase %s',
+  async (phase) => {
+    const r = await setup();
+    if (phase === -1) await r.tick(1);
+    await r.ack();
+    expect(r.presentation.phase.value).toBe(2);
+    expect(startOwnedProgressOnUI).toHaveBeenCalledTimes(1);
+    await r.ack();
+    await r.ack('A', 'attached');
+    expect(startOwnedProgressOnUI).toHaveBeenCalledTimes(1);
+    expect(r.ready).toHaveBeenCalledTimes(1);
+  }
+);
+
+test('retries an unacknowledged command without extending its deadline', async () => {
+  const r = await setup();
+  await r.tick(1);
+  await r.tick(18);
+  expect(dispatchCommand).toHaveBeenCalledTimes(2);
+  await r.tick(1001);
+  expect(r.failed).toHaveBeenCalledWith('A', 'timeout');
+  await r.tick(1018);
+  expect(dispatchCommand).toHaveBeenCalledTimes(2);
 });
 test('presentation can arrive before the animation is armed without losing the start', async () => {
   const r = await setup(false);

@@ -75,7 +75,7 @@ export function NativeTransitionHost({
       scheduleOnRN(onPresentationFailed, sessionId, 'timeout');
       return;
     }
-    if (presentation.phase.value === 0) {
+    if (presentation.phase.value <= 0) {
       presentation.phase.value = -1;
       dispatchCommand(hostRef, 'prepare', [sessionId]);
     }
@@ -94,11 +94,13 @@ export function NativeTransitionHost({
         !presentation?.valid.value
       )
         return;
-      if (event.stage === 'attached' && presentation.phase.value === -1) {
+      if (event.stage === 'attached' && presentation.phase.value <= 0) {
         presentation.phase.value = 1;
         return;
       }
-      if (event.stage !== 'presented' || presentation.phase.value !== 1) return;
+      // Native presentation proves attachment and content as well. Its earlier
+      // attachment event can arrive before the UI event handler is installed.
+      if (event.stage !== 'presented' || presentation.phase.value === 2) return;
       if (!presentation.validate()) {
         presentation.valid.value = false;
         scheduleOnRN(onPresentationFailed, sessionId, 'invalidated');
@@ -135,7 +137,7 @@ export function NativeTransitionHost({
   return (
     <AnimatedHost
       ref={hostRef}
-      active={false}
+      active={active && Boolean(presentation)}
       sessionId={sessionId}
       expectedHostNames={presentation?.hostNames}
       animatedProps={animatedProps}

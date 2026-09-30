@@ -1,5 +1,5 @@
 import { useLayoutEffect, useMemo } from 'react';
-import { StyleSheet } from 'react-native';
+import { Platform, StyleSheet } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import type {
@@ -21,7 +21,12 @@ export function TransitionOverlay({
 }: TransitionOverlayProps) {
   const presentation = session?.presentation;
   const visibility = useAnimatedStyle(() => ({
-    opacity: !presentation || presentation.phase.value >= 1 ? 1 : 0,
+    opacity:
+      Platform.OS === 'android' ||
+      !presentation ||
+      presentation.phase.value >= 1
+        ? 1
+        : 0,
   }));
   const pairs = session?.pairs;
   const direction = session?.direction;

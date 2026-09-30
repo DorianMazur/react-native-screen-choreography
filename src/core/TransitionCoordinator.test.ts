@@ -111,6 +111,34 @@ async function start(direction: 'forward' | 'backward' = 'forward') {
   return pending;
 }
 
+test('publishes a ready capture in the same turn as measuring, without an empty intermediate render', async () => {
+  register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  const states: string[] = [];
+  coordinator.setOnSessionChange((session) => {
+    if (session) states.push(session.state);
+  });
+  const pending = coordinator.startTransition(config);
+  expect(states).toEqual(['measuring', 'active']);
+  expect((await pending)?.pairs).toHaveLength(1);
+});
+
+test('keeps waiting when the native mounted batch is not ready', async () => {
+  register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  const states: string[] = [];
+  coordinator.setOnSessionChange((session) => {
+    if (session) states.push(session.state);
+  });
+  capture.mockReturnValue(null);
+  const pending = coordinator.startTransition(config);
+  expect(states).toEqual(['measuring']);
+  capture.mockReturnValue([sourceMetrics, targetMetrics]);
+  mountListeners.forEach((listener) => listener());
+  expect((await pending)?.state).toBe('active');
+  expect(states).toEqual(['measuring', 'active']);
+});
+
 test.each(['forward', 'backward'] as const)(
   'captures both endpoints in one mounted root for %s',
   async (direction) => {

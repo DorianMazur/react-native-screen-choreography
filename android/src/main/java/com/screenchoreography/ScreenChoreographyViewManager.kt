@@ -85,6 +85,11 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     super.onDropViewInstance(view)
   }
 
+  override fun onAfterUpdateTransaction(view: ScreenChoreographyView) {
+    super.onAfterUpdateTransaction(view)
+    view.prepareFromReact()
+  }
+
   override fun getExportedCustomDirectEventTypeConstants(): Map<String, Any>? {
     return mapOf(
       "onPresentationReady" to mapOf("registrationName" to "onPresentationReady")

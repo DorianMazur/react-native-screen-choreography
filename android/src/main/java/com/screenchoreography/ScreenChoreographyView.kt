@@ -5,10 +5,12 @@ import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
+import android.os.Message
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewGroupOverlay
+import android.view.ViewTreeObserver
 import com.facebook.react.R
 import com.facebook.react.uimanager.PointerEvents
 import com.facebook.react.views.view.ReactViewGroup
@@ -38,6 +40,16 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private var usesViewOverlay = false
   private val dismissalProbeCanvas by lazy { Canvas() }
   private val mainHandler = Handler(Looper.getMainLooper())
+  private val contentReadiness = ViewTreeObserver.OnPreDrawListener {
+    if (active && prepared) {
+      // Readiness gates only startup. A renderer may intentionally fade a pair
+      // out after presentation without hiding the other pairs in the host.
+      val ready = presentationAcknowledged || transitionHostsAreReady(true)
+      alpha = if (ready) 1f else 0f
+      if (!ready && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
+    }
+    true
+  }
 
   init {
     clipChildren = false
@@ -147,13 +159,26 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
   fun prepare(expectedSessionId: String) {
     if (expectedSessionId.isEmpty() || expectedSessionId != sessionId) return
+    val replayPresentation = presentationAcknowledged
+    val replayAttachment = attachmentAcknowledged
     if (!prepared) {
       prepared = true
       attachmentDeadline = SystemClock.uptimeMillis() + 1000L
     }
     updateActive(true)
     acknowledgeAttachmentIfReady()
+    if (replayPresentation && active && isAttachedToWindow && windowToken != null &&
+      transitionHostsAreReady(true)) {
+      onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "presented")
+    } else if (replayAttachment && active && isAttachedToWindow && windowToken != null &&
+      SystemClock.uptimeMillis() < attachmentDeadline && transitionHostsAreReady(false)) {
+      onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "attached")
+    }
     if (!attachmentAcknowledged && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
+  }
+
+  fun prepareFromReact() {
+    if (reactActive && !foregroundLayer && expectedHostNames.isNotEmpty()) prepare(sessionId)
   }
 
   fun setPresentationRequested(value: Boolean) {
@@ -174,6 +199,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       SystemClock.uptimeMillis() >= attachmentDeadline || !transitionHostsAreReady(false)) return
     attachmentAcknowledged = true
     onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "attached")
+    setPresentationRequested(true)
   }
 
   fun cancelPresentationReady() {
@@ -188,6 +214,12 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     val bmp = dismissalFrame
     if (bmp != null && !bmp.isRecycled) {
       canvas.drawBitmap(bmp, 0f, 0f, null)
+      return
+    }
+    // Content and receiving hosts arrive in one Fabric transaction. Never paint
+    // a partially populated renderer if an attachment is still pending.
+    if (prepared && active && !presentationAcknowledged && !transitionHostsAreReady(true)) {
+      if (SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
       return
     }
     super.dispatchDraw(canvas)
@@ -210,21 +242,24 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       pendingPresentationAck = false
       val requestId = presentationRequestId
       val presentedSessionId = pendingPresentationSessionId
-      // Post so the callback runs after this frame's draw traversal has
-      // fully completed, not in the middle of it.
-      mainHandler.post {
+      // Run after this draw traversal, but bypass the synchronization barrier
+      // installed by invalidate() for the next frame. A normal Handler.post
+      // unnecessarily waits for that next traversal before acknowledging this one.
+      val acknowledgement = Message.obtain(mainHandler, Runnable {
         if (active && requestId == presentationRequestId && presentedSessionId == sessionId && windowToken != null) {
           if (!transitionHostsAreReady(true)) {
             if (SystemClock.uptimeMillis() < presentationDeadline) {
               pendingPresentationAck = true
               postInvalidateOnAnimation()
             }
-            return@post
+            return@Runnable
           }
           presentationAcknowledged = true
           onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), presentedSessionId, "presented")
         }
-      }
+      })
+      acknowledgement.isAsynchronous = true
+      acknowledgement.sendToTarget()
     }
   }
 
@@ -257,6 +292,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
   override fun onAttachedToWindow() {
     super.onAttachedToWindow()
+    viewTreeObserver.addOnPreDrawListener(contentReadiness)
     if (active) {
       acknowledgeAttachmentIfReady()
       schedulePresentationReady()
@@ -264,6 +300,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   override fun onDetachedFromWindow() {
+    if (viewTreeObserver.isAlive) viewTreeObserver.removeOnPreDrawListener(contentReadiness)
     super.onDetachedFromWindow()
     cancelPresentationReady()
     attachmentAcknowledged = false
@@ -299,7 +336,8 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     if (expectedHostNames.isEmpty()) return false
     val remaining = expectedHostNames.toMutableSet()
     fun visit(view: View, visible: Boolean) {
-      val isVisible = visible && view.visibility == View.VISIBLE && view.alpha > 0f
+      // Our own alpha is the readiness gate, so inspect descendants independently.
+      val isVisible = visible && view.visibility == View.VISIBLE && (view === this || view.alpha > 0f)
       val name = view.getTag(R.id.view_tag_native_id) as? String
       val host = view.parent as? ViewGroup
       // The marker is a child of the public PortalHost, never transferred content.
