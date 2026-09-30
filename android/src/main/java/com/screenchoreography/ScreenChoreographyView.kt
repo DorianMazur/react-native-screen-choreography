@@ -36,6 +36,9 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private var dismissing = false
   private val mainHandler = Handler(Looper.getMainLooper())
   private val contentReadiness = ViewTreeObserver.OnPreDrawListener {
+    // Hosts mount empty and hidden; report them in the first traversal that lays
+    // them out, since the draw gate below skips dispatchDraw until content arrives.
+    if (active && prepared && !attachmentAcknowledged) acknowledgeAttachmentIfReady()
     if (active && prepared) {
       // Readiness gates only startup. A renderer may intentionally fade a pair
       // out after presentation without hiding the other pairs in the host.
@@ -193,18 +196,17 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       postInvalidateOnAnimation()
       return
     }
-    // Content and receiving hosts arrive in one Fabric transaction. Never paint
-    // a partially populated renderer if an attachment is still pending.
+    if (prepared && !attachmentAcknowledged) {
+      acknowledgeAttachmentIfReady()
+      if (!attachmentAcknowledged && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
+    }
+    // Never paint a partially populated renderer: hosts are attached empty and
+    // receive their content in a later commit.
     if (prepared && active && !presentationAcknowledged && !transitionHostsAreReady(true)) {
       if (SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
       return
     }
     super.dispatchDraw(canvas)
-
-    if (prepared && !attachmentAcknowledged) {
-      acknowledgeAttachmentIfReady()
-      if (!attachmentAcknowledged && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
-    }
 
     if (pendingPresentationAck && active) {
       if (SystemClock.uptimeMillis() >= presentationDeadline) {

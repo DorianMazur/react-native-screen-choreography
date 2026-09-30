@@ -116,8 +116,9 @@ are released on completion, cancellation, or disposal.
 
 ### React rendering and native presentation
 
-A session reaches the screen in two steps. Preparation is asynchronous and
-invisible; the handoff is a single commit.
+On iOS a session reaches the screen in two steps. Preparation is asynchronous
+and invisible; the handoff is a single commit. iOS needs the extra step because a
+portal host registers before its window container is attached.
 
 - **Preparing.** The session carries its pairs and native presentation, but is
   published only to the transition host and to paired owners
@@ -128,8 +129,13 @@ invisible; the handoff is a single commit.
   host is in the window with nonzero bounds.
 - **Active.** Attachment promotes the session in one coordinator change. That
   commit retargets every paired portal into its already-attached overlay host
-  and flips `transitioning` for all of them at once, on both platforms. No
-  element waits for its own acknowledgment.
+  and flips `transitioning` for all of them at once. No element waits for its
+  own acknowledgment.
+
+Android skips preparation. Hosts and content mount in the same native
+transaction, and the host stays hidden until every receiving host holds its
+content, so the session activates as soon as geometry is captured and content
+moves in the commit that mounts the overlay.
 
 Native acknowledges presentation only when every expected host is attached, has
 nonzero bounds, and contains its transferred content. If preparation fails, a

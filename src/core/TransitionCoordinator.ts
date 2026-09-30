@@ -481,7 +481,13 @@ export class TransitionCoordinator {
       sourcePresentation: source.getPresentation(),
       targetPresentation: target.getPresentation(),
     }));
-    const endCapture = config.trace?.start('fabric-mounted-capture');
+    const endCaptureStage = config.trace?.start('fabric-mounted-capture');
+    let captureEnded = false;
+    const endCapture = (details: { ready: boolean }) => {
+      if (captureEnded) return;
+      captureEnded = true;
+      endCaptureStage?.(details);
+    };
     const capture = prepareFabricLayout({
       entries,
       isCurrent,
@@ -509,7 +515,7 @@ export class TransitionCoordinator {
           : [];
       });
       if (!pairs.length) {
-        endCapture?.({ ready: false });
+        endCapture({ ready: false });
         unavailable();
         return null;
       }
@@ -567,9 +573,14 @@ export class TransitionCoordinator {
       });
       // Register before publishing: attachment can be reported during that commit.
       const attachment = gated ? this.waitForAttachment(sessionId) : null;
+      endCapture({ ready: true });
+      const endAttachment = attachment
+        ? config.trace?.start('native-attachment')
+        : undefined;
       this.updateSession(prepared);
       if (attachment) {
         const attached = await attachment;
+        endAttachment?.({ ready: attached });
         if (attached && ownsOperation() && isCurrent()) {
           const current = this.activeSession!;
           session = { ...current, state: 'active' };
@@ -581,7 +592,7 @@ export class TransitionCoordinator {
         session = prepared;
       }
     }
-    endCapture?.({ ready: Boolean(session) });
+    endCapture({ ready: false });
     if (!session) unavailable();
     debugTrace(
       `[Coordinator] Fabric preparation session="${sessionId}" ready=${!!session} duration=${elapsedMs(transitionStartedAt)}`
