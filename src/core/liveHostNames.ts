@@ -15,6 +15,11 @@ export function getLiveOverlayHostName(
   return `screen-choreography:live:overlay:${JSON.stringify([sourceScreenId, targetScreenId, groupId, id])}`;
 }
 
+/** Native presentation waits for this marker; retained content may have no native views of its own. */
+export function getLiveContentMarkerId(hostName: string) {
+  return `${hostName}:content`;
+}
+
 export function getLivePortalName(
   screenId: string,
   id: string,

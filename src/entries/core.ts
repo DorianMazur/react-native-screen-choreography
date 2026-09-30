@@ -23,6 +23,7 @@ export {
   useLatchedReveal,
 } from '../hooks/useChoreographyProgress';
 export { useRevealStyle, type RevealOptions } from '../hooks/useRevealStyle';
+export { useTransitionPortalHost } from '../hooks/useTransitionPortalHost';
 export { Springs, Easings } from '../core/constants';
 export { setDebugEnabled } from '../debug/logger';
 export type {

@@ -125,17 +125,27 @@ hidden original owner while the new receiver is being registered. iOS uses the
 attachment acknowledgment before either transfer. Attachment stays latched for
 the session despite React prop updates. Native
 acknowledges presentation only when every expected host is attached, has nonzero
-bounds, and contains its live child.
+bounds, and contains its transferred content.
 An empty marker with a `nativeID` inside the public `PortalHost` identifies its native parent;
-the marker itself never counts as live content.
+the marker itself never counts as content. Each retained portal carries a second
+empty marker named after its committed receiving host (`<host>:content`), so
+content without native views of its own, or with zero size, still proves arrival.
+Renderer opacity is not part of readiness: a renderer may be fully faded at the
+session's starting progress, as reverse sessions start at 1.
 
 Both platforms prepare the host from the React mount and arm content readiness
 after confirming attachment. The bounded UI-thread command retries preparation
 and can replay already-confirmed readiness if an early event preceded handler
 installation. iOS still waits for attachment before transferring content: portal
-registration alone does not prove that the receiving host has a window. Its
-presentation acknowledgment checks live content in the Core Animation transaction
-completion; this is a hierarchy readiness check, not a scanout timestamp.
+registration alone does not prove that the receiving host has a window. The iOS
+window container stays transparent while a session is unacknowledged, because
+renderers paint their own surfaces and would otherwise cover the source before its
+content arrives. The host observes Fabric mounting transactions and checks
+readiness right after each one, so the transaction that transfers content also
+reveals the container before Core Animation commits it. A Core Animation
+completion check and bounded display-link retries remain as fallbacks; this is a
+hierarchy readiness check, not a scanout timestamp. App-owned portals that join a
+renderer use `useTransitionPortalHost` to transfer with the retained content.
 
 Android acknowledges presentation after its content draw traversal. This
 acknowledgment uses an asynchronous main

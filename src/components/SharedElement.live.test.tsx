@@ -993,4 +993,53 @@ describe('SharedElement live endpoints', () => {
       await act(async () => tree?.unmount());
     }
   });
+
+  test('marks retained content with its receiving host, including empty content', async () => {
+    const state = makeContexts();
+    let tree!: ReactTestRenderer;
+    const render = (activeSession: TransitionSessionData | null) => (
+      <ChoreographyActionsContext.Provider value={state.actions}>
+        <ChoreographyContext.Provider value={choreography(activeSession)}>
+          <ScreenIdContext.Provider value="list">
+            <SharedElement
+              id="player"
+              groupId="media"
+              transition={noopTransition}
+            >
+              {null}
+            </SharedElement>
+          </ScreenIdContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const portal = () => tree.root.findByType(Portal);
+    const contentMarker = () =>
+      portal().findAll(
+        (node) =>
+          node.type === View &&
+          StyleSheet.flatten(node.props.style)?.width === 0 &&
+          node.props.collapsable === false
+      );
+
+    try {
+      await act(async () => {
+        tree = create(render(null));
+      });
+      expect(contentMarker()).toHaveLength(1);
+      expect(contentMarker()[0]!.props.nativeID).toBeUndefined();
+
+      await act(async () => tree.update(render(session('list', 'detail'))));
+      expect(contentMarker()[0]!.props.nativeID).toBe(
+        `${portal().props.hostName}:content`
+      );
+
+      state.settle('detail');
+      await act(async () => tree.update(render(null)));
+      expect(contentMarker()[0]!.props.nativeID).toBe(
+        'screen-choreography:live:destination:["detail","media","player"]:content'
+      );
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
 });

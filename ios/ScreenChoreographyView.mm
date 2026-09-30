@@ -1,6 +1,7 @@
 #import "ScreenChoreographyView.h"
 
 #import <React/RCTConversions.h>
+#import <React/RCTMountingTransactionObserving.h>
 #import <React/RCTSurfaceTouchHandler.h>
 #import <QuartzCore/QuartzCore.h>
 
@@ -27,6 +28,11 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
     return traits;
   }
 };
+
+NSString *NativeIdOf(UIView *view)
+{
+  return [view isKindOfClass:RCTViewComponentView.class] ? ((RCTViewComponentView *)view).nativeId : nil;
+}
 
 } // namespace
 
@@ -65,7 +71,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 
 @end
 
-@interface ScreenChoreographyView () <RCTScreenChoreographyViewViewProtocol>
+@interface ScreenChoreographyView () <RCTScreenChoreographyViewViewProtocol, RCTMountingTransactionObserving>
 @end
 
 @implementation ScreenChoreographyView {
@@ -253,6 +259,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   _presentationAcknowledged = NO;
   _expectedHostNames = nil;
   _sessionId.clear();
+  [self updateContainerReveal];
   _lastWindow = nil;
   [super prepareForRecycle];
 }
@@ -301,6 +308,7 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 
   [super updateProps:props oldProps:oldProps];
 
+  [self updateContainerReveal];
   [self applyActive:(newViewProps.active || _prepared)];
   if (_active && (sessionChanged || _prepared || _foreground)) {
     [self presentWindowContainer];
@@ -320,6 +328,42 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
   if (viewProps.active && !_foreground && _expectedHostNames.count > 0) {
     [self prepare:[NSString stringWithUTF8String:_sessionId.c_str()]];
   }
+}
+
+- (void)mountingTransactionDidMount:(const MountingTransaction &)transaction
+               withSurfaceTelemetry:(const SurfaceTelemetry &)surfaceTelemetry
+{
+  if (!_prepared || _presentationAcknowledged) return;
+  // Portal transfers run inside this transaction. Revealing before Core Animation
+  // commits it keeps the source from painting a frame without its content.
+  [self acknowledgeAttachmentIfReady];
+  [self acknowledgePresentationIfReady];
+}
+
+- (void)updateContainerReveal
+{
+  // Renderers paint their own surfaces; showing them before content arrives covers
+  // the source with an empty frame. Dismissal (no session) stays visible.
+  const BOOL gated = !_foreground && !_sessionId.empty() && !_presentationAcknowledged;
+  _windowContainer.alpha = gated ? 0 : 1;
+}
+
+- (BOOL)acknowledgePresentationIfReady
+{
+  if (!_prepared || _foreground || !_active || _presentationAcknowledged || !_presentationRequested ||
+      self.superview == nil || _windowContainer.window == nil || _eventEmitter == nullptr ||
+      CACurrentMediaTime() >= _presentationDeadline || ![self transitionHostsAreReady:YES]) {
+    return NO;
+  }
+  _presentationAcknowledged = YES;
+  // Invalidate a pending transaction-completion check for this request.
+  _presentationRequestId += 1;
+  _presentationCheckPending = NO;
+  [_presentationDisplayLink invalidate];
+  _presentationDisplayLink = nil;
+  [self updateContainerReveal];
+  [self emitPresentationStage:"presented"];
+  return YES;
 }
 
 - (void)prepare:(NSString *)sessionId
@@ -420,38 +464,40 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
 }
 
 - (void)collectReadyHosts:(UIView *)view
-                 visible:(BOOL)visible
-     requireLiveChildren:(BOOL)requireLiveChildren
-               remaining:(NSMutableSet<NSString *> *)remaining
+           requireContent:(BOOL)requireContent
+                remaining:(NSMutableSet<NSString *> *)remaining
 {
-  const BOOL isVisible = visible && !view.hidden && view.alpha > 0 && view.layer.opacity > 0;
-  NSString *name = [view isKindOfClass:RCTViewComponentView.class] ? ((RCTViewComponentView *)view).nativeId : nil;
+  NSString *name = NativeIdOf(view);
   UIView *host = view.superview;
   // The marker is a child of the public PortalHost, never transferred content.
-  if (name != nil && [remaining containsObject:name] && (!requireLiveChildren || isVisible) &&
-      host.window == _windowContainer.window && !CGRectIsEmpty(host.bounds)) {
-    if (!requireLiveChildren) {
-      [remaining removeObject:name];
-    } else {
-      for (UIView *child in host.subviews) {
-        if (child != view && child.window == _windowContainer.window && !CGRectIsEmpty(child.bounds)) {
-          [remaining removeObject:name];
-          break;
-        }
-      }
-    }
+  // Renderer opacity is app motion, not readiness: backward sessions start where
+  // renderers may be fully faded, and the container itself is the reveal gate.
+  if (name != nil && [remaining containsObject:name] && host.window == _windowContainer.window &&
+      !CGRectIsEmpty(host.bounds) && (!requireContent || [self host:host containsContentFor:name])) {
+    [remaining removeObject:name];
   }
   if (remaining.count == 0) return;
   for (UIView *child in view.subviews) {
-    [self collectReadyHosts:child visible:isVisible requireLiveChildren:requireLiveChildren remaining:remaining];
+    [self collectReadyHosts:child requireContent:requireContent remaining:remaining];
   }
 }
 
-- (BOOL)transitionHostsAreReady:(BOOL)requireLiveChildren
+- (BOOL)host:(UIView *)host containsContentFor:(NSString *)hostName
+{
+  // Retained content may have no native views of its own; its portal always
+  // carries a marker named after the receiving host.
+  NSString *contentId = [hostName stringByAppendingString:@":content"];
+  for (UIView *child in host.subviews) {
+    if ([NativeIdOf(child) isEqualToString:contentId]) return YES;
+  }
+  return NO;
+}
+
+- (BOOL)transitionHostsAreReady:(BOOL)requireContent
 {
   if (_expectedHostNames.count == 0) return NO;
   NSMutableSet<NSString *> *remaining = [NSMutableSet setWithArray:_expectedHostNames];
-  [self collectReadyHosts:_windowContainer visible:YES requireLiveChildren:requireLiveChildren remaining:remaining];
+  [self collectReadyHosts:_windowContainer requireContent:requireContent remaining:remaining];
   return remaining.count == 0;
 }
 
@@ -497,18 +543,12 @@ class ScreenChoreographyWindowComponentDescriptor final : public ScreenChoreogra
     if (!strongSelf->_active || strongSelf.superview == nil || window == nil ||
         strongSelf->_windowContainer.window != window || strongSelf->_eventEmitter == nil ||
         CACurrentMediaTime() >= strongSelf->_presentationDeadline) return;
-    if (![strongSelf transitionHostsAreReady:YES]) {
-      if (strongSelf->_presentationDisplayLink == nil && CACurrentMediaTime() < strongSelf->_presentationDeadline) {
-        strongSelf->_presentationDisplayLink =
-            [CADisplayLink displayLinkWithTarget:strongSelf selector:@selector(retryPresentation:)];
-        [strongSelf->_presentationDisplayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
-      }
-      return;
+    if (![strongSelf acknowledgePresentationIfReady] && strongSelf->_presentationDisplayLink == nil &&
+        CACurrentMediaTime() < strongSelf->_presentationDeadline) {
+      strongSelf->_presentationDisplayLink =
+          [CADisplayLink displayLinkWithTarget:strongSelf selector:@selector(retryPresentation:)];
+      [strongSelf->_presentationDisplayLink addToRunLoop:NSRunLoop.mainRunLoop forMode:NSRunLoopCommonModes];
     }
-    strongSelf->_presentationAcknowledged = YES;
-    [strongSelf->_presentationDisplayLink invalidate];
-    strongSelf->_presentationDisplayLink = nil;
-    [strongSelf emitPresentationStage:"presented"];
   }];
   [CATransaction commit];
 }

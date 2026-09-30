@@ -165,6 +165,36 @@ Call this hook unconditionally inside each item component, not inside the parent
 
 Replace `startProgress`/`endProgress` with `during: [startProgress, endProgress]` and pass `stagger` and `translateY` explicitly. The old defaults correspond to `{ during: [0.7, 1], stagger: 0.05, translateY: 16 }`. The new API keeps the entire stagger within `during`, so a long list may have tighter spacing. It also keeps idle/unrelated screen content visible and respects reduced motion. For direct access to the expansion clock previously returned by the helper, use `useChoreographyProgress`.
 
+## `useTransitionPortalHost`
+
+Returns the Teleport host name for app-owned content that joins a renderer during the active session, such as controls riding on a hero image. Pass the host name you want while the session is active and `undefined` otherwise.
+
+```tsx
+import { Portal, PortalHost } from 'react-native-teleport';
+import {
+  useChoreographyProgress,
+  useTransitionPortalHost,
+} from 'react-native-screen-choreography/core';
+
+function ControlsPortal({ groupId, children }) {
+  const { phase, groupId: activeGroupId } = useChoreographyProgress();
+  const hostName = useTransitionPortalHost(
+    phase === 'active' && activeGroupId === groupId
+      ? `controls.${groupId}`
+      : undefined
+  );
+  return <Portal hostName={hostName}>{children}</Portal>;
+}
+
+// Inside the renderer: <PortalHost name={`controls.${groupId}`} />
+```
+
+```ts
+useTransitionPortalHost(hostName: string | undefined): string | undefined;
+```
+
+The returned name switches together with retained shared-element content. On iOS it waits for the native overlay to attach, so the content moves in the same transfer that reveals the overlay; switching on `phase` alone moves it into an overlay that is not presented yet, and it disappears for a few frames. Reduced motion and sessions without a native presentation return the requested name immediately.
+
 ## `setDebugEnabled`
 
 ```ts

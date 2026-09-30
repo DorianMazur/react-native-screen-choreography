@@ -5,24 +5,14 @@ import {
   useRef,
   useEffect,
   useLayoutEffect,
-  useState,
   useCallback,
   useMemo,
   useContext,
   useReducer,
   memo,
 } from 'react';
-import {
-  type StyleProp,
-  type ViewStyle,
-  StyleSheet,
-  Platform,
-} from 'react-native';
-import Animated, {
-  useAnimatedReaction,
-  useDerivedValue,
-} from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
+import { type StyleProp, type ViewStyle, StyleSheet, View } from 'react-native';
+import Animated, { useDerivedValue } from 'react-native-reanimated';
 import type { NativePresentation } from '../core/nativePresentation';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
@@ -38,11 +28,13 @@ import {
 } from '../core/ChoreographyContext';
 import { useScreenId } from '../core/screenIdContext';
 import {
+  getLiveContentMarkerId,
   getLiveDestinationHostName,
   getLiveOverlayHostName,
   getLivePortalName,
 } from '../core/liveHostNames';
 import { defaultTransition } from '../transitions/makeTransition';
+import { useRetainedPortalHost } from '../hooks/useTransitionPortalHost';
 
 export interface SharedElementProps {
   id: string;
@@ -420,6 +412,17 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
         name={getLivePortalName(screenId, id, groupId)}
         style={[styles.livePortal, portalStyle]}
       >
+        <View
+          nativeID={
+            committedHostName
+              ? getLiveContentMarkerId(committedHostName)
+              : undefined
+          }
+          collapsable={false}
+          accessible={false}
+          pointerEvents="none"
+          style={styles.contentMarker}
+        />
         <SharedElementPresentationContext.Provider value={presentation}>
           {children}
         </SharedElementPresentationContext.Provider>
@@ -427,58 +430,6 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     </SharedElementRegistration>
   );
 });
-
-/** A missing Teleport host sends content back to its owner, which may be hidden. */
-function useRetainedPortalHost(
-  requestedHostName: string | undefined,
-  sessionId: string | null,
-  presentation: NativePresentation | undefined
-) {
-  const previousHost = useRef<string | undefined>(undefined);
-  const current = useRef<{
-    id: string | null;
-    presentation: NativePresentation;
-  } | null>(null);
-  const [attachedSessionId, setAttachedSessionId] = useState<string | null>(
-    null
-  );
-  useLayoutEffect(() => {
-    current.current = presentation ? { id: sessionId, presentation } : null;
-    return () => {
-      current.current = null;
-    };
-  }, [sessionId, presentation]);
-  const acceptAttachment = useCallback((id: string) => {
-    if (
-      current.current?.id === id &&
-      current.current.presentation.valid.value
-    ) {
-      setAttachedSessionId(id);
-    }
-  }, []);
-  const phase = presentation?.phase;
-  const valid = presentation?.valid;
-  useAnimatedReaction(
-    () => (valid?.value && phase && phase.value >= 1 ? sessionId : null),
-    (readyId, previousId) => {
-      if (readyId !== null && readyId !== previousId) {
-        scheduleOnRN(acceptAttachment, readyId);
-      }
-    }
-  );
-  // Android gates the receiving host's draw natively. On iOS, registration can
-  // precede window attachment, so even the original owner waits for the ack.
-  const hostName =
-    (Platform.OS === 'android' && previousHost.current === undefined) ||
-    !presentation ||
-    attachedSessionId === sessionId
-      ? requestedHostName
-      : previousHost.current;
-  useLayoutEffect(() => {
-    previousHost.current = hostName;
-  }, [hostName]);
-  return hostName;
-}
 
 function LiveSharedElementTarget({
   id,
@@ -518,5 +469,10 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+  },
+  contentMarker: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
   },
 });

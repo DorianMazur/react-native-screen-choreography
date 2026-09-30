@@ -332,34 +332,35 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     // If drawing is delayed, the provider's one-second timeout is the safety net.
   }
 
-  private fun transitionHostsAreReady(requireLiveChildren: Boolean): Boolean {
+  private fun transitionHostsAreReady(requireContent: Boolean): Boolean {
     if (expectedHostNames.isEmpty()) return false
     val remaining = expectedHostNames.toMutableSet()
-    fun visit(view: View, visible: Boolean) {
-      // Our own alpha is the readiness gate, so inspect descendants independently.
-      val isVisible = visible && view.visibility == View.VISIBLE && (view === this || view.alpha > 0f)
+    fun visit(view: View) {
       val name = view.getTag(R.id.view_tag_native_id) as? String
       val host = view.parent as? ViewGroup
       // The marker is a child of the public PortalHost, never transferred content.
-      if (name != null && remaining.contains(name) && (!requireLiveChildren || isVisible) && host != null &&
-        host.isAttachedToWindow && host.windowToken == windowToken && host.width > 0 && host.height > 0) {
-        if (!requireLiveChildren) {
-          remaining.remove(name)
-        } else {
-          for (index in 0 until host.childCount) {
-            val child = host.getChildAt(index)
-            if (child !== view && child.isAttachedToWindow && child.windowToken == windowToken && child.width > 0 && child.height > 0) {
-              remaining.remove(name)
-              break
-            }
-          }
-        }
+      // Renderer alpha is app motion, not readiness: backward sessions start where
+      // renderers may be fully faded, and our own alpha is the reveal gate.
+      if (name != null && remaining.contains(name) && host != null && host.isAttachedToWindow &&
+        host.windowToken == windowToken && host.width > 0 && host.height > 0 &&
+        (!requireContent || hostContainsContent(host, name))) {
+        remaining.remove(name)
       }
       if (remaining.isNotEmpty() && view is ViewGroup) {
-        for (index in 0 until view.childCount) visit(view.getChildAt(index), isVisible)
+        for (index in 0 until view.childCount) visit(view.getChildAt(index))
       }
     }
-    visit(this, true)
+    visit(this)
     return remaining.isEmpty()
+  }
+
+  private fun hostContainsContent(host: ViewGroup, hostName: String): Boolean {
+    // Retained content may have no native views of its own; its portal always
+    // carries a marker named after the receiving host.
+    val contentId = "$hostName:content"
+    for (index in 0 until host.childCount) {
+      if (host.getChildAt(index).getTag(R.id.view_tag_native_id) == contentId) return true
+    }
+    return false
   }
 }
