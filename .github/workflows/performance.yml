@@ -94,6 +94,10 @@ jobs:
       PERFORMANCE_TIMING_CYCLES: '20'
       RCT_USE_RN_DEP: '1'
       RCT_USE_PREBUILT_RNCORE: '1'
+      # RN's pod installer enables its compiler wrappers when this is set.
+      USE_CCACHE: '1'
+      CCACHE_MAXSIZE: 2G
+      CCACHE_COMPILERCHECK: content
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -103,6 +107,31 @@ jobs:
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
           xcode-version: '26'
+      - name: Set up compiler cache
+        id: ccache-setup
+        env:
+          HOMEBREW_NO_AUTO_UPDATE: '1'
+          HOMEBREW_NO_INSTALL_CLEANUP: '1'
+        run: |
+          command -v ccache >/dev/null || brew install ccache
+          echo "CCACHE_DIR=$RUNNER_TEMP/choreography-ccache" >> "$GITHUB_ENV"
+          ccache_toolchain="$(
+            {
+              xcodebuild -version
+              xcrun --sdk iphonesimulator --show-sdk-version
+              ccache --version
+            } | shasum -a 256 | cut -d ' ' -f 1
+          )"
+          echo "toolchain=$ccache_toolchain" >> "$GITHUB_OUTPUT"
+      - name: Restore compiler cache
+        id: ccache-restore
+        uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ runner.os }}-${{ runner.arch }}-ios-performance-release-ccache-v1-${{ steps.ccache-setup.outputs.toolchain }}-${{ hashFiles('yarn.lock', 'examples/react-navigation/ios/Podfile*', '.yarn/patches/**') }}-${{ github.run_id }}-${{ github.run_attempt }}
+          restore-keys: |
+            ${{ runner.os }}-${{ runner.arch }}-ios-performance-release-ccache-v1-${{ steps.ccache-setup.outputs.toolchain }}-${{ hashFiles('yarn.lock', 'examples/react-navigation/ios/Podfile*', '.yarn/patches/**') }}-
+            ${{ runner.os }}-${{ runner.arch }}-ios-performance-release-ccache-v1-${{ steps.ccache-setup.outputs.toolchain }}-
       - name: Set up Ruby and locked gems
         uses: ruby/setup-ruby@14594264cd68ce8a2345dd349bc3d138a4ef85c8 # v1
         with:
@@ -112,8 +141,26 @@ jobs:
       - name: Install CocoaPods
         working-directory: examples/react-navigation
         run: bundle exec pod install --repo-update --project-directory=ios
+      - name: Reset compiler cache statistics
+        run: ccache --zero-stats
       - name: Collect iOS release measurements
         run: bash scripts/performance/run-ios.sh native-release
+      - name: Report compiler cache statistics
+        if: always() && steps.ccache-setup.outcome == 'success'
+        run: |
+          ccache --show-stats --verbose
+          {
+            echo '### iOS compiler cache'
+            echo
+            ccache --show-stats | sed 's/^/    /'
+          } >> "$GITHUB_STEP_SUMMARY"
+      - name: Save compiler cache
+        # Completed compilations remain reusable even if an XCTest later fails.
+        if: ${{ !cancelled() && steps.ccache-restore.outcome == 'success' }}
+        uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: ${{ env.CCACHE_DIR }}
+          key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
       - name: Add timing summary
         if: always()
         env:

@@ -53,6 +53,7 @@ mkdir -p "$derived_data/Build/Products"
 rm -f "$derived_data"/Build/Products/ChoreographyPerformance_*.xctestrun
 status=0
 xcodebuild build-for-testing \
+  -showBuildTimingSummary \
   -workspace examples/react-navigation/ios/ScreenChoreographyExample.xcworkspace \
   -scheme ChoreographyPerformance -configuration Release \
   -destination "platform=iOS Simulator,id=$udid" \
