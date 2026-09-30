@@ -5,25 +5,14 @@ import {
   useRef,
   useEffect,
   useLayoutEffect,
-  useState,
   useCallback,
   useMemo,
   useContext,
   useReducer,
   memo,
 } from 'react';
-import {
-  type StyleProp,
-  type ViewStyle,
-  StyleSheet,
-  Platform,
-} from 'react-native';
-import Animated, {
-  useAnimatedReaction,
-  useDerivedValue,
-} from 'react-native-reanimated';
-import { scheduleOnRN } from 'react-native-worklets';
-import type { NativePresentation } from '../core/nativePresentation';
+import { type StyleProp, type ViewStyle, StyleSheet, View } from 'react-native';
+import Animated, { useDerivedValue } from 'react-native-reanimated';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
   ElementPresentation,
@@ -35,9 +24,11 @@ import type {
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
+  PreparingSessionContext,
 } from '../core/ChoreographyContext';
 import { useScreenId } from '../core/screenIdContext';
 import {
+  getLiveContentMarkerId,
   getLiveDestinationHostName,
   getLiveOverlayHostName,
   getLivePortalName,
@@ -177,9 +168,12 @@ function LiveSharedElement(props: SharedElementProps) {
       'SharedElement must be used within a <ChoreographyProvider>'
     );
   }
-  const session = choreography.activeSession;
+  const session =
+    useContext(PreparingSessionContext) ?? choreography.activeSession;
+  const preparing = session?.state === 'preparing';
   const pair =
-    session?.state === 'active' && session.groupId === props.groupId
+    (session?.state === 'active' || preparing) &&
+    session.groupId === props.groupId
       ? (session.pairs.find(
           (candidate) =>
             candidate.id === props.id &&
@@ -192,9 +186,6 @@ function LiveSharedElement(props: SharedElementProps) {
   const direction = pair ? session!.direction : null;
   const sourceScreenId = pair ? session!.sourceScreenId : null;
   const targetScreenId = pair ? session!.targetScreenId : null;
-  const nativePresentation =
-    pair && !session!.reducedMotion ? session!.presentation : undefined;
-  const sessionId = pair ? session!.id : null;
   const { progress } = choreography;
   const { getSettledScreenId, subscribeToScreenRemoval } = actions;
 
@@ -206,12 +197,11 @@ function LiveSharedElement(props: SharedElementProps) {
         {...props}
         screenId={screenId}
         pair={pair}
+        preparing={Boolean(pair && preparing)}
         reducedMotion={reducedMotion}
         direction={direction}
         sourceScreenId={sourceScreenId}
         targetScreenId={targetScreenId}
-        nativePresentation={nativePresentation}
-        sessionId={sessionId}
         progress={progress}
         getSettledScreenId={getSettledScreenId}
         subscribeToScreenRemoval={subscribeToScreenRemoval}
@@ -221,12 +211,11 @@ function LiveSharedElement(props: SharedElementProps) {
       props,
       screenId,
       pair,
+      preparing,
       reducedMotion,
       direction,
       sourceScreenId,
       targetScreenId,
-      nativePresentation,
-      sessionId,
       progress,
       getSettledScreenId,
       subscribeToScreenRemoval,
@@ -244,24 +233,23 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   metadata,
   screenId,
   pair,
+  preparing,
   reducedMotion,
   direction,
   sourceScreenId,
   targetScreenId,
-  nativePresentation,
-  sessionId,
   progress,
   getSettledScreenId,
   subscribeToScreenRemoval,
 }: SharedElementProps & {
   screenId: string;
   pair: ElementTransitionPair | null;
+  /** Paired while native attaches the overlay; content stays where it rests. */
+  preparing: boolean;
   reducedMotion?: boolean;
   direction: TransitionSessionData['direction'] | null;
   sourceScreenId: string | null;
   targetScreenId: string | null;
-  nativePresentation?: NativePresentation;
-  sessionId: string | null;
   progress: TransitionSessionData['progress'];
   getSettledScreenId: () => string | null;
   subscribeToScreenRemoval: (
@@ -298,20 +286,32 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   // commit that unmounts the overlay host and retargets this portal lands the
   // view in a visible host at the same window bounds — no gap frame.
   let hostName: string | undefined;
+  const restingHostName = () =>
+    settledTargetScreenIdRef.current
+      ? getLiveDestinationHostName(
+          settledTargetScreenIdRef.current,
+          id,
+          groupId
+        )
+      : undefined;
   if (participates) {
     wasParticipatingRef.current = true;
     // Retain presentation data only, never a popped screen's registration/ref.
-    endpoints.current = activeEndpoints;
-    hostName = reducedMotion
-      ? targetScreenId === screenId
-        ? undefined
-        : getLiveDestinationHostName(targetScreenId!, id, groupId)
-      : getLiveOverlayHostName(
-          sourceScreenId!,
-          targetScreenId!,
-          id,
-          groupId ?? 'default'
-        );
+    if (!preparing) endpoints.current = activeEndpoints;
+    // The session commit that ends preparation moves every pair at once, into
+    // hosts native has already attached.
+    hostName = preparing
+      ? restingHostName()
+      : reducedMotion
+        ? targetScreenId === screenId
+          ? undefined
+          : getLiveDestinationHostName(targetScreenId!, id, groupId)
+        : getLiveOverlayHostName(
+            sourceScreenId!,
+            targetScreenId!,
+            id,
+            groupId ?? 'default'
+          );
   } else {
     if (wasParticipatingRef.current) {
       wasParticipatingRef.current = false;
@@ -319,20 +319,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       settledTargetScreenIdRef.current =
         settledScreenId !== screenId ? settledScreenId : null;
     }
-    hostName = settledTargetScreenIdRef.current
-      ? getLiveDestinationHostName(
-          settledTargetScreenIdRef.current,
-          id,
-          groupId
-        )
-      : undefined;
+    hostName = restingHostName();
   }
-
-  const committedHostName = useRetainedPortalHost(
-    hostName,
-    sessionId,
-    nativePresentation
-  );
 
   // The destination host unmounts with its screen, returning content to this portal.
   const settledTargetScreenId = settledTargetScreenIdRef.current;
@@ -357,12 +345,9 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   )
     ? ('expanded' as const)
     : ('collapsed' as const);
+  const transitioning = participates && !reducedMotion && !preparing;
   const presentationProgress = useDerivedValue(() =>
-    participates && !reducedMotion
-      ? progress.value
-      : settled === 'expanded'
-        ? 1
-        : 0
+    transitioning ? progress.value : settled === 'expanded' ? 1 : 0
   );
   const collapsed = endpoints.current?.collapsed ?? initial;
   const expanded = endpoints.current?.expanded ?? initial;
@@ -370,8 +355,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     () => ({
       progress,
       presentationProgress,
-      transitioning: participates && !reducedMotion,
-      direction,
+      transitioning,
+      direction: preparing ? null : direction,
       collapsed,
       expanded,
       settled,
@@ -379,8 +364,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     [
       progress,
       presentationProgress,
-      participates,
-      reducedMotion,
+      transitioning,
+      preparing,
       direction,
       collapsed,
       expanded,
@@ -416,10 +401,17 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       metadata={metadata}
     >
       <Portal
-        hostName={committedHostName}
+        hostName={hostName}
         name={getLivePortalName(screenId, id, groupId)}
         style={[styles.livePortal, portalStyle]}
       >
+        <View
+          nativeID={hostName ? getLiveContentMarkerId(hostName) : undefined}
+          collapsable={false}
+          accessible={false}
+          pointerEvents="none"
+          style={styles.contentMarker}
+        />
         <SharedElementPresentationContext.Provider value={presentation}>
           {children}
         </SharedElementPresentationContext.Provider>
@@ -427,58 +419,6 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     </SharedElementRegistration>
   );
 });
-
-/** A missing Teleport host sends content back to its owner, which may be hidden. */
-function useRetainedPortalHost(
-  requestedHostName: string | undefined,
-  sessionId: string | null,
-  presentation: NativePresentation | undefined
-) {
-  const previousHost = useRef<string | undefined>(undefined);
-  const current = useRef<{
-    id: string | null;
-    presentation: NativePresentation;
-  } | null>(null);
-  const [attachedSessionId, setAttachedSessionId] = useState<string | null>(
-    null
-  );
-  useLayoutEffect(() => {
-    current.current = presentation ? { id: sessionId, presentation } : null;
-    return () => {
-      current.current = null;
-    };
-  }, [sessionId, presentation]);
-  const acceptAttachment = useCallback((id: string) => {
-    if (
-      current.current?.id === id &&
-      current.current.presentation.valid.value
-    ) {
-      setAttachedSessionId(id);
-    }
-  }, []);
-  const phase = presentation?.phase;
-  const valid = presentation?.valid;
-  useAnimatedReaction(
-    () => (valid?.value && phase && phase.value >= 1 ? sessionId : null),
-    (readyId, previousId) => {
-      if (readyId !== null && readyId !== previousId) {
-        scheduleOnRN(acceptAttachment, readyId);
-      }
-    }
-  );
-  // Android gates the receiving host's draw natively. On iOS, registration can
-  // precede window attachment, so even the original owner waits for the ack.
-  const hostName =
-    (Platform.OS === 'android' && previousHost.current === undefined) ||
-    !presentation ||
-    attachedSessionId === sessionId
-      ? requestedHostName
-      : previousHost.current;
-  useLayoutEffect(() => {
-    previousHost.current = hostName;
-  }, [hostName]);
-  return hostName;
-}
 
 function LiveSharedElementTarget({
   id,
@@ -518,5 +458,10 @@ const styles = StyleSheet.create({
     flex: 1,
     width: '100%',
     height: '100%',
+  },
+  contentMarker: {
+    position: 'absolute',
+    width: 0,
+    height: 0,
   },
 });

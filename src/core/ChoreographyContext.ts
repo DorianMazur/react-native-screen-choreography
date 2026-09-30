@@ -128,3 +128,6 @@ export interface ChoreographyContextType {
 
 export const ChoreographyContext =
   createContext<ChoreographyContextType | null>(null);
+
+export const PreparingSessionContext =
+  createContext<TransitionSessionData | null>(null);

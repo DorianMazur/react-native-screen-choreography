@@ -1,7 +1,6 @@
 package com.screenchoreography
 
 import android.content.Context
-import android.graphics.Bitmap
 import android.graphics.Canvas
 import android.os.Handler
 import android.os.Looper
@@ -9,7 +8,6 @@ import android.os.Message
 import android.os.SystemClock
 import android.view.View
 import android.view.ViewGroup
-import android.view.ViewGroupOverlay
 import android.view.ViewTreeObserver
 import com.facebook.react.R
 import com.facebook.react.uimanager.PointerEvents
@@ -33,12 +31,9 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private var dismissalRequestId = 0
   private var pendingPresentationAck = false
   private var pendingPresentationSessionId = ""
-  // Host-only teardown frame; this never captures or reaches a shared element.
-  private var dismissalFrame: Bitmap? = null
-  private var probingDismissalContent = false
-  private var foundDismissalChild = false
-  private var usesViewOverlay = false
-  private val dismissalProbeCanvas by lazy { Canvas() }
+  // Deactivation can precede the commit that returns retained content, so the
+  // live container keeps drawing until its hosts are empty (bounded by frames).
+  private var dismissing = false
   private val mainHandler = Handler(Looper.getMainLooper())
   private val contentReadiness = ViewTreeObserver.OnPreDrawListener {
     if (active && prepared) {
@@ -84,54 +79,30 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     if (!value) {
       presentationRequestId += 1
       pendingPresentationAck = false
-      val w = width
-      val h = height
-      clearDismissalFrame()
-
-      if (w > 0 && h > 0) {
-        try {
-          if (!hasDismissalContent()) {
-            dismissalRequestId += 1
-            alpha = 0f
-            visibility = View.INVISIBLE
-            return
-          }
-          val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
-          val canvas = Canvas(bmp)
-          super.dispatchDraw(canvas)
-          dismissalFrame = bmp
-          alpha = 1f
-          visibility = View.VISIBLE
-          invalidate()
-
-          val dismissalId = ++dismissalRequestId
-          // Queue against actual frame boundaries. Handler.post can run twice
-          // before the next draw and release the bridge frame too early.
-          postOnAnimation {
-            postOnAnimation release@{
-              if (active || dismissalId != dismissalRequestId) {
-                return@release
-              }
-              clearDismissalFrame()
-              alpha = 0f
-              visibility = View.INVISIBLE
-              invalidate()
-            }
-          }
-          return
-        } catch (_: Throwable) {
-          // Fall through to immediate hide on any allocation/draw failure.
+      val dismissalId = ++dismissalRequestId
+      if (width <= 0 || height <= 0 || !holdsTransferredContent()) {
+        finishDismissal()
+        return
+      }
+      // A snapshot would keep painting content that has already moved, so draw
+      // the live hosts until the returning commit empties them.
+      dismissing = true
+      alpha = 1f
+      visibility = View.VISIBLE
+      invalidate()
+      // Queue against actual frame boundaries. Handler.post can run twice
+      // before the next draw and release the bridge frame too early.
+      postOnAnimation {
+        postOnAnimation release@{
+          if (active || dismissalId != dismissalRequestId) return@release
+          finishDismissal()
         }
       }
-
-      dismissalRequestId += 1
-      alpha = 0f
-      visibility = View.INVISIBLE
       return
     }
 
     dismissalRequestId += 1
-    clearDismissalFrame()
+    dismissing = false
     alpha = 1f
     visibility = View.VISIBLE
     invalidate()
@@ -211,9 +182,15 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   override fun dispatchDraw(canvas: Canvas) {
-    val bmp = dismissalFrame
-    if (bmp != null && !bmp.isRecycled) {
-      canvas.drawBitmap(bmp, 0f, 0f, null)
+    if (dismissing) {
+      // Content returned in this traversal draws at its destination instead.
+      if (!holdsTransferredContent()) {
+        val dismissalId = dismissalRequestId
+        post { if (!active && dismissalId == dismissalRequestId) finishDismissal() }
+        return
+      }
+      super.dispatchDraw(canvas)
+      postInvalidateOnAnimation()
       return
     }
     // Content and receiving hosts arrive in one Fabric transaction. Never paint
@@ -263,31 +240,24 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     }
   }
 
-  override fun drawChild(canvas: Canvas, child: View, drawingTime: Long): Boolean {
-    if (probingDismissalContent) {
-      foundDismissalChild = true
+  private fun finishDismissal() {
+    dismissing = false
+    alpha = 0f
+    visibility = View.INVISIBLE
+    invalidate()
+  }
+
+  private fun holdsTransferredContent(): Boolean {
+    fun visit(view: View): Boolean {
+      val name = view.getTag(R.id.view_tag_native_id) as? String
+      if (name != null && name.endsWith(":content")) return true
+      if (view is ViewGroup) {
+        for (index in 0 until view.childCount) if (visit(view.getChildAt(index))) return true
+      }
       return false
     }
-    return super.drawChild(canvas, child, drawingTime)
-  }
-
-  override fun getOverlay(): ViewGroupOverlay {
-    usesViewOverlay = true
-    return super.getOverlay()
-  }
-
-  private fun hasDismissalContent(): Boolean {
-    if (childCount > 0 || background != null || foreground != null || layoutAnimation != null || usesViewOverlay) {
-      return true
-    }
-    foundDismissalChild = false
-    probingDismissalContent = true
-    try {
-      super.dispatchDraw(dismissalProbeCanvas)
-    } finally {
-      probingDismissalContent = false
-    }
-    return foundDismissalChild
+    for (index in 0 until childCount) if (visit(getChildAt(index))) return true
+    return false
   }
 
   override fun onAttachedToWindow() {
@@ -305,15 +275,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     cancelPresentationReady()
     attachmentAcknowledged = false
     dismissalRequestId += 1
-    clearDismissalFrame()
-  }
-
-  private fun clearDismissalFrame() {
-    val bmp = dismissalFrame ?: return
-    dismissalFrame = null
-    if (!bmp.isRecycled) {
-      bmp.recycle()
-    }
+    dismissing = false
   }
 
   private fun schedulePresentationReady() {
@@ -332,34 +294,35 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     // If drawing is delayed, the provider's one-second timeout is the safety net.
   }
 
-  private fun transitionHostsAreReady(requireLiveChildren: Boolean): Boolean {
+  private fun transitionHostsAreReady(requireContent: Boolean): Boolean {
     if (expectedHostNames.isEmpty()) return false
     val remaining = expectedHostNames.toMutableSet()
-    fun visit(view: View, visible: Boolean) {
-      // Our own alpha is the readiness gate, so inspect descendants independently.
-      val isVisible = visible && view.visibility == View.VISIBLE && (view === this || view.alpha > 0f)
+    fun visit(view: View) {
       val name = view.getTag(R.id.view_tag_native_id) as? String
       val host = view.parent as? ViewGroup
       // The marker is a child of the public PortalHost, never transferred content.
-      if (name != null && remaining.contains(name) && (!requireLiveChildren || isVisible) && host != null &&
-        host.isAttachedToWindow && host.windowToken == windowToken && host.width > 0 && host.height > 0) {
-        if (!requireLiveChildren) {
-          remaining.remove(name)
-        } else {
-          for (index in 0 until host.childCount) {
-            val child = host.getChildAt(index)
-            if (child !== view && child.isAttachedToWindow && child.windowToken == windowToken && child.width > 0 && child.height > 0) {
-              remaining.remove(name)
-              break
-            }
-          }
-        }
+      // Renderer alpha is app motion, not readiness: backward sessions start where
+      // renderers may be fully faded, and our own alpha is the reveal gate.
+      if (name != null && remaining.contains(name) && host != null && host.isAttachedToWindow &&
+        host.windowToken == windowToken && host.width > 0 && host.height > 0 &&
+        (!requireContent || hostContainsContent(host, name))) {
+        remaining.remove(name)
       }
       if (remaining.isNotEmpty() && view is ViewGroup) {
-        for (index in 0 until view.childCount) visit(view.getChildAt(index), isVisible)
+        for (index in 0 until view.childCount) visit(view.getChildAt(index))
       }
     }
-    visit(this, true)
+    visit(this)
     return remaining.isEmpty()
+  }
+
+  private fun hostContainsContent(host: ViewGroup, hostName: String): Boolean {
+    // Retained content may have no native views of its own; its portal always
+    // carries a marker named after the receiving host.
+    val contentId = "$hostName:content"
+    for (index in 0 until host.childCount) {
+      if (host.getChildAt(index).getTag(R.id.view_tag_native_id) == contentId) return true
+    }
+    return false
   }
 }

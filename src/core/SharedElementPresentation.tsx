@@ -16,6 +16,7 @@ export interface SharedElementPresentation {
    * stays at 0 (collapsed/source) or 1 (expanded/destination).
    */
   presentationProgress: DerivedValue<number>;
+  /** Participating with content in the overlay; can trail session start on iOS. */
   transitioning: boolean;
   /** Participating session direction; null when this owner is settled. */
   direction: 'forward' | 'backward' | null;
