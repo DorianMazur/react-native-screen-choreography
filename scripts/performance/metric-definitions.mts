@@ -11,6 +11,33 @@ export function metricDefinition(key: string, instrumentation: string) {
   const render = key.match(/\.renders\.(list|detail|hero)\.(mount|update)$/);
   const scenario = SCENARIOS[key.split('.')[0] as PerformanceScenario];
   if (!scenario) throw new Error('Unknown metric workload');
+  const metric = key.split('.').at(-1)!;
+  const motion = [
+    'tapToMotion',
+    'transitionDuration',
+    'handoffDuration',
+  ].includes(metric);
+  if (motion)
+    return {
+      version: 1,
+      workload: scenario.workload,
+      unit: 'ms',
+      clock: 'rn-worklets-steady-clock-ms',
+      start:
+        metric === 'transitionDuration'
+          ? 'first-ui-progress-change'
+          : metric === 'handoffDuration'
+            ? 'ui-progress-endpoint'
+            : 'js-tap-handler',
+      end:
+        metric === 'transitionDuration'
+          ? 'ui-progress-endpoint'
+          : metric === 'handoffDuration'
+            ? 'ui-visibility-input-handoff'
+            : 'first-ui-progress-change',
+      aggregation: 'one-sample-per-journey',
+      instrumentation,
+    };
   return {
     version: 1,
     workload: scenario.workload,

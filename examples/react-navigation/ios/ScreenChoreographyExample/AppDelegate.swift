@@ -21,11 +21,16 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-    window = UIWindow(frame: UIScreen.main.bounds)
+    let scenario = ProcessInfo.processInfo.environment["PERFORMANCE_SCENARIO"]
+    let benchmarking = ["gallery", "trips", "wallet"].contains(scenario ?? "")
+    window = benchmarking
+      ? BenchmarkWindow(frame: UIScreen.main.bounds)
+      : UIWindow(frame: UIScreen.main.bounds)
 
     factory.startReactNative(
       withModuleName: "ScreenChoreographyExample",
       in: window,
+      initialProperties: benchmarking ? ["performanceScenario": scenario!] : nil,
       launchOptions: launchOptions
     )
 

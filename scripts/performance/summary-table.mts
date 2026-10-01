@@ -49,6 +49,9 @@ export function metricCompatible(
         ['fixtureVersion', 'measurementDefinitionVersion'].every(
           (name) => current[name] != null && current[name] === base[name]
         )) &&
+    (current.platform !== 'ios' ||
+      (typeof current.metadata?.xcodeVersion === 'string' &&
+        current.metadata.xcodeVersion === base.metadata?.xcodeVersion)) &&
     fields.every(
       (field) =>
         current.metadata?.[field] != null &&
@@ -81,9 +84,18 @@ export function environmentChanges(current: InputRecord, base?: InputRecord) {
 
 export function headlineMetrics() {
   return SCENARIO_IDS.flatMap((scenario) =>
-    ['forward', 'backward'].map((direction) => ({
-      key: `${scenario}.${direction}.requestToSessionActiveMs`,
-      label: `${SCENARIOS[scenario].label} · ${direction === 'forward' ? 'open' : 'return'} preparation (ms)`,
+    [
+      ['forward.requestToSessionActiveMs', 'open preparation'],
+      ['forward.tapToMotion', 'tap to motion'],
+      ['forward.transitionDuration', 'open transition duration'],
+      ['forward.handoffDuration', 'open handoff duration'],
+      ['backward.requestToSessionActiveMs', 'return preparation'],
+      ['backward.tapToMotion', 'back tap to motion'],
+      ['backward.transitionDuration', 'return transition duration'],
+      ['backward.handoffDuration', 'return handoff duration'],
+    ].map(([key, label]) => ({
+      key: `${scenario}.${key}`,
+      label: `${SCENARIOS[scenario].label} · ${label} (ms)`,
       scale: 1,
       unit: 'ms',
     }))
@@ -153,66 +165,4 @@ export function renderCountsTable(report: InputRecord, base?: InputRecord) {
         ...rows,
       ].join('\n')
     : '';
-}
-
-/** Render bounded, validated diagnostic values from untrusted PR artifacts. */
-export function startupDiagnostics(
-  report: InputRecord,
-  base?: InputRecord
-): string {
-  const preparation = Object.entries(report.metrics ?? {})
-    .filter(
-      ([name, metric]) =>
-        /^(gallery|trips|wallet)\.(forward|backward)\.(preparation\.[a-zA-Z-]{1,64}Ms|requestToOverlayReadyMs)$/.test(
-          name
-        ) &&
-        metric != null &&
-        typeof metric === 'object' &&
-        Number.isInteger((metric as InputRecord).count) &&
-        (metric as InputRecord).count > 0 &&
-        typeof (metric as InputRecord).median === 'number' &&
-        Number.isFinite((metric as InputRecord).median) &&
-        (metric as InputRecord).median >= 0
-    )
-    .slice(0, SCENARIO_IDS.length * 40) as [string, InputRecord][];
-  if (!preparation.length) return '';
-  const number = (n: unknown, integer = false) =>
-    typeof n === 'number' &&
-    Number.isFinite(n) &&
-    n >= 0 &&
-    (!integer || Number.isInteger(n))
-      ? integer
-        ? String(n)
-        : n.toFixed(2)
-      : '—';
-  const journeys = SCENARIO_IDS.flatMap((scenario) =>
-    ['forward', 'backward'].map((direction) => `${scenario}.${direction}`)
-  ).filter((journey) => report.preparationDiagnostics?.[journey]);
-  return [
-    'Overlay readiness is a JavaScript proxy, not first presented motion. Stages can nest; do not add parent and child durations. Repeated stages are summed within each journey before aggregation.',
-    '',
-    ...(journeys.length
-      ? [
-          '| Journey | Traced | Overlay acknowledged | Overlay timeout |',
-          '| --- | ---: | ---: | ---: |',
-          ...journeys.map((journey) => {
-            const counts = report.preparationDiagnostics[journey];
-            return `| ${journey} | ${number(counts.tracedJourneys, true)} | ${number(counts.overlayAcknowledgedJourneys, true)} | ${number(counts.overlayTimeoutJourneys, true)} |`;
-          }),
-          '',
-        ]
-      : []),
-    '| Metric | Samples | Base median (ms) | PR / current median (ms) | Change | P95 (ms) |',
-    '| --- | ---: | ---: | ---: | ---: | ---: |',
-    ...preparation.map(([name, metric]) => {
-      const previous =
-        metricCompatible(report, base, name) &&
-        metric.count === base?.metrics?.[name]?.count
-          ? value(base, name, 1)
-          : null;
-      const baseline = previous !== null && previous >= 0 ? previous : null;
-      const delta = baseline === null ? null : metric.median - baseline;
-      return `| ${name} | ${number(metric.count, true)} | ${number(baseline)} | ${number(metric.median)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${delta.toFixed(2)} ms`} | ${number(metric.p95)} |`;
-    }),
-  ].join('\n');
 }

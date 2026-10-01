@@ -22,8 +22,10 @@ const report = {
   mode: 'native-release',
   valid: true,
   metrics: {
-    'gallery.forward.requestToSessionActiveMs': { count: 20, median: 40 },
-    'gallery.backward.requestToSessionActiveMs': { count: 20, median: 25 },
+    'gallery.forward.requestToSessionActiveMs': { count: 20, median: 30 },
+    'gallery.backward.requestToSessionActiveMs': { count: 20, median: 15 },
+    'gallery.forward.tapToMotion': { count: 20, median: 40 },
+    'gallery.backward.tapToMotion': { count: 20, median: 25 },
     'gallery.forward.preparation.overlay-readyMs': { count: 20, median: 100 },
   },
 };
@@ -46,20 +48,22 @@ test('only the current open PR head in this repository can receive a comment', (
   assert.equal(isCurrentPullRequest(pr, run, 'other/repo'), false);
 });
 
-test('comment omits optional startup timings and profiling durations', () => {
+test('comment includes preparation and motion but omits detailed startup timings', () => {
   const body = renderComment(run, { [artifact]: report });
   assert.ok(body.includes(COMMENT_MARKER));
-  assert.match(body, /Release: \*\*passed\*\*/);
+  assert.match(body, /Android release: \*\*passed\*\*/);
   assert.match(body, /No compatible baseline/);
-  assert.match(body, /open preparation \(ms\) \| — \| 40 \| —/);
-  assert.match(body, /return preparation \(ms\) \| — \| 25 \| —/);
+  assert.match(body, /open preparation \(ms\) \| — \| 30 \| —/);
+  assert.match(body, /return preparation \(ms\) \| — \| 15 \| —/);
+  assert.match(body, /tap to motion \(ms\) \| — \| 40 \| —/);
+  assert.match(body, /back tap to motion \(ms\) \| — \| 25 \| —/);
   assert.doesNotMatch(
     body,
     /startup diagnostics|overlay-readyMs|React profil|frames over deadline/
   );
   assert.equal(
     body.split('\n').filter((line) => /^\| Gallery/.test(line)).length,
-    2
+    8
   );
 });
 
@@ -98,7 +102,7 @@ test('all examples get separate comparison rows even when main only has Gallery'
   const base = structuredClone(measured);
   for (const scenario of ['trips', 'wallet']) {
     for (const direction of ['forward', 'backward']) {
-      measured.metrics[`${scenario}.${direction}.requestToSessionActiveMs`] = {
+      measured.metrics[`${scenario}.${direction}.tapToMotion`] = {
         count: 20,
         median: 30,
       };
@@ -120,11 +124,11 @@ test('all examples get separate comparison rows even when main only has Gallery'
       reports: { [artifact]: base },
     }
   );
-  assert.match(body, /Gallery · open preparation \(ms\) \| 40 \| 40 \| 0 ms/);
+  assert.match(body, /Gallery · tap to motion \(ms\) \| 40 \| 40 \| 0 ms/);
   for (const label of ['Trips', 'Wallet']) {
     assert.match(
       body,
-      new RegExp(`${label} · open preparation \\(ms\\) \\| — \\| 30 \\| —`)
+      new RegExp(`${label} · tap to motion \\(ms\\) \\| — \\| 30 \\| —`)
     );
     assert.match(body, new RegExp(`${label} · backward · hero · rerenders`));
   }
@@ -167,4 +171,26 @@ test('artifact reading validates schema and handles bounded failures', async () 
   await assert.rejects(() =>
     readArtifactSummary('unexpected', async () => report)
   );
+});
+
+test('iOS is validated, rendered and compared independently of Android', async () => {
+  const iosArtifact = 'performance-summary-ios-native-release';
+  const ios = { ...structuredClone(report), platform: 'ios' };
+  assert.deepEqual(
+    await readArtifactSummary(iosArtifact, async () => ios),
+    ios
+  );
+  assert.equal(
+    (await readArtifactSummary(iosArtifact, async () => report)).valid,
+    false
+  );
+  const body = renderComment(run, { [iosArtifact]: ios });
+  assert.match(
+    body,
+    /Android release: \*\*missing\*\* · iOS release: \*\*passed\*\*/
+  );
+  assert.match(body, /iOS release measurements/);
+  assert.match(body, /open preparation \(ms\) \| — \| 30 \| —/);
+  assert.match(body, /return preparation \(ms\) \| — \| 15 \| —/);
+  assert.match(body, /tap to motion \(ms\) \| — \| 40 \| —/);
 });

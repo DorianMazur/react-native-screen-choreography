@@ -1,7 +1,13 @@
 import type { InputRecord, MeasurementDocument } from './types.ts';
 import assert from 'node:assert/strict';
+import { spawnSync } from 'node:child_process';
+import { mkdtemp, mkdir, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
 import { test } from 'node:test';
+import { fileURLToPath } from 'node:url';
 import { distribution, summarize, markdown } from './report.mts';
+import { sameDefinition } from './metric-definitions.mts';
 import {
   SCENARIOS,
   SCENARIO_IDS,
@@ -66,6 +72,56 @@ const options = {
   mode: 'native-release',
   metadata: { timingCycles: 1 },
 };
+
+test('CLI prints collection failures and preserves diagnostic summaries', async () => {
+  const directory = await mkdtemp(path.join(tmpdir(), 'choreography-report-'));
+  try {
+    const input = path.join(directory, 'raw');
+    const output = path.join(directory, 'report');
+    const metadata = path.join(directory, 'metadata.json');
+    await mkdir(input);
+    await writeFile(metadata, JSON.stringify(options.metadata));
+    const invalid = fixture('gallery');
+    invalid.valid = false;
+    invalid.errors = ['missing-motion-observation'];
+    await Promise.all(
+      documents([invalid]).map(({ file, data }) =>
+        writeFile(path.join(input, file), JSON.stringify(data))
+      )
+    );
+
+    const result = spawnSync(
+      process.execPath,
+      [
+        '--experimental-transform-types',
+        fileURLToPath(new URL('./report.mts', import.meta.url)),
+        '--platform=android',
+        '--mode=native-release',
+        `--input=${input}`,
+        `--output=${output}`,
+        `--metadata=${metadata}`,
+      ],
+      { encoding: 'utf8' }
+    );
+
+    assert.equal(result.error, undefined);
+    assert.equal(result.status, 1);
+    const summary = JSON.parse(
+      await readFile(path.join(output, 'summary.json'), 'utf8')
+    );
+    assert.equal(summary.valid, false);
+    assert.match(result.stderr, /Performance collection failed:/);
+    assert.match(result.stderr, /gallery\.json:.*missing-motion-observation/);
+    for (const error of summary.errors)
+      assert.ok(result.stderr.includes(error));
+    assert.match(
+      await readFile(path.join(output, 'summary.md'), 'utf8'),
+      /Collection failed/
+    );
+  } finally {
+    await rm(directory, { recursive: true, force: true });
+  }
+});
 
 test('preserves sample readings and self-describing render counts without changing timing units', () => {
   const data = fixture('gallery');
@@ -162,12 +218,12 @@ function withPreparationTrace(data: InputRecord) {
   });
 }
 
-test('optional startup diagnostics use definition 4 and aggregate repeated stages per journey', () => {
+test('optional startup diagnostics use definition 5 and aggregate repeated stages per journey', () => {
   const input = documents();
   withPreparationTrace(input[0].data);
   const summary = summarize(input, options);
   assert.equal(summary.valid, true, summary.errors.join());
-  assert.equal(summary.measurementDefinitionVersion, 4);
+  assert.equal(summary.measurementDefinitionVersion, 5);
   assert.equal(
     summary.metrics['gallery.forward.requestToSessionActiveMs']!.median,
     40
@@ -196,7 +252,7 @@ test('optional startup diagnostics use definition 4 and aggregate repeated stage
     summary.metrics['gallery.forward.requestToOverlayReadyMs']!.median,
     60
   );
-  assert.match(markdown(summary), /not first presented motion/);
+  assert.match(markdown(summary), /not display presentation timestamps/);
 });
 
 test('invalid or missing requested startup diagnostics fail atomically', () => {
@@ -273,8 +329,11 @@ test('overlay timeouts fail validation while preserving diagnostic samples', () 
     summary.metrics['gallery.forward.requestToSessionActiveMs']!.median,
     40
   );
-  assert.match(markdown(summary), /Overlay timeout/);
-  assert.match(markdown(summary), /gallery.forward \| 1 \| 0 \| 1/);
+  assert.doesNotMatch(markdown(summary), /Optional startup diagnostics/);
+  assert.match(
+    markdown(summary),
+    /1\/1 transitions did not confirm overlay presentation/
+  );
 
   journey.requestToOverlayReadyMs = 60;
   const invalid = summarize(input, options);
@@ -453,7 +512,7 @@ test('reports 20 round trips with preparation traces in both directions', () => 
     metadata: { timingCycles: 20 },
   });
   assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(summary.measurementDefinitionVersion, 4);
+  assert.equal(summary.measurementDefinitionVersion, 5);
   for (const scenario of SCENARIO_IDS) {
     for (const direction of ['forward', 'backward']) {
       assert.equal(
@@ -505,8 +564,8 @@ test('requires every example and never merges their readings or workload definit
       new RegExp(`Missing valid ${scenario} fixture run`)
     );
   });
-  assert.match(markdown(summary), /Trips · open preparation/);
-  assert.match(markdown(summary), /Wallet · return preparation/);
+  assert.match(markdown(summary), /Trips · tap to motion/);
+  assert.match(markdown(summary), /Wallet · back tap to motion/);
 });
 
 test("instrumentation changes in one example do not invalidate another example's definitions", () => {
@@ -581,7 +640,135 @@ test('rejects every fixture version before the actual Gallery workload', () => {
 
 test('rejects unsupported benchmark platforms', () => {
   assert.throws(
-    () => summarize(documents(), { ...options, platform: 'ios' }),
+    () => summarize(documents(), { ...options, platform: 'web' }),
     /platform must be android/
   );
+});
+
+function withMotion(data: InputRecord) {
+  data.fixtureVersion = 6;
+  data.motionTracing = { version: 1, clock: 'rn-worklets-steady-clock-ms' };
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    const offset = index * 1000;
+    Object.assign(journey, {
+      requestId: index + 1,
+      requestJsMs: offset + 100,
+      sessionActiveJsMs: offset + 140,
+      motion: {
+        requestId: index + 1,
+        firstMotionMs: offset + 170,
+        motionEndMs: offset + 470,
+        handoffMs: offset + 480,
+      },
+    });
+    journey.probe.handlerJsMs = offset + 600;
+  });
+  return data;
+}
+
+for (const platform of ['android', 'ios']) {
+  test(`${platform}: reports preparation and all three motion metrics for every example`, () => {
+    const input = documents();
+    input.forEach(({ data }) => {
+      withMotion(data);
+      data.native.platform = platform;
+      data.native.clock = `${platform}-uptime-ms`;
+      data.native.touches.forEach((touch: InputRecord) => {
+        touch.kind =
+          platform === 'ios' ? 'window-touch-ended' : 'activity-action-up';
+      });
+    });
+    const summary = summarize(input, { ...options, platform });
+    assert.equal(summary.valid, true, summary.errors.join());
+    input.forEach(({ data }) => {
+      data.motionTracing.version = 2;
+    });
+    const synchronous = summarize(input, { ...options, platform });
+    assert.equal(synchronous.valid, true, synchronous.errors.join());
+    assert.deepEqual(synchronous.metrics, summary.metrics);
+    const body = markdown(summary);
+    for (const scenario of SCENARIO_IDS)
+      for (const direction of ['forward', 'backward']) {
+        const prefix = `${scenario}.${direction}`;
+        assert.match(
+          body,
+          new RegExp(
+            `${SCENARIOS[scenario].label} · ${direction === 'forward' ? 'open' : 'return'} preparation \\(ms\\) \\| — \\| 40 \\| —`
+          )
+        );
+        assert.equal(summary.metrics[`${prefix}.tapToMotion`]!.median, 70);
+        assert.equal(
+          summary.metrics[`${prefix}.transitionDuration`]!.median,
+          300
+        );
+        assert.equal(summary.metrics[`${prefix}.handoffDuration`]!.median, 10);
+        assert.equal(
+          summary.metricDefinitions[`${prefix}.tapToMotion`].clock,
+          'rn-worklets-steady-clock-ms'
+        );
+        for (const metric of [
+          'tapToMotion',
+          'transitionDuration',
+          'handoffDuration',
+        ]) {
+          const previous = summary.metricDefinitions[`${prefix}.${metric}`];
+          const current = synchronous.metricDefinitions[`${prefix}.${metric}`];
+          assert.match(previous.instrumentation, /\+ui-motion-v1$/);
+          assert.match(current.instrumentation, /\+ui-motion-v2$/);
+          assert.equal(
+            sameDefinition(previous, current),
+            false,
+            'synchronous observations must not compare against mapper sampling'
+          );
+        }
+      }
+    assert.doesNotMatch(body, /preparation\.[a-z-]+Ms|requestToOverlayReadyMs/);
+    input[0].data.native.platform = platform === 'ios' ? 'android' : 'ios';
+    assert.equal(
+      summarize(input, { ...options, platform }).valid,
+      false,
+      'native evidence must match the lane'
+    );
+  });
+}
+
+test('missing or inconsistent motion evidence fails the whole fixture without partial new metrics', () => {
+  for (const mutate of [
+    (data: InputRecord) => {
+      delete data.motionTracing;
+    },
+    (data: InputRecord) => {
+      data.motionTracing.clock = 'ios-uptime-ms';
+    },
+    (data: InputRecord) => {
+      data.motionTracing.version = 3;
+    },
+    (data: InputRecord) => {
+      delete data.journeys[0].motion;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.requestId = 2;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.firstMotionMs = 139;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.motionEndMs = 170;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.handoffMs = 469;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.handoffMs = 601;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.motionEndMs = NaN;
+    },
+  ]) {
+    const data = withMotion(fixture('gallery'));
+    mutate(data);
+    const summary = summarize(documents([data]), options);
+    assert.equal(summary.valid, false);
+    assert.equal(summary.metrics['gallery.forward.tapToMotion'], undefined);
+  }
 });

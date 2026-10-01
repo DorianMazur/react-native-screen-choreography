@@ -9,6 +9,7 @@ import {
   newerRun,
   isMainRun,
   MAIN_BRANCH,
+  SUMMARY_ARTIFACTS,
   type SavedRun,
 } from './history.mts';
 import type { InputRecord } from './types.ts';
@@ -20,7 +21,7 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const COMMENT_MARKER = '<!-- choreography-performance -->';
-const ARTIFACTS = ['performance-summary-android-native-release'];
+const ARTIFACTS = SUMMARY_ARTIFACTS;
 
 const safe = (value: unknown) =>
   String(value)
@@ -51,7 +52,7 @@ export async function readArtifactSummary(
   if (!ARTIFACTS.includes(artifactName))
     throw new Error('Unexpected summary artifact name');
   const [, platform, mode] =
-    /^performance-summary-(android)-(native-release)$/.exec(artifactName)!;
+    /^performance-summary-(android|ios)-(native-release)$/.exec(artifactName)!;
   try {
     const summary = await loadSummary();
     if (
@@ -82,10 +83,14 @@ export async function readArtifactSummary(
   }
 }
 
-function collectionStatus(report: InputRecord | undefined, mode: string) {
+function collectionStatus(
+  report: InputRecord | undefined,
+  platform: string,
+  mode: string
+) {
   if (!report) return 'missing';
   return report.schemaVersion === 1 &&
-    report.platform === 'android' &&
+    report.platform === platform &&
     report.mode === mode &&
     report.valid === true
     ? 'passed'
@@ -100,18 +105,18 @@ export function renderComment(
   const lines = [
     COMMENT_MARKER,
     `<!-- choreography-run:${run.id}:${run.run_attempt ?? 1} -->`,
-    '**Android performance**',
+    '**Android and iOS performance**',
     '',
     `Run: **${safe(run.conclusion ?? 'unknown')}** · [reports and raw measurements](${run.html_url})`,
     '',
-    `Release: **${collectionStatus(reports[ARTIFACTS[0]], 'native-release')}**`,
+    `Android release: **${collectionStatus(reports[ARTIFACTS[0]], 'android', 'native-release')}** · iOS release: **${collectionStatus(reports[ARTIFACTS[1]], 'ios', 'native-release')}**`,
     '',
   ];
   for (const artifactName of ARTIFACTS) {
     const report = reports[artifactName];
     const label = artifactName.replace('performance-summary-', '');
     lines.push(
-      `<details><summary>Release measurements · base comparison</summary>`,
+      `<details><summary>${label.startsWith('ios-') ? 'iOS' : 'Android'} release measurements · base comparison</summary>`,
       ''
     );
     if (!report) {
@@ -161,7 +166,7 @@ export function renderComment(
     lines.push('</details>', '');
   }
   lines.push(
-    'Informational emulator results · medians · timing changes in milliseconds, render changes in counts. [Full reports and measurements](' +
+    'Informational emulator/simulator results · medians · tap handler to UI motion, motion to endpoint, then UI input handoff (ms). Render changes are counts. [Full reports and measurements](' +
       run.html_url +
       ').'
   );
@@ -304,7 +309,7 @@ export function baselineNote(baseline: SavedRun, report: InputRecord) {
   const url =
     baseline.reportUrl ??
     `https://github.com/${safe(run.repository.full_name)}/actions/runs/${run.id}`;
-  return `Latest successful ${safe(run.head_branch)} report: [${safe(run.head_sha.slice(0, 7))}](${url}). ${environmentChanges(report, baseline.reports[ARTIFACTS[0]])}`.trim();
+  return `Latest successful ${safe(run.head_branch)} report: [${safe(run.head_sha.slice(0, 7))}](${url}). ${environmentChanges(report, baseline.reports[`performance-summary-${report.platform}-${report.mode}`])}`.trim();
 }
 
 async function main() {

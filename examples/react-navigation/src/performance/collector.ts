@@ -1,4 +1,5 @@
 import type { ChoreographyPreparationTrace } from '../../../../src/types';
+import type { MotionObservation } from './motion';
 
 import type { PerformanceScenario } from './scenarios';
 export type { PerformanceScenario } from './scenarios';
@@ -37,11 +38,12 @@ export interface JourneyObservation {
   } | null;
   failure: string | null;
   renderCounts?: RenderCounts;
+  motion?: MotionObservation;
 }
 
 export interface BenchmarkReport {
   schemaVersion: 1;
-  fixtureVersion: 5;
+  fixtureVersion: 5 | 6;
   runId: string;
   scenario: PerformanceScenario;
   clock: 'js-performance-now';
@@ -59,6 +61,7 @@ export interface BenchmarkReport {
   };
   limitations: string[];
   renderCounting?: { version: 1; observed: RenderComponent[] };
+  motionTracing?: { version: 2; clock: 'rn-worklets-steady-clock-ms' };
 }
 
 const MAX_SAMPLES = 4096;
@@ -85,6 +88,7 @@ export class BenchmarkCollector {
     private readonly options: {
       preparationTracing?: boolean;
       renderCounting?: boolean;
+      motionTracing?: boolean;
     } = {}
   ) {}
 
@@ -181,6 +185,42 @@ export class BenchmarkCollector {
       pairCount,
       meaning: 'pairs-resolved-and-JS-active-callback-not-native-presentation',
     });
+  }
+
+  currentRequest() {
+    const request = this.current;
+    return request
+      ? {
+          requestId: request.requestId,
+          direction: request.direction,
+          sessionId: request.sessionId,
+        }
+      : null;
+  }
+
+  motion(sample: MotionObservation) {
+    const journey = this.journeys.find(
+      (entry) => entry.requestId === sample.requestId
+    );
+    if (
+      !journey ||
+      journey.motion ||
+      !journey.sessionId ||
+      sample.firstMotionMs === null ||
+      sample.motionEndMs === null ||
+      sample.handoffMs === null ||
+      ![sample.firstMotionMs, sample.motionEndMs, sample.handoffMs].every(
+        Number.isFinite
+      ) ||
+      sample.firstMotionMs < (journey.sessionActiveJsMs ?? Infinity) ||
+      sample.motionEndMs <= sample.firstMotionMs ||
+      sample.handoffMs < sample.motionEndMs ||
+      sample.handoffMs > this.timestamp()
+    ) {
+      this.fail('invalid-or-duplicate-motion-observation');
+      return;
+    }
+    journey.motion = { ...sample };
   }
 
   sessionEnd(sessionId: string): ProbeScreen | null {
@@ -351,6 +391,11 @@ export class BenchmarkCollector {
     )
       errors.push('missing-preparation-trace');
     if (this.droppedSamples > 0) errors.push('sample-buffer-overflow');
+    if (
+      this.options.motionTracing &&
+      this.journeys.some((journey) => !journey.motion)
+    )
+      errors.push('missing-motion-observation');
     if (this.options.renderCounting && this.observedRenderComponents.size !== 3)
       errors.push('missing-render-observations');
     if (this.payloadMounts !== 1 || this.payloadUnmounts !== 0) {
@@ -358,7 +403,7 @@ export class BenchmarkCollector {
     }
     return {
       schemaVersion: 1,
-      fixtureVersion: 5,
+      fixtureVersion: this.options.motionTracing ? 6 : 5,
       runId: this.runId,
       scenario: this.scenario,
       clock: 'js-performance-now',
@@ -368,6 +413,7 @@ export class BenchmarkCollector {
       droppedSamples: this.droppedSamples,
       journeys: this.journeys.map((journey) => ({
         ...journey,
+        ...(journey.motion ? { motion: { ...journey.motion } } : {}),
         ...(journey.renderCounts
           ? {
               renderCounts: {
@@ -392,6 +438,14 @@ export class BenchmarkCollector {
       })),
       payloadMounts: this.payloadMounts,
       payloadUnmounts: this.payloadUnmounts,
+      ...(this.options.motionTracing
+        ? {
+            motionTracing: {
+              version: 2 as const,
+              clock: 'rn-worklets-steady-clock-ms' as const,
+            },
+          }
+        : {}),
       ...(this.options.renderCounting
         ? {
             renderCounting: {
@@ -406,6 +460,8 @@ export class BenchmarkCollector {
         directions: ['forward', 'backward'],
       },
       limitations: [
+        'Tap timing begins at the JS tap handler, excluding native input dispatch. Motion timestamps observe UI progress, not display presentation.',
+        'Handoff ends at UI visibility/input release, not the later automation probe or JS cleanup.',
         'JS callback timestamps are not native animation completion or frame presentation.',
         'Probe latency includes automation wait/polling; it is an observed successful-input upper bound.',
         'Payload effects count React lifecycle observations, not physical native view identity.',

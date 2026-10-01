@@ -41,6 +41,9 @@ import type { ExampleStackParams } from '../ExampleScreen';
 import { ExampleBindings } from '../../../shared/runtime';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import { SCENARIOS } from './scenarios';
+import { useSharedValue } from 'react-native-reanimated';
+import { MotionObserver } from './MotionObserver';
+import type { MotionRequest } from './motion';
 
 import { theme } from '../../../shared/theme';
 import {
@@ -272,11 +275,12 @@ function createCollector(props: PerformanceLaunchProps) {
     `${props.performanceScenario}-${launchNonce}-${++runCounter}`,
     props.performanceScenario,
     () => performance.now(),
-    { preparationTracing: true, renderCounting: true }
+    { preparationTracing: true, renderCounting: true, motionTracing: true }
   );
 }
 
 export default function PerformanceApp(props: PerformanceLaunchProps) {
+  const motionRequest = useSharedValue<MotionRequest | null>(null);
   const [collector, setCollector] = useState(() => createCollector(props));
   const [status, setStatus] = useState<UiStatus>('loading');
   const [probeAck, setProbeAck] = useState<ProbeScreen | null>(null);
@@ -313,6 +317,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
       },
       request: (direction) => {
         if (!collector.request(direction)) return false;
+        motionRequest.value = collector.currentRequest();
         setProbeAck(null);
         setExported(false);
         setStatus('running');
@@ -333,7 +338,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         setStatus('failed');
       },
     }),
-    [collector, clearRequestTimer]
+    [collector, clearRequestTimer, motionRequest]
   );
 
   const exportRun = useCallback(async () => {
@@ -376,6 +381,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
       setStatus('loading');
       setProbeAck(null);
       setExported(false);
+      motionRequest.value = null;
       setCollector(createCollector(props));
     } catch (error) {
       collector.fail(`reset-export-failed:${String(error)}`);
@@ -440,6 +446,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
             session.direction,
             session.pairs.length
           );
+          motionRequest.value = collector.currentRequest();
         }}
         onTransitionEnd={(session) => {
           clearRequestTimer();
@@ -447,6 +454,7 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
           setStatus(screen ? `${screen}-settled` : 'failed');
         }}
       >
+        <MotionObserver request={motionRequest} collector={collector} />
         <View style={styles.root}>
           <SafeAreaView edges={['bottom', 'right']} style={styles.toolbar}>
             <Text style={styles.caption}>

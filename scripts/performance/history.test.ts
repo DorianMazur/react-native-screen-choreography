@@ -6,6 +6,7 @@ import {
   HISTORY_BRANCH,
   readLatestHistory,
   SUMMARY_ARTIFACT,
+  SUMMARY_ARTIFACTS,
 } from './history.mts';
 import { findBaseline } from './post-comment.mts';
 import { markdown } from './report.mts';
@@ -22,6 +23,13 @@ const run = {
   repository: { full_name: 'owner/repo' },
 };
 const reports = {
+  [SUMMARY_ARTIFACTS[1]]: {
+    schemaVersion: 1,
+    platform: 'ios',
+    mode: 'native-release',
+    valid: true,
+    metrics: {},
+  },
   [SUMMARY_ARTIFACT]: {
     schemaVersion: 1,
     platform: 'android',
@@ -294,5 +302,22 @@ test('latest pointers must resolve to their own main-branch run', async () => {
       readLatestHistory(corrupted, 'owner/repo'),
       /baseline/
     );
+  }
+});
+
+test('an absent or failed iOS lane is archived but cannot advance the baseline', async () => {
+  for (const ios of [
+    undefined,
+    { ...reports[SUMMARY_ARTIFACTS[1]], valid: false },
+  ]) {
+    const { api, files } = github();
+    const incomplete = {
+      [SUMMARY_ARTIFACT]: reports[SUMMARY_ARTIFACT],
+      ...(ios ? { [SUMMARY_ARTIFACTS[1]]: ios } : {}),
+    };
+    await archiveRun(api, run, incomplete, 'owner/repo');
+    assert.ok(files()['runs/10/1.json']);
+    assert.equal(files()['latest-main.json'], undefined);
+    assert.match(files()['runs/10/1.md'], /ios \/ native-release/);
   }
 });

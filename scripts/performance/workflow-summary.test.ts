@@ -24,8 +24,10 @@ test('standalone markdown renders compatible baseline and deltas alongside diagn
       nodeVersion: '24',
     },
     metrics: {
-      'gallery.forward.requestToSessionActiveMs': { count: 20, median: 100 },
-      'gallery.backward.requestToSessionActiveMs': { count: 20, median: 50 },
+      'gallery.forward.requestToSessionActiveMs': { count: 20, median: 80 },
+      'gallery.backward.requestToSessionActiveMs': { count: 20, median: 35 },
+      'gallery.forward.tapToMotion': { count: 20, median: 100 },
+      'gallery.backward.tapToMotion': { count: 20, median: 50 },
       'gallery.backward.preparation.coordinatorMs': {
         count: 20,
         median: 35,
@@ -39,7 +41,9 @@ test('standalone markdown renders compatible baseline and deltas alongside diagn
     },
   };
   const current = structuredClone(base);
-  current.metrics['gallery.backward.requestToSessionActiveMs'].median = 40;
+  current.metrics['gallery.forward.requestToSessionActiveMs'].median = 60;
+  current.metrics['gallery.backward.requestToSessionActiveMs'].median = 30;
+  current.metrics['gallery.backward.tapToMotion'].median = 40;
   current.metrics['gallery.backward.preparation.coordinatorMs'].median = 30;
   current.metrics['gallery.backward.preparation.overlay-readyMs'].median = 108;
   const body = markdown(
@@ -48,14 +52,12 @@ test('standalone markdown renders compatible baseline and deltas alongside diagn
     'Base: test'
   );
   assert.match(body, /Base: test/);
+  assert.match(body, /open preparation \(ms\) \| 80 \| 60 \| -20 ms/);
+  assert.match(body, /return preparation \(ms\) \| 35 \| 30 \| -5 ms/);
   assert.match(body, /50 \| 40 \| -10 ms/);
-  assert.match(
+  assert.doesNotMatch(
     body,
-    /coordinatorMs \| 20 \| 35.00 \| 30.00 \| -5.00 ms \| 70.00/
-  );
-  assert.match(
-    body,
-    /overlay-readyMs \| 20 \| 100.00 \| 108.00 \| \+8.00 ms \| 140.00/
+    /coordinatorMs|overlay-readyMs|Optional startup diagnostics/
   );
   assert.doesNotMatch(body, /frames over deadline|React render/);
   base.fixtureVersion = 4;

@@ -9,22 +9,41 @@
 /* Begin PBXBuildFile section */
 		0C80B921A6F3F58F76C31292 /* libPods-ScreenChoreographyExample.a in Frameworks */ = {isa = PBXBuildFile; fileRef = 5DCACB8F33CDC322A6C60F78 /* libPods-ScreenChoreographyExample.a */; };
 		13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB51A68108700A75B9A /* Images.xcassets */; };
+		23D9524C0B84CFE26F93EA6E /* ChoreographyBenchmark.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2FC29D3B38CC2A92987C2FF0 /* ChoreographyBenchmark.swift */; };
+		61853842D0DDF91D14FFA935 /* ChoreographyBenchmarkBridge.m in Sources */ = {isa = PBXBuildFile; fileRef = 593CA334E61883D8B807C2FA /* ChoreographyBenchmarkBridge.m */; };
 		761780ED2CA45674006654EE /* AppDelegate.swift in Sources */ = {isa = PBXBuildFile; fileRef = 761780EC2CA45674006654EE /* AppDelegate.swift */; };
+		7AA5DC3CB75257D51B61ECCD /* ChoreographyPerformanceTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = FB2F6CD4C380B6C4EA8708FC /* ChoreographyPerformanceTests.swift */; };
 		81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */ = {isa = PBXBuildFile; fileRef = 81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */; };
 		8292BC3C316D2C06B8DC3941 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */; };
+		D4854B3F11F13D3815845F09 /* Foundation.framework in Frameworks */ = {isa = PBXBuildFile; fileRef = 44A0FBB84FFA1B3B548FCB91 /* Foundation.framework */; };
 /* End PBXBuildFile section */
+
+/* Begin PBXContainerItemProxy section */
+		366770A1F9EE8766C8E9E4AF /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 83CBB9F71A601CBA00E9B192 /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 13B07F861A680F5B00A75B9A;
+			remoteInfo = ScreenChoreographyExample;
+		};
+/* End PBXContainerItemProxy section */
 
 /* Begin PBXFileReference section */
 		13B07F961A680F5B00A75B9A /* ScreenChoreographyExample.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ScreenChoreographyExample.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		13B07FB51A68108700A75B9A /* Images.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; name = Images.xcassets; path = ScreenChoreographyExample/Images.xcassets; sourceTree = "<group>"; };
 		13B07FB61A68108700A75B9A /* Info.plist */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = Info.plist; path = ScreenChoreographyExample/Info.plist; sourceTree = "<group>"; };
 		13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = text.plist.xml; name = PrivacyInfo.xcprivacy; path = ScreenChoreographyExample/PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		2FC29D3B38CC2A92987C2FF0 /* ChoreographyBenchmark.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; name = ChoreographyBenchmark.swift; path = ScreenChoreographyExample/ChoreographyBenchmark.swift; sourceTree = "<group>"; };
 		3B4392A12AC88292D35C810B /* Pods-ScreenChoreographyExample.debug.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ScreenChoreographyExample.debug.xcconfig"; path = "Target Support Files/Pods-ScreenChoreographyExample/Pods-ScreenChoreographyExample.debug.xcconfig"; sourceTree = "<group>"; };
+		44A0FBB84FFA1B3B548FCB91 /* Foundation.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = Foundation.framework; path = System/Library/Frameworks/Foundation.framework; sourceTree = SDKROOT; };
 		5709B34CF0A7D63546082F79 /* Pods-ScreenChoreographyExample.release.xcconfig */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = text.xcconfig; name = "Pods-ScreenChoreographyExample.release.xcconfig"; path = "Target Support Files/Pods-ScreenChoreographyExample/Pods-ScreenChoreographyExample.release.xcconfig"; sourceTree = "<group>"; };
+		593CA334E61883D8B807C2FA /* ChoreographyBenchmarkBridge.m */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.c.objc; name = ChoreographyBenchmarkBridge.m; path = ScreenChoreographyExample/ChoreographyBenchmarkBridge.m; sourceTree = "<group>"; };
 		5DCACB8F33CDC322A6C60F78 /* libPods-ScreenChoreographyExample.a */ = {isa = PBXFileReference; explicitFileType = archive.ar; includeInIndex = 0; path = "libPods-ScreenChoreographyExample.a"; sourceTree = BUILT_PRODUCTS_DIR; };
 		761780EC2CA45674006654EE /* AppDelegate.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; name = AppDelegate.swift; path = ScreenChoreographyExample/AppDelegate.swift; sourceTree = "<group>"; };
 		81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */ = {isa = PBXFileReference; fileEncoding = 4; lastKnownFileType = file.storyboard; name = LaunchScreen.storyboard; path = ScreenChoreographyExample/LaunchScreen.storyboard; sourceTree = "<group>"; };
+		B70BA7CD1F35CB102AEA75F2 /* ChoreographyPerformanceTests.xctest */ = {isa = PBXFileReference; explicitFileType = wrapper.cfbundle; includeInIndex = 0; path = ChoreographyPerformanceTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		ED297162215061F000B7C4FE /* JavaScriptCore.framework */ = {isa = PBXFileReference; lastKnownFileType = wrapper.framework; name = JavaScriptCore.framework; path = System/Library/Frameworks/JavaScriptCore.framework; sourceTree = SDKROOT; };
+		FB2F6CD4C380B6C4EA8708FC /* ChoreographyPerformanceTests.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = ChoreographyPerformanceTests.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
 
 /* Begin PBXFrameworksBuildPhase section */
@@ -36,9 +55,25 @@
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
+		643E65DCE1445948FE13DD8E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D4854B3F11F13D3815845F09 /* Foundation.framework in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 /* End PBXFrameworksBuildPhase section */
 
 /* Begin PBXGroup section */
+		107AE16FFC592ADEAED5BCBC /* iOS */ = {
+			isa = PBXGroup;
+			children = (
+				44A0FBB84FFA1B3B548FCB91 /* Foundation.framework */,
+			);
+			name = iOS;
+			sourceTree = "<group>";
+		};
 		13B07FAE1A68108700A75B9A /* ScreenChoreographyExample */ = {
 			isa = PBXGroup;
 			children = (
@@ -47,6 +82,8 @@
 				13B07FB61A68108700A75B9A /* Info.plist */,
 				81AB9BB72411601600AC10FF /* LaunchScreen.storyboard */,
 				13B07FB81A68108700A75B9A /* PrivacyInfo.xcprivacy */,
+				2FC29D3B38CC2A92987C2FF0 /* ChoreographyBenchmark.swift */,
+				593CA334E61883D8B807C2FA /* ChoreographyBenchmarkBridge.m */,
 			);
 			name = ScreenChoreographyExample;
 			sourceTree = "<group>";
@@ -56,6 +93,7 @@
 			children = (
 				ED297162215061F000B7C4FE /* JavaScriptCore.framework */,
 				5DCACB8F33CDC322A6C60F78 /* libPods-ScreenChoreographyExample.a */,
+				107AE16FFC592ADEAED5BCBC /* iOS */,
 			);
 			name = Frameworks;
 			sourceTree = "<group>";
@@ -75,6 +113,7 @@
 				83CBBA001A601CBA00E9B192 /* Products */,
 				2D16E6871FA4F8E400B85C8A /* Frameworks */,
 				BBD78D7AC51CEA395F1C20DB /* Pods */,
+				9B15577BFB8297E65C749EC1 /* ChoreographyPerformanceTests */,
 			);
 			indentWidth = 2;
 			sourceTree = "<group>";
@@ -85,8 +124,18 @@
 			isa = PBXGroup;
 			children = (
 				13B07F961A680F5B00A75B9A /* ScreenChoreographyExample.app */,
+				B70BA7CD1F35CB102AEA75F2 /* ChoreographyPerformanceTests.xctest */,
 			);
 			name = Products;
+			sourceTree = "<group>";
+		};
+		9B15577BFB8297E65C749EC1 /* ChoreographyPerformanceTests */ = {
+			isa = PBXGroup;
+			children = (
+				FB2F6CD4C380B6C4EA8708FC /* ChoreographyPerformanceTests.swift */,
+			);
+			name = ChoreographyPerformanceTests;
+			path = ChoreographyPerformanceTests;
 			sourceTree = "<group>";
 		};
 		BBD78D7AC51CEA395F1C20DB /* Pods */ = {
@@ -122,6 +171,24 @@
 			productReference = 13B07F961A680F5B00A75B9A /* ScreenChoreographyExample.app */;
 			productType = "com.apple.product-type.application";
 		};
+		3211EAC233719CE024E9187C /* ChoreographyPerformanceTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 3012EC1A282AAEF7A5D08821 /* Build configuration list for PBXNativeTarget "ChoreographyPerformanceTests" */;
+			buildPhases = (
+				FDB10C6D57B8C05FE6763430 /* Sources */,
+				643E65DCE1445948FE13DD8E /* Frameworks */,
+				8998DBA9A4DCD7B41052F348 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				E1E324829B8D80F91638E781 /* PBXTargetDependency */,
+			);
+			name = ChoreographyPerformanceTests;
+			productName = ChoreographyPerformanceTests;
+			productReference = B70BA7CD1F35CB102AEA75F2 /* ChoreographyPerformanceTests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -149,6 +216,7 @@
 			projectRoot = "";
 			targets = (
 				13B07F861A680F5B00A75B9A /* ScreenChoreographyExample */,
+				3211EAC233719CE024E9187C /* ChoreographyPerformanceTests */,
 			);
 		};
 /* End PBXProject section */
@@ -161,6 +229,13 @@
 				81AB9BB82411601600AC10FF /* LaunchScreen.storyboard in Resources */,
 				13B07FBF1A68108700A75B9A /* Images.xcassets in Resources */,
 				8292BC3C316D2C06B8DC3941 /* PrivacyInfo.xcprivacy in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		8998DBA9A4DCD7B41052F348 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -247,10 +322,29 @@
 			buildActionMask = 2147483647;
 			files = (
 				761780ED2CA45674006654EE /* AppDelegate.swift in Sources */,
+				23D9524C0B84CFE26F93EA6E /* ChoreographyBenchmark.swift in Sources */,
+				61853842D0DDF91D14FFA935 /* ChoreographyBenchmarkBridge.m in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		FDB10C6D57B8C05FE6763430 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				7AA5DC3CB75257D51B61ECCD /* ChoreographyPerformanceTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		E1E324829B8D80F91638E781 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			name = ScreenChoreographyExample;
+			target = 13B07F861A680F5B00A75B9A /* ScreenChoreographyExample */;
+			targetProxy = 366770A1F9EE8766C8E9E4AF /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin XCBuildConfiguration section */
 		13B07F941A680F5B00A75B9A /* Debug */ = {
@@ -306,6 +400,43 @@
 				VERSIONING_SYSTEM = "apple-generic";
 			};
 			name = Release;
+		};
+		3BFDACC8AAB15321557D0D02 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "screenchoreography.example.performance-tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REACT_NATIVE_PATH = "$(SRCROOT)/../node_modules/react-native";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ScreenChoreographyExample;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		5ECFAA1E891756461746800E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				CLANG_ENABLE_OBJC_WEAK = NO;
+				CODE_SIGNING_ALLOWED = NO;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 15.1;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_BUNDLE_IDENTIFIER = "screenchoreography.example.performance-tests";
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				REACT_NATIVE_PATH = "$(SRCROOT)/../node_modules/react-native";
+				SDKROOT = iphoneos;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+				TEST_TARGET_NAME = ScreenChoreographyExample;
+			};
+			name = Debug;
 		};
 		83CBBA201A601CBA00E9B192 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -463,6 +594,15 @@
 			buildConfigurations = (
 				13B07F941A680F5B00A75B9A /* Debug */,
 				13B07F951A680F5B00A75B9A /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		3012EC1A282AAEF7A5D08821 /* Build configuration list for PBXNativeTarget "ChoreographyPerformanceTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				3BFDACC8AAB15321557D0D02 /* Release */,
+				5ECFAA1E891756461746800E /* Debug */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Release;
