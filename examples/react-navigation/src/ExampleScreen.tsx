@@ -35,6 +35,7 @@ function Bindings({ children }: { children: React.ReactNode }) {
             options
           ),
         goBack: choreography.goBack,
+        prearm: choreography.prearm,
       }}
     >
       {children}

@@ -38,6 +38,8 @@ export interface ExampleNavigation {
     options?: ChoreographyNavigationOptions
   ) => Promise<void>;
   goBack: (options?: ChoreographyNavigationOptions) => Promise<void>;
+  /** Arms the source-geometry capture for a group before the tap lands. */
+  prearm?: (options?: { group?: string }) => Promise<void>;
 }
 
 export type DemoScreenId =
@@ -71,6 +73,8 @@ export function ExampleBindings({
     open: (...args) => navigationRef.current.open(...args),
     navigate: (...args) => navigationRef.current.navigate(...args),
     goBack: (...args) => navigationRef.current.goBack(...args),
+    prearm: (...args) =>
+      navigationRef.current.prearm?.(...args) ?? Promise.resolve(),
   }));
 
   return (

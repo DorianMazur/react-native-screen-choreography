@@ -51,6 +51,7 @@ function Bindings({
             ...options,
           }),
         goBack: choreography.back,
+        prearm: choreography.prearm,
       }}
     >
       {children}

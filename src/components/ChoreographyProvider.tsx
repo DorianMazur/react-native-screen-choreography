@@ -542,6 +542,13 @@ export function ChoreographyProvider({
     []
   );
 
+  const ensureSourceCapture = useCallback(
+    async (groupId: string, screenId: string) => {
+      return coordinatorRef.current!.ensureSourceCapture(groupId, screenId);
+    },
+    []
+  );
+
   const refreshActiveSessionMetrics = useCallback(
     async (side: 'source' | 'target') => {
       await coordinatorRef.current!.refreshActiveSessionMetrics(side);
@@ -848,6 +855,7 @@ export function ChoreographyProvider({
       interactiveScreenId,
       setInteractiveScreen,
       captureSourceGroup,
+      ensureSourceCapture,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
       isOverlayPresented,
@@ -883,6 +891,7 @@ export function ChoreographyProvider({
       interactiveScreenId,
       setInteractiveScreen,
       captureSourceGroup,
+      ensureSourceCapture,
       refreshActiveSessionMetrics,
       waitForOverlayReady,
       isOverlayPresented,
