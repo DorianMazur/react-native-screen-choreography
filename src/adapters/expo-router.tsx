@@ -1,4 +1,4 @@
-import React, { useCallback, useEffect } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useIsFocused, useNavigation, useRoute } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import {
@@ -11,6 +11,7 @@ import {
   createBackCommit,
   observeNavigationPresentation,
   type NavigationCommitSource,
+  type NavigationCommitResult,
 } from '../core/navigationCommit';
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
@@ -120,25 +121,51 @@ export function ChoreographyScreen(
         | undefined,
     });
 
-  usePreventRemove(preventRemove, ({ data }) => {
-    const resume = createBackCommit(
-      navigation as unknown as NavigationCommitSource,
-      route.key,
-      () => navigation.dispatch(data.action)
-    );
-    const canAnimate = isSingleRouteBack(
-      data.action,
-      navigation.getState(),
-      route.key,
-      sourceScreenId,
-      sourceRouteKey
-    );
-    const isRemoved = () =>
-      !navigation
-        .getState()
-        ?.routes.some((candidate) => candidate.key === route.key);
-    if (!interceptRemoval(resume, canAnimate, isRemoved)) resume();
-  });
+  const [replayingRemoval, setReplayingRemoval] = useState(false);
+  const replayResult = useRef<Promise<NavigationCommitResult> | null>(null);
+  const disablePrevention = usePreventRemove(
+    preventRemove && !replayingRemoval,
+    ({ data }) => {
+      const resume = () => {
+        const result = createBackCommit(
+          navigation as unknown as NavigationCommitSource,
+          route.key,
+          () => {
+            if (typeof disablePrevention === 'function') {
+              setReplayingRemoval(true);
+              disablePrevention();
+            }
+            navigation.dispatch(data.action);
+          }
+        )();
+        replayResult.current = result;
+        return result;
+      };
+      const canAnimate = isSingleRouteBack(
+        data.action,
+        navigation.getState(),
+        route.key,
+        sourceScreenId,
+        sourceRouteKey
+      );
+      const isRemoved = () =>
+        !navigation
+          .getState()
+          ?.routes.some((candidate) => candidate.key === route.key);
+      if (!interceptRemoval(resume, canAnimate, isRemoved)) resume();
+    }
+  ) as void | (() => void);
+
+  useEffect(() => {
+    if (!replayingRemoval) return;
+    let mounted = true;
+    replayResult.current?.then(() => {
+      if (mounted) setReplayingRemoval(false);
+    });
+    return () => {
+      mounted = false;
+    };
+  }, [replayingRemoval]);
 
   return (
     <ChoreographyScreenBase
