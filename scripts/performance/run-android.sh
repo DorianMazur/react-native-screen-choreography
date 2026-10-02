@@ -30,7 +30,15 @@ export PERFORMANCE_SYSTEM_IMAGE="$(adb shell getprop ro.build.fingerprint | tr -
 export PERFORMANCE_GRAPHICS_RENDERER="$(adb shell dumpsys SurfaceFlinger | sed -n 's/^[[:space:]]*GLES: //p' | tr -d '\r')"
 export PERFORMANCE_EMULATOR_VERSION=''
 if [[ "$PERFORMANCE_IS_EMULATOR" == 1 ]]; then
-  PERFORMANCE_EMULATOR_VERSION="$("${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/emulator/emulator" -version | sed -n 's/.*Android emulator version \([0-9.]*\) (build_id \([0-9]*\)).*/\1 (\2)/p' | head -n 1)"
+  # `emulator -version` loads the GUI binary, whose libraries may be absent on CI.
+  PERFORMANCE_EMULATOR_VERSION="$(awk -F= '
+    /^Pkg.Revision=/ { revision=$2 }
+    /^Pkg.BuildId=/ { build=$2 }
+    END {
+      if (revision == "" || build == "") exit 1
+      printf "%s (%s)", revision, build
+    }
+  ' "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/emulator/source.properties")"
 fi
 node - "$output/metadata.json" "$abi" "$cycles" "$warmup_cycles" <<'NODE'
 const fs = require('node:fs');
