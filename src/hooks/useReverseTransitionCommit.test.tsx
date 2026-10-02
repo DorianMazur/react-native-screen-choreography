@@ -194,16 +194,16 @@ afterEach(async () => {
 
 describe('provider reverse commit integration', () => {
   test.each(['forward', 'backward'] as const)(
-    '%s return accepts a new tap in the final 10% before the spring completes',
+    '%s return accepts a new tap in the final 20% before the spring completes',
     async (direction) => {
       const harness = await mountHook({ direction });
       const { completion, navigation, navigateBack } = await harness.start();
       const [prepare, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
         -1
       )!;
-      harness.progress.value = 0.101;
+      harness.progress.value = 0.201;
       expect(prepare()).toBeNull();
-      harness.progress.value = 0.1;
+      harness.progress.value = 0.2;
       await act(async () => {
         react(prepare(), null);
         flushRN();
@@ -239,7 +239,7 @@ describe('provider reverse commit integration', () => {
   );
 
   test.each(['forward', 'backward'] as const)(
-    'Android fences the departing %s screen at 10% while retained motion continues',
+    'Android fences the departing %s screen at 20% while retained motion continues',
     async (direction) => {
       const barrier = deferred<void>();
       const lifetime = {
@@ -263,10 +263,10 @@ describe('provider reverse commit integration', () => {
       const [prepare, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
         -1
       )!;
-      harness.progress.value = 0.101;
+      harness.progress.value = 0.201;
       expect(prepare()).toBeNull();
       expect(lifetime.suspend).not.toHaveBeenCalled();
-      harness.progress.value = 0.1;
+      harness.progress.value = 0.2;
       await act(async () => {
         react(prepare(), null);
         flushRN();
@@ -274,7 +274,7 @@ describe('provider reverse commit integration', () => {
       expect(lifetime.suspend).toHaveBeenCalledWith(harness.token);
       expect(destinationLifetime.suspend).not.toHaveBeenCalled();
       expect(navigateBack).not.toHaveBeenCalled();
-      expect(harness.progress.value).toBe(0.1);
+      expect(harness.progress.value).toBe(0.2);
       expect(harness.visibility.handoff.value.completed).toBe(false);
       await act(async () => barrier.resolve());
       expect(navigateBack).toHaveBeenCalledTimes(1);
@@ -282,7 +282,7 @@ describe('provider reverse commit integration', () => {
         navigation.resolve({ removed: true, presented: false })
       );
       expect(harness.api.interruptibleReturnSessionId).toBe('reverse');
-      expect(harness.progress.value).toBe(0.1);
+      expect(harness.progress.value).toBe(0.2);
       expect(harness.visibility.handoff.value.completed).toBe(false);
       await act(async () => {
         harness.finishAnimation();

@@ -15,6 +15,7 @@ export type PresentationReadyEvent = Readonly<{
 interface NativeProps extends ViewProps {
   active?: boolean;
   foreground?: boolean;
+  inputTarget?: string;
   sessionId?: string;
   presentationRequested?: boolean;
   expectedHostNames?: ReadonlyArray<string>;

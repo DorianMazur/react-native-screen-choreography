@@ -50,6 +50,10 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     view?.setForegroundLayer(foreground)
   }
 
+  // iOS routes hits around native-stack wrappers. Android uses its normal dispatch.
+  @ReactProp(name = "inputTarget")
+  override fun setInputTarget(view: ScreenChoreographyView?, inputTarget: String?) = Unit
+
   @ReactProp(name = "sessionId")
   override fun setSessionId(view: ScreenChoreographyView?, sessionId: String?) {
     view?.setSessionId(sessionId ?: "")

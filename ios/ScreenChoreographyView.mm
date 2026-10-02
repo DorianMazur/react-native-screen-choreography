@@ -3,6 +3,7 @@
 #import <React/RCTConversions.h>
 #import <React/RCTMountingTransactionObserving.h>
 #import <React/RCTSurfaceTouchHandler.h>
+#import <React/RCTRootComponentView.h>
 #import <QuartzCore/QuartzCore.h>
 
 #import <react/renderer/components/ScreenChoreographyViewSpec/ComponentDescriptors.h>
@@ -34,11 +35,23 @@ NSString *NativeIdOf(UIView *view)
   return [view isKindOfClass:RCTViewComponentView.class] ? ((RCTViewComponentView *)view).nativeId : nil;
 }
 
+UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
+{
+  if (view.hidden || !view.userInteractionEnabled) return nil;
+  if ([NativeIdOf(view) isEqualToString:nativeId]) return view;
+  for (UIView *child in view.subviews) {
+    UIView *match = SCFindInputTarget(child, nativeId);
+    if (match != nil) return match;
+  }
+  return nil;
+}
+
 } // namespace
 
 @interface ScreenChoreographyWindowContainer : UIView
 @property (nonatomic, assign) BOOL foreground;
 @property (nonatomic, weak) UIView *anchor;
+@property (nonatomic, copy) NSString *inputTarget;
 @end
 
 @implementation ScreenChoreographyWindowContainer
@@ -64,7 +77,18 @@ NSString *NativeIdOf(UIView *view)
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
 {
-  if (!self.foreground) return nil;
+  if (!self.foreground) {
+    if (self.inputTarget.length == 0 || self.window == nil || self.anchor.superview == nil) return nil;
+    UIView *root = self.anchor;
+    while (root.superview != nil && ![root isKindOfClass:RCTRootComponentView.class]) root = root.superview;
+    if (![root isKindOfClass:RCTRootComponentView.class]) return nil;
+    // Native-stack can keep the departing screen above this endpoint. Hit-test
+    // its live input view directly, independently of the decorative fade. The
+    // view still owns its pointer-events gate; overlay children never take input.
+    UIView *target = SCFindInputTarget(root, self.inputTarget);
+    if (target == nil || target.window != self.window) return nil;
+    return [target hitTest:[target convertPoint:point fromView:self] withEvent:event];
+  }
   UIView *hit = [super hitTest:point withEvent:event];
   return hit == self ? nil : hit;
 }
@@ -253,6 +277,7 @@ NSString *NativeIdOf(UIView *view)
   _active = NO;
   _foreground = NO;
   _windowContainer.foreground = NO;
+  _windowContainer.inputTarget = nil;
   _prepared = NO;
   _attachmentAcknowledged = NO;
   _presentationRequested = NO;
@@ -268,6 +293,8 @@ NSString *NativeIdOf(UIView *view)
 {
   const auto &newViewProps = *std::static_pointer_cast<ScreenChoreographyViewProps const>(props);
   const bool sessionChanged = _sessionId != newViewProps.sessionId;
+  _windowContainer.inputTarget = newViewProps.active && !newViewProps.sessionId.empty()
+      ? [NSString stringWithUTF8String:newViewProps.inputTarget.c_str()] : nil;
   _foreground = newViewProps.foreground;
   _windowContainer.foreground = _foreground;
   if (!_foreground && _foregroundTouchHandler != nil) {

@@ -69,11 +69,11 @@ export function useReverseTransitionCommit({
   useAnimatedReaction(
     () => {
       const state = reverseHandoff.value;
-      // Start native dismissal during the remaining 10% of the motion.
-      // Input still waits for confirmed removal; progress alone is not readiness.
+      // Start native dismissal during the remaining 20% of the motion.
+      // Queued navigation waits for confirmed removal; progress is not readiness.
       return state &&
         progressOwner.value === state.token &&
-        progress.value <= 0.1
+        progress.value <= 0.2
         ? state.sessionId
         : null;
     },

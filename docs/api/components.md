@@ -101,7 +101,7 @@ Use a stable application label for `screenId`. For React Navigation, match the r
 
 `allowInteractionDuringTransition` defaults to `true` on both platforms. The arriving screen can receive touches during motion, so a Back button can interrupt an opening transition. Set it to `false` to block those touches until motion completes. Disable individual controls while transitioning if using them would conflict with your screen's state.
 
-Screens remain blocked during preparation, and the outgoing screen is blocked during motion. A screen driving a custom gesture with `useInteractiveTransition` keeps its visibility and input until finish or cancel, so the gesture can continue. Shared content in the overlay cannot receive touches; place a Back button or gesture responder in ordinary destination content.
+Forward destinations remain blocked during preparation; returning screens can accept queued taps when interaction during transitions is enabled. The outgoing screen is blocked during motion. A screen driving a custom gesture with `useInteractiveTransition` keeps its visibility and input until finish or cancel, so the gesture can continue. Shared content in the overlay cannot receive touches; place a Back button or gesture responder in ordinary destination content.
 
 `ready` adds an application gate after the screen lays out. It does not replace layout readiness. Readiness also waits for acquired blockers. See [readiness](../guide/readiness.md).
 
