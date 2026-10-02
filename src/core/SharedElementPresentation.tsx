@@ -16,6 +16,12 @@ export interface SharedElementPresentation {
    * stays at 0 (collapsed/source) or 1 (expanded/destination).
    */
   presentationProgress: DerivedValue<number>;
+  /**
+   * UI-thread size matching `TransitionFrame`, available from preparation through
+   * motion. Null when unpaired or using reduced motion. Custom renderer geometry
+   * may differ.
+   */
+  frame: DerivedValue<{ width: number; height: number } | null>;
   /** Participating with content in the overlay; can trail session start on iOS. */
   transitioning: boolean;
   /** Participating session direction; null when this owner is settled. */

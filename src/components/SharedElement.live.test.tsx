@@ -118,7 +118,10 @@ function makeContexts() {
 function choreography(
   activeSession: TransitionSessionData | null
 ): ChoreographyContextType {
-  return { activeSession, progress: { value: 0 } } as ChoreographyContextType;
+  return {
+    activeSession,
+    progress: activeSession?.progress ?? { value: 0 },
+  } as ChoreographyContextType;
 }
 
 describe('SharedElement live endpoints', () => {
@@ -193,11 +196,18 @@ describe('SharedElement live endpoints', () => {
         expect(host()).toBe(resting);
         expect(presentation.transitioning).toBe(false);
         expect(presentation.presentationProgress.value).toBe(retained ? 1 : 0);
+        expect(presentation.frame.value).toEqual(
+          direction === 'forward'
+            ? { width: 100, height: 50 }
+            : { width: 300, height: 200 }
+        );
 
         if (outcome === 'present') {
           await update(active);
           expect(host()).toContain('overlay');
           expect(presentation.transitioning).toBe(true);
+          active.progress.value = 0.5;
+          expect(presentation.frame.value).toEqual({ width: 200, height: 125 });
           state.settle(active.targetScreenId);
         } else {
           // Cancel settles at the source; a failed opening completes at its target.
@@ -210,6 +220,7 @@ describe('SharedElement live endpoints', () => {
           outcome === 'cancel' ? active.sourceScreenId : active.targetScreenId;
         expect(host()).toBe(settledAt === 'list' ? undefined : detailHost);
         expect(presentation.transitioning).toBe(false);
+        expect(presentation.frame.value).toBeNull();
         expect(mounted).toHaveBeenCalledTimes(1);
         expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
         expect(state.actions.unregisterElement).not.toHaveBeenCalled();
@@ -254,6 +265,7 @@ describe('SharedElement live endpoints', () => {
       expect(presentation.presentationProgress.value).toBe(1);
       expect(presentation.transitioning).toBe(false);
       expect(presentation.expanded.metrics?.width).toBe(300);
+      expect(presentation.frame.value).toBeNull();
       state.settle('detail');
       await update(null);
       expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
@@ -413,6 +425,14 @@ describe('SharedElement live endpoints', () => {
 
         await act(async () => tree.update(render(active, 'detail')));
         expect(renders[0]).toHaveBeenCalledTimes(3);
+        progress.value = 0.4;
+        expect(presentations[0]!.frame.value).toEqual({
+          width: 180,
+          height: 110,
+        });
+        expect(
+          presentations.slice(1).every((p) => p.frame.value === null)
+        ).toBe(true);
         const participating = presentations[0];
         // Pending cleanup and cloned session envelopes do not change the pair.
         await act(async () => tree.update(render({ ...active })));
@@ -428,10 +448,15 @@ describe('SharedElement live endpoints', () => {
         };
         await act(async () => tree.update(render(updated)));
         expect(presentations[0]!.expanded.metrics!.width).toBe(350);
+        expect(presentations[0]!.frame.value).toEqual({
+          width: 200,
+          height: 110,
+        });
         expect(renders[0]).toHaveBeenCalledTimes(4);
         state.settle('detail');
         await act(async () => tree.update(render(null)));
         expect(presentations[0]!.settled).toBe('expanded');
+        expect(presentations[0]!.frame.value).toBeNull();
         expect(renders[0]).toHaveBeenCalledTimes(5);
         expect(tree.root.findAllByType(Portal)[0]!.props.hostName).toContain(
           'destination:'
@@ -561,6 +586,7 @@ describe('SharedElement live endpoints', () => {
       // Rapid reversal continues to follow the same expansion clock.
       await update(session('detail', 'list', 'backward'));
       expectProgress(0.6);
+      expect(presentation.frame.value).toEqual({ width: 220, height: 140 });
       state.settle('list');
       await update(null);
       expectProgress(0);

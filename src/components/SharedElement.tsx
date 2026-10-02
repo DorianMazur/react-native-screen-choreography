@@ -34,6 +34,7 @@ import {
   getLivePortalName,
 } from '../core/liveHostNames';
 import { defaultTransition } from '../transitions/makeTransition';
+import { transitionFrameSize } from '../standin/TransitionSurface';
 
 export interface SharedElementProps {
   id: string;
@@ -351,10 +352,29 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   );
   const collapsed = endpoints.current?.collapsed ?? initial;
   const expanded = endpoints.current?.expanded ?? initial;
+  // Paired from preparation, while progress rests at the session's start: the
+  // mapper is live before content enters the overlay and progress moves. Both
+  // directions run collapsed → expanded on `progress`, matching `TransitionFrame`.
+  const frameEndpoints = reducedMotion ? null : activeEndpoints;
+  const collapsedMetrics = frameEndpoints?.collapsed.metrics;
+  const expandedMetrics = frameEndpoints?.expanded.metrics;
+  // Reanimated subscribes to every captured shared value, even behind a guard.
+  // Idle owners must not capture the provider clock for their frame mapper.
+  const frameProgress = frameEndpoints ? progress : null;
+  const frame = useDerivedValue(() =>
+    collapsedMetrics && expandedMetrics && frameProgress
+      ? transitionFrameSize(
+          collapsedMetrics,
+          expandedMetrics,
+          frameProgress.value
+        )
+      : null
+  );
   const presentation = useMemo(
     () => ({
       progress,
       presentationProgress,
+      frame,
       transitioning,
       direction: preparing ? null : direction,
       collapsed,
@@ -364,6 +384,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     [
       progress,
       presentationProgress,
+      frame,
       transitioning,
       preparing,
       direction,
