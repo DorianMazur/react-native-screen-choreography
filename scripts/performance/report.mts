@@ -1,4 +1,9 @@
-import { summaryTable, renderCountsTable } from './summary-table.mts';
+import {
+  summaryTable,
+  firstRunTable,
+  warmupNote,
+  renderCountsTable,
+} from './summary-table.mts';
 import { metricDefinition } from './metric-definitions.mts';
 import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
 import type {
@@ -128,7 +133,8 @@ function readPreparationTrace(
 function readFixture(
   report: InputRecord,
   metrics: MetricSamples,
-  platform: string
+  platform: string,
+  warmupCycles?: number
 ) {
   if (report.schemaVersion !== 1 || ![5, 6].includes(report.fixtureVersion)) {
     throw new Error('Unsupported fixture schema/version');
@@ -199,7 +205,13 @@ function readFixture(
     ) {
       throw new Error('Unknown probe timing definition');
     }
-    const prefix = `${report.scenario}.${journey.direction}`;
+    const samplePhase =
+      warmupCycles === undefined || index >= 2 * (1 + warmupCycles)
+        ? ''
+        : index < 2
+          ? 'firstRun.'
+          : 'warmup.';
+    const prefix = `${report.scenario}.${samplePhase}${journey.direction}`;
     if (report.motionTracing) {
       const motion = journey.motion;
       if (
@@ -381,11 +393,22 @@ export function summarize(
   const runIds = new Set<string>();
   const instrumentation = new Map<string, string>();
   let expectedCycles;
+  let warmupCycles: number | undefined;
   try {
     expectedCycles = expectedCount(
       metadata.timingCycles,
       'Expected timing cycles'
     );
+    warmupCycles = expectedCount(metadata.warmupCycles, 'Warm-up cycles');
+    if (
+      warmupCycles !== undefined &&
+      (warmupCycles > 20 ||
+        expectedCycles === undefined ||
+        1 + warmupCycles + expectedCycles > 100)
+    )
+      throw new Error(
+        'Use 1..20 warm-up cycles and at most 100 total round trips'
+      );
   } catch (error) {
     errors.push(
       `metadata: ${error instanceof Error ? error.message : String(error)}`
@@ -402,7 +425,14 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
-        readFixture(data, documentMetrics, platform);
+        readFixture(data, documentMetrics, platform, warmupCycles);
+        if (
+          warmupCycles !== undefined &&
+          data.journeys.length !== (1 + warmupCycles + expectedCycles!) * 2
+        )
+          throw new Error(
+            'Total journey count must match first run + warm-up + measured cycles'
+          );
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
             const key = `${data.scenario}.${direction}.requestToSessionActiveMs`;
@@ -517,7 +547,11 @@ export function markdown(
     '',
     baselineNote,
     '',
+    warmupNote(summary),
+    '',
     summaryTable(summary, base),
+    '',
+    firstRunTable(summary, base),
     '',
     'Preparation runs from the navigation request to session activation. Tap timing starts at the JS tap handler and ends at the first UI progress change. Transition duration runs from first progress change to the endpoint; handoff runs from that endpoint to UI visibility/input release. These are runtime observations, not display presentation timestamps. Detailed preparation stages remain in summary.json.',
     ...(renders ? ['', '### Committed React renders', '', renders] : []),

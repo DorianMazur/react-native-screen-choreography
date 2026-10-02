@@ -6,7 +6,9 @@ cd "$repo_root"
 mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 100 ]] || { echo 'Cycle count must be in 1..100.' >&2; exit 2; }
+[[ "$cycles" =~ ^[1-9][0-9]*$ ]] || { echo 'Cycle count must be positive.' >&2; exit 2; }
+warmup_cycles="${PERFORMANCE_WARMUP_CYCLES:-5}"
+[[ "$warmup_cycles" =~ ^[1-9][0-9]*$ && "$warmup_cycles" -le 20 && $((1 + warmup_cycles + cycles)) -le 100 ]] || { echo 'Use 1..20 warm-up cycles and at most 100 total round trips.' >&2; exit 2; }
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
 if [[ "${USE_CCACHE:-0}" == 1 ]]; then
@@ -23,7 +25,7 @@ mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 
 # Own a fresh simulator, so neither existing app data nor another run is touched.
-runtime="${PERFORMANCE_IOS_RUNTIME:-$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["isAvailable"] and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")]; print(sorted(r, key=lambda x: tuple(map(int,x["version"].split("."))))[-1]["identifier"])')}"
+runtime="${PERFORMANCE_IOS_RUNTIME:-com.apple.CoreSimulator.SimRuntime.iOS-26-2}"
 device_type="${PERFORMANCE_IOS_DEVICE_TYPE:-com.apple.CoreSimulator.SimDeviceType.iPhone-16}"
 udid="$(xcrun simctl create ChoreographyPerformance "$device_type" "$runtime")"
 cleanup() {
@@ -38,7 +40,7 @@ xcrun simctl status_bar "$udid" override --time '9:41' --dataNetwork wifi --wifi
 export PERFORMANCE_DEVICE_MODEL="$device_type"
 export PERFORMANCE_OS_VERSION="$(xcrun simctl getenv "$udid" SIMULATOR_RUNTIME_VERSION)"
 export PERFORMANCE_XCODE_VERSION="$(xcodebuild -version | tr '\n' ' ')"
-node - "$output/metadata.json" "$(uname -m)" "$cycles" <<'NODE'
+node - "$output/metadata.json" "$(uname -m)" "$cycles" "$warmup_cycles" <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.argv[2], JSON.stringify({
   deviceModel: process.env.PERFORMANCE_DEVICE_MODEL,
@@ -49,6 +51,8 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  warmupCycles: Number(process.argv[5]),
+  hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
 
@@ -67,7 +71,7 @@ xcodebuild build-for-testing \
   > >(tee "$output/build.log") 2>&1 || status=$?
 if [[ "$status" -eq 0 ]]; then
   # Pass the cycle count explicitly to XCTest, rather than assuming shell env is forwarded.
-  test_run="$(python3 - "$derived_data/Build/Products" "$cycles" <<'PY'
+  test_run="$(python3 - "$derived_data/Build/Products" "$cycles" "$warmup_cycles" <<'PY'
 import pathlib, plistlib, sys
 files = list(pathlib.Path(sys.argv[1]).glob('ChoreographyPerformance_*.xctestrun'))
 if len(files) != 1: raise SystemExit('Expected exactly one xctestrun')
@@ -78,6 +82,7 @@ def visit(value):
     if isinstance(value, dict):
         if 'TestBundlePath' in value:
             value.setdefault('EnvironmentVariables', {})['PERFORMANCE_TIMING_CYCLES'] = sys.argv[2]
+            value['EnvironmentVariables']['PERFORMANCE_WARMUP_CYCLES'] = sys.argv[3]
             count += 1
         for child in value.values(): count += visit(child)
     elif isinstance(value, list):

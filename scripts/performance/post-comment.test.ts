@@ -82,12 +82,36 @@ test('PR comments include rerenders but only link to temporary current-run artif
   assert.doesNotMatch(body, /Permanent report|performance-history\/runs\/42/);
 });
 
+test('comments separate first runs and never interpolate unchecked sampling metadata', () => {
+  const measured: InputRecord = structuredClone(report);
+  measured.metadata = { timingCycles: 20, warmupCycles: 5 };
+  measured.metrics['gallery.firstRun.forward.tapToMotion'] = {
+    count: 1,
+    median: 120,
+  };
+  let body = renderComment(run, { [artifact]: measured });
+  assert.match(
+    body,
+    /20 measured round trips after the first run and 5 warm-up/
+  );
+  assert.match(body, /First run · one round trip per scenario/);
+  assert.match(body, /tap to motion \(ms\) \| — \| 120 \| —/);
+  measured.metadata.warmupCycles = '@everyone <script>';
+  body = renderComment(run, { [artifact]: measured });
+  assert.doesNotMatch(body, /@everyone|<script>/);
+});
+
 test('all examples get separate comparison rows even when main only has Gallery', () => {
   const measured = structuredClone(report) as InputRecord;
   Object.assign(measured, {
     fixtureVersion: 5,
     measurementDefinitionVersion: 4,
     metadata: {
+      runnerImage: 'ubuntu-1',
+      hostCpu: 'test-cpu',
+      emulatorVersion: '37.2.12.0',
+      graphicsRenderer: 'SwiftShader',
+      systemImage: 'android-35-revision-1',
       deviceModel: 'pixel',
       osVersion: '15',
       apiLevel: 35,

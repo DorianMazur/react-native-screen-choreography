@@ -17,7 +17,7 @@ concurrency:
 
 jobs:
   collectors:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 10
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -31,12 +31,17 @@ jobs:
 
   android:
     needs: collectors
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     timeout-minutes: 60
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/android-native-release
       PERFORMANCE_TIMING_CYCLES: '20'
+      PERFORMANCE_WARMUP_CYCLES: '5'
       PERFORMANCE_ABI: x86_64
+      # Standard hosted runners have no dedicated GPU. Keep the host GL backend explicit.
+      LIBGL_ALWAYS_SOFTWARE: '1'
+      GALLIUM_DRIVER: llvmpipe
+      DISPLAY: ':99'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -53,18 +58,33 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - name: Install Android Emulator with download retries
         run: bash scripts/performance/install-android-emulator.sh
+      - name: Prepare host OpenGL renderer
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends xvfb x11-utils libgl1 libgl1-mesa-dri mesa-utils
+          Xvfb "$DISPLAY" -screen 0 1280x1024x24 -nolisten tcp > "$RUNNER_TEMP/performance-xvfb.log" 2>&1 &
+          for attempt in {1..30}; do
+            if xdpyinfo -display "$DISPLAY" >/dev/null 2>&1; then break; fi
+            sleep 1
+          done
+          xdpyinfo -display "$DISPLAY" >/dev/null
+          glxinfo -B
       - name: Collect native measurements and fixture reports
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
           target: google_apis
           arch: x86_64
+          emulator-build: '16428233' # 37.2.12.0
           profile: pixel_2
           cores: 2
           ram-size: 4096M
           disable-animations: false
-          emulator-options: -no-window -gpu swiftshader_indirect -noaudio -no-boot-anim -camera-back none
-          script: bash scripts/performance/run-android.sh native-release
+          # Host OpenGL uses Mesa/llvmpipe via Xvfb; KVM accelerates the CPU.
+          emulator-options: -no-window -gpu host -no-snapshot -noaudio -no-boot-anim -camera-back none
+          script: |
+            adb shell dumpsys SurfaceFlinger | grep -F llvmpipe
+            bash scripts/performance/run-android.sh native-release
       - name: Add timing summary
         if: always()
         env:
@@ -94,6 +114,8 @@ jobs:
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-native-release
       PERFORMANCE_TIMING_CYCLES: '20'
+      PERFORMANCE_WARMUP_CYCLES: '5'
+      PERFORMANCE_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-2
       RCT_USE_RN_DEP: '1'
       RCT_USE_PREBUILT_RNCORE: '1'
       # RN's pod installer enables its compiler wrappers when this is set.
@@ -108,7 +130,7 @@ jobs:
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
         with:
-          xcode-version: '26'
+          xcode-version: '26.3'
       - name: Set up compiler cache
         id: ccache-setup
         env:

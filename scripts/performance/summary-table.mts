@@ -6,6 +6,8 @@ import {
 } from '../../examples/react-navigation/src/performance/scenarios.ts';
 
 const comparableMetadata = [
+  'runnerImage',
+  'hostCpu',
   'deviceModel',
   'osVersion',
   'apiLevel',
@@ -32,11 +34,16 @@ export function metricCompatible(
             name
           )
       )
-    : comparableMetadata;
+    : [...comparableMetadata];
+  if (current.platform === 'android') {
+    fields.push('systemImage', 'graphicsRenderer');
+    if (current.metadata?.emulator === true) fields.push('emulatorVersion');
+  }
   return Boolean(
     base &&
     current.valid === true &&
     base.valid === true &&
+    current.metadata?.warmupCycles === base.metadata?.warmupCycles &&
     current.schemaVersion === 1 &&
     base.schemaVersion === 1 &&
     ['platform', 'mode'].every(
@@ -55,6 +62,7 @@ export function metricCompatible(
     fields.every(
       (field) =>
         current.metadata?.[field] != null &&
+        current.metadata[field] !== '' &&
         current.metadata[field] === base.metadata?.[field]
     )
   );
@@ -116,11 +124,18 @@ function value(report: InputRecord | undefined, key: string, scale: number) {
 const format = (n: number | null) =>
   n === null ? '—' : Number(n.toFixed(3)).toString();
 
-export function summaryTable(report: InputRecord, base?: InputRecord) {
+export function summaryTable(
+  report: InputRecord,
+  base?: InputRecord,
+  firstRun = false
+) {
   return [
     '| Metric | Base | PR / current | Change |',
     '| --- | ---: | ---: | ---: |',
-    ...headlineMetrics().map(({ key, label, scale, unit }) => {
+    ...headlineMetrics().map(({ key: originalKey, label, scale, unit }) => {
+      const key = firstRun
+        ? originalKey.replace('.', '.firstRun.')
+        : originalKey;
       const current = value(report, key, scale);
       const previous =
         metricCompatible(report, base, key) &&
@@ -131,6 +146,35 @@ export function summaryTable(report: InputRecord, base?: InputRecord) {
         current !== null && previous !== null ? current - previous : null;
       return `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |`;
     }),
+  ].join('\n');
+}
+
+export function warmupNote(report: InputRecord) {
+  const { warmupCycles, timingCycles } = report.metadata ?? {};
+  return Number.isSafeInteger(warmupCycles) &&
+    warmupCycles >= 1 &&
+    warmupCycles <= 20 &&
+    Number.isSafeInteger(timingCycles) &&
+    timingCycles >= 1 &&
+    1 + warmupCycles + timingCycles <= 100
+    ? `${timingCycles} measured round trips after the first run and ${warmupCycles} warm-up round trips per scenario. All runs are validated; warm-up samples remain in the artifacts.`
+    : '';
+}
+
+export function firstRunTable(report: InputRecord, base?: InputRecord) {
+  if (
+    !Number.isSafeInteger(report.metadata?.warmupCycles) ||
+    report.metadata.warmupCycles < 1
+  )
+    return '';
+  return [
+    '<details><summary>First run · one round trip per scenario</summary>',
+    '',
+    'First open and first return after app launch. Single observations, not a stable latency distribution or a cold-start measurement.',
+    '',
+    summaryTable(report, base, true),
+    '',
+    '</details>',
   ].join('\n');
 }
 

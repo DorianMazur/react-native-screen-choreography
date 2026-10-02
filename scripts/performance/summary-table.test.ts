@@ -14,6 +14,11 @@ function report() {
     platform: 'android',
     mode: 'native-release',
     metadata: {
+      runnerImage: 'ubuntu-1',
+      hostCpu: 'test-cpu',
+      emulatorVersion: '37.2.12.0',
+      graphicsRenderer: 'SwiftShader',
+      systemImage: 'android-35-revision-1',
       deviceModel: 'Pixel',
       osVersion: '15',
       apiLevel: 35,
@@ -23,7 +28,6 @@ function report() {
       reactNativeVersion: '0.83.0',
       reanimatedVersion: '4.2',
       nodeVersion: 'v24.13.0',
-      runnerImage: 'ubuntu-1',
     },
     metrics: {
       'gallery.backward.tapToMotion': {
@@ -49,7 +53,6 @@ test('shows absolute deltas including zero baselines, negative timing changes', 
 
 test('requires explicit matching environment and definition metadata', () => {
   for (const field of Object.keys(report().metadata)) {
-    if (field === 'runnerImage') continue;
     const base = report();
     delete (base.metadata as Record<string, unknown>)[field];
     assert.equal(compatible(report(), base), false, field);
@@ -69,14 +72,38 @@ test('requires explicit matching environment and definition metadata', () => {
   assert.match(summaryTable(report()), /— \| 0 \| —/);
 });
 
-test('compares measurements across runner image versions or missing runner image metadata', () => {
+test('omits comparisons across changed or missing runner images', () => {
   const base = report();
   const current = report();
   current.metadata.runnerImage = 'ubuntu-2';
-  assert.equal(compatible(current, base), true);
-  assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
+  assert.equal(compatible(current, base), false);
+  assert.match(summaryTable(current, base), /— \| 40 \| —/);
   delete (base.metadata as Record<string, unknown>).runnerImage;
-  assert.equal(compatible(current, base), true);
+  assert.equal(compatible(current, base), false);
+});
+
+test('omits deltas for environment drift even when the runner image matches', () => {
+  for (const field of [
+    'emulatorVersion',
+    'systemImage',
+    'graphicsRenderer',
+    'hostCpu',
+  ]) {
+    const current: InputRecord = report();
+    current.metadata[field] = 'different';
+    assert.equal(compatible(current, report()), false, field);
+    assert.match(summaryTable(current, report()), /— \| 40 \| —/);
+  }
+});
+
+test('warmed samples cannot compare against mixed visits or different warm-up counts', () => {
+  const current: InputRecord = report();
+  Object.assign(current.metadata, { warmupCycles: 5 });
+  const same = structuredClone(current);
+  assert.equal(compatible(current, same), true);
+  assert.equal(compatible(current, report()), false);
+  same.metadata.warmupCycles = 4;
+  assert.equal(compatible(current, same), false);
 });
 
 test('does not display nonnumeric metrics or compare invalid collections', () => {

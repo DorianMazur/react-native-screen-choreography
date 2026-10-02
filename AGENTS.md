@@ -114,6 +114,12 @@ Run these from the repository root unless noted otherwise:
 
 When changing preparation, presentation, navigation, or retained-content ownership, cover rapid forward interruption, repeated Back/return, interactive cancellation, queued navigation after confirmed removal, missing endpoints, and layout changes. Check both iOS attachment gating and Android content presentation. Include removed/recycled endpoints and stale callbacks where the change affects asynchronous ownership.
 
+## Performance Benchmarks
+
+- Pin the emulator build, Xcode and iOS runtime in `.github/workflows/performance.yml`. Android uses `ubuntu-24.04`, KVM, and `-gpu host` with Xvfb/Mesa llvmpipe (software rendering). Keep snapshots disabled and animations enabled.
+- Each scenario runs one first round trip, 5 warm-up round trips, then 20 measured round trips. Validate input and presentation for every journey. Report the first run separately and exclude warm-ups from measured timings; keep all raw samples.
+- Keep metadata in `run-android.sh` and `run-ios.sh`. Compare runner/CPU, device, emulator, system image, renderer, and warm-up count before showing baseline deltas. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
+
 ## Areas To Inspect First
 
 When debugging or extending behavior, start here:
