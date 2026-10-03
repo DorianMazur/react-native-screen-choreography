@@ -225,6 +225,7 @@ test('presentation reveals follow only their owner, including collapsed and expa
   const presentation: SharedElementPresentation = {
     progress: controls.progress,
     presentationProgress,
+    frame: { value: null } as SharedElementPresentation['frame'],
     transitioning: false,
     direction: null,
     settled: 'collapsed',
