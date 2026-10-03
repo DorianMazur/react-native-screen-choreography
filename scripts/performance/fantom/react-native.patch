@@ -1,3 +1,14 @@
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/Base64.h b/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
+--- a/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
+@@ -7,6 +7,7 @@
+
+ #pragma once
+
++#include <cstdint>
+ #include <string>
+ #include <string_view>
+
 diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
 index 78cee76..9545087 100644
 --- a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
@@ -10,6 +21,28 @@ index 78cee76..9545087 100644
  #include <map>
  #include <string>
 
+diff --git a/packages/react-native/ReactCommon/react/networking/NetworkTypes.h b/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+--- a/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
++++ b/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+@@ -7,6 +7,7 @@
+
+ #pragma once
+
++#include <cstdint>
+ #include <map>
+ #include <optional>
+ #include <string>
+diff --git a/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h b/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h
+--- a/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h
++++ b/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h
+@@ -8,6 +8,7 @@
+ #pragma once
+
+ #include <array>
++#include <cstdint>
+ #include <vector>
+
+ #include <react/renderer/debug/flags.h>
 diff --git a/private/react-native-fantom/build.gradle.kts b/private/react-native-fantom/build.gradle.kts
 index d40e66f..51e67ab 100644
 --- a/private/react-native-fantom/build.gradle.kts
