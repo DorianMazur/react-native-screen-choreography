@@ -1,3 +1,15 @@
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
+index 78cee76..9545087 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
+@@ -7,6 +7,7 @@
+
+ #pragma once
+
++#include <cstdint>
+ #include <map>
+ #include <string>
+
 diff --git a/private/react-native-fantom/build.gradle.kts b/private/react-native-fantom/build.gradle.kts
 index d40e66f..51e67ab 100644
 --- a/private/react-native-fantom/build.gradle.kts

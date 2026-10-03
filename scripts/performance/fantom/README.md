@@ -133,7 +133,9 @@ enables Release compilation and Hermes bytecode in the OSS runner, installs our
 capture binding, selects Linux thread CPU timing, and preserves raw benchmark
 samples. It also accommodates RN 0.83's fmt dependency on Apple Clang 21 and
 keeps deprecated-declaration warnings non-fatal for Folly on Linux with newer
-libstdc++ headers. Other compiler errors remain fatal. The launcher prints native
+libstdc++ headers. It supplies the missing `<cstdint>` include in RN's HTTP
+helpers so they compile independently of platform-specific transitive includes.
+Other compiler errors remain fatal. The launcher prints native
 compiler error logs when the Gradle build fails; CI also uploads the full logs.
 The package-version check and patch context deliberately fail when RN changes;
 review and update them together rather than silently benchmarking a different RN.
