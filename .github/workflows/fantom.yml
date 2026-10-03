@@ -3,13 +3,8 @@ name: Fantom performance
 on:
   pull_request:
     branches: [main]
-    paths:
-      - 'src/**'
-      - 'cpp/**'
-      - 'scripts/performance/fantom/**'
-      - 'examples/react-navigation/src/performance/scenarios.ts'
-      - '.github/workflows/fantom.yml'
-      - 'package.json'
+  push:
+    branches: [main]
   workflow_dispatch:
 
 permissions:
@@ -24,8 +19,11 @@ jobs:
     runs-on: ubuntu-24.04
     timeout-minutes: 45
     env:
-      CC: clang
-      CXX: clang++
+      CC: clang-18
+      CXX: clang++-18
+      # Clang otherwise selects the newest GCC headers installed on the runner.
+      CFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/12
+      CXXFLAGS: --gcc-install-dir=/usr/lib/gcc/x86_64-linux-gnu/12
       CMAKE_BUILD_PARALLEL_LEVEL: '4'
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -39,10 +37,34 @@ jobs:
           distribution: zulu
           java-version: '17'
       - name: Install host build dependencies
+        id: toolchain
         run: |
           sudo apt-get update
-          sudo apt-get install -y --no-install-recommends clang libssl-dev libreadline-dev
+          sudo apt-get install -y --no-install-recommends clang-18 g++-12 libssl-dev libreadline-dev
+          "$CXX" $CXXFLAGS -v -E -x c++ /dev/null >/dev/null
           "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" 'cmake;3.30.5' 'ndk;27.1.12297006'
+          fingerprint="$(
+            {
+              "$CXX" --version
+              dpkg-query -W -f='${Package}=${Version}\n' clang-18 g++-12 libstdc++-12-dev libstdc++6 libc6-dev libssl-dev libreadline-dev
+              java -version 2>&1
+              node --version
+              printf '%s\n' "$GITHUB_WORKSPACE" "$ANDROID_HOME" "$JAVA_HOME"
+            } | sha256sum | cut -d ' ' -f1
+          )"
+          echo "fingerprint=$fingerprint" >> "$GITHUB_OUTPUT"
+      - name: Cache Fantom native build and dependencies
+        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+        with:
+          path: |
+            artifacts/performance/fantom/react-native
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: fantom-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('.github/workflows/fantom.yml', '.nvmrc', 'scripts/performance/fantom/run.js', 'scripts/performance/fantom/react-native.patch') }}-${{ hashFiles('cpp/**') }}
+          # Reuse RN/Hermes when library C++ changes; CMake rebuilds affected files.
+          # Never restore a workspace with a different RN patch or toolchain.
+          restore-keys: |
+            fantom-${{ runner.os }}-${{ runner.arch }}-${{ steps.toolchain.outputs.fingerprint }}-${{ hashFiles('.github/workflows/fantom.yml', '.nvmrc', 'scripts/performance/fantom/run.js', 'scripts/performance/fantom/react-native.patch') }}-
       - name: Build and benchmark without an emulator
         run: node scripts/performance/fantom/run.js
       - name: Upload samples and diagnostics
