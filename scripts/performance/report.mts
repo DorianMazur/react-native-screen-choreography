@@ -1,7 +1,6 @@
 import {
   summaryTable,
   firstRunTable,
-  warmupNote,
   renderCountsTable,
 } from './summary-table.mts';
 import { metricDefinition } from './metric-definitions.mts';
@@ -134,7 +133,7 @@ function readFixture(
   report: InputRecord,
   metrics: MetricSamples,
   platform: string,
-  warmupCycles?: number
+  separateFirstRun = false
 ) {
   if (report.schemaVersion !== 1 || ![5, 6].includes(report.fixtureVersion)) {
     throw new Error('Unsupported fixture schema/version');
@@ -205,12 +204,7 @@ function readFixture(
     ) {
       throw new Error('Unknown probe timing definition');
     }
-    const samplePhase =
-      warmupCycles === undefined || index >= 2 * (1 + warmupCycles)
-        ? ''
-        : index < 2
-          ? 'firstRun.'
-          : 'warmup.';
+    const samplePhase = separateFirstRun && index < 2 ? 'firstRun.' : '';
     const prefix = `${report.scenario}.${samplePhase}${journey.direction}`;
     if (report.motionTracing) {
       const motion = journey.motion;
@@ -368,9 +362,9 @@ function expectedCount(value: unknown, label: string) {
     typeof value !== 'number' ||
     !Number.isInteger(value) ||
     value < 1 ||
-    value > 100
+    value > 99
   ) {
-    throw new Error(`${label} must be an integer between 1 and 100`);
+    throw new Error(`${label} must be an integer between 1 and 99`);
   }
   return value;
 }
@@ -393,22 +387,11 @@ export function summarize(
   const runIds = new Set<string>();
   const instrumentation = new Map<string, string>();
   let expectedCycles;
-  let warmupCycles: number | undefined;
   try {
     expectedCycles = expectedCount(
       metadata.timingCycles,
       'Expected timing cycles'
     );
-    warmupCycles = expectedCount(metadata.warmupCycles, 'Warm-up cycles');
-    if (
-      warmupCycles !== undefined &&
-      (warmupCycles > 20 ||
-        expectedCycles === undefined ||
-        1 + warmupCycles + expectedCycles > 100)
-    )
-      throw new Error(
-        'Use 1..20 warm-up cycles and at most 100 total round trips'
-      );
   } catch (error) {
     errors.push(
       `metadata: ${error instanceof Error ? error.message : String(error)}`
@@ -425,13 +408,18 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
-        readFixture(data, documentMetrics, platform, warmupCycles);
+        readFixture(
+          data,
+          documentMetrics,
+          platform,
+          expectedCycles !== undefined
+        );
         if (
-          warmupCycles !== undefined &&
-          data.journeys.length !== (1 + warmupCycles + expectedCycles!) * 2
+          expectedCycles !== undefined &&
+          data.journeys.length !== (1 + expectedCycles) * 2
         )
           throw new Error(
-            'Total journey count must match first run + warm-up + measured cycles'
+            'Total journey count must match first run + measured cycles'
           );
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
@@ -546,8 +534,6 @@ export function markdown(
     ),
     '',
     baselineNote,
-    '',
-    warmupNote(summary),
     '',
     summaryTable(summary, base),
     '',

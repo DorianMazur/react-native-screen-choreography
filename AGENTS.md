@@ -117,8 +117,14 @@ When changing preparation, presentation, navigation, or retained-content ownersh
 ## Performance Benchmarks
 
 - Pin the emulator build, Xcode and iOS runtime in `.github/workflows/performance.yml`. Android uses `ubuntu-24.04`, KVM, and `-gpu host` with Xvfb/Mesa llvmpipe (software rendering). Keep snapshots disabled and animations enabled.
-- Each scenario runs one first round trip, 5 warm-up round trips, then 20 measured round trips. Validate input and presentation for every journey. Report the first run separately and exclude warm-ups from measured timings; keep all raw samples.
-- Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, system image, and warm-up count before showing baseline deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
+- Wait 10 seconds after simulator/emulator boot before starting the suite. Each scenario runs one first round trip, then 20 measured round trips. Validate input and presentation for every journey. Report the first run separately; keep all raw samples.
+- Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, and system image before showing baseline deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
+
+### Headless performance checks
+
+- `yarn perf:fantom` builds pinned RN 0.83 Fantom with the production C++ capture code and benchmarks layout preparation and gallery/trips/wallet journeys through the production navigation controller and coordinator in optimized Hermes. Screen geometry is simplified; Reanimated value storage and native presentation signals are adapted, not platform timing measurements. Keep timing metrics in benchmark suites; use ordinary pass/fail tests for safety and edge cases, including handoff coordination. See `scripts/performance/fantom/README.md` for prerequisites and scope.
+- Keep Fantom adapters under `scripts/performance/fantom/`; never alter production behavior to accommodate the harness. Refresh staged TypeScript each run, retain raw timing samples, and fail skipped benchmarks.
+- Fantom measurements cover computation, not platform presentation. Keep Android/iOS performance tests. New timing gates require evidence from repeated runs on comparable hosts.
 
 ## Areas To Inspect First
 

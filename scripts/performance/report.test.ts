@@ -70,7 +70,7 @@ function documents(overrides: InputRecord[] = []): MeasurementDocument[] {
 const options = {
   platform: 'android',
   mode: 'native-release',
-  metadata: { timingCycles: 1 },
+  metadata: {},
 };
 
 test('CLI prints collection failures and preserves diagnostic summaries', async () => {
@@ -475,7 +475,7 @@ test('requires the requested number of forward and backward timing samples', () 
   assert.equal(summary.valid, false);
   assert.match(
     summary.errors.join(),
-    /Timing journey count must match expected cycles/
+    /Total journey count must match first run \+ measured cycles/
   );
   assert.equal(
     summary.metrics['gallery.forward.requestToSessionActiveMs'],
@@ -489,10 +489,10 @@ test('reports 20 round trips with preparation traces in both directions', () => 
     (document) => document.data.fixtureVersion
   )) {
     withPreparationTrace(data);
-    data.journeys = Array.from({ length: 20 }, () =>
+    data.journeys = Array.from({ length: 21 }, () =>
       structuredClone(data.journeys)
     ).flat();
-    data.native.exportedAtUptimeMs = 41000;
+    data.native.exportedAtUptimeMs = 43000;
     data.native.touches = data.journeys.map((_: unknown, index: number) => ({
       kind: 'activity-action-up',
       eventUptimeMs: (index + 1) * 1000,
@@ -606,7 +606,7 @@ test('rejects invalid expected counts and duplicate fixture artifacts', () => {
   ]) {
     assert.match(
       summarize(documents(), { ...options, metadata }).errors.join(),
-      /integer between 1 and 100/
+      /integer between 1 and 99/
     );
   }
   for (const documentIndex of [0]) {
@@ -666,18 +666,16 @@ function withMotion(data: InputRecord) {
   return data;
 }
 
-function sampledDocuments(warmupCycles = 5, timingCycles = 20) {
+function sampledDocuments(timingCycles = 20) {
   const input = documents();
   for (const { data } of input) {
-    data.journeys = Array.from(
-      { length: 1 + warmupCycles + timingCycles },
-      () => structuredClone(data.journeys)
+    data.journeys = Array.from({ length: 1 + timingCycles }, () =>
+      structuredClone(data.journeys)
     ).flat();
     withMotion(data);
     data.journeys.forEach((journey: InputRecord, index: number) => {
-      // Deliberately distinct timings expose any first run/warm-up contamination.
-      const timing =
-        index < 2 ? 900 : index < (1 + warmupCycles) * 2 ? 200 : 40;
+      // Distinct timings expose any first-run contamination of measured samples.
+      const timing = index < 2 ? 900 : 40;
       journey.requestToSessionActiveMs = timing;
       journey.sessionActiveJsMs = journey.requestJsMs + timing;
       journey.motion.firstMotionMs = journey.sessionActiveJsMs + 30;
@@ -705,10 +703,10 @@ function sampledDocuments(warmupCycles = 5, timingCycles = 20) {
 
 const sampledOptions = {
   ...options,
-  metadata: { warmupCycles: 5, timingCycles: 20 },
+  metadata: { timingCycles: 20 },
 };
 
-test('retains first runs and warm-ups separately from 20 warmed round trips', () => {
+test('retains first runs separately from 20 measured round trips', () => {
   const summary = summarize(sampledDocuments(), sampledOptions);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
   for (const scenario of SCENARIO_IDS) {
@@ -716,7 +714,6 @@ test('retains first runs and warm-ups separately from 20 warmed round trips', ()
       for (const [phase, count, timing] of [
         ['', 20, 40],
         ['firstRun.', 1, 900],
-        ['warmup.', 5, 200],
       ] as const) {
         const key = `${scenario}.${phase}${direction}.requestToSessionActiveMs`;
         assert.deepEqual(summary.samples[key], Array(count).fill(timing));
@@ -730,16 +727,13 @@ test('retains first runs and warm-ups separately from 20 warmed round trips', ()
     }
   }
   const body = markdown(summary);
-  assert.match(
-    body,
-    /20 measured round trips after the first run and 5 warm-up/
-  );
+  assert.doesNotMatch(body, /warm-up/i);
   assert.match(body, /First run · one round trip per scenario/);
   assert.match(body, /Gallery · tap to motion \(ms\) \| — \| 70 \| —/);
   assert.match(body, /Gallery · tap to motion \(ms\) \| — \| 930 \| —/);
 });
 
-test('first run and warm-up failures still invalidate the entire collection', () => {
+test('first-run and measured failures still invalidate the entire collection', () => {
   for (const index of [0, 2, 11]) {
     for (const corrupt of [
       (data: InputRecord) => {
@@ -761,7 +755,7 @@ test('first run and warm-up failures still invalidate the entire collection', ()
   }
 });
 
-test('unanimated fallback in first run or warm-up fails despite valid warmed samples', () => {
+test('unanimated fallback in first or measured runs fails despite valid timing samples', () => {
   for (const index of [0, 2]) {
     const input = sampledDocuments();
     const journey = input[0]!.data.journeys[index];
@@ -788,35 +782,32 @@ test('unanimated fallback in first run or warm-up fails despite valid warmed sam
     };
     const summary = summarize(input, sampledOptions);
     assert.equal(summary.valid, false);
-    const phase = index === 0 ? 'firstRun' : 'warmup';
+    const prefix = index === 0 ? 'gallery.firstRun.forward' : 'gallery.forward';
     assert.match(
       summary.errors.join(),
       new RegExp(
-        `gallery.${phase}.forward: 1/1 transitions did not confirm overlay presentation`
+        `${prefix}: 1/1 transitions did not confirm overlay presentation`
       )
     );
     assert.equal(summary.metrics['gallery.forward.tapToMotion']!.count, 20);
     assert.equal(summary.metrics['gallery.forward.tapToMotion']!.median, 70);
     assert.equal(
-      summary.preparationDiagnostics[`gallery.${phase}.forward`]
-        .overlayTimeoutJourneys,
+      summary.preparationDiagnostics[prefix].overlayTimeoutJourneys,
       1
     );
   }
 });
 
-test('rejects missing or extra round trips and invalid warm-up counts', () => {
-  for (const warmupCycles of [4, 6]) {
-    const summary = summarize(sampledDocuments(warmupCycles), sampledOptions);
+test('rejects missing or extra round trips and invalid measured cycle counts', () => {
+  for (const timingCycles of [19, 21]) {
+    const summary = summarize(sampledDocuments(timingCycles), sampledOptions);
     assert.equal(summary.valid, false);
     assert.match(summary.errors.join(), /Total journey count must match/);
   }
   for (const change of [
-    { warmupCycles: 0 },
-    { warmupCycles: 21 },
     { timingCycles: 0 },
-    { timingCycles: 95 },
-    { warmupCycles: 1.5 },
+    { timingCycles: 100 },
+    { timingCycles: 1.5 },
   ]) {
     const summary = summarize(sampledDocuments(), {
       ...sampledOptions,

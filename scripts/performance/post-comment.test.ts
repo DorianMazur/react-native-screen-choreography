@@ -84,19 +84,16 @@ test('PR comments include rerenders but only link to temporary current-run artif
 
 test('comments separate first runs and never interpolate unchecked sampling metadata', () => {
   const measured: InputRecord = structuredClone(report);
-  measured.metadata = { timingCycles: 20, warmupCycles: 5 };
+  measured.metadata = { timingCycles: 20 };
   measured.metrics['gallery.firstRun.forward.tapToMotion'] = {
     count: 1,
     median: 120,
   };
   let body = renderComment(run, { [artifact]: measured });
-  assert.match(
-    body,
-    /20 measured round trips after the first run and 5 warm-up/
-  );
+  assert.doesNotMatch(body, /warm-up/i);
   assert.match(body, /First run · one round trip per scenario/);
   assert.match(body, /tap to motion \(ms\) \| — \| 120 \| —/);
-  measured.metadata.warmupCycles = '@everyone <script>';
+  measured.metadata.timingCycles = '@everyone <script>';
   body = renderComment(run, { [artifact]: measured });
   assert.doesNotMatch(body, /@everyone|<script>/);
 });

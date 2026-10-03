@@ -41,7 +41,6 @@ export function metricCompatible(
     base &&
     current.valid === true &&
     base.valid === true &&
-    current.metadata?.warmupCycles === base.metadata?.warmupCycles &&
     current.schemaVersion === 1 &&
     base.schemaVersion === 1 &&
     ['platform', 'mode'].every(
@@ -147,22 +146,9 @@ export function summaryTable(
   ].join('\n');
 }
 
-export function warmupNote(report: InputRecord) {
-  const { warmupCycles, timingCycles } = report.metadata ?? {};
-  return Number.isSafeInteger(warmupCycles) &&
-    warmupCycles >= 1 &&
-    warmupCycles <= 20 &&
-    Number.isSafeInteger(timingCycles) &&
-    timingCycles >= 1 &&
-    1 + warmupCycles + timingCycles <= 100
-    ? `${timingCycles} measured round trips after the first run and ${warmupCycles} warm-up round trips per scenario. All runs are validated; warm-up samples remain in the artifacts.`
-    : '';
-}
-
 export function firstRunTable(report: InputRecord, base?: InputRecord) {
   if (
-    !Number.isSafeInteger(report.metadata?.warmupCycles) ||
-    report.metadata.warmupCycles < 1
+    !Object.keys(report.metrics ?? {}).some((key) => key.includes('.firstRun.'))
   )
     return '';
   return [

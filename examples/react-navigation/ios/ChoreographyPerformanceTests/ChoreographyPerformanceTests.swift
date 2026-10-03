@@ -9,18 +9,14 @@ final class ChoreographyPerformanceTests: XCTestCase {
   private func run(_ scenario: String, open: String, back: String) throws {
     continueAfterFailure = false
     let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_TIMING_CYCLES"] ?? "20") ?? 0
-    XCTAssertTrue((1...100).contains(cycles), "Cycle count must be in 1...100")
-    let warmups = Int(ProcessInfo.processInfo.environment["PERFORMANCE_WARMUP_CYCLES"] ?? "5") ?? 0
-    XCTAssertTrue((1...20).contains(warmups), "Warm-up count must be in 1...20")
-    XCTAssertTrue(1 + warmups + cycles <= 100, "At most 100 total round trips are supported")
+    XCTAssertTrue((1...99).contains(cycles), "Cycle count must be in 1...99")
     let app = XCUIApplication()
     app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario
     app.launch()
     defer { app.terminate() }
     awaitMarker(app, "benchmark-ready", timeout: 60)
-    // The report separates first visit, warm-up, and warm navigation. Validate
-    // and export all of them so warm-up cannot hide a presentation/input failure.
-    for _ in 0..<(1 + warmups + cycles) {
+    // Validate and export the first visit separately from repeated measurements.
+    for _ in 0..<(1 + cycles) {
       tap(app, open, leadingQuarter: true)
       awaitMarker(app, "benchmark-detail-settled")
       tap(app, "benchmark-detail-probe")

@@ -36,7 +36,6 @@ jobs:
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/android-native-release
       PERFORMANCE_TIMING_CYCLES: '20'
-      PERFORMANCE_WARMUP_CYCLES: '5'
       PERFORMANCE_ABI: x86_64
       # Standard hosted runners have no dedicated GPU. Keep the host GL backend explicit.
       LIBGL_ALWAYS_SOFTWARE: '1'
@@ -114,7 +113,6 @@ jobs:
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-native-release
       PERFORMANCE_TIMING_CYCLES: '20'
-      PERFORMANCE_WARMUP_CYCLES: '5'
       PERFORMANCE_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-2
       RCT_USE_RN_DEP: '1'
       RCT_USE_PREBUILT_RNCORE: '1'

@@ -95,16 +95,6 @@ test('omits deltas for changed emulator versions or system images', () => {
   }
 });
 
-test('warmed samples cannot compare against mixed visits or different warm-up counts', () => {
-  const current: InputRecord = report();
-  Object.assign(current.metadata, { warmupCycles: 5 });
-  const same = structuredClone(current);
-  assert.equal(compatible(current, same), true);
-  assert.equal(compatible(current, report()), false);
-  same.metadata.warmupCycles = 4;
-  assert.equal(compatible(current, same), false);
-});
-
 test('does not display nonnumeric metrics or compare invalid collections', () => {
   const current = report();
   current.metrics['gallery.forward.tapToMotion'].median = NaN;

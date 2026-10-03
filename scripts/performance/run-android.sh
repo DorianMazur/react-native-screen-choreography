@@ -10,17 +10,17 @@ if [[ -n "${ANDROID_HOME:-}" ]]; then export PATH="$ANDROID_HOME/platform-tools:
 if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"; fi
 command -v adb >/dev/null || { echo 'Install Android SDK platform-tools and set ANDROID_HOME.' >&2; exit 2; }
 adb get-state >/dev/null
+# Let the booted emulator settle before starting the benchmark suite.
+sleep 10
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ ]] || { echo 'Cycle counts must be positive integers.' >&2; exit 2; }
-warmup_cycles="${PERFORMANCE_WARMUP_CYCLES:-5}"
-[[ "$warmup_cycles" =~ ^[1-9][0-9]*$ && "$warmup_cycles" -le 20 && $((1 + warmup_cycles + cycles)) -le 100 ]] || { echo 'Use 1..20 warm-up cycles and at most 100 total round trips.' >&2; exit 2; }
+[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured cycles plus the first round trip.' >&2; exit 2; }
 abi="${PERFORMANCE_ABI:-$(adb shell getprop ro.product.cpu.abi | tr -d '\r')}"
 output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(date -u +%Y%m%dT%H%M%SZ)}"
 [[ ! -e "$output" ]] || { echo "Use a fresh PERFORMANCE_OUTPUT directory: $output" >&2; exit 2; }
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Per scenario: 1 first run, %s warm-up, and %s warm timing/input round trips.\n' "$warmup_cycles" "$cycles"
+printf 'Per scenario: 1 first run and %s measured timing/input round trips.\n' "$cycles"
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
@@ -40,7 +40,7 @@ if [[ "$PERFORMANCE_IS_EMULATOR" == 1 ]]; then
     }
   ' "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/emulator/source.properties")"
 fi
-node - "$output/metadata.json" "$abi" "$cycles" "$warmup_cycles" <<'NODE'
+node - "$output/metadata.json" "$abi" "$cycles" <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.argv[2], JSON.stringify({
   deviceModel: process.env.PERFORMANCE_DEVICE_MODEL,
@@ -55,7 +55,6 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
-  warmupCycles: Number(process.argv[5]),
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
@@ -65,7 +64,6 @@ arguments=(
   --no-daemon --console=plain
   "-PreactNativeArchitectures=$abi"
   "-Pandroid.testInstrumentationRunnerArguments.performanceTimingCycles=$cycles"
-  "-Pandroid.testInstrumentationRunnerArguments.performanceWarmupCycles=$warmup_cycles"
 )
 # These directories contain only this example's previous benchmark exports.
 # Clear them so stale data cannot make a failed collection appear successful.

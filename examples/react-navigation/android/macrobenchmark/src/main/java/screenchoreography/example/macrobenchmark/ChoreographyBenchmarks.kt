@@ -29,12 +29,8 @@ class ChoreographyBenchmarks(private val scenario: String) {
   @Test
   fun repeatedNavigationTimingAndInput() {
     val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
-      require(it in 1..100) { "performanceTimingCycles must be between 1 and 100" }
+      require(it in 1..99) { "performanceTimingCycles must be between 1 and 99" }
     }
-    val warmups = arguments.getString("performanceWarmupCycles", "5").toInt().also {
-      require(it in 1..20) { "performanceWarmupCycles must be between 1 and 20" }
-    }
-    require(1 + warmups + cycles <= 100) { "At most 100 total round trips are supported" }
     device.wakeUp()
     device.executeShellCommand("wm dismiss-keyguard")
     check(!instrumentation.context.getSystemService(KeyguardManager::class.java).isDeviceLocked) {
@@ -48,9 +44,8 @@ class ChoreographyBenchmarks(private val scenario: String) {
       require(startupTimeout > 0) { "performanceStartupTimeoutMs must be positive" }
       await("benchmark-ready", startupTimeout)
       // Preserve every journey for validation and export. The report separates
-      // the first visit and warm-up from the repeated warm measurements.
+      // the first visit from the repeated measurements.
       roundTrip()
-      repeat(warmups) { roundTrip() }
       repeat(cycles) { roundTrip() }
     } catch (failure: Throwable) {
       // Preserve the collector's rejection reason and the actual UI before

@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-test('Android collection reaches Gradle without loading the emulator GUI binary for metadata', () => {
+test('Android collection waits once before Gradle without loading the emulator GUI binary', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'android benchmark '));
   const write = (name: string, body: string, executable = false) => {
     const file = path.join(root, name);
@@ -24,6 +24,7 @@ test('Android collection reaches Gradle without loading the emulator GUI binary 
     write(
       'sdk/platform-tools/adb',
       `#!/usr/bin/env bash
+printf 'adb %s\\n' "$*" >> "$ANDROID_HOME/../launch-sequence"
 case "$*" in
   'get-state') echo device ;;
   'shell getprop ro.kernel.qemu') echo 1 ;;
@@ -34,6 +35,11 @@ case "$*" in
   'shell dumpsys SurfaceFlinger') echo 'GLES: Mesa llvmpipe' ;;
 esac
 `,
+      true
+    );
+    write(
+      'sdk/platform-tools/sleep',
+      '#!/usr/bin/env bash\nprintf "sleep %s\\n" "$*" >> "$ANDROID_HOME/../launch-sequence"\n',
       true
     );
     write(
@@ -51,7 +57,7 @@ exit 127
     );
     write(
       'examples/react-navigation/android/gradlew',
-      '#!/usr/bin/env bash\nprintf "%s\\n" "$@" > "$PERFORMANCE_OUTPUT/gradle-arguments"\n',
+      '#!/usr/bin/env bash\nprintf "gradle\\n" >> "$ANDROID_HOME/../launch-sequence"\nprintf "%s\\n" "$@" > "$PERFORMANCE_OUTPUT/gradle-arguments"\n',
       true
     );
     for (const name of ['react-native', 'react-native-reanimated'])
@@ -74,7 +80,6 @@ exit 127
         PERFORMANCE_OUTPUT: output,
         PERFORMANCE_ABI: 'x86_64',
         PERFORMANCE_TIMING_CYCLES: '20',
-        PERFORMANCE_WARMUP_CYCLES: '5',
       },
     });
     assert.equal(result.status, 0, result.stderr);
@@ -84,10 +89,19 @@ exit 127
     );
     assert.equal(metadata.emulatorVersion, '37.2.12 (16428233)');
     assert.equal(metadata.graphicsRenderer, 'Mesa llvmpipe');
-    assert.equal(metadata.warmupCycles, 5);
+    assert.equal(metadata.timingCycles, 20);
+    const sequence = readFileSync(path.join(root, 'launch-sequence'), 'utf8')
+      .trim()
+      .split('\n');
+    assert.deepEqual(
+      sequence.filter((line) => line.startsWith('sleep ')),
+      ['sleep 10']
+    );
+    assert.ok(sequence.indexOf('adb get-state') < sequence.indexOf('sleep 10'));
+    assert.ok(sequence.indexOf('sleep 10') < sequence.indexOf('gradle'));
     assert.match(
       readFileSync(path.join(output, 'gradle-arguments'), 'utf8'),
-      /performanceWarmupCycles=5/
+      /performanceTimingCycles=20/
     );
   } finally {
     rmSync(root, { recursive: true, force: true });

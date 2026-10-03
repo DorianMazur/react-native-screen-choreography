@@ -47,6 +47,7 @@
     "example:expo-router": "yarn workspace screen-choreography-expo-router-example",
     "test": "jest",
     "test:performance": "node --experimental-transform-types --test scripts/performance/*.test.ts",
+    "perf:fantom": "node scripts/performance/fantom/run.js",
     "perf:ios": "bash scripts/performance/run-ios.sh",
     "perf:android": "bash scripts/performance/run-android.sh",
     "clean": "del-cli android/build examples/react-navigation/android/build examples/react-navigation/android/app/build examples/react-navigation/ios/build examples/expo-router/android/build examples/expo-router/ios/build lib",
