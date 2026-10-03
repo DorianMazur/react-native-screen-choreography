@@ -75,6 +75,7 @@ useSharedElementPresentation(): SharedElementPresentation;
 interface SharedElementPresentation {
   progress: SharedValue<number>;
   presentationProgress: DerivedValue<number>;
+  frame: DerivedValue<{ width: number; height: number } | null>;
   transitioning: boolean;
   direction: 'forward' | 'backward' | null;
   collapsed: SharedElementEndpoint;
@@ -91,16 +92,19 @@ interface SharedElementEndpoint {
 
 Use `presentationProgress` for animations inside shared content. It follows this element's motion and holds its resting value when another group transitions.
 
-| Value                   | Meaning                                                                                                     |
-| ----------------------- | ----------------------------------------------------------------------------------------------------------- |
-| `presentationProgress`  | Read-only progress for this owner: `0` at the source, `1` at the destination; back moves from `1` to `0`    |
-| `progress`              | Provider-wide expansion clock, which can also be driven by other elements or groups                         |
-| `collapsed`, `expanded` | Original source and expanded destination geometry, styles, and metadata, regardless of navigation direction |
-| `transitioning`         | `true` while this owner's content is in the transition overlay; `false` during preparation and at rest      |
-| `direction`             | This owner's participating navigation direction; `null` during preparation or when it does not participate  |
-| `settled`               | The endpoint where the content rests after motion                                                           |
+| Value                   | Meaning                                                                                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
+| `presentationProgress`  | Read-only progress for this owner: `0` at the source, `1` at the destination; back moves from `1` to `0`                             |
+| `frame`                 | UI-thread width and height matching `TransitionFrame`, from preparation through motion; `null` when unpaired or using reduced motion |
+| `progress`              | Provider-wide expansion clock, which can also be driven by other elements or groups                                                  |
+| `collapsed`, `expanded` | Original source and expanded destination geometry, styles, and metadata, regardless of navigation direction                          |
+| `transitioning`         | `true` while this owner's content is in the transition overlay; `false` during preparation and at rest                               |
+| `direction`             | This owner's participating navigation direction; `null` during preparation or when it does not participate                           |
+| `settled`               | The endpoint where the content rests after motion                                                                                    |
 
 Before the first transition, endpoint metrics are `null` and presentation data comes from the owner. Guard against null metrics before calculating layout. Narrow `metadata` before reading it and keep metadata objects immutable during a session.
+
+Read `frame.value` in an animated style or derived value when hosted content needs explicit dimensions. It uses clamped, linear endpoint interpolation; a custom renderer's geometry may differ.
 
 Cancellation returns progress to the endpoint where the content settles. If the destination unmounts through a navigation reset or another removal without a completed return, the content returns to its source and progress holds at `0`.
 

@@ -17,6 +17,20 @@ export function transitionLayoutStyle(): ViewStyle {
   };
 }
 
+/** The frame size on `timeline`; the single geometry shared by frames and hosted content. */
+export function transitionFrameSize(
+  source: ElementMetrics,
+  target: ElementMetrics,
+  timeline: number
+): { width: number; height: number } {
+  'worklet';
+  const t = Math.max(0, Math.min(1, timeline));
+  return {
+    width: source.width + (target.width - source.width) * t,
+    height: source.height + (target.height - source.height) * t,
+  };
+}
+
 /** Translate position while allowing live content to reflow as dimensions change. */
 export function transitionGeometryStyle(
   source: ElementMetrics,
@@ -27,8 +41,7 @@ export function transitionGeometryStyle(
   const t = Math.max(0, Math.min(1, timeline));
   const x = source.pageX + (target.pageX - source.pageX) * t;
   const y = source.pageY + (target.pageY - source.pageY) * t;
-  const width = source.width + (target.width - source.width) * t;
-  const height = source.height + (target.height - source.height) * t;
+  const { width, height } = transitionFrameSize(source, target, t);
   return {
     width,
     height,
