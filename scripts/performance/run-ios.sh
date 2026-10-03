@@ -6,7 +6,7 @@ cd "$repo_root"
 mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 100 ]] || { echo 'Cycle count must be in 1..100.' >&2; exit 2; }
+[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
 if [[ "${USE_CCACHE:-0}" == 1 ]]; then
@@ -23,7 +23,7 @@ mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 
 # Own a fresh simulator, so neither existing app data nor another run is touched.
-runtime="${PERFORMANCE_IOS_RUNTIME:-$(xcrun simctl list runtimes -j | python3 -c 'import json,sys; r=[x for x in json.load(sys.stdin)["runtimes"] if x["isAvailable"] and x["identifier"].startswith("com.apple.CoreSimulator.SimRuntime.iOS-")]; print(sorted(r, key=lambda x: tuple(map(int,x["version"].split("."))))[-1]["identifier"])')}"
+runtime="${PERFORMANCE_IOS_RUNTIME:-com.apple.CoreSimulator.SimRuntime.iOS-26-2}"
 device_type="${PERFORMANCE_IOS_DEVICE_TYPE:-com.apple.CoreSimulator.SimDeviceType.iPhone-16}"
 udid="$(xcrun simctl create ChoreographyPerformance "$device_type" "$runtime")"
 cleanup() {
@@ -33,6 +33,8 @@ cleanup() {
 trap cleanup EXIT
 xcrun simctl boot "$udid"
 xcrun simctl bootstatus "$udid" -b
+# Let the booted simulator settle before starting the benchmark suite.
+sleep 10
 xcrun simctl status_bar "$udid" override --time '9:41' --dataNetwork wifi --wifiMode active --wifiBars 3 --batteryState charged --batteryLevel 100
 
 export PERFORMANCE_DEVICE_MODEL="$device_type"
@@ -49,6 +51,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
 
@@ -64,6 +67,7 @@ xcodebuild build-for-testing \
   -scheme ChoreographyPerformance -configuration Release \
   -destination "platform=iOS Simulator,id=$udid" \
   -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
+  SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
   > >(tee "$output/build.log") 2>&1 || status=$?
 if [[ "$status" -eq 0 ]]; then
   # Pass the cycle count explicitly to XCTest, rather than assuming shell env is forwarded.

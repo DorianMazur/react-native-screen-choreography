@@ -1,0 +1,284 @@
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/Base64.h b/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
+--- a/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
+@@ -7,6 +7,7 @@
+
+ #pragma once
+
++#include <cstdint>
+ #include <string>
+ #include <string_view>
+
+diff --git a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
+index 78cee76..9545087 100644
+--- a/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
++++ b/packages/react-native/ReactCommon/jsinspector-modern/network/HttpUtils.h
+@@ -7,6 +7,7 @@
+
+ #pragma once
+
++#include <cstdint>
+ #include <map>
+ #include <string>
+
+diff --git a/packages/react-native/ReactCommon/react/networking/NetworkTypes.h b/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+--- a/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
++++ b/packages/react-native/ReactCommon/react/networking/NetworkTypes.h
+@@ -7,6 +7,7 @@
+
+ #pragma once
+
++#include <cstdint>
+ #include <map>
+ #include <optional>
+ #include <string>
+diff --git a/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h b/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h
+--- a/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h
++++ b/packages/react-native/ReactCommon/react/renderer/graphics/Transform.h
+@@ -8,6 +8,7 @@
+ #pragma once
+
+ #include <array>
++#include <cstdint>
+ #include <vector>
+
+ #include <react/renderer/debug/flags.h>
+diff --git a/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp b/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
+--- a/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
++++ b/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
+@@ -10,6 +10,7 @@
+ #include <cxxreact/TraceSection.h>
+ #include <react/featureflags/ReactNativeFeatureFlags.h>
+
++#include <algorithm>
+ #include <cmath>
+ #include <utility>
+
+diff --git a/private/react-native-fantom/build.gradle.kts b/private/react-native-fantom/build.gradle.kts
+index d40e66f..51e67ab 100644
+--- a/private/react-native-fantom/build.gradle.kts
++++ b/private/react-native-fantom/build.gradle.kts
+@@ -21,7 +21,7 @@ plugins {
+ val cmakeVersion = System.getenv("CMAKE_VERSION") ?: "3.30.5"
+ val cmakePath = "${getSDKPath()}/cmake/$cmakeVersion"
+ val cmakeBinaryPath = "${cmakePath}/bin/cmake"
+-val ndkBuildJobs = Runtime.getRuntime().availableProcessors().toString()
++val ndkBuildJobs = (System.getenv("CMAKE_BUILD_PARALLEL_LEVEL") ?: "4")
+ 
+ fun getSDKPath(): String {
+   val androidSdkRoot = System.getenv("ANDROID_SDK_ROOT")
+@@ -181,7 +181,7 @@ val configureFantomTester by
+               ".",
+               "-B",
+               testerBuildDir.toString(),
+-              "-DCMAKE_BUILD_TYPE=Debug",
++              "-DCMAKE_BUILD_TYPE=Release",
+               "-DFANTOM_CODEGEN_DIR=$buildDir/codegen",
+               "-DFANTOM_THIRD_PARTY_DIR=$buildDir/third-party",
+               "-DREACT_ANDROID_DIR=$reactAndroidDir",
+@@ -199,6 +199,7 @@ val buildFantomTester by
+       dependsOn(configureFantomTester)
+       workingDir(testerDir)
+       inputs.files(testerBuildOutputFileTree)
++      inputs.dir(File(System.getenv("CHOREOGRAPHY_ROOT"), "cpp"))
+       commandLine(
+           cmakeBinaryPath,
+           "--build",
+diff --git a/private/react-native-fantom/runner/executables/hermesc.js b/private/react-native-fantom/runner/executables/hermesc.js
+index 9d43d64..8c3c171 100644
+--- a/private/react-native-fantom/runner/executables/hermesc.js
++++ b/private/react-native-fantom/runner/executables/hermesc.js
+@@ -10,7 +10,7 @@
+ 
+ import type {HermesVariant, SyncCommandResult} from '../utils';
+ 
+-import {isCI} from '../EnvironmentOptions';
++import {isCI, isOSS} from '../EnvironmentOptions';
+ import {NATIVE_BUILD_OUTPUT_PATH} from '../paths';
+ import {
+   getBuckModesForPlatform,
+@@ -77,6 +77,15 @@ export function run(
+   args: $ReadOnlyArray<string>,
+   options: TesterOptions,
+ ): SyncCommandResult {
++  if (isOSS) {
++    return runCommandSync(
++      path.resolve(
++        __dirname,
++        '../../../../packages/react-native/ReactAndroid/hermes-engine/build/hermes/bin/hermesc',
++      ),
++      args,
++    );
++  }
+   if (!isCI) {
+     build(options);
+   }
+diff --git a/private/react-native-fantom/runner/runner.js b/private/react-native-fantom/runner/runner.js
+index 1291f68..b4e8bb5 100644
+--- a/private/react-native-fantom/runner/runner.js
++++ b/private/react-native-fantom/runner/runner.js
+@@ -254,16 +254,6 @@ module.exports = async function runTest(
+   ];
+ 
+   for (const testConfig of testConfigs) {
+-    if (EnvironmentOptions.isOSS && testConfig.isNativeOptimized) {
+-      testResultsByConfig.push(
+-        skippedTestResults({
+-          ancestorTitles: ['"@fantom_mode opt" in docblock'],
+-          title: 'Optimized mode is not yet supported in OSS',
+-        }),
+-      );
+-      continue;
+-    }
+-
+     if (
+       EnvironmentOptions.isOSS &&
+       testConfig.hermesVariant !== HermesVariantEnum.Hermes
+@@ -279,16 +269,6 @@ module.exports = async function runTest(
+       continue;
+     }
+ 
+-    if (EnvironmentOptions.isOSS && testConfig.isJsBytecode) {
+-      testResultsByConfig.push(
+-        skippedTestResults({
+-          ancestorTitles: ['"@fantom_mode dev" in docblock'],
+-          title: 'Hermes bytecode is not yet supported in OSS',
+-        }),
+-      );
+-      continue;
+-    }
+-
+     const jsTraceOutputPath = EnvironmentOptions.profileJS
+       ? buildJSTracesOutputPath({
+           testPath,
+@@ -484,6 +464,15 @@ module.exports = async function runTest(
+     snapshotResults,
+   );
+ 
++  if (process.env.CHOREOGRAPHY_RESULTS_DIR && benchmarkResults.length > 0) {
++    fs.writeFileSync(
++      path.join(
++        process.env.CHOREOGRAPHY_RESULTS_DIR,
++        path.basename(testPath) + '.json',
++      ),
++      JSON.stringify(benchmarkResults, null, 2),
++    );
++  }
+   printBenchmarkResultsRanking(benchmarkResults);
+ 
+   return {
+diff --git a/private/react-native-fantom/src/Benchmark.js b/private/react-native-fantom/src/Benchmark.js
+index ee2016e..b93d530 100644
+--- a/private/react-native-fantom/src/Benchmark.js
++++ b/private/react-native-fantom/src/Benchmark.js
+@@ -43,6 +43,8 @@ export type TestTaskTiming = {
+     p50?: number,
+     p75?: number,
+     p99?: number,
++    samples: Array<number>,
++    rme: number,
+   },
+ };
+ 
+@@ -302,10 +304,10 @@ function createBenchmarkResultsObject(
+     type: 'benchmark-result',
+     timings: tasks.map((task, i) => {
+       const result = bench.results[i];
+-      const {min, max, mean, p50, p75, p99} = result.latency;
++      const {min, max, mean, p50, p75, p99, samples, rme} = result.latency;
+       return {
+         name: task.name,
+-        latency: {min, max, mean, p50, p75, p99},
++        latency: {min, max, mean, p50, p75, p99, samples, rme},
+       };
+     }),
+   };
+diff --git a/private/react-native-fantom/tester/CMakeLists.txt b/private/react-native-fantom/tester/CMakeLists.txt
+index 235f744..adc41d2 100644
+--- a/private/react-native-fantom/tester/CMakeLists.txt
++++ b/private/react-native-fantom/tester/CMakeLists.txt
+@@ -34,6 +34,19 @@ add_react_third_party_ndk_subdir(glog)
+ add_react_third_party_ndk_subdir(double-conversion)
+ add_react_third_party_ndk_subdir(fast_float)
+ add_react_third_party_ndk_subdir(fmt)
++# RN 0.83's fmt 11.0.2 consteval parser is incompatible with Apple Clang 21.
++if(CMAKE_CXX_COMPILER_ID STREQUAL "AppleClang" AND CMAKE_CXX_COMPILER_VERSION VERSION_GREATER_EQUAL 21)
++  set(FMT_BASE "${REACT_THIRD_PARTY_NDK_DIR}/fmt/include/fmt/base.h")
++  file(READ "${FMT_BASE}" FMT_CONTENT)
++  set(FMT_ORIGINAL "${FMT_CONTENT}")
++  string(REPLACE "#if !defined(__cpp_lib_is_constant_evaluated)"
++    "#if defined(FMT_USE_CONSTEVAL)\n// Use the provided definition.\n#elif !defined(__cpp_lib_is_constant_evaluated)"
++    FMT_CONTENT "${FMT_CONTENT}")
++  if(NOT FMT_CONTENT STREQUAL FMT_ORIGINAL)
++    file(WRITE "${FMT_BASE}" "${FMT_CONTENT}")
++  endif()
++  target_compile_definitions(fmt PUBLIC FMT_USE_CONSTEVAL=0)
++endif()
+ add_fantom_third_party_subdir(folly)
+ add_fantom_third_party_subdir(gflags)
+ add_fantom_third_party_subdir(nlohmann_json)
+@@ -246,3 +259,15 @@ target_compile_options(fantom_tester
+     -fexceptions
+     -frtti
+     -std=c++20)
++
++# Compile the library source directly; edits are picked up by CMake on every run.
++set(CHOREOGRAPHY_ROOT "$ENV{CHOREOGRAPHY_ROOT}")
++if(NOT EXISTS "${CHOREOGRAPHY_ROOT}/cpp/FabricLayoutCapture.cpp")
++  message(FATAL_ERROR "CHOREOGRAPHY_ROOT must point to react-native-screen-choreography")
++endif()
++target_sources(fantom_tester PRIVATE "${CHOREOGRAPHY_ROOT}/cpp/FabricLayoutCapture.cpp")
++target_include_directories(fantom_tester PRIVATE "${CHOREOGRAPHY_ROOT}/cpp")
++# Match Linux thread CPU timing used by Meta's benchmark harness.
++if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
++  target_compile_definitions(react_nativemodule_cpu PRIVATE USE_POSIX_TIME)
++endif()
+diff --git a/private/react-native-fantom/tester/src/NativeFantom.cpp b/private/react-native-fantom/tester/src/NativeFantom.cpp
+index 5b67792..e609d41 100644
+--- a/private/react-native-fantom/tester/src/NativeFantom.cpp
++++ b/private/react-native-fantom/tester/src/NativeFantom.cpp
+@@ -6,6 +6,7 @@
+  */
+ 
+ #include "NativeFantom.h"
++#include "FabricLayoutCapture.h"
+ 
+ #include <hermes/hermes.h>
+ #include <jsi/JSIDynamic.h>
+@@ -38,6 +39,9 @@ SurfaceId NativeFantom::startSurface(
+     double devicePixelRatio,
+     double viewportOffsetX,
+     double viewportOffsetY) {
++  if (!runtime.global().hasProperty(runtime, "__screenChoreographyCaptureFabricLayout")) {
++    screenchoreography::installFabricLayoutCapture(runtime, jsInvoker_);
++  }
+   SurfaceId surfaceId = nextSurfaceId_;
+   nextSurfaceId_ += 10;
+   appDelegate_.startSurface(
+diff --git a/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt b/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt
+index e2af851..0e04435 100644
+--- a/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt
++++ b/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt
+@@ -67,6 +67,12 @@ target_compile_options(folly_runtime
+         -Wno-sign-compare
+         ${folly_FLAGS})
+
++# libstdc++ 14 deprecates the ABI handler type used by this pinned Folly.
++# Keep the warning, but do not fail the Linux host build on third-party code.
++if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
++  target_compile_options(folly_runtime PRIVATE -Wno-error=deprecated-declarations)
++endif()
++
+ target_compile_options(folly_runtime PUBLIC ${folly_FLAGS})
+
+ target_include_directories(folly_runtime PUBLIC .)
+diff --git a/private/react-native-fantom/tester/third-party/nlohmann_json/CMakeLists.txt b/private/react-native-fantom/tester/third-party/nlohmann_json/CMakeLists.txt
+index 5434507..8e1ad92 100644
+--- a/private/react-native-fantom/tester/third-party/nlohmann_json/CMakeLists.txt
++++ b/private/react-native-fantom/tester/third-party/nlohmann_json/CMakeLists.txt
+@@ -8,4 +8,4 @@ set(CMAKE_VERBOSE_MAKEFILE on)
+ 
+ add_library(nlohmann_json INTERFACE)
+ 
+-target_include_directories(nlohmann_json INTERFACE include)
++target_include_directories(nlohmann_json SYSTEM INTERFACE include)

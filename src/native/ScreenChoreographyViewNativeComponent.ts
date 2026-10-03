@@ -10,6 +10,10 @@ export type PresentationReadyEvent = Readonly<{
   timestamp: Double;
   sessionId: string;
   stage: string;
+  preparedAtMs: Double;
+  attachedAtMs: Double;
+  contentReadyAtMs: Double;
+  presentedAtMs: Double;
 }>;
 
 interface NativeProps extends ViewProps {

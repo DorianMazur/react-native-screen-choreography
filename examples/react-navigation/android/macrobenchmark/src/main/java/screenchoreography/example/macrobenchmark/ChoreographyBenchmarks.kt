@@ -29,7 +29,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
   @Test
   fun repeatedNavigationTimingAndInput() {
     val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
-      require(it in 1..100) { "performanceTimingCycles must be between 1 and 100" }
+      require(it in 1..99) { "performanceTimingCycles must be between 1 and 99" }
     }
     device.wakeUp()
     device.executeShellCommand("wm dismiss-keyguard")

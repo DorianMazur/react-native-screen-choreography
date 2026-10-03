@@ -43,6 +43,8 @@ android {
   defaultConfig {
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
+    buildConfigField "boolean", "TRACE_PRESENTATION",
+      (project.findProperty("screenChoreographyTracePresentation") == "true").toString()
     externalNativeBuild {
       cmake {
         arguments "-DANDROID_STL=c++_shared",

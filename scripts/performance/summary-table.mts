@@ -32,7 +32,11 @@ export function metricCompatible(
             name
           )
       )
-    : comparableMetadata;
+    : [...comparableMetadata];
+  if (current.platform === 'android') {
+    fields.push('systemImage');
+    if (current.metadata?.emulator === true) fields.push('emulatorVersion');
+  }
   return Boolean(
     base &&
     current.valid === true &&
@@ -55,6 +59,7 @@ export function metricCompatible(
     fields.every(
       (field) =>
         current.metadata?.[field] != null &&
+        current.metadata[field] !== '' &&
         current.metadata[field] === base.metadata?.[field]
     )
   );
@@ -116,25 +121,61 @@ function value(report: InputRecord | undefined, key: string, scale: number) {
 const format = (n: number | null) =>
   n === null ? '—' : Number(n.toFixed(3)).toString();
 
-export function summaryTable(report: InputRecord, base?: InputRecord) {
+function belowChangeThreshold(
+  current: number | null,
+  previous: number | null,
+  minChangePercent: number
+) {
+  if (minChangePercent <= 0 || previous === null || current === null)
+    return false;
+  if (current === previous) return true;
+  if (previous === 0) return false;
+  // Compare before display rounding; retain exact boundary changes despite
+  // floating-point subtraction (for example, 40 -> 40.4 is exactly 1%).
+  const roundoff = Number.EPSILON * Math.max(current, previous);
+  return (
+    Math.abs(current - previous) + roundoff <
+    (previous * minChangePercent) / 100
+  );
+}
+
+export function summaryTable(
+  report: InputRecord,
+  base?: InputRecord,
+  minChangePercent = 0
+) {
+  const rows = headlineMetrics().flatMap(({ key, label, scale, unit }) => {
+    const current = value(report, key, scale);
+    const previous =
+      metricCompatible(report, base, key) &&
+      report.metrics?.[key]?.count === base?.metrics?.[key]?.count
+        ? value(base, key, scale)
+        : null;
+    if (
+      (minChangePercent > 0 && current === null) ||
+      belowChangeThreshold(current, previous, minChangePercent)
+    )
+      return [];
+    const delta =
+      current !== null && previous !== null ? current - previous : null;
+    return [
+      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |`,
+    ];
+  });
+  if (!rows.length)
+    return `No measurements to show at the ${minChangePercent}% change threshold.`;
   return [
     '| Metric | Base | PR / current | Change |',
     '| --- | ---: | ---: | ---: |',
-    ...headlineMetrics().map(({ key, label, scale, unit }) => {
-      const current = value(report, key, scale);
-      const previous =
-        metricCompatible(report, base, key) &&
-        report.metrics?.[key]?.count === base?.metrics?.[key]?.count
-          ? value(base, key, scale)
-          : null;
-      const delta =
-        current !== null && previous !== null ? current - previous : null;
-      return `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |`;
-    }),
+    ...rows,
   ].join('\n');
 }
 
-export function renderCountsTable(report: InputRecord, base?: InputRecord) {
+export function renderCountsTable(
+  report: InputRecord,
+  base?: InputRecord,
+  minChangePercent = 0
+) {
   const rows: string[] = [];
   for (const scenario of SCENARIO_IDS) {
     for (const direction of ['forward', 'backward']) {
@@ -148,6 +189,8 @@ export function renderCountsTable(report: InputRecord, base?: InputRecord) {
             report.metrics[key].count === base?.metrics?.[key]?.count
               ? value(base, key, 1)
               : null;
+          if (belowChangeThreshold(current, previous, minChangePercent))
+            continue;
           const delta = previous === null ? null : current - previous;
           rows.push(
             `| ${SCENARIOS[scenario].label} · ${direction} · ${component} · ${phase === 'mount' ? 'mounts' : 'rerenders'} | ${report.metrics[key].count} | ${format(previous)} | ${format(current)} | ${delta !== null && delta > 0 ? '+' : ''}${format(delta)} |`
