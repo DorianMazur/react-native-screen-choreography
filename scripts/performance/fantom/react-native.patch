@@ -43,6 +43,17 @@ diff --git a/packages/react-native/ReactCommon/react/renderer/graphics/Transform
  #include <vector>
 
  #include <react/renderer/debug/flags.h>
+diff --git a/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp b/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
+--- a/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
++++ b/packages/react-native/ReactCommon/react/runtime/TimerManager.cpp
+@@ -10,6 +10,7 @@
+ #include <cxxreact/TraceSection.h>
+ #include <react/featureflags/ReactNativeFeatureFlags.h>
+
++#include <algorithm>
+ #include <cmath>
+ #include <utility>
+
 diff --git a/private/react-native-fantom/build.gradle.kts b/private/react-native-fantom/build.gradle.kts
 index d40e66f..51e67ab 100644
 --- a/private/react-native-fantom/build.gradle.kts
