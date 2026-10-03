@@ -103,17 +103,11 @@ test('PR comments include rerenders but only link to temporary current-run artif
   assert.doesNotMatch(body, /Permanent report|performance-history\/runs\/42/);
 });
 
-test('comments separate first runs and never interpolate unchecked sampling metadata', () => {
+test('comments never interpolate unchecked sampling metadata', () => {
   const measured: InputRecord = structuredClone(report);
   measured.metadata = { timingCycles: 20 };
-  measured.metrics['gallery.firstRun.forward.tapToMotion'] = {
-    count: 1,
-    median: 120,
-  };
   let body = renderComment(run, { [artifact]: measured });
-  assert.doesNotMatch(body, /warm-up/i);
-  assert.match(body, /First run · one round trip per scenario/);
-  assert.match(body, /tap to motion \(ms\) \| — \| 120 \| —/);
+  assert.doesNotMatch(body, /warm-up|first run|first visit/i);
   measured.metadata.timingCycles = '@everyone <script>';
   body = renderComment(run, { [artifact]: measured });
   assert.doesNotMatch(body, /@everyone|<script>/);
@@ -158,19 +152,15 @@ test('all examples get separate comparison rows even when main only has Gallery'
   assert.match(body, /not a smoothness score or regression threshold/);
 });
 
-test('MR notes filter small changes in timings, first runs and render counts', () => {
+test('MR notes filter small changes in timings and render counts', () => {
   const base = comparableReport();
   Object.assign(base.metrics, {
-    'gallery.firstRun.forward.tapToMotion': { count: 1, median: 100 },
-    'gallery.firstRun.backward.tapToMotion': { count: 1, median: 100 },
     'gallery.forward.renders.hero.update': { count: 20, median: 100 },
     'gallery.backward.renders.hero.update': { count: 20, median: 100 },
   });
   const current = structuredClone(base);
   current.metrics['gallery.forward.tapToMotion'].median = 40.4;
   current.metrics['gallery.backward.tapToMotion'].median = 24.75;
-  current.metrics['gallery.firstRun.forward.tapToMotion'].median = 100.99996;
-  current.metrics['gallery.firstRun.backward.tapToMotion'].median = 99;
   current.metrics['gallery.forward.renders.hero.update'].median = 100.5;
   current.metrics['gallery.backward.renders.hero.update'].median = 99;
   const baseline = {
@@ -185,9 +175,6 @@ test('MR notes filter small changes in timings, first runs and render counts', (
   assert.match(body, /tap to motion \(ms\) \| 40 \| 40.4 \| \+0.4 ms/);
   assert.match(body, /back tap to motion \(ms\) \| 25 \| 24.75 \| -0.25 ms/);
   assert.doesNotMatch(body, /\| Gallery · (open|return) preparation/);
-  const firstRun = body.split('First run · one round trip per scenario')[1];
-  assert.doesNotMatch(firstRun, /\| Gallery · tap to motion/);
-  assert.match(firstRun, /back tap to motion \(ms\) \| 100 \| 99 \| -1 ms/);
   assert.doesNotMatch(body, /\| Gallery · forward · hero/);
   assert.match(body, /backward · hero · rerenders \| 20 \| 100 \| 99 \| -1/);
   assert.match(body, /absolute change below 1% are hidden/);

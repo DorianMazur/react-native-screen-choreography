@@ -407,9 +407,7 @@ export function summarize(
           expectedCycles !== undefined &&
           data.journeys.length !== expectedCycles * 2
         )
-          throw new Error(
-            'Total journey count must match measured cycles'
-          );
+          throw new Error('Total journey count must match measured cycles');
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
             const key = `${data.scenario}.${direction}.requestToSessionActiveMs`;

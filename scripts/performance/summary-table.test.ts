@@ -66,7 +66,7 @@ test('optional percentage filter uses absolute unrounded changes and includes th
     const current = report();
     base.metrics[key].median = previous;
     current.metrics[key].median = next;
-    const filtered = summaryTable(current, base, false, 1);
+    const filtered = summaryTable(current, base, 1);
     assert.equal(
       filtered.includes('| Gallery · tap to motion (ms) |'),
       visible,
@@ -86,12 +86,12 @@ test('filter retains measurements with missing or incompatible baselines', () =>
     { ...report(), valid: false },
   ]) {
     assert.match(
-      summaryTable(current, base, false, 1),
+      summaryTable(current, base, 1),
       /Gallery · tap to motion \(ms\) \| — \| 40 \| —/
     );
   }
   assert.equal(
-    summaryTable(current, report(), false, 1),
+    summaryTable(current, report(), 1),
     'No measurements to show at the 1% change threshold.'
   );
 });

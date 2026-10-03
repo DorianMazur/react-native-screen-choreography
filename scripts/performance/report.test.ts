@@ -475,7 +475,7 @@ test('requires the requested number of forward and backward timing samples', () 
   assert.equal(summary.valid, false);
   assert.match(
     summary.errors.join(),
-    /Total journey count must match first run \+ measured cycles/
+    /Total journey count must match measured cycles/
   );
   assert.equal(
     summary.metrics['gallery.forward.requestToSessionActiveMs'],
@@ -489,7 +489,7 @@ test('reports 20 round trips with preparation traces in both directions', () => 
     (document) => document.data.fixtureVersion
   )) {
     withPreparationTrace(data);
-    data.journeys = Array.from({ length: 21 }, () =>
+    data.journeys = Array.from({ length: 20 }, () =>
       structuredClone(data.journeys)
     ).flat();
     data.native.exportedAtUptimeMs = 43000;
@@ -669,12 +669,12 @@ function withMotion(data: InputRecord) {
 function sampledDocuments(timingCycles = 20) {
   const input = documents();
   for (const { data } of input) {
-    data.journeys = Array.from({ length: 1 + timingCycles }, () =>
+    data.journeys = Array.from({ length: timingCycles }, () =>
       structuredClone(data.journeys)
     ).flat();
     withMotion(data);
     data.journeys.forEach((journey: InputRecord, index: number) => {
-      // Distinct timings expose any first-run contamination of measured samples.
+      // Distinct initial samples make accidental exclusions visible.
       const timing = index < 2 ? 900 : 40;
       journey.requestToSessionActiveMs = timing;
       journey.sessionActiveJsMs = journey.requestJsMs + timing;
@@ -706,34 +706,33 @@ const sampledOptions = {
   metadata: { timingCycles: 20 },
 };
 
-test('retains first runs separately from 20 measured round trips', () => {
+test('includes all 20 round trips in one measured set', () => {
   const summary = summarize(sampledDocuments(), sampledOptions);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
   for (const scenario of SCENARIO_IDS) {
     for (const direction of ['forward', 'backward']) {
-      for (const [phase, count, timing] of [
-        ['', 20, 40],
-        ['firstRun.', 1, 900],
-      ] as const) {
-        const key = `${scenario}.${phase}${direction}.requestToSessionActiveMs`;
-        assert.deepEqual(summary.samples[key], Array(count).fill(timing));
-        assert.equal(summary.metrics[key]!.median, timing);
-        assert.equal(
-          summary.metrics[`${scenario}.${phase}${direction}.tapToMotion`]!
-            .median,
-          timing + 30
-        );
-      }
+      const key = `${scenario}.${direction}.requestToSessionActiveMs`;
+      assert.deepEqual(summary.samples[key], [900, ...Array(19).fill(40)]);
+      assert.equal(summary.metrics[key]!.count, 20);
+      assert.equal(summary.metrics[key]!.median, 40);
+      const motionKey = `${scenario}.${direction}.tapToMotion`;
+      assert.deepEqual(summary.samples[motionKey], [
+        930,
+        ...Array(19).fill(70),
+      ]);
+      assert.equal(summary.metrics[motionKey]!.median, 70);
     }
   }
+  assert.equal(
+    Object.keys(summary.metrics).some((key) => key.includes('firstRun')),
+    false
+  );
   const body = markdown(summary);
-  assert.doesNotMatch(body, /warm-up/i);
-  assert.match(body, /First run · one round trip per scenario/);
+  assert.doesNotMatch(body, /warm-up|first run|first visit/i);
   assert.match(body, /Gallery · tap to motion \(ms\) \| — \| 70 \| —/);
-  assert.match(body, /Gallery · tap to motion \(ms\) \| — \| 930 \| —/);
 });
 
-test('first-run and measured failures still invalidate the entire collection', () => {
+test('a failure in any journey invalidates the entire collection', () => {
   for (const index of [0, 2, 11]) {
     for (const corrupt of [
       (data: InputRecord) => {
@@ -755,7 +754,7 @@ test('first-run and measured failures still invalidate the entire collection', (
   }
 });
 
-test('unanimated fallback in first or measured runs fails despite valid timing samples', () => {
+test('unanimated fallback in any journey fails despite valid timing samples', () => {
   for (const index of [0, 2]) {
     const input = sampledDocuments();
     const journey = input[0]!.data.journeys[index];
@@ -782,7 +781,7 @@ test('unanimated fallback in first or measured runs fails despite valid timing s
     };
     const summary = summarize(input, sampledOptions);
     assert.equal(summary.valid, false);
-    const prefix = index === 0 ? 'gallery.firstRun.forward' : 'gallery.forward';
+    const prefix = 'gallery.forward';
     assert.match(
       summary.errors.join(),
       new RegExp(

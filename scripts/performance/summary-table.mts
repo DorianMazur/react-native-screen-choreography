@@ -144,26 +144,24 @@ export function summaryTable(
   base?: InputRecord,
   minChangePercent = 0
 ) {
-  const rows = headlineMetrics().flatMap(
-    ({ key, label, scale, unit }) => {
-      const current = value(report, key, scale);
-      const previous =
-        metricCompatible(report, base, key) &&
-        report.metrics?.[key]?.count === base?.metrics?.[key]?.count
-          ? value(base, key, scale)
-          : null;
-      if (
-        (minChangePercent > 0 && current === null) ||
-        belowChangeThreshold(current, previous, minChangePercent)
-      )
-        return [];
-      const delta =
-        current !== null && previous !== null ? current - previous : null;
-      return [
-        `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |`,
-      ];
-    }
-  );
+  const rows = headlineMetrics().flatMap(({ key, label, scale, unit }) => {
+    const current = value(report, key, scale);
+    const previous =
+      metricCompatible(report, base, key) &&
+      report.metrics?.[key]?.count === base?.metrics?.[key]?.count
+        ? value(base, key, scale)
+        : null;
+    if (
+      (minChangePercent > 0 && current === null) ||
+      belowChangeThreshold(current, previous, minChangePercent)
+    )
+      return [];
+    const delta =
+      current !== null && previous !== null ? current - previous : null;
+    return [
+      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |`,
+    ];
+  });
   if (!rows.length)
     return `No measurements to show at the ${minChangePercent}% change threshold.`;
   return [
