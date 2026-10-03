@@ -48,6 +48,54 @@ test('shows absolute deltas including zero baselines, negative timing changes', 
   assert.doesNotMatch(table, /Infinity|NaN/);
 });
 
+test('optional percentage filter uses absolute unrounded changes and includes the 1% boundary', () => {
+  const key = 'gallery.forward.tapToMotion';
+  for (const [previous, next, visible] of [
+    [40, 40, false],
+    [40, 40.39996, false],
+    [40, 39.60004, false],
+    [40, 40.4, true],
+    [40, 39.6, true],
+    [40, 41, true],
+    [40, 39, true],
+    [0, 0, false],
+    [0, 0.1, true],
+    [40, 0, true],
+  ] as const) {
+    const base = report();
+    const current = report();
+    base.metrics[key].median = previous;
+    current.metrics[key].median = next;
+    const filtered = summaryTable(current, base, false, 1);
+    assert.equal(
+      filtered.includes('| Gallery · tap to motion (ms) |'),
+      visible,
+      `${previous} -> ${next}`
+    );
+    assert.doesNotMatch(filtered, /Infinity|NaN/);
+    // Full reports keep every measurement, even when the MR note filters it.
+    assert.match(summaryTable(current, base), /Gallery · tap to motion/);
+  }
+});
+
+test('filter retains measurements with missing or incompatible baselines', () => {
+  const current = report();
+  for (const base of [
+    undefined,
+    { ...report(), metrics: {} },
+    { ...report(), valid: false },
+  ]) {
+    assert.match(
+      summaryTable(current, base, false, 1),
+      /Gallery · tap to motion \(ms\) \| — \| 40 \| —/
+    );
+  }
+  assert.equal(
+    summaryTable(current, report(), false, 1),
+    'No measurements to show at the 1% change threshold.'
+  );
+});
+
 test('requires explicit matching environment and definition metadata', () => {
   for (const field of Object.keys(report().metadata)) {
     const base = report();

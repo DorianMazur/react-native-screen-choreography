@@ -119,6 +119,7 @@ When changing preparation, presentation, navigation, or retained-content ownersh
 - Pin the emulator build, Xcode and iOS runtime in `.github/workflows/performance.yml`. Android uses `ubuntu-24.04`, KVM, and `-gpu host` with Xvfb/Mesa llvmpipe (software rendering). Keep snapshots disabled and animations enabled.
 - Wait 10 seconds after simulator/emulator boot before starting the suite. Each scenario runs one first round trip, then 20 measured round trips. Validate input and presentation for every journey. Report the first run separately; keep all raw samples.
 - Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, and system image before showing baseline deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
+- PR performance comments hide timing and render-count rows with an absolute change below 1%, using unrounded values and compatible baselines. Keep changes of 1% or more and measurements without comparable baselines visible; full reports retain all measurements.
 
 ### Headless performance checks
 

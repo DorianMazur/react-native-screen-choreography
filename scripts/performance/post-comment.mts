@@ -153,8 +153,13 @@ export function renderComment(
         : 'No compatible baseline in the latest successful main report. Current readings remain available; older runs are not substituted.',
       ''
     );
-    lines.push(summaryTable(report, base), '', firstRunTable(report, base), '');
-    const renders = renderCountsTable(report, base);
+    lines.push(
+      summaryTable(report, base, false, 1),
+      '',
+      firstRunTable(report, base, 1),
+      ''
+    );
+    const renders = renderCountsTable(report, base, 1);
     if (renders)
       lines.push(
         '<details><summary>Optional committed-render diagnostics</summary>',
@@ -167,7 +172,7 @@ export function renderComment(
     lines.push('</details>', '');
   }
   lines.push(
-    'Informational emulator/simulator results · medians · tap handler to UI motion, motion to endpoint, then UI input handoff (ms). Render changes are counts. [Full reports and measurements](' +
+    'Informational emulator/simulator results · medians · tap handler to UI motion, motion to endpoint, then UI input handoff (ms). Render changes are counts. Rows with an absolute change below 1% are hidden; measurements without a comparable baseline remain visible. [Full reports and measurements](' +
       run.html_url +
       ').'
   );
