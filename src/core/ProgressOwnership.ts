@@ -7,7 +7,10 @@ import {
 } from 'react-native-reanimated';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import type { SpringConfig } from '../types';
-import type { NativePresentation } from './nativePresentation';
+import type {
+  NativePresentation,
+  PresentationUITiming,
+} from './nativePresentation';
 import {
   finishVisibilityHandoff,
   resumeVisibilityHandoff,
@@ -140,6 +143,7 @@ export function animateOwnedProgress({
   onCompleteUI,
   onComplete,
   presentation,
+  timing = presentation?.timing,
 }: {
   ownership: ProgressOwnership;
   token: number;
@@ -154,27 +158,24 @@ export function animateOwnedProgress({
   onCompleteUI?: () => void;
   onComplete: (token: number, sessionId: string) => void;
   presentation?: NativePresentation;
+  /** Trace direct reverse animations without queuing them for presentation. */
+  timing?: SharedValue<PresentationUITiming>;
 }): void {
   if (!ownership.isCurrent(token, sessionId)) return;
   const { owner, handoff, reducedMotion } = ownership;
   const completionId = ownership.retainCompletion(token, sessionId, onComplete);
-  const dispatchedAtMs = presentation?.timing
-    ? globalThis.performance.now()
-    : 0;
+  const dispatchedAtMs = timing ? globalThis.performance.now() : 0;
   scheduleOnUI(() => {
     'worklet';
     if (owner.value !== token) return;
+    if (timing && timing.value.animationQueuedAtMs === null) {
+      timing.value = {
+        ...timing.value,
+        animationDispatchedAtMs: dispatchedAtMs,
+        animationQueuedAtMs: globalThis.performance.now(),
+      };
+    }
     if (presentation) {
-      if (
-        presentation.timing &&
-        presentation.timing.value.animationQueuedAtMs === null
-      ) {
-        presentation.timing.value = {
-          ...presentation.timing.value,
-          animationDispatchedAtMs: dispatchedAtMs,
-          animationQueuedAtMs: globalThis.performance.now(),
-        };
-      }
       presentation.animation.value = {
         token,
         completionId,
@@ -183,6 +184,12 @@ export function animateOwnedProgress({
         duration,
       };
     } else {
+      if (timing && timing.value.animationStartedAtMs === null) {
+        timing.value = {
+          ...timing.value,
+          animationStartedAtMs: globalThis.performance.now(),
+        };
+      }
       startOwnedProgressOnUI({
         owner,
         handoff,
