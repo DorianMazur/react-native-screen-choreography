@@ -2,12 +2,14 @@
 
 Run `yarn perf:fantom` from the repository root. Requires Node 22.11+ (CI uses
 `.nvmrc`), Java 17, a host C++ compiler, OpenSSL development headers, and an Android
-SDK with CMake 3.30.5. Set `ANDROID_HOME`. The SDK supplies build tools; no emulator,
-simulator, application installation, or Android runtime is used.
+SDK with CMake 3.30.5 and NDK 27.1.12297006. Set `ANDROID_HOME`. RN's Gradle
+configuration requires the pinned NDK even for this host build; the launcher
+selects it instead of inheriting runner NDK overrides. No emulator, simulator,
+application installation, or Android runtime is used.
 
 On macOS, install OpenSSL with `brew install openssl@3`. On Ubuntu 24.04, install
 `clang libssl-dev libreadline-dev` and run
-`"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" 'cmake;3.30.5'`.
+`"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" 'cmake;3.30.5' 'ndk;27.1.12297006'`.
 
 The launcher downloads React Native 0.83.0 at a fixed commit into the ignored
 `artifacts/performance/fantom/react-native` directory. Its locked Yarn 1 workspace

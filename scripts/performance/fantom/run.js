@@ -14,6 +14,7 @@ const clock =
     ? 'thread CPU time'
     : 'mach monotonic elapsed time';
 const revision = 'a98aa814cfe65e296e28000fc8091065f0632660'; // RN 0.83.0
+const ndkVersion = '27.1.12297006'; // RN 0.83.0's Gradle version catalog
 const packageJson = JSON.parse(
   fs.readFileSync(path.join(root, 'package.json'))
 );
@@ -30,6 +31,11 @@ if (!sdk)
 const env = {
   ...process.env,
   ANDROID_HOME: sdk,
+  ANDROID_SDK_ROOT: sdk,
+  // RN's root build reads these even when building Fantom for the host. Select
+  // the pinned NDK instead of inheriting the GitHub runner's default toolchain.
+  ANDROID_NDK: path.join(sdk, 'ndk', ndkVersion),
+  ANDROID_NDK_VERSION: ndkVersion,
   CHOREOGRAPHY_ROOT: root,
   CHOREOGRAPHY_RESULTS_DIR: resultsDir,
   CMAKE_BUILD_PARALLEL_LEVEL: process.env.CMAKE_BUILD_PARALLEL_LEVEL || '4',
