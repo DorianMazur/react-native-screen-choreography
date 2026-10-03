@@ -6,7 +6,8 @@ SDK with CMake 3.30.5. Set `ANDROID_HOME`. The SDK supplies build tools; no emul
 simulator, application installation, or Android runtime is used.
 
 On macOS, install OpenSSL with `brew install openssl@3`. On Ubuntu 24.04, install
-`clang libssl-dev libreadline-dev` and run `sdkmanager 'cmake;3.30.5'`.
+`clang libssl-dev libreadline-dev` and run
+`"$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" 'cmake;3.30.5'`.
 
 The launcher downloads React Native 0.83.0 at a fixed commit into the ignored
 `artifacts/performance/fantom/react-native` directory. Its locked Yarn 1 workspace
