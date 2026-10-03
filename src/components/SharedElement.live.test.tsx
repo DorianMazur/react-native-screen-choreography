@@ -170,6 +170,8 @@ describe('SharedElement live endpoints', () => {
         await act(async () => tree.update(render(active)));
       };
       const host = () => tree.root.findByType(Portal).props.hostName;
+      const ownerInput = () =>
+        tree.root.findByType(Portal).parent!.props.pointerEvents;
       const detailHost = getLiveDestinationHostName(
         'detail',
         'player',
@@ -186,6 +188,7 @@ describe('SharedElement live endpoints', () => {
         }
         const resting = host();
         expect(resting).toBe(retained ? detailHost : undefined);
+        expect(ownerInput()).toBe(retained ? 'box-only' : 'auto');
         const active =
           direction === 'backward'
             ? session('detail', 'list', direction)
@@ -194,6 +197,7 @@ describe('SharedElement live endpoints', () => {
         await update({ ...active, state: 'preparing' });
         // Native is still attaching the overlay: nothing moves or restyles.
         expect(host()).toBe(resting);
+        expect(ownerInput()).toBe(retained ? 'box-only' : 'auto');
         expect(presentation.transitioning).toBe(false);
         expect(presentation.presentationProgress.value).toBe(retained ? 1 : 0);
         expect(presentation.frame.value).toEqual(
@@ -205,6 +209,9 @@ describe('SharedElement live endpoints', () => {
         if (outcome === 'present') {
           await update(active);
           expect(host()).toContain('overlay');
+          // The empty owner must not proxy a neighboring tile's tap into the
+          // remote, expanded payload while it moves above the list.
+          expect(ownerInput()).toBe('box-only');
           expect(presentation.transitioning).toBe(true);
           active.progress.value = 0.5;
           expect(presentation.frame.value).toEqual({ width: 200, height: 125 });
@@ -218,6 +225,7 @@ describe('SharedElement live endpoints', () => {
         await update(null);
         const settledAt =
           outcome === 'cancel' ? active.sourceScreenId : active.targetScreenId;
+        expect(ownerInput()).toBe(settledAt === 'list' ? 'auto' : 'box-only');
         expect(host()).toBe(settledAt === 'list' ? undefined : detailHost);
         expect(presentation.transitioning).toBe(false);
         expect(presentation.frame.value).toBeNull();

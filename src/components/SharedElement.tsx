@@ -68,6 +68,7 @@ interface SharedElementRegistrationProps {
   children: ReactNode;
   style?: StyleProp<ViewStyle>;
   layoutStyle?: StyleProp<ViewStyle>;
+  contentAway?: boolean;
   metadata?: unknown;
 }
 
@@ -84,6 +85,7 @@ function SharedElementRegistration({
   children,
   style,
   layoutStyle,
+  contentAway = false,
   metadata,
 }: SharedElementRegistrationProps) {
   const viewNodeRef = useRef<any>(null);
@@ -153,6 +155,7 @@ function SharedElementRegistration({
     <Animated.View
       ref={setRefs}
       style={[style, layoutStyle]}
+      pointerEvents={contentAway ? 'box-only' : 'auto'}
       collapsable={false}
     >
       {children}
@@ -404,6 +407,9 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       groupId={groupId}
       transition={transition}
       style={style}
+      // Teleport's owner proxies hits to its remote host. While content is away,
+      // only this reserved endpoint may receive input, never the remote payload.
+      contentAway={hostName !== undefined}
       // Reserve intrinsic layout while the native content is away. Keep this
       // separate from the app's frozen presentation and explicit size rules.
       layoutStyle={

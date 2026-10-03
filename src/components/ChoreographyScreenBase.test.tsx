@@ -153,7 +153,7 @@ test('releases only the reverse destination before React session cleanup', async
   expect(outgoing.inner().props.animatedProps.pointerEvents).toBe('none');
 });
 
-test('an interrupted forward return unlocks the original source only after removal, respecting opt-out', async () => {
+test('an interrupted forward return accepts queued taps before removal, respecting opt-out', async () => {
   const context = createContext();
   context.activeSession = {
     ...context.activeSession!,
@@ -176,7 +176,7 @@ test('an interrupted forward return unlocks the original source only after remov
   } as ChoreographyContextType['reverseHandoff'];
   const destination = await mountScreen(context, 'home');
   const optedOut = await mountScreen(context, 'home', null, false);
-  expect(destination.inner().props.animatedProps.pointerEvents).toBe('none');
+  expect(destination.inner().props.animatedProps.pointerEvents).toBe('auto');
   context.reverseHandoff.value!.navigationPresented = true;
   expect(destination.inner().props.animatedProps.pointerEvents).toBe('auto');
   expect(optedOut.inner().props.animatedProps.pointerEvents).toBe('none');
@@ -185,15 +185,43 @@ test('an interrupted forward return unlocks the original source only after remov
   expect(destination.inner().props.animatedProps.pointerEvents).toBe('none');
 });
 
-test.each(['pending', 'preparing'] as const)(
-  'keeps the plain outer input gate closed while %s',
-  async (phase) => {
+test.each([
+  ['forward', 'pending'],
+  ['forward', 'preparing'],
+  ['backward', 'pending'],
+] as const)(
+  'keeps the plain outer input gate closed for a %s screen while %s',
+  async (direction, phase) => {
     const context = createContext();
+    context.activeSession!.direction = direction;
     if (phase === 'pending') context.pendingTargetScreenId = 'home';
     else context.activeSession!.state = 'preparing';
     context.interactionOwner.value = 'home';
     const screen = await mountScreen(context, 'home');
     expect(screen.outer().props.pointerEvents).toBe('none');
+  }
+);
+
+test('keeps a returning screen responder open through reverse preparation', async () => {
+  const context = createContext();
+  context.activeSession!.state = 'preparing';
+  const returning = await mountScreen(context, 'home');
+  const departing = await mountScreen(context, 'detail');
+  expect(returning.outer().props.pointerEvents).toBe('box-none');
+  expect(returning.inner().props.animatedProps.pointerEvents).toBe('auto');
+  expect(departing.outer().props.pointerEvents).toBe('none');
+  expect(departing.inner().props.animatedProps.pointerEvents).toBe('none');
+});
+
+test.each(['preparing', 'active'] as const)(
+  'an opting-out returning screen keeps its responder closed while %s',
+  async (phase) => {
+    const context = createContext();
+    context.activeSession!.state = phase;
+    const optedOut = await mountScreen(context, 'home', null, false);
+    if (phase === 'preparing')
+      expect(optedOut.outer().props.pointerEvents).toBe('none');
+    expect(optedOut.inner().props.animatedProps.pointerEvents).toBe('none');
   }
 );
 
@@ -216,6 +244,7 @@ test('keeps presentation registration stable when readiness changes', async () =
 
 test('the default unlocks only the active arriving screen, never preparation or the outgoing screen', async () => {
   const context = createContext();
+  context.activeSession!.direction = 'forward';
   const destination = await mountScreen(context, 'home');
   const source = await mountScreen(context, 'detail');
   expect(destination.inner().props.pointerEvents).toBe('auto');
@@ -348,4 +377,22 @@ test('iOS screens preserve the provider controls and progress identity', async (
   expect(observedProgress.progress).toBe(context.progress);
   context.progress.value = 0.15;
   expect(observedProgress.progress.value).toBe(0.15);
+});
+
+test('return input remains enabled while the decorative fade is transparent', async () => {
+  const context = createContext();
+  context.progress.value = 0.9;
+  const destination = await mountScreen(context, 'home');
+  const optedOut = await mountScreen(context, 'home', null, false);
+  const input = (screen: typeof destination) =>
+    screen.tree.root.findAll(
+      (node) => node.props.nativeID === 'choreography-input:home'
+    )[0]!;
+  expect(destination.opacity()).toBe(0);
+  expect(input(destination).props.style.opacity).toBeUndefined();
+  expect(input(destination).props.animatedProps.pointerEvents).toBe('auto');
+  expect(input(optedOut).props.animatedProps.pointerEvents).toBe('none');
+  context.pendingTargetScreenId = 'home';
+  await act(async () => destination.update(true));
+  expect(input(destination).props.animatedProps.pointerEvents).toBe('none');
 });

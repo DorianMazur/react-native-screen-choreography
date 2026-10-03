@@ -108,12 +108,23 @@ export function shouldBlockInteraction(
   phase: SessionPhase,
   allowInteractionDuringTransition = true,
   isReturnTarget = false,
-  isInteractiveScreen = false
+  isInteractiveScreen = false,
+  direction: TransitionDirection = 'forward'
 ): boolean {
   'worklet';
   if (isInteractiveScreen && (role === 'source' || phase === 'active'))
     return false;
   if (role === 'inactive') return false;
+  // A returning screen is already mounted beneath the overlay at its resting
+  // endpoint, so preparation must not swallow taps meant for it. A forward
+  // target is still unmeasured and hidden, and keeps its gate closed.
+  if (
+    phase === 'preparing' &&
+    direction === 'backward' &&
+    allowInteractionDuringTransition &&
+    (role === 'target' || isReturnTarget)
+  )
+    return false;
   return (
     phase === 'preparing' ||
     (phase === 'active' &&

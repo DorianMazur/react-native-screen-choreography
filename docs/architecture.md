@@ -223,10 +223,13 @@ signals coordinate visible content with the first overlay paint.
 On dismissal, iOS keeps its window container attached while pending portal
 commits settle. Android keeps drawing the live host while it still holds
 transferred content, for at most two frames. Both platforms finish the handoff
-with live content. Transition hosts and their children are excluded from touch
-hit testing so the destination can accept input during remaining motion.
-Android enforces this in `ScreenChoreographyView` because its custom
-`ViewGroupManager` does not apply the JSX `pointerEvents` prop.
+with live content. Overlay content is excluded from touch hit testing. On iOS,
+the window container resolves the returning screen's live input view within the
+same Fabric root and window, bypassing decorative opacity while preserving its
+input gate. Empty shared-element owners use `box-only` to prevent Teleport from
+forwarding hits to remote content. Android excludes overlay content in
+`ScreenChoreographyView` because its custom `ViewGroupManager` does not apply
+the JSX `pointerEvents` prop.
 
 Screen opacity and input gating come from `screenVisibility.ts`, using
 `(direction, role, phase, progress)`. Expansion progress remains 0 at the list
@@ -274,7 +277,7 @@ position so rerenders and rotation do not raise it above a modal it presented.
 After a settled forward transition, Back prepares a reverse session while the
 outgoing route remains mounted. During committed settlement, a UI-thread
 reaction asks `ReverseTransitionController` to remove that route when expansion
-progress reaches 0.10. This threshold measures remaining expansion, starts
+progress reaches 0.20. This threshold measures remaining expansion, starts
 dismissal, and leaves retained content in the overlay until the spring finishes.
 Exact animation completion also commits navigation if the early reaction has
 not run. Cancelling an interactive return keeps the detail route.
@@ -294,11 +297,11 @@ is queued before completion invalidates UI ownership, allowing portal retargetin
 and navigation unlock without another UI-to-JavaScript round trip.
 
 An interrupted forward transition refreshes source metrics and uses the same
-return controller, with the original source as its destination. Confirmed removal
-enables that destination's input when interaction during transitions is allowed
-and wakes queued navigation, including when focus arrives before the removal
-result. The remaining animation owns the overlay until completion or a new
-navigation tap. Progress ownership rejects callbacks from replaced animations;
+return controller, with the original source as its destination. That destination
+can accept queued taps before removal when interaction during transitions is
+allowed. Confirmed removal wakes queued navigation, including when focus
+arrives before the removal result. The remaining animation owns the overlay until
+completion or a new navigation tap. Progress ownership rejects callbacks from replaced animations;
 Reanimated completion or explicit navigation interruption determines settlement.
 
 Navigation lineage records the source route instance, group, and spring.

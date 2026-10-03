@@ -26,6 +26,7 @@ import {
   shouldBlockInteraction,
   validateScreenFade,
   type ScreenFadeConfig,
+  type TransitionDirection,
 } from '../core/screenVisibility';
 
 export interface ChoreographyScreenProps {
@@ -101,6 +102,12 @@ export function ChoreographyScreenBase({
     screenId
   );
   const direction = session?.direction ?? 'forward';
+  // While a gesture owns the session, its source keeps responding and the
+  // opposite endpoint stays gated until motion actually begins.
+  const gestureEngaged = choreography?.interactiveScreenId != null;
+  const interactionDirection: TransitionDirection = gestureEngaged
+    ? 'forward'
+    : direction;
   const staticOpacity =
     isPendingTarget && direction === 'forward'
       ? 0
@@ -139,7 +146,8 @@ export function ChoreographyScreenBase({
       phase,
       allowInteractionDuringTransition,
       false,
-      isInteractiveScreen
+      isInteractiveScreen,
+      interactionDirection
     );
   const interactionOwner = choreography?.interactionOwner;
   const reverseHandoff = choreography?.reverseHandoff;
@@ -152,7 +160,6 @@ export function ChoreographyScreenBase({
       returning &&
       returning.sessionId === sessionId &&
       returning.token === progressOwner?.value &&
-      returning.navigationPresented &&
       returning.targetScreenId === screenId
     );
     const blocked =
@@ -162,7 +169,8 @@ export function ChoreographyScreenBase({
         phase,
         allowInteractionDuringTransition,
         isReturnTarget,
-        isInteractiveScreen
+        isInteractiveScreen,
+        interactionDirection
       );
     return blocked && interactionOwner?.value !== screenId
       ? ('none' as const)
@@ -171,6 +179,13 @@ export function ChoreographyScreenBase({
   const interactionProps = useAnimatedProps(() => ({
     pointerEvents: screenPointerEvents.value,
   }));
+  // The plain outer View carries the static half of the responder gate, so it
+  // must agree with the UI-thread gate above. Only preparation is gated here:
+  // once motion starts, the inner layer alone decides so taps can reach an
+  // arriving screen. A gesture owner keeps responding whatever it is waiting on.
+  const outerGateClosed =
+    isPendingTarget ||
+    (phase === 'preparing' && blockInteraction && !isInteractiveScreen);
   const setScreenReady = actions?.setScreenReady;
   const unregisterScreen = actions?.unregisterScreen;
   const registerScreenPresentation = actions?.registerScreenPresentation;
@@ -213,12 +228,7 @@ export function ChoreographyScreenBase({
       <View
         onLayout={handleLayout}
         style={[styles.container, { opacity: staticOpacity }]}
-        pointerEvents={
-          isPendingTarget ||
-          (role !== 'inactive' && phase === 'preparing' && !isInteractiveScreen)
-            ? 'none'
-            : 'box-none'
-        }
+        pointerEvents={outerGateClosed ? 'none' : 'box-none'}
       >
         <Animated.View
           needsOffscreenAlphaCompositing={Platform.OS === 'android'}
@@ -226,7 +236,10 @@ export function ChoreographyScreenBase({
           pointerEvents={blockInteraction ? 'none' : 'auto'}
           animatedProps={interactionProps}
         >
-          <View
+          <Animated.View
+            nativeID={`choreography-input:${screenId}`}
+            pointerEvents={blockInteraction ? 'none' : 'auto'}
+            animatedProps={interactionProps}
             ref={presentationRef}
             collapsable={false}
             style={styles.container}
@@ -236,7 +249,7 @@ export function ChoreographyScreenBase({
                 {children}
               </ChoreographyControlsContext.Provider>
             </ChoreographyProgressProvider>
-          </View>
+          </Animated.View>
         </Animated.View>
       </View>
     </ScreenIdContext.Provider>
