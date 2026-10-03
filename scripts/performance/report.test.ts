@@ -923,3 +923,98 @@ test('missing or inconsistent motion evidence fails the whole fixture without pa
     assert.equal(summary.metrics['gallery.forward.tapToMotion'], undefined);
   }
 });
+
+function withPresentationTiming(data: InputRecord) {
+  withMotion(data);
+  data.presentationTracing = {
+    clock: 'rn-worklets-steady-clock-ms',
+    nativeClock: 'native-monotonic-ms',
+  };
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    const offset = index * 1000;
+    journey.presentationTiming = {
+      publishedAtMs: offset + 140,
+      hostsCommitAtMs: offset + 145,
+      contentCommitAtMs: offset + 152,
+      acknowledgedAtMs: offset + 169,
+    };
+    journey.motion.presentationTiming = {
+      animationDispatchedAtMs: offset + 142,
+      animationQueuedAtMs: offset + 150,
+      presentedAtMs: offset + 160,
+      animationStartedAtMs: offset + 165,
+      // Deliberately unrelated to JS/UI time: never subtract across clocks.
+      native: {
+        preparedAtMs: 10000,
+        attachedAtMs: 10004,
+        contentReadyAtMs: 10016,
+        presentedAtMs: 10021,
+      },
+    };
+  });
+  return data;
+}
+
+test('presentation startup reports separate clock-safe intervals for every journey', () => {
+  const data = withPresentationTiming(fixture('gallery'));
+  const summary = summarize(documents([data]), options);
+  assert.equal(summary.valid, true, summary.errors.join());
+  for (const direction of ['forward', 'backward']) {
+    for (const [name, expected] of Object.entries({
+      'overlay-commit': 5,
+      'content-commit': 12,
+      'native-attachment': 4,
+      'native-content': 12,
+      'native-presentation': 5,
+      'animation-dispatch': 8,
+      'ui-start': 5,
+      'first-motion': 5,
+      'js-ack': 9,
+    })) {
+      const key = `gallery.${direction}.presentation.${name}Ms`;
+      assert.equal(summary.metrics[key]!.median, expected);
+      assert.equal(summary.metrics[key]!.count, 1);
+      assert.equal(
+        summary.metricDefinitions[key].clock,
+        name.startsWith('native-')
+          ? 'native-monotonic-ms'
+          : 'rn-worklets-steady-clock-ms'
+      );
+    }
+  }
+  assert.match(markdown(summary), /Presentation startup \(ms\)/);
+  assert.match(
+    markdown(summary),
+    /Native event delivery to the UI runtime is not isolated/
+  );
+});
+
+test('incomplete or misordered startup timing invalidates collection instead of reporting a speedup', () => {
+  const mutations = [
+    (data: InputRecord) => {
+      delete data.journeys[0].motion.presentationTiming;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.presentationTiming.native.attachedAtMs = -1;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.presentationTiming.animationStartedAtMs = 149;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].presentationTiming.acknowledgedAtMs = null;
+    },
+    (data: InputRecord) => {
+      delete data.presentationTracing;
+    },
+  ];
+  for (const mutate of mutations) {
+    const data = withPresentationTiming(fixture('gallery'));
+    mutate(data);
+    const summary = summarize(documents([data]), options);
+    assert.equal(summary.valid, false);
+    assert.equal(
+      summary.metrics['gallery.forward.presentation.overlay-commitMs'],
+      undefined
+    );
+  }
+});

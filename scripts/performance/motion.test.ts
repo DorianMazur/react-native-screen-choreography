@@ -50,8 +50,26 @@ for (const direction of ['forward', 'backward'] as const) {
       deliver: (sample) => samples.push(sample),
     });
     request.value = { requestId: 1, direction, sessionId: null };
+    const presentationTiming = {
+      animationDispatchedAtMs: 108,
+      animationQueuedAtMs: 109,
+      presentedAtMs: 110,
+      animationStartedAtMs: 111,
+      native: {
+        preparedAtMs: 10000,
+        attachedAtMs: 10001,
+        contentReadyAtMs: 10002,
+        presentedAtMs: 10003,
+      },
+    };
     now = 110;
-    request.value = { ...request.value, sessionId: 'session' };
+    request.value = {
+      ...request.value,
+      sessionId: 'session',
+      presentationTiming: {
+        value: presentationTiming,
+      } as MotionRequest['presentationTiming'],
+    };
     handoff.value = { sessionId: 'session', completed: false };
     now = 120;
     progress.value = 0.5;
@@ -80,7 +98,13 @@ for (const direction of ['forward', 'backward'] as const) {
       null
     );
     assert.deepEqual(samples, [
-      { requestId: 1, firstMotionMs: 120, motionEndMs: 200, handoffMs: 205 },
+      {
+        requestId: 1,
+        firstMotionMs: 120,
+        motionEndMs: 200,
+        handoffMs: 205,
+        presentationTiming,
+      },
     ]);
     // More endpoint/handoff notifications must not deliver a duplicate sample.
     progress.value = endpoint;

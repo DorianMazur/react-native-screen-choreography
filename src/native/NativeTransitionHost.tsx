@@ -105,10 +105,25 @@ export function NativeTransitionHost({
       // Native presentation proves attachment and content as well. Its earlier
       // attachment event can arrive before the UI event handler is installed.
       if (event.stage !== 'presented' || presentation.phase.value === 2) return;
+      const receivedAtMs = presentation.timing
+        ? globalThis.performance.now()
+        : 0;
       if (!presentation.validate()) {
         presentation.valid.value = false;
         scheduleOnRN(onPresentationFailed, sessionId, 'invalidated');
         return;
+      }
+      if (presentation.timing) {
+        presentation.timing.value = {
+          ...presentation.timing.value,
+          presentedAtMs: receivedAtMs,
+          native: {
+            preparedAtMs: event.preparedAtMs,
+            attachedAtMs: event.attachedAtMs,
+            contentReadyAtMs: event.contentReadyAtMs,
+            presentedAtMs: event.presentedAtMs,
+          },
+        };
       }
       presentation.phase.value = 2;
       if (onPresentationReady) scheduleOnRN(onPresentationReady, sessionId);
@@ -125,6 +140,15 @@ export function NativeTransitionHost({
       if (!animation || !presentation || animation.token !== owner.value)
         return;
       presentation.animation.value = null;
+      if (
+        presentation.timing &&
+        presentation.timing.value.animationStartedAtMs === null
+      ) {
+        presentation.timing.value = {
+          ...presentation.timing.value,
+          animationStartedAtMs: globalThis.performance.now(),
+        };
+      }
       startOwnedProgressOnUI({
         ...animation,
         owner,
@@ -144,6 +168,7 @@ export function NativeTransitionHost({
       active={active && Boolean(presentation)}
       sessionId={sessionId}
       expectedHostNames={presentation?.hostNames}
+      tracePresentation={Boolean(presentation?.timing)}
       animatedProps={animatedProps}
       collapsable={false}
       pointerEvents="none"

@@ -158,10 +158,23 @@ export function animateOwnedProgress({
   if (!ownership.isCurrent(token, sessionId)) return;
   const { owner, handoff, reducedMotion } = ownership;
   const completionId = ownership.retainCompletion(token, sessionId, onComplete);
+  const dispatchedAtMs = presentation?.timing
+    ? globalThis.performance.now()
+    : 0;
   scheduleOnUI(() => {
     'worklet';
     if (owner.value !== token) return;
     if (presentation) {
+      if (
+        presentation.timing &&
+        presentation.timing.value.animationQueuedAtMs === null
+      ) {
+        presentation.timing.value = {
+          ...presentation.timing.value,
+          animationDispatchedAtMs: dispatchedAtMs,
+          animationQueuedAtMs: globalThis.performance.now(),
+        };
+      }
       presentation.animation.value = {
         token,
         completionId,

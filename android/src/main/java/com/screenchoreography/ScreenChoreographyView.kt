@@ -15,6 +15,17 @@ import com.facebook.react.views.view.ReactViewGroup
 
 class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   var onPresentationReady: ((Double, String, String) -> Unit)? = null
+  var tracePresentation = false
+  var preparedAtMs = -1.0
+    private set
+  var attachedAtMs = -1.0
+    private set
+  var contentReadyAtMs = -1.0
+    private set
+  var presentedAtMs = -1.0
+    private set
+
+  private fun timingNow() = System.nanoTime() / 1_000_000.0
 
   private var active = false
   private var foregroundLayer = false
@@ -120,6 +131,10 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
     cancelPresentationReady()
     sessionId = value
+    preparedAtMs = -1.0
+    attachedAtMs = -1.0
+    contentReadyAtMs = -1.0
+    presentedAtMs = -1.0
     prepared = false
     attachmentAcknowledged = false
     presentationRequested = false
@@ -136,6 +151,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     val replayPresentation = presentationAcknowledged
     val replayAttachment = attachmentAcknowledged
     if (!prepared) {
+      if (tracePresentation) preparedAtMs = timingNow()
       prepared = true
       attachmentDeadline = SystemClock.uptimeMillis() + 1000L
     }
@@ -172,6 +188,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     if (!prepared || attachmentAcknowledged || !active || !isAttachedToWindow || windowToken == null ||
       SystemClock.uptimeMillis() >= attachmentDeadline || !transitionHostsAreReady(false)) return
     attachmentAcknowledged = true
+    if (tracePresentation && attachedAtMs < 0) attachedAtMs = timingNow()
     onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "attached")
     setPresentationRequested(true)
   }
@@ -234,6 +251,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
             return@Runnable
           }
           presentationAcknowledged = true
+          if (tracePresentation && presentedAtMs < 0) presentedAtMs = timingNow()
           onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), presentedSessionId, "presented")
         }
       })
@@ -315,6 +333,9 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       }
     }
     visit(this)
+    if (remaining.isEmpty() && requireContent && tracePresentation && contentReadyAtMs < 0) {
+      contentReadyAtMs = timingNow()
+    }
     return remaining.isEmpty()
   }
 

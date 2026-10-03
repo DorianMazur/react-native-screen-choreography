@@ -1,5 +1,6 @@
 import type { ChoreographyPreparationTrace } from '../../../../src/types';
 import type { MotionObservation } from './motion';
+import type { PresentationJSTiming } from '../../../../src/core/nativePresentation';
 
 import type { PerformanceScenario } from './scenarios';
 export type { PerformanceScenario } from './scenarios';
@@ -39,6 +40,7 @@ export interface JourneyObservation {
   failure: string | null;
   renderCounts?: RenderCounts;
   motion?: MotionObservation;
+  presentationTiming?: PresentationJSTiming;
 }
 
 export interface BenchmarkReport {
@@ -62,6 +64,10 @@ export interface BenchmarkReport {
   limitations: string[];
   renderCounting?: { version: 1; observed: RenderComponent[] };
   motionTracing?: { version: 2; clock: 'rn-worklets-steady-clock-ms' };
+  presentationTracing?: {
+    clock: 'rn-worklets-steady-clock-ms';
+    nativeClock: 'native-monotonic-ms';
+  };
 }
 
 const MAX_SAMPLES = 4096;
@@ -89,6 +95,7 @@ export class BenchmarkCollector {
       preparationTracing?: boolean;
       renderCounting?: boolean;
       motionTracing?: boolean;
+      presentationTracing?: boolean;
     } = {}
   ) {}
 
@@ -163,7 +170,8 @@ export class BenchmarkCollector {
   sessionActive(
     sessionId: string,
     direction: JourneyDirection,
-    pairCount: number
+    pairCount: number,
+    presentationTiming?: PresentationJSTiming
   ) {
     const request = this.current;
     if (!request || request.failure || request.direction !== direction) {
@@ -176,6 +184,9 @@ export class BenchmarkCollector {
     }
     const at = this.timestamp();
     request.sessionId = sessionId;
+    // Keep the per-session JS record until export: the commit/ack marks arrive
+    // after activation. It contains no refs or UI-runtime objects.
+    if (presentationTiming) request.presentationTiming = presentationTiming;
     request.sessionActiveJsMs = at;
     request.requestToSessionActiveMs = this.duration(at, request.requestJsMs);
     this.record('session-active', at, {
@@ -396,6 +407,21 @@ export class BenchmarkCollector {
       this.journeys.some((journey) => !journey.motion)
     )
       errors.push('missing-motion-observation');
+    if (
+      this.options.presentationTracing &&
+      this.journeys.some(
+        (journey) =>
+          !journey.presentationTiming ||
+          Object.values(journey.presentationTiming).some(
+            (value) => value === null
+          ) ||
+          !journey.motion?.presentationTiming ||
+          Object.values(journey.motion.presentationTiming).some(
+            (value) => value === null
+          )
+      )
+    )
+      errors.push('missing-presentation-timing');
     if (this.options.renderCounting && this.observedRenderComponents.size !== 3)
       errors.push('missing-render-observations');
     if (this.payloadMounts !== 1 || this.payloadUnmounts !== 0) {
@@ -413,7 +439,26 @@ export class BenchmarkCollector {
       droppedSamples: this.droppedSamples,
       journeys: this.journeys.map((journey) => ({
         ...journey,
-        ...(journey.motion ? { motion: { ...journey.motion } } : {}),
+        ...(journey.motion
+          ? {
+              motion: {
+                ...journey.motion,
+                ...(journey.motion.presentationTiming
+                  ? {
+                      presentationTiming: {
+                        ...journey.motion.presentationTiming,
+                        native: journey.motion.presentationTiming.native
+                          ? { ...journey.motion.presentationTiming.native }
+                          : null,
+                      },
+                    }
+                  : {}),
+              },
+            }
+          : {}),
+        ...(journey.presentationTiming
+          ? { presentationTiming: { ...journey.presentationTiming } }
+          : {}),
         ...(journey.renderCounts
           ? {
               renderCounts: {
@@ -438,6 +483,14 @@ export class BenchmarkCollector {
       })),
       payloadMounts: this.payloadMounts,
       payloadUnmounts: this.payloadUnmounts,
+      ...(this.options.presentationTracing
+        ? {
+            presentationTracing: {
+              clock: 'rn-worklets-steady-clock-ms' as const,
+              nativeClock: 'native-monotonic-ms' as const,
+            },
+          }
+        : {}),
       ...(this.options.motionTracing
         ? {
             motionTracing: {
