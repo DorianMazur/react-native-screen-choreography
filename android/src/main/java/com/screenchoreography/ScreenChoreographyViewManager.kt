@@ -35,7 +35,8 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     view.onPresentationReady = { timestamp, sessionId, stage ->
       val eventDispatcher = UIManagerHelper.getEventDispatcherForReactTag(context, view.id)
       val surfaceId = UIManagerHelper.getSurfaceId(context)
-      eventDispatcher?.dispatchEvent(PresentationReadyEvent(surfaceId, view.id, timestamp, sessionId, stage))
+      eventDispatcher?.dispatchEvent(PresentationReadyEvent(surfaceId, view.id, timestamp, sessionId, stage,
+        view.preparedAtMs, view.attachedAtMs, view.contentReadyAtMs, view.presentedAtMs))
     }
     return view
   }
@@ -101,7 +102,11 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     viewId: Int,
     private val timestamp: Double,
     private val sessionId: String,
-    private val stage: String
+    private val stage: String,
+    private val preparedAtMs: Double,
+    private val attachedAtMs: Double,
+    private val contentReadyAtMs: Double,
+    private val presentedAtMs: Double
   ) : Event<PresentationReadyEvent>(surfaceId, viewId) {
     override fun getEventName() = "onPresentationReady"
 
@@ -109,6 +114,10 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
       putDouble("timestamp", timestamp)
       putString("sessionId", sessionId)
       putString("stage", stage)
+      putDouble("preparedAtMs", preparedAtMs)
+      putDouble("attachedAtMs", attachedAtMs)
+      putDouble("contentReadyAtMs", contentReadyAtMs)
+      putDouble("presentedAtMs", presentedAtMs)
     }
   }
 

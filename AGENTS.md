@@ -114,6 +114,20 @@ Run these from the repository root unless noted otherwise:
 
 When changing preparation, presentation, navigation, or retained-content ownership, cover rapid forward interruption, repeated Back/return, interactive cancellation, queued navigation after confirmed removal, missing endpoints, and layout changes. Check both iOS attachment gating and Android content presentation. Include removed/recycled endpoints and stale callbacks where the change affects asynchronous ownership.
 
+## Performance Benchmarks
+
+- Native presentation timing is compiled out by default. The performance runners opt in with Android's `-PscreenChoreographyTracePresentation=true` and iOS's `SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1` build setting. Keep this independent of React prop delivery so startup timestamps cannot be missed.
+- Pin the emulator build, Xcode and iOS runtime in `.github/workflows/performance.yml`. Android uses `ubuntu-24.04`, KVM, and `-gpu host` with Xvfb/Mesa llvmpipe (software rendering). Keep snapshots disabled and animations enabled.
+- Wait 10 seconds after simulator/emulator boot before starting the suite. Each scenario runs 20 measured round trips. Include every journey in the same measured set, without warm-up cycles or a separate first visit. Validate input and presentation for every journey; keep all raw samples.
+- Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, and system image before showing baseline deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
+- PR performance comments hide timing and render-count rows with an absolute change below 1%, using unrounded values and compatible baselines. Keep changes of 1% or more and measurements without comparable baselines visible; full reports retain all measurements.
+
+### Headless performance checks
+
+- `yarn perf:fantom` builds pinned RN 0.83 Fantom with the production C++ capture code and benchmarks layout preparation and gallery/trips/wallet journeys through the production navigation controller and coordinator in optimized Hermes. Screen geometry is simplified; Reanimated value storage and native presentation signals are adapted, not platform timing measurements. Keep timing metrics in benchmark suites; use ordinary pass/fail tests for safety and edge cases, including handoff coordination. See `scripts/performance/fantom/README.md` for prerequisites and scope.
+- Keep Fantom adapters under `scripts/performance/fantom/`; never alter production behavior to accommodate the harness. Refresh staged TypeScript each run, retain raw timing samples, and fail skipped benchmarks.
+- Fantom measurements cover computation, not platform presentation. Keep Android/iOS performance tests. New timing gates require evidence from repeated runs on comparable hosts.
+
 ## Areas To Inspect First
 
 When debugging or extending behavior, start here:

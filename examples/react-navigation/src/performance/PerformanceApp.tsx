@@ -275,7 +275,12 @@ function createCollector(props: PerformanceLaunchProps) {
     `${props.performanceScenario}-${launchNonce}-${++runCounter}`,
     props.performanceScenario,
     () => performance.now(),
-    { preparationTracing: true, renderCounting: true, motionTracing: true }
+    {
+      preparationTracing: true,
+      renderCounting: true,
+      motionTracing: true,
+      presentationTracing: true,
+    }
   );
 }
 
@@ -444,9 +449,13 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
           collector.sessionActive(
             session.id,
             session.direction,
-            session.pairs.length
+            session.pairs.length,
+            session.presentationTiming
           );
-          motionRequest.value = collector.currentRequest();
+          const request = collector.currentRequest();
+          motionRequest.value = request
+            ? { ...request, presentationTiming: session.presentation?.timing }
+            : null;
         }}
         onTransitionEnd={(session) => {
           clearRequestTimer();

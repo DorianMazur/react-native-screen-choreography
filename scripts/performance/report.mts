@@ -1,5 +1,5 @@
 import { summaryTable, renderCountsTable } from './summary-table.mts';
-import { metricDefinition } from './metric-definitions.mts';
+import { metricDefinition, presentationStages } from './metric-definitions.mts';
 import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
 import type {
   InputRecord,
@@ -43,6 +43,61 @@ export function distribution(values: number[]) {
 
 function add(metrics: MetricSamples, name: string, value: number) {
   (metrics[name] ??= []).push(value);
+}
+
+function readPresentationTiming(
+  journey: InputRecord,
+  prefix: string,
+  metrics: MetricSamples
+) {
+  const js = journey.presentationTiming;
+  const ui = journey.motion?.presentationTiming;
+  const native = ui?.native;
+  if (!js || !ui || !native)
+    throw new Error('Missing presentation startup timing');
+  const span = (
+    name: keyof typeof presentationStages,
+    start: unknown,
+    end: unknown
+  ) => {
+    const duration =
+      finite(end, `${name} end`) - finite(start, `${name} start`);
+    if (duration < 0)
+      throw new Error(`Unordered presentation startup timing: ${name}`);
+    add(metrics, `${prefix}.presentation.${name}Ms`, duration);
+  };
+  const request = finite(journey.requestJsMs, 'presentation request');
+  const probe = finite(journey.probe.handlerJsMs, 'presentation probe');
+  // JS and UI performance.now share RN/Worklets' steady clock. Native event
+  // timestamps do not: only subtract native endpoints from each other.
+  for (const value of [
+    ...Object.values(js),
+    ...Object.entries(ui)
+      .filter(([key]) => key !== 'native')
+      .map(([, timestamp]) => timestamp),
+  ]) {
+    const at = finite(value, 'presentation timestamp');
+    if (at < request || at > probe)
+      throw new Error('Presentation timing outside its journey');
+  }
+  if (
+    ui.animationStartedAtMs < ui.animationQueuedAtMs ||
+    js.acknowledgedAtMs < js.publishedAtMs
+  )
+    throw new Error('Unordered presentation animation or acknowledgement');
+  span('overlay-commit', js.publishedAtMs, js.hostsCommitAtMs);
+  span('content-commit', js.publishedAtMs, js.contentCommitAtMs);
+  span('native-attachment', native.preparedAtMs, native.attachedAtMs);
+  span('native-content', native.attachedAtMs, native.contentReadyAtMs);
+  span('native-presentation', native.contentReadyAtMs, native.presentedAtMs);
+  span(
+    'animation-dispatch',
+    ui.animationDispatchedAtMs,
+    ui.animationQueuedAtMs
+  );
+  span('ui-start', ui.presentedAtMs, ui.animationStartedAtMs);
+  span('first-motion', ui.animationStartedAtMs, journey.motion.firstMotionMs);
+  span('js-ack', ui.presentedAtMs, js.acknowledgedAtMs);
 }
 
 function readPreparationTrace(
@@ -230,6 +285,21 @@ function readFixture(
     } else if (journey.motion !== undefined) {
       throw new Error('Motion observations lack a measurement definition');
     }
+    if (report.presentationTracing) {
+      if (
+        report.presentationTracing.clock !== 'rn-worklets-steady-clock-ms' ||
+        report.presentationTracing.nativeClock !== 'native-monotonic-ms'
+      )
+        throw new Error('Unknown presentation timing clocks');
+      if (!report.motionTracing)
+        throw new Error('Presentation timing requires motion observations');
+      readPresentationTiming(journey, prefix, metrics);
+    } else if (
+      journey.presentationTiming ||
+      journey.motion?.presentationTiming
+    ) {
+      throw new Error('Presentation timing lacks a measurement definition');
+    }
     if (report.renderCounting) {
       for (const component of ['list', 'detail', 'hero']) {
         for (const phase of ['mount', 'update']) {
@@ -356,9 +426,9 @@ function expectedCount(value: unknown, label: string) {
     typeof value !== 'number' ||
     !Number.isInteger(value) ||
     value < 1 ||
-    value > 100
+    value > 99
   ) {
-    throw new Error(`${label} must be an integer between 1 and 100`);
+    throw new Error(`${label} must be an integer between 1 and 99`);
   }
   return value;
 }
@@ -403,6 +473,11 @@ export function summarize(
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
         readFixture(data, documentMetrics, platform);
+        if (
+          expectedCycles !== undefined &&
+          data.journeys.length !== expectedCycles * 2
+        )
+          throw new Error('Total journey count must match measured cycles');
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
             const key = `${data.scenario}.${direction}.requestToSessionActiveMs`;
@@ -421,7 +496,8 @@ export function summarize(
             (data.renderCounting ? '+committed-render-counts-v1' : '') +
             (data.motionTracing
               ? `+ui-motion-v${data.motionTracing.version}`
-              : '')
+              : '') +
+            (data.presentationTracing ? '+presentation-startup' : '')
         );
         fixtures.add(data.scenario);
         sources.push(file);
@@ -504,6 +580,22 @@ export function markdown(
   baselineNote = 'No baseline supplied. Local runs do not fetch baselines.'
 ) {
   const renders = renderCountsTable(summary, base);
+  const presentationRows = Object.entries(summary.metrics ?? {}).flatMap(
+    ([key, value]) => {
+      const match = key.match(
+        /^(gallery|trips|wallet)\.(forward|backward)\.presentation\.([a-z-]+)Ms$/
+      );
+      if (!match) return [];
+      const metric = value as InputRecord;
+      const [start, end] =
+        presentationStages[match[3] as keyof typeof presentationStages];
+      const format = (n: number | null) =>
+        n === null ? '—' : Number(n.toFixed(3));
+      return [
+        `| ${match[1]} · ${match[2]} | ${start} → ${end} | ${metric.count} | ${format(metric.median)} | ${format(metric.p95)} |`,
+      ];
+    }
+  );
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
@@ -521,6 +613,18 @@ export function markdown(
     '',
     'Preparation runs from the navigation request to session activation. Tap timing starts at the JS tap handler and ends at the first UI progress change. Transition duration runs from first progress change to the endpoint; handoff runs from that endpoint to UI visibility/input release. These are runtime observations, not display presentation timestamps. Detailed preparation stages remain in summary.json.',
     ...(renders ? ['', '### Committed React renders', '', renders] : []),
+    ...(presentationRows.length
+      ? [
+          '',
+          '### Presentation startup (ms)',
+          '',
+          'Elapsed diagnostic intervals, not CPU costs or additive phases. Both React commit intervals start at overlay publication; they overlap. Native intervals use only the platform monotonic clock. React commits do not prove native mounting. Native presentation means the existing readiness acknowledgement (after drawing on Android, after content readiness/reveal on iOS), not a displayed frame. Native event delivery to the UI runtime is not isolated. UI start is animation assignment, while first motion observes progress. JS acknowledgement can arrive after animation starts. Raw timestamps and all samples remain in the JSON report.',
+          '',
+          '| Journey | Interval | Samples | Median | P95 |',
+          '| --- | --- | ---: | ---: | ---: |',
+          ...presentationRows,
+        ]
+      : []),
     '',
     '',
   ].join('\n');

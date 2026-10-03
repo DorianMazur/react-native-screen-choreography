@@ -1,0 +1,58 @@
+name: Fantom performance
+
+on:
+  pull_request:
+    branches: [main]
+    paths:
+      - 'src/**'
+      - 'cpp/**'
+      - 'scripts/performance/fantom/**'
+      - 'examples/react-navigation/src/performance/scenarios.ts'
+      - '.github/workflows/fantom.yml'
+      - 'package.json'
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: fantom-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  preparation:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 45
+    env:
+      CC: clang
+      CXX: clang++
+      CMAKE_BUILD_PARALLEL_LEVEL: '4'
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version-file: .nvmrc
+      - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
+        with:
+          distribution: zulu
+          java-version: '17'
+      - name: Install host build dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends clang libssl-dev libreadline-dev
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --sdk_root="$ANDROID_HOME" 'cmake;3.30.5' 'ndk;27.1.12297006'
+      - name: Build and benchmark without an emulator
+        run: node scripts/performance/fantom/run.js
+      - name: Upload samples and diagnostics
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: performance-fantom
+          path: |
+            artifacts/performance/fantom/results/
+            artifacts/performance/fantom/*.log
+            artifacts/performance/fantom/react-native/private/react-native-fantom/build/reports/
+          retention-days: 14
+          if-no-files-found: warn
