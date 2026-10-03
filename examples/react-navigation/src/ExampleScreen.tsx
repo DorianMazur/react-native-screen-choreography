@@ -12,6 +12,7 @@ export type ExampleStackParams = {
   Landing: undefined;
   GalleryList: undefined;
   GalleryDetail: { photoId: string };
+  ScreenTransitionsGallery: undefined;
   TripsList: undefined;
   TripsDetail: { tripId: string };
   TokenList: undefined;

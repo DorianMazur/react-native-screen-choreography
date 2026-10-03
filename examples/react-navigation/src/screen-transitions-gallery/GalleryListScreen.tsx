@@ -1,38 +1,25 @@
 import { GalleryHero } from './GalleryHero';
-import { useRenderObservation } from '../useRenderObservation';
-import type { ExampleObservation } from '../ExampleObservation';
 import {
   View,
   Text,
   StyleSheet,
   ScrollView,
-  Pressable,
   StatusBar,
   useWindowDimensions,
 } from 'react-native';
-import { useExampleNavigation } from '../runtime';
-import { SafeAreaView } from '../runtime';
-import { ScreenHeader } from '../AppChrome';
-import { theme } from '../theme';
-import { PHOTOS, type Photo } from './data';
-import {
-  galleryTransition,
-  galleryNavigationOptions,
-} from './galleryTransitions';
+import { SafeAreaView } from 'react-native-safe-area-context';
+import Transition from 'react-native-screen-transitions';
+import type { BlankStackScreenProps } from 'react-native-screen-transitions/react-navigation';
+import type { GalleryStackParams } from './GalleryNavigator';
+import { ScreenHeader } from '../../../shared/AppChrome';
+import { theme } from '../../../shared/theme';
+import { PHOTOS, type Photo } from '../../../shared/gallery/data';
 
 const TILE_GAP = 12;
 
 export function GalleryListScreen({
-  observation,
-}: {
-  observation?: ExampleObservation;
-}) {
-  useRenderObservation(
-    observation?.rendered
-      ? (phase) => observation.rendered?.('list', phase)
-      : undefined
-  );
-  const { goBack, navigate } = useExampleNavigation();
+  navigation,
+}: BlankStackScreenProps<GalleryStackParams, 'Photos'>) {
   const { width } = useWindowDimensions();
   const tileWidth = (width - 48 - TILE_GAP) / 2;
 
@@ -40,7 +27,7 @@ export function GalleryListScreen({
     <>
       <SafeAreaView style={styles.container}>
         <StatusBar barStyle="light-content" />
-        <ScreenHeader title="Gallery" onBack={() => goBack()} />
+        <ScreenHeader title="Gallery" onBack={() => navigation.goBack()} />
         <View style={styles.header}>
           <Text style={styles.eyebrow}>THE FIELD JOURNAL</Text>
           <Text accessibilityRole="header" style={styles.title}>
@@ -60,19 +47,9 @@ export function GalleryListScreen({
             <Tile
               key={photo.id}
               photo={photo}
-              observation={observation}
               width={tileWidth}
               onPress={() =>
-                navigate(
-                  {
-                    screen: 'GalleryDetail',
-                    params: { photoId: photo.id },
-                  },
-                  {
-                    ...galleryNavigationOptions,
-                    transitionConfig: { group: `photo.${photo.id}` },
-                  }
-                )
+                navigation.navigate('Photo', { photoId: photo.id })
               }
             />
           ))}
@@ -86,33 +63,24 @@ function Tile({
   photo,
   width,
   onPress,
-  observation,
 }: {
   photo: Photo;
   width: number;
   onPress: () => void;
-  observation?: ExampleObservation;
 }) {
   return (
-    <Pressable
+    <Transition.Boundary
+      id={`photo.${photo.id}`}
+      handoff
       accessibilityRole="button"
       accessibilityLabel={`View ${photo.title}`}
       onPress={onPress}
       style={[styles.tileWrapper, { width }]}
     >
-      <galleryTransition.Element
-        name="hero"
-        groupId={`photo.${photo.id}`}
-        style={styles.tileFrame}
-      >
-        <GalleryHero
-          photo={photo}
-          width={width}
-          height={width / 0.72}
-          observation={observation}
-        />
-      </galleryTransition.Element>
-    </Pressable>
+      <Transition.Boundary.Target style={{ width, height: width / 0.72 }}>
+        <GalleryHero photo={photo} width={width} height={width / 0.72} />
+      </Transition.Boundary.Target>
+    </Transition.Boundary>
   );
 }
 
@@ -168,8 +136,5 @@ const styles = StyleSheet.create({
   },
   tileWrapper: {
     aspectRatio: 0.72,
-  },
-  tileFrame: {
-    flex: 1,
   },
 });

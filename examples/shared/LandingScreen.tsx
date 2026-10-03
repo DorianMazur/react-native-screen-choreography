@@ -35,8 +35,28 @@ const demos = [
   },
 ] as const;
 
-export function LandingScreen() {
+export function LandingScreen({
+  onOpenScreenTransitionsGallery,
+}: {
+  onOpenScreenTransitionsGallery?: () => void;
+}) {
   const { open } = useExampleNavigation();
+  const entries = demos.map((demo) => ({
+    ...demo,
+    onPress: () => open(demo.route),
+  }));
+  const comparison = onOpenScreenTransitionsGallery
+    ? [
+        {
+          route: 'ScreenTransitionsGallery',
+          title: 'Gallery · Screen Transitions',
+          subtitle: 'react-native-screen-transitions',
+          icon: 'camera' as const,
+          color: theme.gallery.accent,
+          onPress: onOpenScreenTransitionsGallery,
+        },
+      ]
+    : [];
 
   return (
     <SafeAreaView style={styles.screen}>
@@ -63,12 +83,12 @@ export function LandingScreen() {
             screen-choreography
           </Text>
         </View>
-        {demos.map((demo, index) => (
+        {[...entries, ...comparison].map((demo, index) => (
           <Pressable
             key={demo.route}
             accessibilityRole="button"
             accessibilityLabel={demo.title}
-            onPress={() => open(demo.route)}
+            onPress={demo.onPress}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
             <View style={styles.icon}>

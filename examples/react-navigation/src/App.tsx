@@ -14,6 +14,7 @@ import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
 import { JSStressMenu } from '../../shared/performance/JSStressMenu';
+import { ScreenTransitionsGallery } from './screen-transitions-gallery/GalleryNavigator';
 
 import {
   TripsListScreen,
@@ -21,7 +22,20 @@ import {
 } from '../../shared/trips/TripsScreens';
 
 const Stack = createNativeStackNavigator<ExampleStackParams>();
-const LandingRoute = withExampleScreen('Landing', LandingScreen);
+const LandingRoute = withExampleScreen(
+  'Landing',
+  function LandingRoute({
+    navigation,
+  }: NativeStackScreenProps<ExampleStackParams, 'Landing'>) {
+    return (
+      <LandingScreen
+        onOpenScreenTransitionsGallery={() =>
+          navigation.navigate('ScreenTransitionsGallery')
+        }
+      />
+    );
+  }
+);
 const GalleryListRoute = withExampleScreen('GalleryList', GalleryListScreen);
 const TripsListRoute = withExampleScreen('TripsList', TripsListScreen);
 const TripsDetailRoute = withExampleScreen(
@@ -84,6 +98,10 @@ export default function App() {
             }}
           >
             <Stack.Screen name="Landing" component={LandingRoute} />
+            <Stack.Screen
+              name="ScreenTransitionsGallery"
+              component={ScreenTransitionsGallery}
+            />
 
             <Stack.Screen name="GalleryList" component={GalleryListRoute} />
             <Stack.Screen

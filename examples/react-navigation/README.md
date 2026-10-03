@@ -2,6 +2,25 @@
 
 This app runs the [shared demos](../shared) through React Navigation. See the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and source links.
 
+## Screen Transitions gallery
+
+Choose **Gallery · Screen Transitions** on the home screen to open a duplicate
+gallery built with `react-native-screen-transitions` 4.0.0. The original
+**Gallery** entry uses Screen Choreography.
+
+Both galleries use the same bundled photos, hero artwork, grid layout, notes,
+exposure details, lightbox, and share action. The duplicate has its own nested
+Blank Stack, matching `Transition.Boundary` endpoints with live `handoff`, and
+a bounds interpolator. Its source owns the photo subtree; the detail boundary
+receives it. Screen Transitions progress drives the artwork and detail reveal.
+Swipe down to dismiss, or use **Back to gallery**.
+
+The integration is in [src/screen-transitions-gallery](./src/screen-transitions-gallery).
+It is specific to this React Navigation app. Rebuild the native app after
+installing dependencies so Gesture Handler is linked; Metro reload alone is
+insufficient. See the [Screen Transitions documentation](https://screen-transitions.esjr.org/)
+for its API.
+
 ## What It Demonstrates
 
 - retained content owned by the source screen and reparented into the detail target, with child layout driven by shared progress
@@ -14,7 +33,7 @@ This app runs the [shared demos](../shared) through React Navigation. See the [d
 
 ## Important Runtime Setup
 
-The example intentionally uses:
+The Screen Choreography demos intentionally use:
 
 - `@react-navigation/native-stack`
 - `animation: 'none'`
