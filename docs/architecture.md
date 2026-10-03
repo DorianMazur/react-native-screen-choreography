@@ -189,9 +189,10 @@ readiness, allowing a renderer to start fully faded during a reverse session.
 
 The native host prepares from the React mount and arms content readiness after
 attachment. A bounded UI-thread command retries preparation and can replay a
-confirmation that arrived before its event handler was installed. Forward
-motion starts on the UI thread once both the matching presentation acknowledgment
-and animation configuration have arrived, in either order. A final native
+confirmation that arrived before its event handler was installed. Forward and
+noninteractive Back motion start on the UI thread once both the matching
+presentation acknowledgment and animation configuration have arrived, in either
+order. A final native
 identity check rejects removed or recycled endpoints. Session IDs and ownership
 tokens reject stale transfers and animation starts. Reverse and interactive
 navigation use the same presentation protocol with their own progress and
@@ -212,7 +213,7 @@ motion transfers content directly to its endpoint.
 React mounting, portal transfer, animation configuration, and settlement still
 require JavaScript. Startup load can delay motion while content stays at its
 previous endpoint. Once prepared and configured, native acknowledgment can
-start forward motion while JavaScript is busy.
+start forward or noninteractive Back motion while JavaScript is busy.
 
 ## Overlay and screen visibility
 
@@ -272,7 +273,13 @@ position so rerenders and rotation do not raise it above a modal it presented.
 ## Reverse transitions and interruption
 
 After a settled forward transition, Back prepares a reverse session while the
-outgoing route remains mounted. During committed settlement, a UI-thread
+outgoing route remains mounted. The provider installs the reverse controller and
+queues its animation before waiting for the JavaScript presentation acknowledgement.
+The native presentation event releases motion on the UI thread; animation
+completion still waits for confirmed route removal before releasing input. A
+failed presentation revokes the queued animation and releases its controller
+before fallback navigation, so late acknowledgements cannot start it.
+During committed settlement, a UI-thread
 reaction asks `ReverseTransitionController` to remove that route when expansion
 progress reaches 0.10. This threshold measures remaining expansion, starts
 dismissal, and leaves retained content in the overlay until the spring finishes.
