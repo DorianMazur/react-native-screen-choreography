@@ -97,11 +97,17 @@ describe('SharedElement owner settlement when the destination route goes away', 
 
   const expectCollapsedAtHome = () => {
     expect(ownerHostName()).toBeUndefined();
+    expect(tree!.root.findByType(Portal).parent!.props.pointerEvents).toBe(
+      'auto'
+    );
     expect(presentation.settled).toBe('collapsed');
     expect(presentation.presentationProgress.value).toBe(0);
   };
 
   const expectExpandedOnDetail = () => {
+    expect(tree!.root.findByType(Portal).parent!.props.pointerEvents).toBe(
+      'box-only'
+    );
     expect(ownerHostName()).toBe(
       `screen-choreography:live:destination:["detail","${GROUP}","medal"]`
     );

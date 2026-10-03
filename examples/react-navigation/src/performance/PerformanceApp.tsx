@@ -44,6 +44,7 @@ import { SCENARIOS } from './scenarios';
 import { useSharedValue } from 'react-native-reanimated';
 import { MotionObserver } from './MotionObserver';
 import type { MotionRequest } from './motion';
+import { ChoreographyContext } from '../../../../src/core/ChoreographyContext';
 
 import { theme } from '../../../shared/theme';
 import {
@@ -284,6 +285,45 @@ function createCollector(props: PerformanceLaunchProps) {
   );
 }
 
+function FailedRunExporter({
+  failed,
+  collector,
+  exportRun,
+}: {
+  failed: boolean;
+  collector: BenchmarkCollector;
+  exportRun: () => Promise<void>;
+}) {
+  const context = useContext(ChoreographyContext)!;
+  const exported = useRef(false);
+  useEffect(() => {
+    if (!failed || exported.current) return;
+    exported.current = true;
+    const session = context.navigationController.getActiveSession();
+    // Read runtime state only on failure, outside the measured journeys.
+    collector.note('failure-runtime-state', {
+      sessionId: session?.id ?? null,
+      direction: session?.direction ?? null,
+      state: session?.state ?? null,
+      progress: context.progress.value,
+      owner: context.progressOwnership.owner.value,
+      version: context.progressOwnership.version,
+      reverseHandoff: context.reverseHandoff.value,
+      reverseOwned: session
+        ? context.reverseController.owns(session.id)
+        : false,
+      navigationLocked: context.navigationController.isNavigationLocked(),
+      presentationPhase: session?.presentation?.phase.value ?? null,
+      presentationValid: session?.presentation?.valid.value ?? null,
+    });
+    // Preserve the failed journey before XCTest terminates the app.
+    exportRun().catch((error) => {
+      console.warn('Failed to export benchmark diagnostics', error);
+    });
+  }, [failed, collector, context, exportRun]);
+  return null;
+}
+
 export default function PerformanceApp(props: PerformanceLaunchProps) {
   const motionRequest = useSharedValue<MotionRequest | null>(null);
   const [collector, setCollector] = useState(() => createCollector(props));
@@ -463,6 +503,11 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
           setStatus(screen ? `${screen}-settled` : 'failed');
         }}
       >
+        <FailedRunExporter
+          failed={status === 'failed'}
+          collector={collector}
+          exportRun={exportRun}
+        />
         <MotionObserver request={motionRequest} collector={collector} />
         <View style={styles.root}>
           <SafeAreaView edges={['bottom', 'right']} style={styles.toolbar}>

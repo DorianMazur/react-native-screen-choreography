@@ -5,8 +5,10 @@ import {
   makeMutable,
   useFrameCallback,
   useAnimatedReaction,
+  useAnimatedProps,
 } from 'react-native-reanimated';
 import { NativeTransitionHost } from './NativeTransitionHost';
+import type { ReverseHandoffState } from '../core/ReverseTransitionHandoff';
 import { createNativePresentation } from '../core/nativePresentation';
 import {
   animateOwnedProgress,
@@ -24,6 +26,7 @@ jest.mock('react-native-reanimated', () => {
     ...mock,
     __esModule: true,
     useFrameCallback: jest.fn(mock.useFrameCallback),
+    useAnimatedProps: jest.fn(mock.useAnimatedProps),
   };
 });
 jest.mock('../core/ProgressOwnership', () => ({
@@ -42,7 +45,11 @@ afterEach(async () => {
   await act(async () => tree?.unmount());
   ownership?.setSession(null);
 });
-async function setup(armed = true, trace = false) {
+async function setup(
+  armed = true,
+  input: Partial<React.ComponentProps<typeof NativeTransitionHost>> = {},
+  trace = false
+) {
   const progress = makeMutable(0);
   ownership = new ProgressOwnership(makeMutable(0), progress);
   ownership.setSession('A');
@@ -75,6 +82,7 @@ async function setup(armed = true, trace = false) {
         presentation={presentation}
         onPresentationReady={ready}
         onPresentationFailed={failed}
+        {...input}
       />
     );
   });
@@ -251,10 +259,80 @@ test('unmount stops the presentation driver', async () => {
   expect(dispatchCommand).not.toHaveBeenCalled();
 });
 
+test('iOS routes return input only for the live operation and releases it on invalidation', async () => {
+  const originalOS = Platform.OS;
+  Platform.OS = 'ios';
+  try {
+    const reverseHandoff = makeMutable<ReverseHandoffState | null>(null);
+    const r = await setup(true, {
+      reverseHandoff,
+      returnTargetScreenId: 'list-instance',
+    });
+    const read = () => (useAnimatedProps as jest.Mock).mock.calls.at(-1)![0]();
+    expect(read().inputTarget).toBe('choreography-input:list-instance');
+    reverseHandoff.value = {
+      sessionId: 'A',
+      token: ownership.owner.value,
+      targetScreenId: 'list-instance',
+      completed: false,
+      animationFinished: false,
+      navigationPresented: false,
+    };
+    expect(read().inputTarget).toBe('choreography-input:list-instance');
+    reverseHandoff.value = {
+      ...reverseHandoff.value,
+      token: ownership.owner.value + 1,
+    };
+    expect(read().inputTarget).toBe('');
+    reverseHandoff.value = {
+      ...reverseHandoff.value,
+      token: ownership.owner.value,
+      sessionId: 'old',
+      targetScreenId: 'removed-instance',
+    };
+    expect(read().inputTarget).toBe('choreography-input:list-instance');
+    reverseHandoff.value = {
+      ...reverseHandoff.value,
+      sessionId: 'A',
+      completed: true,
+    };
+    expect(read().inputTarget).toBe('');
+    reverseHandoff.value = { ...reverseHandoff.value, completed: false };
+    r.presentation.valid.value = false;
+    expect(read().inputTarget).toBe('');
+  } finally {
+    Platform.OS = originalOS;
+  }
+});
+
+test.each([
+  ['ios', true, false, 'choreography-input:list-instance'],
+  ['ios', true, true, ''],
+  ['ios', false, false, ''],
+  ['android', true, false, ''],
+] as const)(
+  '%s return input respects active=%s gesture=%s',
+  async (os, active, gestureEngaged, expected) => {
+    const originalOS = Platform.OS;
+    Platform.OS = os;
+    try {
+      await setup(true, {
+        active,
+        gestureEngaged,
+        returnTargetScreenId: 'list-instance',
+      });
+      const read = (useAnimatedProps as jest.Mock).mock.calls.at(-1)![0];
+      expect(read().inputTarget).toBe(expected);
+    } finally {
+      Platform.OS = originalOS;
+    }
+  }
+);
+
 test.each([true, false])(
   'startup diagnostics preserve readiness and animation ordering (armed=%s)',
   async (armed) => {
-    const r = await setup(armed, true);
+    const r = await setup(armed, {}, true);
     await r.ack('old');
     expect(r.presentation.timing!.value.presentedAtMs).toBeNull();
     await r.ack();

@@ -909,6 +909,13 @@ export function ChoreographyProvider({
                   active={Boolean(isOverlayActive && overlaySession)}
                 >
                   <NativeTransitionHost
+                    returnTargetScreenId={
+                      overlaySession?.direction === 'backward'
+                        ? overlaySession.targetScreenId
+                        : undefined
+                    }
+                    reverseHandoff={reverseHandoff}
+                    gestureEngaged={interactiveScreenId != null}
                     ownership={progressOwnership}
                     progress={progress}
                     sessionId={overlaySession?.id}

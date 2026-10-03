@@ -23,6 +23,7 @@ import {
   startOwnedProgressOnUI,
   type ProgressOwnership,
 } from '../core/ProgressOwnership';
+import type { ReverseHandoffState } from '../core/ReverseTransitionHandoff';
 
 const AnimatedHost = Animated.createAnimatedComponent(
   NativeScreenChoreographyView
@@ -30,6 +31,9 @@ const AnimatedHost = Animated.createAnimatedComponent(
 
 interface NativeTransitionHostProps {
   active: boolean;
+  returnTargetScreenId?: string;
+  reverseHandoff?: SharedValue<ReverseHandoffState | null>;
+  gestureEngaged?: boolean;
   ownership: ProgressOwnership;
   progress: SharedValue<number>;
   sessionId?: string;
@@ -46,6 +50,9 @@ interface NativeTransitionHostProps {
 
 export function NativeTransitionHost({
   active,
+  returnTargetScreenId,
+  reverseHandoff,
+  gestureEngaged = false,
   ownership,
   progress,
   sessionId = '',
@@ -83,11 +90,33 @@ export function NativeTransitionHost({
       dispatchCommand(hostRef, 'prepare', [sessionId]);
     }
   }, false);
-  const animatedProps = useAnimatedProps(() => ({
-    presentationRequested: Boolean(
-      presentation && presentation.valid.value && presentation.phase.value >= 1
-    ),
-  }));
+  const isIOS = Platform.OS === 'ios';
+  const animatedProps = useAnimatedProps(() => {
+    const returning = reverseHandoff?.value;
+    // A previous session's handoff can outlive its React cleanup. While a new
+    // backward session prepares, its own target must already accept taps.
+    const target =
+      returning?.sessionId === sessionId
+        ? returning.token === owner.value && !returning.completed
+          ? returning.targetScreenId
+          : undefined
+        : returnTargetScreenId;
+    return {
+      inputTarget:
+        isIOS &&
+        active &&
+        presentation?.valid.value &&
+        !gestureEngaged &&
+        target
+          ? `choreography-input:${target}`
+          : '',
+      presentationRequested: Boolean(
+        presentation &&
+        presentation.valid.value &&
+        presentation.phase.value >= 1
+      ),
+    };
+  });
   const onReady = useEvent<PresentationReadyEvent>(
     (event) => {
       'worklet';
