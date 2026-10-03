@@ -67,6 +67,7 @@ xcodebuild build-for-testing \
   -scheme ChoreographyPerformance -configuration Release \
   -destination "platform=iOS Simulator,id=$udid" \
   -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
+  SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
   > >(tee "$output/build.log") 2>&1 || status=$?
 if [[ "$status" -eq 0 ]]; then
   # Pass the cycle count explicitly to XCTest, rather than assuming shell env is forwarded.

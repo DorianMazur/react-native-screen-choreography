@@ -61,11 +61,6 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     view?.setPresentationRequested(value)
   }
 
-  @ReactProp(name = "tracePresentation", defaultBoolean = false)
-  override fun setTracePresentation(view: ScreenChoreographyView?, value: Boolean) {
-    view?.tracePresentation = value
-  }
-
   @ReactProp(name = "expectedHostNames")
   override fun setExpectedHostNames(view: ScreenChoreographyView?, names: ReadableArray?) {
     val values = mutableListOf<String>()

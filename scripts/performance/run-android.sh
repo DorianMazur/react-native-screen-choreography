@@ -62,6 +62,7 @@ NODE
 arguments=(
   :macrobenchmark:connectedBenchmarkAndroidTest
   --no-daemon --console=plain
+  -PscreenChoreographyTracePresentation=true
   "-PreactNativeArchitectures=$abi"
   "-Pandroid.testInstrumentationRunnerArguments.performanceTimingCycles=$cycles"
 )

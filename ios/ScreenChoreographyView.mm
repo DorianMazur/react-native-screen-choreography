@@ -79,7 +79,6 @@ NSString *NativeIdOf(UIView *view)
   __weak UIWindow *_lastWindow;
   RCTSurfaceTouchHandler *_foregroundTouchHandler;
   BOOL _foreground;
-  BOOL _tracePresentation;
   double _preparedAtMs;
   double _attachedAtMs;
   double _contentReadyAtMs;
@@ -270,7 +269,6 @@ NSString *NativeIdOf(UIView *view)
   _presentationAcknowledged = NO;
   _expectedHostNames = nil;
   _sessionId.clear();
-  _tracePresentation = NO;
   [self resetPresentationTiming];
   [self updateContainerReveal];
   _lastWindow = nil;
@@ -282,7 +280,6 @@ NSString *NativeIdOf(UIView *view)
   const auto &newViewProps = *std::static_pointer_cast<ScreenChoreographyViewProps const>(props);
   const bool sessionChanged = _sessionId != newViewProps.sessionId;
   _foreground = newViewProps.foreground;
-  _tracePresentation = newViewProps.tracePresentation;
   _windowContainer.foreground = _foreground;
   if (!_foreground && _foregroundTouchHandler != nil) {
     [_foregroundTouchHandler detachFromView:_windowContainer];
@@ -371,7 +368,9 @@ NSString *NativeIdOf(UIView *view)
     return NO;
   }
   _presentationAcknowledged = YES;
-  if (_tracePresentation && _presentedAtMs < 0) _presentedAtMs = CACurrentMediaTime() * 1000.0;
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+  if (_presentedAtMs < 0) _presentedAtMs = CACurrentMediaTime() * 1000.0;
+#endif
   // Invalidate a pending transaction-completion check for this request.
   _presentationRequestId += 1;
   _presentationCheckPending = NO;
@@ -390,9 +389,13 @@ NSString *NativeIdOf(UIView *view)
   const BOOL replayPresentation = _presentationAcknowledged;
   const BOOL replayAttachment = _attachmentAcknowledged;
   if (!_prepared) {
-    if (_tracePresentation) _preparedAtMs = CACurrentMediaTime() * 1000.0;
+    const CFTimeInterval now = CACurrentMediaTime();
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+    // A build flag is available before any React props or UI commands arrive.
+    _preparedAtMs = now * 1000.0;
+#endif
     _prepared = YES;
-    _attachmentDeadline = CACurrentMediaTime() + 1.0;
+    _attachmentDeadline = now + 1.0;
   }
   [self applyActive:YES];
   [self presentWindowContainer];
@@ -476,7 +479,9 @@ NSString *NativeIdOf(UIView *view)
       _windowContainer.window == nil || _eventEmitter == nullptr ||
       CACurrentMediaTime() >= _attachmentDeadline || ![self transitionHostsAreReady:NO]) return;
   _attachmentAcknowledged = YES;
-  if (_tracePresentation && _attachedAtMs < 0) _attachedAtMs = CACurrentMediaTime() * 1000.0;
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+  if (_attachedAtMs < 0) _attachedAtMs = CACurrentMediaTime() * 1000.0;
+#endif
   // Arm before emitting: an event handler may synchronously update native props.
   if (!_presentationRequested) {
     _presentationRequested = YES;
@@ -520,9 +525,11 @@ NSString *NativeIdOf(UIView *view)
   if (_expectedHostNames.count == 0) return NO;
   NSMutableSet<NSString *> *remaining = [NSMutableSet setWithArray:_expectedHostNames];
   [self collectReadyHosts:_windowContainer requireContent:requireContent remaining:remaining];
-  if (remaining.count == 0 && requireContent && _tracePresentation && _contentReadyAtMs < 0) {
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+  if (remaining.count == 0 && requireContent && _contentReadyAtMs < 0) {
     _contentReadyAtMs = CACurrentMediaTime() * 1000.0;
   }
+#endif
   return remaining.count == 0;
 }
 

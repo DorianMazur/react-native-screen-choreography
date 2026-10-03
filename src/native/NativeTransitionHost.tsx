@@ -168,7 +168,6 @@ export function NativeTransitionHost({
       active={active && Boolean(presentation)}
       sessionId={sessionId}
       expectedHostNames={presentation?.hostNames}
-      tracePresentation={Boolean(presentation?.timing)}
       animatedProps={animatedProps}
       collapsable={false}
       pointerEvents="none"

@@ -341,7 +341,8 @@ animation duration. Traces cover source capture, target registration, Fabric
 preparation, and overlay readiness. With tracing enabled, sessions also retain
 presentation startup observations: overlay publication and React commits, native
 host attachment and content readiness, UI animation dispatch/start, and the JS
-acknowledgement. Native timestamps use their platform clock and must only be
+acknowledgement. Native timestamp collection additionally requires a build-time
+opt-in and is compiled out by default. Native timestamps use their platform clock and must only be
 subtracted from other native timestamps. React commit and acknowledgement
 intervals can overlap; neither proves when a frame reached the display. See
 [troubleshooting](./guide/troubleshooting.md#turn-on-diagnostics) for application

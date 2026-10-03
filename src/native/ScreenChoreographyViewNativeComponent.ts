@@ -22,7 +22,6 @@ interface NativeProps extends ViewProps {
   sessionId?: string;
   presentationRequested?: boolean;
   expectedHostNames?: ReadonlyArray<string>;
-  tracePresentation?: boolean;
   onPresentationReady?: DirectEventHandler<PresentationReadyEvent>;
 }
 

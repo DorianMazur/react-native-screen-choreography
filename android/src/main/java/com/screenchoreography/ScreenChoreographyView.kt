@@ -15,7 +15,6 @@ import com.facebook.react.views.view.ReactViewGroup
 
 class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   var onPresentationReady: ((Double, String, String) -> Unit)? = null
-  var tracePresentation = false
   var preparedAtMs = -1.0
     private set
   var attachedAtMs = -1.0
@@ -151,7 +150,8 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     val replayPresentation = presentationAcknowledged
     val replayAttachment = attachmentAcknowledged
     if (!prepared) {
-      if (tracePresentation) preparedAtMs = timingNow()
+      // A build flag is available before any React props or UI commands arrive.
+      if (BuildConfig.TRACE_PRESENTATION) preparedAtMs = timingNow()
       prepared = true
       attachmentDeadline = SystemClock.uptimeMillis() + 1000L
     }
@@ -188,7 +188,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     if (!prepared || attachmentAcknowledged || !active || !isAttachedToWindow || windowToken == null ||
       SystemClock.uptimeMillis() >= attachmentDeadline || !transitionHostsAreReady(false)) return
     attachmentAcknowledged = true
-    if (tracePresentation && attachedAtMs < 0) attachedAtMs = timingNow()
+    if (BuildConfig.TRACE_PRESENTATION && attachedAtMs < 0) attachedAtMs = timingNow()
     onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "attached")
     setPresentationRequested(true)
   }
@@ -251,7 +251,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
             return@Runnable
           }
           presentationAcknowledged = true
-          if (tracePresentation && presentedAtMs < 0) presentedAtMs = timingNow()
+          if (BuildConfig.TRACE_PRESENTATION && presentedAtMs < 0) presentedAtMs = timingNow()
           onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), presentedSessionId, "presented")
         }
       })
@@ -333,7 +333,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       }
     }
     visit(this)
-    if (remaining.isEmpty() && requireContent && tracePresentation && contentReadyAtMs < 0) {
+    if (remaining.isEmpty() && requireContent && BuildConfig.TRACE_PRESENTATION && contentReadyAtMs < 0) {
       contentReadyAtMs = timingNow()
     }
     return remaining.isEmpty()

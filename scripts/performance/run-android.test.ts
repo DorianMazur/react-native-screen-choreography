@@ -103,6 +103,10 @@ exit 127
       readFileSync(path.join(output, 'gradle-arguments'), 'utf8'),
       /performanceTimingCycles=20/
     );
+    assert.match(
+      readFileSync(path.join(output, 'gradle-arguments'), 'utf8'),
+      /-PscreenChoreographyTracePresentation=true/
+    );
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
