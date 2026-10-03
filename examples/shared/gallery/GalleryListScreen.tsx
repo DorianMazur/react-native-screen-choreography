@@ -32,7 +32,7 @@ export function GalleryListScreen({
       ? (phase) => observation.rendered?.('list', phase)
       : undefined
   );
-  const { goBack, navigate } = useExampleNavigation();
+  const { goBack, navigate, prearm } = useExampleNavigation();
   const { width } = useWindowDimensions();
   const tileWidth = (width - 48 - TILE_GAP) / 2;
 
@@ -62,6 +62,9 @@ export function GalleryListScreen({
               photo={photo}
               observation={observation}
               width={tileWidth}
+              onPressIn={() =>
+                prearm?.({ group: `photo.${photo.id}` })?.catch(() => {})
+              }
               onPress={() =>
                 navigate(
                   {
@@ -86,11 +89,13 @@ function Tile({
   photo,
   width,
   onPress,
+  onPressIn,
   observation,
 }: {
   photo: Photo;
   width: number;
   onPress: () => void;
+  onPressIn?: () => void;
   observation?: ExampleObservation;
 }) {
   return (
@@ -98,6 +103,7 @@ function Tile({
       accessibilityRole="button"
       accessibilityLabel={`View ${photo.title}`}
       onPress={onPress}
+      onPressIn={onPressIn}
       style={({ pressed }) => [
         styles.tileWrapper,
         { width },

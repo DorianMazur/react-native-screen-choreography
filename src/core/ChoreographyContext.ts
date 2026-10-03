@@ -106,6 +106,8 @@ export interface ChoreographyContextType {
   interactiveScreenId: string | null;
   setInteractiveScreen: (screenId: string, active: boolean) => void;
   captureSourceGroup: (groupId: string, screenId: string) => Promise<void>;
+  /** Reuse a fresh pre-armed source capture, or capture it now. */
+  ensureSourceCapture?: (groupId: string, screenId: string) => Promise<boolean>;
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (
     sessionId: string,

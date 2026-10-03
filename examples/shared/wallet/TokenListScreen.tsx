@@ -34,7 +34,7 @@ export function TokenListScreen({
       ? (phase) => observation.rendered?.('list', phase)
       : undefined
   );
-  const { navigate, goBack } = useExampleNavigation();
+  const { navigate, goBack, prearm } = useExampleNavigation();
   const [balanceVisible, setBalanceVisible] = useState(true);
   const [filter, setFilter] = useState<'all' | 'gainers'>('all');
   const tokens =
@@ -148,6 +148,9 @@ export function TokenListScreen({
           <TokenRow
             token={item}
             observation={observation}
+            onPressIn={() =>
+              prearm?.({ group: `token.${item.id}` })?.catch(() => {})
+            }
             onPress={() =>
               navigate(
                 { screen: 'TokenDetail', params: { tokenId: item.id } },

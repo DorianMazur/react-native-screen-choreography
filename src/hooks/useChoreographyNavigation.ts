@@ -60,6 +60,7 @@ export function useChoreographyNavigator({
     progressOwnership,
     navigationController: controller,
     captureSourceGroup,
+    ensureSourceCapture,
     startTransition,
     cancelTransition,
     completeTransition,
@@ -71,6 +72,16 @@ export function useChoreographyNavigator({
     waitForOverlayReady,
     waitForScreenReady,
   } = ctx;
+
+  // Integrations predating prearming may supply only captureSourceGroup;
+  // without the freshness-aware ensure, every tap re-captures at tap time.
+  const ensureCapture = useCallback(
+    (groupId: string, screenId: string) =>
+      ensureSourceCapture
+        ? ensureSourceCapture(groupId, screenId)
+        : captureSourceGroup(groupId, screenId).then(() => true),
+    [captureSourceGroup, ensureSourceCapture]
+  );
 
   const logNavigation = useCallback(
     (message: string | (() => string)) => {
@@ -318,7 +329,7 @@ export function useChoreographyNavigator({
           captureSourceGroup: async (group, screen) => {
             const startedAt = nowMs();
             logNavigation(() => `preMeasure start group=${group}`);
-            await captureSourceGroup(group, screen);
+            await ensureCapture(group, screen);
             logNavigation(
               () =>
                 `preMeasure end group=${group} duration=${elapsedMs(startedAt)}`
@@ -425,7 +436,7 @@ export function useChoreographyNavigator({
       logNavigation,
       progress,
       progressOwnership,
-      captureSourceGroup,
+      ensureCapture,
       setNavigationLineage,
       setPendingTargetScreen,
       startTransition,
@@ -587,9 +598,48 @@ export function useChoreographyNavigator({
     ]
   );
 
+  /**
+   * Arms the source-geometry capture for a group before the tap lands, e.g.
+   * from a press-in handler. The next forward navigation to any target reuses
+   * the armed capture while it stays fresh (element identity, mounted layout,
+   * and bounds within the stability epsilon), removing pre-measure latency
+   * from the tap-to-motion path. Stale or missing captures fall back to
+   * capturing at tap time, exactly like an unprearmed navigation.
+   */
+  const choreographyPrearm = useCallback(
+    async (options?: { group?: string }) => {
+      const groupId = options?.group;
+      if (!groupId) return;
+      if (
+        !isFocused ||
+        ctx.activeSession ||
+        ctx.pendingTargetScreenId ||
+        controller.isNavigationLocked()
+      ) {
+        return;
+      }
+      const startedAt = nowMs();
+      logNavigation(() => `prearm start group=${groupId}`);
+      await captureSourceGroup(groupId, currentScreenId);
+      logNavigation(
+        () => `prearm end group=${groupId} duration=${elapsedMs(startedAt)}`
+      );
+    },
+    [
+      captureSourceGroup,
+      controller,
+      ctx.activeSession,
+      ctx.pendingTargetScreenId,
+      currentScreenId,
+      isFocused,
+      logNavigation,
+    ]
+  );
+
   return {
     navigate: (request: PendingNavigationRequest) =>
       choreographyNavigate(request, true),
     goBack: choreographyGoBack,
+    prearm: choreographyPrearm,
   };
 }

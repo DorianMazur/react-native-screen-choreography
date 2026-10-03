@@ -54,6 +54,7 @@ export function useChoreographyNavigation(navigation: any) {
           waitForNavigationTarget(navigation, route.key, screenName),
       }),
     goBack: choreography.goBack,
+    prearm: choreography.prearm,
   };
 }
 
