@@ -2,7 +2,6 @@ import {
   compatible,
   environmentChanges,
   summaryTable,
-  firstRunTable,
   renderCountsTable,
 } from './summary-table.mts';
 import {
@@ -153,12 +152,7 @@ export function renderComment(
         : 'No compatible baseline in the latest successful main report. Current readings remain available; older runs are not substituted.',
       ''
     );
-    lines.push(
-      summaryTable(report, base, false, 1),
-      '',
-      firstRunTable(report, base, 1),
-      ''
-    );
+    lines.push(summaryTable(report, base, 1), '');
     const renders = renderCountsTable(report, base, 1);
     if (renders)
       lines.push(

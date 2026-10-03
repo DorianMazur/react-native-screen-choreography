@@ -6,7 +6,7 @@ cd "$repo_root"
 mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured cycles plus the first round trip.' >&2; exit 2; }
+[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
 if [[ "${USE_CCACHE:-0}" == 1 ]]; then

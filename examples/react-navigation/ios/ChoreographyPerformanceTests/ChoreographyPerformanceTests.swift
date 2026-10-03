@@ -15,8 +15,7 @@ final class ChoreographyPerformanceTests: XCTestCase {
     app.launch()
     defer { app.terminate() }
     awaitMarker(app, "benchmark-ready", timeout: 60)
-    // Validate and export the first visit separately from repeated measurements.
-    for _ in 0..<(1 + cycles) {
+    for _ in 0..<cycles {
       tap(app, open, leadingQuarter: true)
       awaitMarker(app, "benchmark-detail-settled")
       tap(app, "benchmark-detail-probe")

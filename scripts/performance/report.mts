@@ -1,8 +1,4 @@
-import {
-  summaryTable,
-  firstRunTable,
-  renderCountsTable,
-} from './summary-table.mts';
+import { summaryTable, renderCountsTable } from './summary-table.mts';
 import { metricDefinition } from './metric-definitions.mts';
 import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
 import type {
@@ -132,8 +128,7 @@ function readPreparationTrace(
 function readFixture(
   report: InputRecord,
   metrics: MetricSamples,
-  platform: string,
-  separateFirstRun = false
+  platform: string
 ) {
   if (report.schemaVersion !== 1 || ![5, 6].includes(report.fixtureVersion)) {
     throw new Error('Unsupported fixture schema/version');
@@ -204,8 +199,7 @@ function readFixture(
     ) {
       throw new Error('Unknown probe timing definition');
     }
-    const samplePhase = separateFirstRun && index < 2 ? 'firstRun.' : '';
-    const prefix = `${report.scenario}.${samplePhase}${journey.direction}`;
+    const prefix = `${report.scenario}.${journey.direction}`;
     if (report.motionTracing) {
       const motion = journey.motion;
       if (
@@ -408,18 +402,13 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
-        readFixture(
-          data,
-          documentMetrics,
-          platform,
-          expectedCycles !== undefined
-        );
+        readFixture(data, documentMetrics, platform);
         if (
           expectedCycles !== undefined &&
-          data.journeys.length !== (1 + expectedCycles) * 2
+          data.journeys.length !== expectedCycles * 2
         )
           throw new Error(
-            'Total journey count must match first run + measured cycles'
+            'Total journey count must match measured cycles'
           );
         if (expectedCycles !== undefined) {
           for (const direction of ['forward', 'backward']) {
@@ -536,8 +525,6 @@ export function markdown(
     baselineNote,
     '',
     summaryTable(summary, base),
-    '',
-    firstRunTable(summary, base),
     '',
     'Preparation runs from the navigation request to session activation. Tap timing starts at the JS tap handler and ends at the first UI progress change. Transition duration runs from first progress change to the endpoint; handoff runs from that endpoint to UI visibility/input release. These are runtime observations, not display presentation timestamps. Detailed preparation stages remain in summary.json.',
     ...(renders ? ['', '### Committed React renders', '', renders] : []),

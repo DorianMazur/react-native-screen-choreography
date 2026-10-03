@@ -142,14 +142,10 @@ function belowChangeThreshold(
 export function summaryTable(
   report: InputRecord,
   base?: InputRecord,
-  firstRun = false,
   minChangePercent = 0
 ) {
   const rows = headlineMetrics().flatMap(
-    ({ key: originalKey, label, scale, unit }) => {
-      const key = firstRun
-        ? originalKey.replace('.', '.firstRun.')
-        : originalKey;
+    ({ key, label, scale, unit }) => {
       const current = value(report, key, scale);
       const previous =
         metricCompatible(report, base, key) &&
@@ -174,26 +170,6 @@ export function summaryTable(
     '| Metric | Base | PR / current | Change |',
     '| --- | ---: | ---: | ---: |',
     ...rows,
-  ].join('\n');
-}
-
-export function firstRunTable(
-  report: InputRecord,
-  base?: InputRecord,
-  minChangePercent = 0
-) {
-  if (
-    !Object.keys(report.metrics ?? {}).some((key) => key.includes('.firstRun.'))
-  )
-    return '';
-  return [
-    '<details><summary>First run · one round trip per scenario</summary>',
-    '',
-    'First open and first return after app launch. Single observations, not a stable latency distribution or a cold-start measurement.',
-    '',
-    summaryTable(report, base, true, minChangePercent),
-    '',
-    '</details>',
   ].join('\n');
 }
 

@@ -43,9 +43,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
       val startupTimeout = arguments.getString("performanceStartupTimeoutMs", "$TIMEOUT_MS").toLong()
       require(startupTimeout > 0) { "performanceStartupTimeoutMs must be positive" }
       await("benchmark-ready", startupTimeout)
-      // Preserve every journey for validation and export. The report separates
-      // the first visit from the repeated measurements.
-      roundTrip()
       repeat(cycles) { roundTrip() }
     } catch (failure: Throwable) {
       // Preserve the collector's rejection reason and the actual UI before
