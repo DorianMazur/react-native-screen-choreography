@@ -35,6 +35,9 @@ type SourceCapture = {
   snapshot: FabricLayoutSnapshot;
 };
 
+/** Injective separator: cannot appear in route keys, group ids, or element ids. */
+const KEY_SEPARATOR = String.fromCharCode(0);
+
 export class TransitionCoordinator {
   private registry: ElementRegistry;
   private activeSession: TransitionSessionData | null = null;
@@ -67,7 +70,11 @@ export class TransitionCoordinator {
   }
 
   private sourceKey(screenId: string, groupId: string): string {
-    return JSON.stringify([screenId, groupId]);
+    return `${screenId}${KEY_SEPARATOR}${groupId}`;
+  }
+
+  private entryId(element: RegisteredElement): string {
+    return `${element.screenId}${KEY_SEPARATOR}${element.groupId ?? ''}${KEY_SEPARATOR}${element.id}`;
   }
 
   private entries(elements: RegisteredElement[]): FabricLayoutEntry[] | null {
@@ -76,12 +83,38 @@ export class TransitionCoordinator {
       const screenRef = this.nativeReadiness?.getScreenRef(element.screenId);
       if (!screenRef) return null;
       result.push({
-        id: JSON.stringify([element.screenId, element.groupId, element.id]),
+        id: this.entryId(element),
         ref: element.ref,
         screenRef,
       });
     }
     return result;
+  }
+
+  /**
+   * Resolves an element's metrics from a snapshot aligned with `elements`,
+   * encoding each identity key once per capture instead of once per lookup.
+   * Throws on duplicate identities, which the capture layer also rejects.
+   */
+  private metricsAccessor(
+    elements: RegisteredElement[],
+    snapshot: FabricLayoutSnapshot
+  ): (element: RegisteredElement) => ElementMetrics {
+    const indexes = new Map<string, number>();
+    for (let index = 0; index < elements.length; index++) {
+      const key = this.entryId(elements[index]!);
+      if (indexes.has(key)) {
+        throw new Error(`Duplicate layout identity "${key}"`);
+      }
+      indexes.set(key, index);
+    }
+    return (element) => {
+      const index = indexes.get(this.entryId(element));
+      if (index === undefined || index >= snapshot.metrics.length) {
+        throw new Error(`Missing metrics for a captured element`);
+      }
+      return snapshot.metrics[index]!;
+    };
   }
 
   private elementsAreCurrent(elements: RegisteredElement[]): boolean {
@@ -93,15 +126,6 @@ export class TransitionCoordinator {
           element.groupId
         )?.ref === element.ref
     );
-  }
-
-  private metricsFor(
-    snapshot: FabricLayoutSnapshot,
-    element: RegisteredElement
-  ): ElementMetrics {
-    return snapshot.metrics.get(
-      JSON.stringify([element.screenId, element.groupId, element.id])
-    )!;
   }
 
   private ownsOperation(generation: number, sessionId: string): boolean {
@@ -257,10 +281,11 @@ export class TransitionCoordinator {
     )
       return;
     const currentSession = this.activeSession;
+    const metricsOf = this.metricsAccessor(elements, snapshot);
     let changed = false;
     const pairs = currentSession.pairs.map((pair) => {
       const element = side === 'source' ? pair.source : pair.target;
-      const metrics = this.metricsFor(snapshot, element);
+      const metrics = metricsOf(element);
       const previous =
         side === 'source' ? pair.sourceMetrics : pair.targetMetrics;
       if (this.metricsAreClose(previous, metrics)) return pair;
@@ -496,6 +521,11 @@ export class TransitionCoordinator {
     const snapshot = capture instanceof Promise ? await capture : capture;
     let session: TransitionSessionData | null = null;
     if (snapshot && snapshot.isCurrent() && isCurrent()) {
+      // Snapshot metrics align with `entries`, i.e. exactly `endpoints`.
+      const endpointMetricsFor = this.metricsAccessor(endpoints, snapshot);
+      const sourceMetricsFor = canUseSourceCapture
+        ? this.metricsAccessor(sourceCapture!.elements, sourceCapture!.snapshot)
+        : endpointMetricsFor;
       const pairs: ElementTransitionPair[] = presentations.flatMap((pair) => {
         const transition =
           pair.sourcePresentation.transition ??
@@ -505,11 +535,8 @@ export class TransitionCoordinator {
               {
                 ...pair,
                 transition,
-                sourceMetrics: this.metricsFor(
-                  canUseSourceCapture ? sourceCapture!.snapshot : snapshot,
-                  pair.source
-                ),
-                targetMetrics: this.metricsFor(snapshot, pair.target),
+                sourceMetrics: sourceMetricsFor(pair.source),
+                targetMetrics: endpointMetricsFor(pair.target),
               },
             ]
           : [];
@@ -556,15 +583,15 @@ export class TransitionCoordinator {
           (current.state !== 'active' && current.state !== 'preparing')
         )
           return;
-        const targetEntries = this.entries(
-          current.pairs.map((pair) => pair.target)
-        );
+        const targetElements = current.pairs.map((pair) => pair.target);
+        const targetEntries = this.entries(targetElements);
         if (!targetEntries) return;
         const updated = captureFabricLayout(targetEntries);
         if (!updated) return;
+        const metricsOf = this.metricsAccessor(targetElements, updated);
         let changed = false;
         const nextPairs = current.pairs.map((pair) => {
-          const metrics = this.metricsFor(updated, pair.target);
+          const metrics = metricsOf(pair.target);
           if (this.metricsAreClose(metrics, pair.targetMetrics)) return pair;
           changed = true;
           return { ...pair, targetMetrics: metrics };
