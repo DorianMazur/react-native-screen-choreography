@@ -6,8 +6,6 @@ import {
 } from '../../examples/react-navigation/src/performance/scenarios.ts';
 
 const comparableMetadata = [
-  'runnerImage',
-  'hostCpu',
   'deviceModel',
   'osVersion',
   'apiLevel',
@@ -36,7 +34,7 @@ export function metricCompatible(
       )
     : [...comparableMetadata];
   if (current.platform === 'android') {
-    fields.push('systemImage', 'graphicsRenderer');
+    fields.push('systemImage');
     if (current.metadata?.emulator === true) fields.push('emulatorVersion');
   }
   return Boolean(

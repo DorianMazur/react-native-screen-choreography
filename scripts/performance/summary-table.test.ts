@@ -14,10 +14,7 @@ function report() {
     platform: 'android',
     mode: 'native-release',
     metadata: {
-      runnerImage: 'ubuntu-1',
-      hostCpu: 'test-cpu',
       emulatorVersion: '37.2.12.0',
-      graphicsRenderer: 'SwiftShader',
       systemImage: 'android-35-revision-1',
       deviceModel: 'Pixel',
       osVersion: '15',
@@ -72,23 +69,25 @@ test('requires explicit matching environment and definition metadata', () => {
   assert.match(summaryTable(report()), /— \| 0 \| —/);
 });
 
-test('omits comparisons across changed or missing runner images', () => {
-  const base = report();
-  const current = report();
-  current.metadata.runnerImage = 'ubuntu-2';
-  assert.equal(compatible(current, base), false);
-  assert.match(summaryTable(current, base), /— \| 40 \| —/);
-  delete (base.metadata as Record<string, unknown>).runnerImage;
-  assert.equal(compatible(current, base), false);
+test('compares across changed or missing runner images, CPUs, and renderers', () => {
+  for (const field of ['runnerImage', 'hostCpu', 'graphicsRenderer']) {
+    const base: InputRecord = report();
+    const current: InputRecord = report();
+    current.metrics['gallery.forward.tapToMotion'].median = 30;
+    current.metadata[field] = 'current';
+    assert.equal(compatible(current, base), true, field);
+    assert.match(summaryTable(current, base), /40 \| 30 \| -10 ms/);
+    base.metadata[field] = 'different';
+    assert.equal(compatible(current, base), true, field);
+    assert.match(summaryTable(current, base), /40 \| 30 \| -10 ms/);
+    delete current.metadata[field];
+    assert.equal(compatible(current, base), true, field);
+    assert.match(summaryTable(current, base), /40 \| 30 \| -10 ms/);
+  }
 });
 
-test('omits deltas for environment drift even when the runner image matches', () => {
-  for (const field of [
-    'emulatorVersion',
-    'systemImage',
-    'graphicsRenderer',
-    'hostCpu',
-  ]) {
+test('omits deltas for changed emulator versions or system images', () => {
+  for (const field of ['emulatorVersion', 'systemImage']) {
     const current: InputRecord = report();
     current.metadata[field] = 'different';
     assert.equal(compatible(current, report()), false, field);
