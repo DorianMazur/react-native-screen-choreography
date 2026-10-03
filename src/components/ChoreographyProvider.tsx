@@ -754,6 +754,9 @@ export function ChoreographyProvider({
       }
 
       hostPresentedSessionIdRef.current = session.id;
+      if (session.presentationTiming)
+        session.presentationTiming.acknowledgedAtMs ??=
+          globalThis.performance.now();
       resolveOverlayWaitersIfReady(session.id);
     },
     [resolveOverlayWaitersIfReady]

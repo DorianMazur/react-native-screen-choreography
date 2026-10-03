@@ -575,7 +575,8 @@ export class TransitionCoordinator {
               groupId
             )
           ),
-          snapshot.validateNative
+          snapshot.validateNative,
+          Boolean(config.trace)
         ),
         pairs,
         progress: this.progress,
@@ -611,6 +612,14 @@ export class TransitionCoordinator {
       const endAttachment = attachment
         ? config.trace?.start('native-attachment')
         : undefined;
+      if (config.trace) {
+        prepared.presentationTiming = {
+          publishedAtMs: globalThis.performance.now(),
+          hostsCommitAtMs: null,
+          contentCommitAtMs: null,
+          acknowledgedAtMs: null,
+        };
+      }
       this.updateSession(prepared);
       if (attachment) {
         const attached = await attachment;

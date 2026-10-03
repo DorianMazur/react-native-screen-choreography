@@ -1,11 +1,13 @@
 /** @type {import('jest').Config} */
 module.exports = {
   preset: 'react-native',
+  modulePathIgnorePatterns: ['<rootDir>/artifacts/performance/'],
   testPathIgnorePatterns: [
     '/node_modules/',
     '/examples/',
     '/lib/',
     '/scripts/performance/',
+    '/artifacts/performance/',
   ],
   transformIgnorePatterns: [
     'node_modules/(?!(react-native|@react-native|react-native-reanimated)/)',

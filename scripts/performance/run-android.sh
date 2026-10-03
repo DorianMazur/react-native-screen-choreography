@@ -10,22 +10,36 @@ if [[ -n "${ANDROID_HOME:-}" ]]; then export PATH="$ANDROID_HOME/platform-tools:
 if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"; fi
 command -v adb >/dev/null || { echo 'Install Android SDK platform-tools and set ANDROID_HOME.' >&2; exit 2; }
 adb get-state >/dev/null
+# Let the booted emulator settle before starting the benchmark suite.
+sleep 10
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ ]] || { echo 'Cycle counts must be positive integers.' >&2; exit 2; }
-[[ "$cycles" -le 100 ]] || { echo 'Cycle counts must not exceed 100.' >&2; exit 2; }
+[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
 abi="${PERFORMANCE_ABI:-$(adb shell getprop ro.product.cpu.abi | tr -d '\r')}"
-emulator="$(adb shell getprop ro.kernel.qemu | tr -d '\r')"
 output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(date -u +%Y%m%dT%H%M%SZ)}"
 [[ ! -e "$output" ]] || { echo "Use a fresh PERFORMANCE_OUTPUT directory: $output" >&2; exit 2; }
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Running %s forward/back timing and input cycles per example (Gallery, Trips, Wallet).\n' "$cycles"
+printf 'Per scenario: %s measured timing/input round trips.\n' "$cycles"
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
 export PERFORMANCE_API_LEVEL="$(adb shell getprop ro.build.version.sdk | tr -d '\r')"
-export PERFORMANCE_IS_EMULATOR="$emulator"
+export PERFORMANCE_IS_EMULATOR="$(adb shell getprop ro.kernel.qemu | tr -d '\r')"
+export PERFORMANCE_SYSTEM_IMAGE="$(adb shell getprop ro.build.fingerprint | tr -d '\r')"
+export PERFORMANCE_GRAPHICS_RENDERER="$(adb shell dumpsys SurfaceFlinger | sed -n 's/^[[:space:]]*GLES: //p' | tr -d '\r')"
+export PERFORMANCE_EMULATOR_VERSION=''
+if [[ "$PERFORMANCE_IS_EMULATOR" == 1 ]]; then
+  # `emulator -version` loads the GUI binary, whose libraries may be absent on CI.
+  PERFORMANCE_EMULATOR_VERSION="$(awk -F= '
+    /^Pkg.Revision=/ { revision=$2 }
+    /^Pkg.BuildId=/ { build=$2 }
+    END {
+      if (revision == "" || build == "") exit 1
+      printf "%s (%s)", revision, build
+    }
+  ' "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/emulator/source.properties")"
+fi
 node - "$output/metadata.json" "$abi" "$cycles" <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.argv[2], JSON.stringify({
@@ -33,17 +47,22 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   osVersion: process.env.PERFORMANCE_OS_VERSION,
   apiLevel: Number(process.env.PERFORMANCE_API_LEVEL),
   emulator: process.env.PERFORMANCE_IS_EMULATOR === '1',
+  emulatorVersion: process.env.PERFORMANCE_EMULATOR_VERSION,
+  systemImage: process.env.PERFORMANCE_SYSTEM_IMAGE,
+  graphicsRenderer: process.env.PERFORMANCE_GRAPHICS_RENDERER,
   nodeVersion: process.version,
   runnerImage: process.env.ImageVersion ?? 'local',
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
 
 arguments=(
   :macrobenchmark:connectedBenchmarkAndroidTest
   --no-daemon --console=plain
+  -PscreenChoreographyTracePresentation=true
   "-PreactNativeArchitectures=$abi"
   "-Pandroid.testInstrumentationRunnerArguments.performanceTimingCycles=$cycles"
 )

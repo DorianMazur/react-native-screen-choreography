@@ -13,6 +13,11 @@ test('standalone markdown renders compatible baseline and deltas alongside diagn
     valid: true,
     errors: [],
     metadata: {
+      runnerImage: 'ubuntu-1',
+      hostCpu: 'test-cpu',
+      emulatorVersion: '37.2.12.0',
+      graphicsRenderer: 'SwiftShader',
+      systemImage: 'android-35-revision-1',
       deviceModel: 'pixel',
       osVersion: '15',
       apiLevel: 35,

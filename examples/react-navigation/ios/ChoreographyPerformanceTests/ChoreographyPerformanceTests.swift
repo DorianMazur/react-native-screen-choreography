@@ -9,7 +9,7 @@ final class ChoreographyPerformanceTests: XCTestCase {
   private func run(_ scenario: String, open: String, back: String) throws {
     continueAfterFailure = false
     let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_TIMING_CYCLES"] ?? "20") ?? 0
-    XCTAssertTrue((1...100).contains(cycles), "Cycle count must be in 1...100")
+    XCTAssertTrue((1...99).contains(cycles), "Cycle count must be in 1...99")
     let app = XCUIApplication()
     app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario
     app.launch()

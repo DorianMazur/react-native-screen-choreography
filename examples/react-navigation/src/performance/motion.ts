@@ -1,7 +1,11 @@
+import type { SharedValue } from 'react-native-reanimated';
+import type { PresentationUITiming } from '../../../../src/core/nativePresentation';
+
 export interface MotionRequest {
   requestId: number;
   direction: 'forward' | 'backward';
   sessionId: string | null;
+  presentationTiming?: SharedValue<PresentationUITiming>;
 }
 
 export interface MotionObservation {
@@ -9,6 +13,7 @@ export interface MotionObservation {
   firstMotionMs: number | null;
   motionEndMs: number | null;
   handoffMs: number | null;
+  presentationTiming?: PresentationUITiming;
 }
 
 interface MotionSignal<T> {
@@ -89,7 +94,14 @@ export function installMotionObserver({
       now()
     );
     observation = next;
-    if (next.handoffMs !== null) deliver(next);
+    if (next.handoffMs !== null) {
+      deliver({
+        ...next,
+        ...(current.presentationTiming
+          ? { presentationTiming: current.presentationTiming.value }
+          : {}),
+      });
+    }
   };
   request.addListener(listenerId, observe);
   progress.addListener(listenerId, observe);

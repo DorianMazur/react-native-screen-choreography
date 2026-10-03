@@ -40,9 +40,14 @@ export function TransitionOverlay({
   const hasPairs = Boolean(session?.pairs.length);
   // Hosts mount empty while preparing; content arrives with the active commit.
   const active = session?.state === 'active';
+  const timing = session?.presentationTiming;
   useLayoutEffect(() => {
+    if (timing && hasPairs && !session?.reducedMotion) {
+      timing.hostsCommitAtMs ??= globalThis.performance.now();
+      if (active) timing.contentCommitAtMs ??= globalThis.performance.now();
+    }
     if (id && hasPairs && active) onReady?.(id);
-  }, [id, hasPairs, active, onReady]);
+  }, [id, hasPairs, active, onReady, timing, session?.reducedMotion]);
   if (!session || !hasPairs || session.reducedMotion) return null;
   return (
     <View pointerEvents="none" style={styles.overlay}>

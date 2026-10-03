@@ -14,6 +14,8 @@ function report() {
     platform: 'android',
     mode: 'native-release',
     metadata: {
+      emulatorVersion: '37.2.12.0',
+      systemImage: 'android-35-revision-1',
       deviceModel: 'Pixel',
       osVersion: '15',
       apiLevel: 35,
@@ -23,7 +25,6 @@ function report() {
       reactNativeVersion: '0.83.0',
       reanimatedVersion: '4.2',
       nodeVersion: 'v24.13.0',
-      runnerImage: 'ubuntu-1',
     },
     metrics: {
       'gallery.backward.tapToMotion': {
@@ -47,9 +48,56 @@ test('shows absolute deltas including zero baselines, negative timing changes', 
   assert.doesNotMatch(table, /Infinity|NaN/);
 });
 
+test('optional percentage filter uses absolute unrounded changes and includes the 1% boundary', () => {
+  const key = 'gallery.forward.tapToMotion';
+  for (const [previous, next, visible] of [
+    [40, 40, false],
+    [40, 40.39996, false],
+    [40, 39.60004, false],
+    [40, 40.4, true],
+    [40, 39.6, true],
+    [40, 41, true],
+    [40, 39, true],
+    [0, 0, false],
+    [0, 0.1, true],
+    [40, 0, true],
+  ] as const) {
+    const base = report();
+    const current = report();
+    base.metrics[key].median = previous;
+    current.metrics[key].median = next;
+    const filtered = summaryTable(current, base, 1);
+    assert.equal(
+      filtered.includes('| Gallery · tap to motion (ms) |'),
+      visible,
+      `${previous} -> ${next}`
+    );
+    assert.doesNotMatch(filtered, /Infinity|NaN/);
+    // Full reports keep every measurement, even when the MR note filters it.
+    assert.match(summaryTable(current, base), /Gallery · tap to motion/);
+  }
+});
+
+test('filter retains measurements with missing or incompatible baselines', () => {
+  const current = report();
+  for (const base of [
+    undefined,
+    { ...report(), metrics: {} },
+    { ...report(), valid: false },
+  ]) {
+    assert.match(
+      summaryTable(current, base, 1),
+      /Gallery · tap to motion \(ms\) \| — \| 40 \| —/
+    );
+  }
+  assert.equal(
+    summaryTable(current, report(), 1),
+    'No measurements to show at the 1% change threshold.'
+  );
+});
+
 test('requires explicit matching environment and definition metadata', () => {
   for (const field of Object.keys(report().metadata)) {
-    if (field === 'runnerImage') continue;
     const base = report();
     delete (base.metadata as Record<string, unknown>)[field];
     assert.equal(compatible(report(), base), false, field);
@@ -69,14 +117,30 @@ test('requires explicit matching environment and definition metadata', () => {
   assert.match(summaryTable(report()), /— \| 0 \| —/);
 });
 
-test('compares measurements across runner image versions or missing runner image metadata', () => {
-  const base = report();
-  const current = report();
-  current.metadata.runnerImage = 'ubuntu-2';
-  assert.equal(compatible(current, base), true);
-  assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
-  delete (base.metadata as Record<string, unknown>).runnerImage;
-  assert.equal(compatible(current, base), true);
+test('compares across changed or missing runner images, CPUs, and renderers', () => {
+  for (const field of ['runnerImage', 'hostCpu', 'graphicsRenderer']) {
+    const base: InputRecord = report();
+    const current: InputRecord = report();
+    current.metrics['gallery.forward.tapToMotion'].median = 30;
+    current.metadata[field] = 'current';
+    assert.equal(compatible(current, base), true, field);
+    assert.match(summaryTable(current, base), /40 \| 30 \| -10 ms/);
+    base.metadata[field] = 'different';
+    assert.equal(compatible(current, base), true, field);
+    assert.match(summaryTable(current, base), /40 \| 30 \| -10 ms/);
+    delete current.metadata[field];
+    assert.equal(compatible(current, base), true, field);
+    assert.match(summaryTable(current, base), /40 \| 30 \| -10 ms/);
+  }
+});
+
+test('omits deltas for changed emulator versions or system images', () => {
+  for (const field of ['emulatorVersion', 'systemImage']) {
+    const current: InputRecord = report();
+    current.metadata[field] = 'different';
+    assert.equal(compatible(current, report()), false, field);
+    assert.match(summaryTable(current, report()), /— \| 40 \| —/);
+  }
 });
 
 test('does not display nonnumeric metrics or compare invalid collections', () => {

@@ -10,6 +10,7 @@ import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ProgressOwnership } from '../core/ProgressOwnership';
+import { createNativePresentation } from '../core/nativePresentation';
 import {
   createBackCommit,
   type NavigationCommitResult,
@@ -61,10 +62,12 @@ async function mountHook({
   registerSource = true,
   direction = 'backward',
   animationLifetime,
+  trace = false,
 }: {
   registerSource?: boolean;
   direction?: 'forward' | 'backward';
   animationLifetime?: ScreenAnimationLifetime;
+  trace?: boolean;
 } = {}) {
   const visibility = new ElementVisibilityRegistry();
   const sourceHidden = visibility.get('source', false);
@@ -79,6 +82,8 @@ async function mountHook({
   const navigationController = new NavigationSessionController();
   navigationController.acquireNavigationLock('article');
   const releaseLock = jest.spyOn(navigationController, 'releaseNavigationLock');
+  const presentation = createNativePresentation([], () => true, trace);
+  presentation.phase.value = 2;
   let session: TransitionSessionData = {
     id: 'reverse',
     groupId: 'group',
@@ -88,6 +93,7 @@ async function mountHook({
     state: 'active',
     progress,
     pairs: [],
+    presentation,
   };
   const getSession = () => session;
   const completeTransition = jest.fn();
@@ -137,6 +143,7 @@ async function mountHook({
     sourceHidden,
     targetHidden,
     progress,
+    presentation,
     progressOwnership,
     interactionOwner,
     navigationController,
@@ -193,6 +200,24 @@ afterEach(async () => {
 });
 
 describe('provider reverse commit integration', () => {
+  test.each(['android', 'ios'] as const)(
+    '%s records reverse startup without changing navigation-owned handoff',
+    async (platform) => {
+      Platform.OS = platform;
+      const harness = await mountHook({ trace: true });
+      const { navigateBack } = await harness.start();
+      expect(harness.presentation.timing!.value).toMatchObject({
+        animationDispatchedAtMs: expect.any(Number),
+        animationQueuedAtMs: expect.any(Number),
+        animationStartedAtMs: expect.any(Number),
+      });
+      expect(harness.presentation.animation.value).toBeNull();
+      expect(withSpring).toHaveBeenCalledTimes(1);
+      expect(navigateBack).not.toHaveBeenCalled();
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+    }
+  );
+
   test.each(['forward', 'backward'] as const)(
     '%s return accepts a new tap in the final 10% before the spring completes',
     async (direction) => {
