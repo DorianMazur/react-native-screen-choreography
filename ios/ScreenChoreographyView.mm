@@ -103,6 +103,10 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   __weak UIWindow *_lastWindow;
   RCTSurfaceTouchHandler *_foregroundTouchHandler;
   BOOL _foreground;
+  double _preparedAtMs;
+  double _attachedAtMs;
+  double _contentReadyAtMs;
+  double _presentedAtMs;
   BOOL _active;
   BOOL _prepared;
   BOOL _attachmentAcknowledged;
@@ -128,6 +132,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   if (self = [super initWithFrame:frame]) {
     static const auto defaultProps = std::make_shared<const ScreenChoreographyViewProps>();
     _props = defaultProps;
+    [self resetPresentationTiming];
 
     _windowContainer = [[ScreenChoreographyWindowContainer alloc] initWithFrame:CGRectZero];
     _windowContainer.anchor = self;
@@ -271,6 +276,11 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   [_windowContainer removeFromSuperview];
 }
 
+- (void)resetPresentationTiming
+{
+  _preparedAtMs = _attachedAtMs = _contentReadyAtMs = _presentedAtMs = -1;
+}
+
 - (void)prepareForRecycle
 {
   [self detachWindowContainer];
@@ -284,6 +294,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   _presentationAcknowledged = NO;
   _expectedHostNames = nil;
   _sessionId.clear();
+  [self resetPresentationTiming];
   [self updateContainerReveal];
   _lastWindow = nil;
   [super prepareForRecycle];
@@ -303,6 +314,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   }
 
   if (sessionChanged) {
+    [self resetPresentationTiming];
     _presentationRequestId += 1;
     _presentationCheckPending = NO;
     [_presentationDisplayLink invalidate];
@@ -383,6 +395,9 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
     return NO;
   }
   _presentationAcknowledged = YES;
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+  if (_presentedAtMs < 0) _presentedAtMs = CACurrentMediaTime() * 1000.0;
+#endif
   // Invalidate a pending transaction-completion check for this request.
   _presentationRequestId += 1;
   _presentationCheckPending = NO;
@@ -401,8 +416,13 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   const BOOL replayPresentation = _presentationAcknowledged;
   const BOOL replayAttachment = _attachmentAcknowledged;
   if (!_prepared) {
+    const CFTimeInterval now = CACurrentMediaTime();
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+    // A build flag is available before any React props or UI commands arrive.
+    _preparedAtMs = now * 1000.0;
+#endif
     _prepared = YES;
-    _attachmentDeadline = CACurrentMediaTime() + 1.0;
+    _attachmentDeadline = now + 1.0;
   }
   [self applyActive:YES];
   [self presentWindowContainer];
@@ -473,6 +493,10 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
       .timestamp = CACurrentMediaTime() * 1000.0,
       .sessionId = _sessionId,
       .stage = stage,
+      .preparedAtMs = _preparedAtMs,
+      .attachedAtMs = _attachedAtMs,
+      .contentReadyAtMs = _contentReadyAtMs,
+      .presentedAtMs = _presentedAtMs,
   });
 }
 
@@ -482,6 +506,9 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
       _windowContainer.window == nil || _eventEmitter == nullptr ||
       CACurrentMediaTime() >= _attachmentDeadline || ![self transitionHostsAreReady:NO]) return;
   _attachmentAcknowledged = YES;
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+  if (_attachedAtMs < 0) _attachedAtMs = CACurrentMediaTime() * 1000.0;
+#endif
   // Arm before emitting: an event handler may synchronously update native props.
   if (!_presentationRequested) {
     _presentationRequested = YES;
@@ -525,6 +552,11 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   if (_expectedHostNames.count == 0) return NO;
   NSMutableSet<NSString *> *remaining = [NSMutableSet setWithArray:_expectedHostNames];
   [self collectReadyHosts:_windowContainer requireContent:requireContent remaining:remaining];
+#if SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION
+  if (remaining.count == 0 && requireContent && _contentReadyAtMs < 0) {
+    _contentReadyAtMs = CACurrentMediaTime() * 1000.0;
+  }
+#endif
   return remaining.count == 0;
 }
 

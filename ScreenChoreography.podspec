@@ -16,5 +16,10 @@ Pod::Spec.new do |s|
   s.source_files = "ios/**/*.{h,m,mm,swift,cpp}", "cpp/**/*.{h,cpp}"
   s.private_header_files = "ios/**/*.h", "cpp/**/*.h"
 
+  s.pod_target_xcconfig = {
+    "SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION" => "0",
+    "GCC_PREPROCESSOR_DEFINITIONS" => "$(inherited) SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=$(SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION)"
+  }
+
   install_modules_dependencies(s)
 end

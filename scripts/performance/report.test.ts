@@ -70,7 +70,7 @@ function documents(overrides: InputRecord[] = []): MeasurementDocument[] {
 const options = {
   platform: 'android',
   mode: 'native-release',
-  metadata: { timingCycles: 1 },
+  metadata: {},
 };
 
 test('CLI prints collection failures and preserves diagnostic summaries', async () => {
@@ -475,7 +475,7 @@ test('requires the requested number of forward and backward timing samples', () 
   assert.equal(summary.valid, false);
   assert.match(
     summary.errors.join(),
-    /Timing journey count must match expected cycles/
+    /Total journey count must match measured cycles/
   );
   assert.equal(
     summary.metrics['gallery.forward.requestToSessionActiveMs'],
@@ -492,7 +492,7 @@ test('reports 20 round trips with preparation traces in both directions', () => 
     data.journeys = Array.from({ length: 20 }, () =>
       structuredClone(data.journeys)
     ).flat();
-    data.native.exportedAtUptimeMs = 41000;
+    data.native.exportedAtUptimeMs = 43000;
     data.native.touches = data.journeys.map((_: unknown, index: number) => ({
       kind: 'activity-action-up',
       eventUptimeMs: (index + 1) * 1000,
@@ -606,7 +606,7 @@ test('rejects invalid expected counts and duplicate fixture artifacts', () => {
   ]) {
     assert.match(
       summarize(documents(), { ...options, metadata }).errors.join(),
-      /integer between 1 and 100/
+      /integer between 1 and 99/
     );
   }
   for (const documentIndex of [0]) {
@@ -665,6 +665,157 @@ function withMotion(data: InputRecord) {
   });
   return data;
 }
+
+function sampledDocuments(timingCycles = 20) {
+  const input = documents();
+  for (const { data } of input) {
+    data.journeys = Array.from({ length: timingCycles }, () =>
+      structuredClone(data.journeys)
+    ).flat();
+    withMotion(data);
+    data.journeys.forEach((journey: InputRecord, index: number) => {
+      // Distinct initial samples make accidental exclusions visible.
+      const timing = index < 2 ? 900 : 40;
+      journey.requestToSessionActiveMs = timing;
+      journey.sessionActiveJsMs = journey.requestJsMs + timing;
+      journey.motion.firstMotionMs = journey.sessionActiveJsMs + 30;
+      journey.motion.motionEndMs = journey.motion.firstMotionMs + 300;
+      journey.motion.handoffMs = journey.motion.motionEndMs + 10;
+      journey.probe.handlerJsMs = journey.motion.handoffMs + 100;
+    });
+    data.native.exportedAtUptimeMs = data.journeys.length * 2000 + 100;
+    data.native.touches = data.journeys.map((_: unknown, index: number) => ({
+      kind: 'activity-action-up',
+      eventUptimeMs: (index + 1) * 2000,
+      dispatchUptimeMs: (index + 1) * 2000 + 1,
+    }));
+    data.native.inputAcknowledgements = data.journeys.map(
+      (journey: InputRecord, index: number) => ({
+        probe: journey.probe.screen,
+        eventUptimeMs: (index + 1) * 2000,
+        nativeAckUptimeMs: (index + 1) * 2000 + 8,
+        touchToNativeAckMs: 8,
+      })
+    );
+  }
+  return input;
+}
+
+const sampledOptions = {
+  ...options,
+  metadata: { timingCycles: 20 },
+};
+
+test('includes all 20 round trips in one measured set', () => {
+  const summary = summarize(sampledDocuments(), sampledOptions);
+  assert.equal(summary.valid, true, summary.errors.join('\n'));
+  for (const scenario of SCENARIO_IDS) {
+    for (const direction of ['forward', 'backward']) {
+      const key = `${scenario}.${direction}.requestToSessionActiveMs`;
+      assert.deepEqual(summary.samples[key], [900, ...Array(19).fill(40)]);
+      assert.equal(summary.metrics[key]!.count, 20);
+      assert.equal(summary.metrics[key]!.median, 40);
+      const motionKey = `${scenario}.${direction}.tapToMotion`;
+      assert.deepEqual(summary.samples[motionKey], [
+        930,
+        ...Array(19).fill(70),
+      ]);
+      assert.equal(summary.metrics[motionKey]!.median, 70);
+    }
+  }
+  assert.equal(
+    Object.keys(summary.metrics).some((key) => key.includes('firstRun')),
+    false
+  );
+  const body = markdown(summary);
+  assert.doesNotMatch(body, /warm-up|first run|first visit/i);
+  assert.match(body, /Gallery · tap to motion \(ms\) \| — \| 70 \| —/);
+});
+
+test('a failure in any journey invalidates the entire collection', () => {
+  for (const index of [0, 2, 11]) {
+    for (const corrupt of [
+      (data: InputRecord) => {
+        data.journeys[index].failure = 'presentation-failed';
+      },
+      (data: InputRecord) => {
+        delete data.journeys[index].motion;
+      },
+      (data: InputRecord) => {
+        data.native.inputAcknowledgements[index].eventUptimeMs++;
+      },
+    ]) {
+      const input = sampledDocuments();
+      corrupt(input[0]!.data);
+      const summary = summarize(input, sampledOptions);
+      assert.equal(summary.valid, false, `journey ${index}`);
+      assert.equal(summary.metrics['gallery.forward.tapToMotion'], undefined);
+    }
+  }
+});
+
+test('unanimated fallback in any journey fails despite valid timing samples', () => {
+  for (const index of [0, 2]) {
+    const input = sampledDocuments();
+    const journey = input[0]!.data.journeys[index];
+    journey.preparationTrace = {
+      traceId: 'timeout',
+      sessionId: journey.sessionId,
+      direction: journey.direction,
+      groupId: 'photo',
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      clock: 'js-performance-now',
+      startedAtMs: journey.requestJsMs + 5,
+      completedAtMs: journey.sessionActiveJsMs + 20,
+      outcome: 'overlay-timeout',
+      droppedStages: 0,
+      stages: [
+        {
+          name: 'coordinator',
+          startedAtMs: journey.requestJsMs + 5,
+          durationMs: 10,
+          completed: true,
+        },
+      ],
+    };
+    const summary = summarize(input, sampledOptions);
+    assert.equal(summary.valid, false);
+    const prefix = 'gallery.forward';
+    assert.match(
+      summary.errors.join(),
+      new RegExp(
+        `${prefix}: 1/1 transitions did not confirm overlay presentation`
+      )
+    );
+    assert.equal(summary.metrics['gallery.forward.tapToMotion']!.count, 20);
+    assert.equal(summary.metrics['gallery.forward.tapToMotion']!.median, 70);
+    assert.equal(
+      summary.preparationDiagnostics[prefix].overlayTimeoutJourneys,
+      1
+    );
+  }
+});
+
+test('rejects missing or extra round trips and invalid measured cycle counts', () => {
+  for (const timingCycles of [19, 21]) {
+    const summary = summarize(sampledDocuments(timingCycles), sampledOptions);
+    assert.equal(summary.valid, false);
+    assert.match(summary.errors.join(), /Total journey count must match/);
+  }
+  for (const change of [
+    { timingCycles: 0 },
+    { timingCycles: 100 },
+    { timingCycles: 1.5 },
+  ]) {
+    const summary = summarize(sampledDocuments(), {
+      ...sampledOptions,
+      metadata: { ...sampledOptions.metadata, ...change },
+    });
+    assert.equal(summary.valid, false);
+    assert.match(summary.errors.join(), /cycles|round trips/);
+  }
+});
 
 for (const platform of ['android', 'ios']) {
   test(`${platform}: reports preparation and all three motion metrics for every example`, () => {
@@ -770,5 +921,100 @@ test('missing or inconsistent motion evidence fails the whole fixture without pa
     const summary = summarize(documents([data]), options);
     assert.equal(summary.valid, false);
     assert.equal(summary.metrics['gallery.forward.tapToMotion'], undefined);
+  }
+});
+
+function withPresentationTiming(data: InputRecord) {
+  withMotion(data);
+  data.presentationTracing = {
+    clock: 'rn-worklets-steady-clock-ms',
+    nativeClock: 'native-monotonic-ms',
+  };
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    const offset = index * 1000;
+    journey.presentationTiming = {
+      publishedAtMs: offset + 140,
+      hostsCommitAtMs: offset + 145,
+      contentCommitAtMs: offset + 152,
+      acknowledgedAtMs: offset + 169,
+    };
+    journey.motion.presentationTiming = {
+      animationDispatchedAtMs: offset + 142,
+      animationQueuedAtMs: offset + 150,
+      presentedAtMs: offset + 160,
+      animationStartedAtMs: offset + 165,
+      // Deliberately unrelated to JS/UI time: never subtract across clocks.
+      native: {
+        preparedAtMs: 10000,
+        attachedAtMs: 10004,
+        contentReadyAtMs: 10016,
+        presentedAtMs: 10021,
+      },
+    };
+  });
+  return data;
+}
+
+test('presentation startup reports separate clock-safe intervals for every journey', () => {
+  const data = withPresentationTiming(fixture('gallery'));
+  const summary = summarize(documents([data]), options);
+  assert.equal(summary.valid, true, summary.errors.join());
+  for (const direction of ['forward', 'backward']) {
+    for (const [name, expected] of Object.entries({
+      'overlay-commit': 5,
+      'content-commit': 12,
+      'native-attachment': 4,
+      'native-content': 12,
+      'native-presentation': 5,
+      'animation-dispatch': 8,
+      'ui-start': 5,
+      'first-motion': 5,
+      'js-ack': 9,
+    })) {
+      const key = `gallery.${direction}.presentation.${name}Ms`;
+      assert.equal(summary.metrics[key]!.median, expected);
+      assert.equal(summary.metrics[key]!.count, 1);
+      assert.equal(
+        summary.metricDefinitions[key].clock,
+        name.startsWith('native-')
+          ? 'native-monotonic-ms'
+          : 'rn-worklets-steady-clock-ms'
+      );
+    }
+  }
+  assert.match(markdown(summary), /Presentation startup \(ms\)/);
+  assert.match(
+    markdown(summary),
+    /Native event delivery to the UI runtime is not isolated/
+  );
+});
+
+test('incomplete or misordered startup timing invalidates collection instead of reporting a speedup', () => {
+  const mutations = [
+    (data: InputRecord) => {
+      delete data.journeys[0].motion.presentationTiming;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.presentationTiming.native.attachedAtMs = -1;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].motion.presentationTiming.animationStartedAtMs = 149;
+    },
+    (data: InputRecord) => {
+      data.journeys[0].presentationTiming.acknowledgedAtMs = null;
+    },
+    (data: InputRecord) => {
+      delete data.presentationTracing;
+    },
+  ];
+  for (const mutate of mutations) {
+    const data = withPresentationTiming(fixture('gallery'));
+    mutate(data);
+    const summary = summarize(documents([data]), options);
+    assert.equal(summary.valid, false);
+    assert.equal(
+      summary.metrics['gallery.forward.presentation.overlay-commitMs'],
+      undefined
+    );
   }
 });

@@ -47,14 +47,16 @@ afterEach(async () => {
 });
 async function setup(
   armed = true,
-  input: Partial<React.ComponentProps<typeof NativeTransitionHost>> = {}
+  input: Partial<React.ComponentProps<typeof NativeTransitionHost>> = {},
+  trace = false
 ) {
   const progress = makeMutable(0);
   ownership = new ProgressOwnership(makeMutable(0), progress);
   ownership.setSession('A');
   const presentation = createNativePresentation(
     ['host-A'],
-    jest.fn(() => true)
+    jest.fn(() => true),
+    trace
   );
   const ready = jest.fn(),
     failed = jest.fn();
@@ -94,7 +96,15 @@ async function setup(
       tree.root
         .findByType('ScreenChoreographyView' as React.ElementType)
         .props.onPresentationReady({
-          nativeEvent: { sessionId, stage, timestamp: 1 },
+          nativeEvent: {
+            sessionId,
+            stage,
+            timestamp: 1,
+            preparedAtMs: 10000,
+            attachedAtMs: 10004,
+            contentReadyAtMs: 10016,
+            presentedAtMs: 10021,
+          },
         });
       react();
     });
@@ -316,5 +326,39 @@ test.each([
     } finally {
       Platform.OS = originalOS;
     }
+  }
+);
+
+test.each([true, false])(
+  'startup diagnostics preserve readiness and animation ordering (armed=%s)',
+  async (armed) => {
+    const r = await setup(armed, {}, true);
+    await r.ack('old');
+    expect(r.presentation.timing!.value.presentedAtMs).toBeNull();
+    await r.ack();
+    if (!armed) {
+      expect(r.presentation.timing!.value.animationStartedAtMs).toBeNull();
+      r.arm();
+      r.react();
+    }
+    const timing = { ...r.presentation.timing!.value };
+    expect(timing.native).toEqual({
+      preparedAtMs: 10000,
+      attachedAtMs: 10004,
+      contentReadyAtMs: 10016,
+      presentedAtMs: 10021,
+    });
+    expect(timing.animationQueuedAtMs!).toBeGreaterThanOrEqual(
+      timing.animationDispatchedAtMs!
+    );
+    expect(timing.animationStartedAtMs!).toBeGreaterThanOrEqual(
+      timing.presentedAtMs!
+    );
+    expect(timing.animationStartedAtMs!).toBeGreaterThanOrEqual(
+      timing.animationQueuedAtMs!
+    );
+    await r.ack();
+    expect(r.presentation.timing!.value).toEqual(timing);
+    expect(startOwnedProgressOnUI).toHaveBeenCalledTimes(1);
   }
 );

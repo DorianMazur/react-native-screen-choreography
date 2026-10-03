@@ -1,4 +1,7 @@
-import type { NativePresentation } from './core/nativePresentation';
+import type {
+  NativePresentation,
+  PresentationJSTiming,
+} from './core/nativePresentation';
 import type { ComponentType, ReactElement } from 'react';
 import type { SharedValue } from 'react-native-reanimated';
 import type { ViewStyle } from 'react-native';
@@ -132,6 +135,8 @@ export interface ElementTransitionPair {
 
 export interface TransitionSessionData {
   presentation?: NativePresentation;
+  /** Internal, opt-in JS observations; kept out of UI worklet captures. */
+  presentationTiming?: PresentationJSTiming;
   id: string;
   groupId: string;
   sourceScreenId: string;

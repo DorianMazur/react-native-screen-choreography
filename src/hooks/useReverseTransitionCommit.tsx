@@ -264,6 +264,7 @@ export function useReverseTransitionCommit({
                 : { velocity: -options.velocity }),
             },
             duration: options.duration,
+            timing: session.presentation?.timing,
             handoffOnComplete: false,
             onCompleteUI: markAnimationFinished,
             onComplete,

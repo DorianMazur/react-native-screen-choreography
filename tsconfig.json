@@ -41,6 +41,7 @@
     "lib",
     "examples",
     "scripts/performance",
+    "artifacts/performance",
     "docs"
   ]
 }

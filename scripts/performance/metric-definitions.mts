@@ -4,14 +4,47 @@ import {
   type PerformanceScenario,
 } from '../../examples/react-navigation/src/performance/scenarios.ts';
 
+export const presentationStages = {
+  'overlay-commit': ['overlay published', 'overlay hosts React commit'],
+  'content-commit': ['overlay published', 'active content React commit'],
+  'native-attachment': ['native prepare', 'hosts attached'],
+  'native-content': ['hosts attached', 'content first observed ready'],
+  'native-presentation': [
+    'content first observed ready',
+    'native presentation acknowledgement',
+  ],
+  'animation-dispatch': ['JS animation dispatch', 'UI animation queued'],
+  'ui-start': ['UI presentation event received', 'UI animation start'],
+  'first-motion': ['UI animation start', 'first UI progress change'],
+  'js-ack': ['UI presentation event received', 'JS acknowledgement callback'],
+} as const;
+
 // Version the observed workload and each measurement's meaning, not the library
 // implementation or fixture serialization. Change these when that meaning changes.
 export function metricDefinition(key: string, instrumentation: string) {
   const stage = key.match(/\.preparation\.([a-z][a-z0-9-]*)Ms$/)?.[1];
+  const presentation = key.match(
+    /\.presentation\.([a-z][a-z0-9-]*)Ms$/
+  )?.[1] as keyof typeof presentationStages | undefined;
   const render = key.match(/\.renders\.(list|detail|hero)\.(mount|update)$/);
   const scenario = SCENARIOS[key.split('.')[0] as PerformanceScenario];
   if (!scenario) throw new Error('Unknown metric workload');
   const metric = key.split('.').at(-1)!;
+  if (presentation) {
+    const [start, end] = presentationStages[presentation];
+    return {
+      version: 1,
+      workload: scenario.workload,
+      unit: 'ms',
+      clock: presentation.startsWith('native-')
+        ? 'native-monotonic-ms'
+        : 'rn-worklets-steady-clock-ms',
+      start,
+      end,
+      aggregation: 'one-sample-per-journey',
+      instrumentation,
+    };
+  }
   const motion = [
     'tapToMotion',
     'transitionDuration',
