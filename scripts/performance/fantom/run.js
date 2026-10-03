@@ -67,6 +67,26 @@ function run(command, args, cwd = checkout, log) {
           .join('\n')
       );
     }
+    if (log === 'build.log') {
+      // RN's Gradle tasks redirect compiler diagnostics out of the Gradle log.
+      const reports = path.join(
+        checkout,
+        'private/react-native-fantom/build/reports'
+      );
+      if (fs.existsSync(reports)) {
+        for (const file of fs
+          .readdirSync(reports)
+          .filter((name) => name.endsWith('.error.log'))) {
+          const tail = fs
+            .readFileSync(path.join(reports, file), 'utf8')
+            .trim()
+            .split('\n')
+            .slice(-80)
+            .join('\n');
+          if (tail) console.error(`${file}:\n${tail}`);
+        }
+      }
+    }
     throw new Error(
       `${command} failed (${result.status}). ${result.error?.message || ''}${log ? ` See ${path.join(output, log)}` : ''}`
     );

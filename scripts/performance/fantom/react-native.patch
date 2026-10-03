@@ -199,6 +199,23 @@ index 5b67792..e609d41 100644
    SurfaceId surfaceId = nextSurfaceId_;
    nextSurfaceId_ += 10;
    appDelegate_.startSurface(
+diff --git a/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt b/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt
+index e2af851..0e04435 100644
+--- a/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt
++++ b/private/react-native-fantom/tester/third-party/folly/CMakeLists.txt
+@@ -67,6 +67,12 @@ target_compile_options(folly_runtime
+         -Wno-sign-compare
+         ${folly_FLAGS})
+
++# libstdc++ 14 deprecates the ABI handler type used by this pinned Folly.
++# Keep the warning, but do not fail the Linux host build on third-party code.
++if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
++  target_compile_options(folly_runtime PRIVATE -Wno-error=deprecated-declarations)
++endif()
++
+ target_compile_options(folly_runtime PUBLIC ${folly_FLAGS})
+
+ target_include_directories(folly_runtime PUBLIC .)
 diff --git a/private/react-native-fantom/tester/third-party/nlohmann_json/CMakeLists.txt b/private/react-native-fantom/tester/third-party/nlohmann_json/CMakeLists.txt
 index 5434507..8e1ad92 100644
 --- a/private/react-native-fantom/tester/third-party/nlohmann_json/CMakeLists.txt
