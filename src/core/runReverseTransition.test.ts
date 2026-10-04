@@ -10,8 +10,11 @@ import { TransitionCoordinator } from './TransitionCoordinator';
 import type { ChoreographyContextType } from './ChoreographyContext';
 import type { TransitionSessionData } from '../types';
 import { FAST_SPRING } from './constants';
+import { ReverseTransitionController } from './ReverseTransitionController';
+import { createNativePresentation } from './nativePresentation';
 
 jest.mock('react-native-reanimated', () => ({
+  makeMutable: (value: unknown) => ({ value }),
   cancelAnimation: jest.fn(),
   withSpring: jest.fn(),
   Easing: {
@@ -49,6 +52,7 @@ function createContext(
     progress,
     progressOwnership,
     navigationController: new NavigationSessionController(),
+    reverseController: new ReverseTransitionController(),
     captureSourceGroup: jest.fn(async () => {}),
     startTransition: jest.fn(async () => {
       progressOwnership.setSession('reverse-session');
@@ -115,6 +119,135 @@ describe('reversing an existing session', () => {
       } finally {
         frame.mockRestore();
       }
+    }
+  );
+});
+
+describe('native-gated Back delegation', () => {
+  function pendingBack(reducedMotion = false) {
+    let ready!: (value: boolean) => void;
+    const readiness = new Promise<boolean>((resolve) => {
+      ready = resolve;
+    });
+    const presentation = createNativePresentation(['host'], () => true);
+    const ctx = createContext({
+      waitForOverlayReady: jest.fn(() => readiness),
+    });
+    jest.mocked(ctx.startTransition).mockImplementation(async () => {
+      ctx.progressOwnership.setSession('reverse-session');
+      return {
+        ...createSession('reverse-session'),
+        presentation,
+        reducedMotion,
+      };
+    });
+    const cancel = jest.fn();
+    const handoff = jest.fn();
+    jest.mocked(ctx.commitReverseTransition).mockImplementation((request) =>
+      ctx.reverseController.start({
+        sessionId: request.sessionId,
+        sourceScreenId: 'detail',
+        targetScreenId: 'list',
+        commitNavigation: async () =>
+          (await request.navigateBack()) ?? { removed: true, presented: false },
+        animate: jest.fn(),
+        settleToTarget: jest.fn(),
+        cancel,
+        handoff,
+        isCurrent: () =>
+          ctx.progressOwnership.isCurrent(request.token, request.sessionId),
+      })
+    );
+    const popAction = jest.fn(async () => ({
+      removed: true,
+      presented: false,
+    }));
+    const back = runReverseTransition({
+      ctx,
+      groupId: 'group',
+      sourceScreenId: 'list',
+      currentScreenId: 'detail',
+      popAction,
+    });
+    return { ctx, presentation, back, ready, popAction, cancel, handoff };
+  }
+
+  test('arms provider-owned Back before the RN readiness promise resolves', async () => {
+    const r = pendingBack();
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(r.ctx.waitForOverlayReady).toHaveBeenCalledTimes(1);
+    expect(r.ctx.commitReverseTransition).toHaveBeenCalledWith(
+      expect.objectContaining({ presentation: r.presentation })
+    );
+    expect(r.popAction).not.toHaveBeenCalled();
+    r.ready(true);
+    await Promise.resolve();
+    expect(r.ctx.commitReverseTransition).toHaveBeenCalledTimes(1);
+    r.ctx.reverseController.dispose();
+    await r.back;
+  });
+
+  test('reduced motion waits for the content commit and does not queue native presentation', async () => {
+    const r = pendingBack(true);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(r.ctx.commitReverseTransition).not.toHaveBeenCalled();
+    r.ready(true);
+    await Promise.resolve();
+    expect(r.ctx.commitReverseTransition).toHaveBeenCalledTimes(1);
+    expect(
+      jest.mocked(r.ctx.commitReverseTransition).mock.calls[0]![0].presentation
+    ).toBeUndefined();
+    r.ctx.reverseController.dispose();
+    await r.back;
+  });
+
+  test('failed presentation revokes queued motion and releases the operation before fallback', async () => {
+    const r = pendingBack();
+    await Promise.resolve();
+    await Promise.resolve();
+    const request = jest.mocked(r.ctx.commitReverseTransition).mock
+      .calls[0]![0];
+    r.popAction.mockImplementation(async () => {
+      expect(r.presentation.valid.value).toBe(false);
+      expect(
+        r.ctx.progressOwnership.isCurrent(request.token, request.sessionId)
+      ).toBe(false);
+      expect(r.ctx.reverseController.owns(request.sessionId)).toBe(false);
+      return { removed: true, presented: false };
+    });
+    r.ready(false);
+    await r.back;
+    expect(r.popAction).toHaveBeenCalledTimes(1);
+    expect(r.ctx.completeTransition).toHaveBeenCalledWith('reverse-session');
+    expect(r.cancel).not.toHaveBeenCalled();
+    expect(r.handoff).not.toHaveBeenCalled();
+  });
+
+  test.each(['same session', 'replacement session'])(
+    'a new owner in the %s during presentation rejects old navigation callbacks',
+    async (replacement) => {
+      const r = pendingBack();
+      await Promise.resolve();
+      await Promise.resolve();
+      const request = jest.mocked(r.ctx.commitReverseTransition).mock
+        .calls[0]![0];
+      if (replacement === 'same session')
+        r.ctx.progressOwnership.claim('reverse-session');
+      else r.ctx.progressOwnership.setSession('replacement');
+      r.ctx.progress.value = 0.6;
+      r.ready(false);
+      await r.back;
+      await expect(request.navigateBack()).resolves.toEqual({
+        removed: false,
+        presented: false,
+      });
+      expect(r.popAction).not.toHaveBeenCalled();
+      expect(r.ctx.reverseController.owns('reverse-session')).toBe(false);
+      expect(r.ctx.progress.value).toBe(0.6);
+      expect(r.ctx.cancelTransition).not.toHaveBeenCalled();
+      expect(r.ctx.completeTransition).not.toHaveBeenCalled();
     }
   );
 });
