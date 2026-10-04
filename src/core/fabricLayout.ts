@@ -26,7 +26,8 @@ export interface FabricLayoutEntry {
 }
 
 export interface FabricLayoutSnapshot {
-  metrics: Map<string, ElementMetrics>;
+  /** Geometry aligned index-by-index with the entries passed to the capture. */
+  metrics: readonly ElementMetrics[];
   /** Numeric tags can be recycled; retain native node identity too. */
   isCurrent: () => boolean;
 }
@@ -94,7 +95,7 @@ export function captureFabricLayout(
       !isCurrent()
     )
       return null;
-    const metrics = new Map<string, ElementMetrics>();
+    const metrics: ElementMetrics[] = [];
     for (let i = 0; i < entries.length; i++) {
       const item = result[i];
       if (
@@ -106,7 +107,7 @@ export function captureFabricLayout(
         item.height <= 0
       )
         return null;
-      metrics.set(entries[i]!.id, {
+      metrics.push({
         pageX: item.pageX,
         pageY: item.pageY,
         width: item.width,
@@ -231,7 +232,7 @@ export function prepareFabricLayout({
           };
           finish({
             validateNative,
-            metrics: new Map(entries.map((entry, i) => [entry.id, batch[i]!])),
+            metrics: batch,
             isCurrent: currentRefs,
           });
         } catch {

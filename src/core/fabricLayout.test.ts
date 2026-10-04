@@ -54,9 +54,9 @@ afterEach(() => {
   jest.useRealTimers();
 });
 
-test('captures a complete batch and tracks node identity independently of recycled tags', () => {
+test('captures a complete batch aligned with entries and tracks node identity independently of recycled tags', () => {
   const result = captureFabricLayout(entries)!;
-  expect(result.metrics.size).toBe(2);
+  expect(result.metrics).toEqual([metrics, metrics]);
   expect(globals.__screenChoreographyCaptureFabricLayout).toHaveBeenCalledWith(
     [1, 1],
     [2, 3]
@@ -114,7 +114,7 @@ test('one native request waits for mount events, with no timed polling or repeat
   );
   notifyMount();
   const snapshot = await pending;
-  expect(snapshot?.metrics.size).toBe(2);
+  expect(snapshot?.metrics).toEqual([metrics, metrics]);
   expect(snapshot?.validateNative?.()).toBe(true);
   expect(globals.__screenChoreographyRequestFabricLayout).toHaveBeenCalledTimes(
     1
@@ -144,10 +144,10 @@ test('returns an already mounted native batch synchronously and releases waiters
   });
   expect(snapshot).not.toBeInstanceOf(Promise);
   expect(snapshot).toMatchObject({
-    metrics: new Map([
-      ['a', metrics],
-      ['b', metrics],
-    ]),
+    metrics: [
+      { pageX: 0, pageY: 20, width: 100, height: 50 },
+      { pageX: 0, pageY: 20, width: 100, height: 50 },
+    ],
   });
   expect(cancellers.size).toBe(0);
   expect(unsubscribe).toHaveBeenCalledTimes(1);
