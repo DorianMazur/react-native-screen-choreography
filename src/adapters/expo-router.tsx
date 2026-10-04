@@ -80,7 +80,12 @@ export function useChoreographyRouter<Href>(
     [choreography, navigation, route.key, router]
   );
 
-  return { push, navigate, back: choreography.goBack };
+  return {
+    push,
+    navigate,
+    back: choreography.goBack,
+    prearm: choreography.prearm,
+  };
 }
 
 export function useInteractiveTransition() {

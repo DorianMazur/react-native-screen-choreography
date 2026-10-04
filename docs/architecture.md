@@ -115,11 +115,14 @@ and after reading layout, with no pending transactions. Endpoints are scoped to
 their registered screens, and a batch succeeds only when all endpoints have
 finite, nonempty geometry.
 
-Before navigation, the coordinator captures source geometry for that navigation.
-This preserves the departing bounds if native-stack detaches the screen. The
-capture is tied to native node identity and consumed by the next preparation.
-When no source capture is available, preparation reads source and target
-together from one mounted root.
+Before navigation, the coordinator captures source geometry for that
+navigation. An application can arm this capture earlier, for example from a
+card's press-in handler via the adapter's `prearm`; the tap reuses the armed
+capture only while element identity, mounted layout, and bounds stay fresh,
+and otherwise re-captures. This preserves the departing bounds if native-stack
+detaches the screen. The capture is tied to native node identity and consumed
+by the next preparation. When no source capture is available, preparation
+reads source and target together from one mounted root.
 
 Both transition directions wait for screen readiness and matching
 registrations, freeze presentations, and issue one native request. That request

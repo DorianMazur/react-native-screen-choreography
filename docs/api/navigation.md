@@ -25,6 +25,31 @@ goBack(options?: ChoreographyNavigationOptions): Promise<void>;
 
 Pass the current screen's React Navigation `navigation` object. `navigate` uses `navigation.navigate` to open the destination and coordinates the shared transition.
 
+### Pre-arming source geometry
+
+```ts
+prearm(options?: { group?: string }): Promise<void>;
+```
+
+`prearm` captures the current screen's source geometry for a group before the tap lands — for example from a card's `onPressIn`. The next forward navigation reuses the armed capture while it stays fresh (element identity, mounted layout, and bounds unchanged); a stale or missing capture falls back to capturing at tap time, exactly like an unprearmed navigation. Pre-arming is best-effort: it is skipped while the screen is unfocused or any transition owns preparation, and it never dispatches navigation.
+
+```tsx
+<Pressable
+  onPressIn={() => void prearm({ group: `artwork.${id}` })}
+  onPress={() =>
+    void navigate(
+      'Detail',
+      { artworkId: id },
+      {
+        transitionConfig: { group: `artwork.${id}` },
+      }
+    )
+  }
+/>
+```
+
+Use it for elements whose press-to-release interval is meaningful (cards, rows). It has no effect for taps that navigate on press-down, and it does not replace keeping endpoint layout stable during the handoff.
+
 ```tsx
 void navigate(
   'Detail',
@@ -66,6 +91,7 @@ const { push, navigate, back } = useChoreographyRouter(router, currentScreenId);
 push(request: ChoreographyRouterRequest<Href>): Promise<void>;
 navigate(request: ChoreographyRouterRequest<Href>): Promise<void>;
 back(options?: ChoreographyNavigationOptions): Promise<void>;
+prearm(options?: { group?: string }): Promise<void>;
 
 type ChoreographyRouterRequest<Href> = ChoreographyNavigationOptions & {
   href: Href;

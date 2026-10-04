@@ -537,3 +537,109 @@ describe('Back preparation ownership', () => {
     }
   );
 });
+
+describe('prearm', () => {
+  function harness(overrides: Partial<ChoreographyContextType> = {}) {
+    const progress = { value: 0 } as ChoreographyContextType['progress'];
+    const progressOwnership = new ProgressOwnership(
+      { value: 0 } as ChoreographyContextType['progress'],
+      progress
+    );
+    const ctx = {
+      progress,
+      progressOwnership,
+      navigationController: new NavigationSessionController(),
+      activeSession: null,
+      pendingTargetScreenId: null,
+      captureSourceGroup: jest.fn(async () => {}),
+      ensureSourceCapture: jest.fn(async () => true),
+      ...overrides,
+    } as unknown as ChoreographyContextType;
+    let navigation!: ReturnType<typeof useChoreographyNavigator>;
+    function Caller() {
+      navigation = useChoreographyNavigator({
+        currentScreenId: 'list-route',
+        isFocused: true,
+        goBack: jest.fn(),
+      });
+      return null;
+    }
+    return {
+      ctx,
+      render: () => (
+        <ChoreographyContext.Provider value={ctx}>
+          <Caller />
+        </ChoreographyContext.Provider>
+      ),
+      get: () => navigation,
+    };
+  }
+
+  test('arms the source capture for the current screen without navigating', async () => {
+    const { ctx, render, get } = harness();
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(render());
+      });
+      await act(async () => {
+        await get().prearm({ group: 'trip' });
+      });
+      expect(ctx.captureSourceGroup).toHaveBeenCalledTimes(1);
+      expect(ctx.captureSourceGroup).toHaveBeenCalledWith('trip', 'list-route');
+      expect(ctx.startTransition).toBeUndefined();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
+
+  test('skips prearming without a group or while a session owns preparation', async () => {
+    const { ctx, render, get } = harness();
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(render());
+      });
+      await act(async () => {
+        await get().prearm();
+      });
+      expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
+      Object.assign(ctx as unknown as Record<string, unknown>, {
+        activeSession: { id: 'busy' },
+      });
+      await act(async () => {
+        await get().prearm({ group: 'trip' });
+      });
+      expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
+
+  test('tap preparation reuses the freshness-aware capture when the provider offers it', async () => {
+    const { ctx, render, get } = harness({
+      setPendingTargetScreen: jest.fn(),
+      waitForScreenReady: jest.fn(async () => false),
+    } as Partial<ChoreographyContextType>);
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(render());
+      });
+      await act(async () => {
+        await get().navigate({
+          targetScreenId: 'detail-route',
+          dispatchNavigation: jest.fn(),
+          options: { transitionConfig: { group: 'trip' } },
+        });
+      });
+      expect(ctx.ensureSourceCapture).toHaveBeenCalledWith(
+        'trip',
+        'list-route'
+      );
+      expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
+});

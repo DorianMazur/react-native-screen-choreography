@@ -206,6 +206,40 @@ export class TransitionCoordinator {
     }
   }
 
+  /** True when a stored capture still matches live geometry within the
+   * stability epsilon. Identity checks alone cannot prove this: the source
+   * screen may have scrolled or relaid out since the capture was armed. */
+  hasFreshSourceCapture(groupId: string, screenId: string): boolean {
+    const capture = this.sourceCaptures.get(this.sourceKey(screenId, groupId));
+    if (!capture) return false;
+    if (
+      !capture.snapshot.isCurrent() ||
+      !this.elementsAreCurrent(capture.elements)
+    ) {
+      return false;
+    }
+    const entries = this.entries(capture.elements);
+    if (!entries) return false;
+    const refreshed = captureFabricLayout(entries);
+    if (!refreshed || !refreshed.isCurrent()) return false;
+    return capture.elements.every((element) =>
+      this.metricsAreClose(
+        this.metricsFor(capture.snapshot, element),
+        this.metricsFor(refreshed, element)
+      )
+    );
+  }
+
+  /** Reuses a fresh pre-armed capture; otherwise captures now. */
+  async ensureSourceCapture(
+    groupId: string,
+    screenId: string
+  ): Promise<boolean> {
+    if (this.hasFreshSourceCapture(groupId, screenId)) return true;
+    await this.captureSourceGroup(groupId, screenId);
+    return this.sourceCaptures.has(this.sourceKey(screenId, groupId));
+  }
+
   async captureSourceGroup(groupId: string, screenId: string): Promise<void> {
     this.sourceCaptures.clear();
     const captureGeneration = ++this.sourceCaptureGeneration;

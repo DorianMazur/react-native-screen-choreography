@@ -243,6 +243,36 @@ test('consumes source geometry captured before navigation without re-reading a d
   expect(await start()).toBeNull(); // The consumed source snapshot cannot be reused.
 });
 
+test('ensureSourceCapture reuses a pre-armed capture that still matches live layout', async () => {
+  register('list', sourceMetrics);
+  expect(await coordinator.ensureSourceCapture('group', 'list')).toBe(true);
+  expect(coordinator.hasFreshSourceCapture('group', 'list')).toBe(true);
+  register('detail', targetMetrics);
+  capture.mockClear();
+  const session = await start();
+  expect(session?.pairs[0]?.sourceMetrics).toEqual(sourceMetrics);
+  // Tap preparation reads only the target endpoint; the armed source is reused.
+  expect(capture).toHaveBeenCalledWith([200], [2]);
+  expect(capture).not.toHaveBeenCalledWith([100, 200], [1, 2]);
+});
+
+test('ensureSourceCapture recaptures when pre-armed geometry drifted', async () => {
+  const source = register('list', sourceMetrics);
+  await coordinator.ensureSourceCapture('group', 'list');
+  const shifted = { ...sourceMetrics, pageY: sourceMetrics.pageY + 24 };
+  layouts.set(source.node.tag, shifted);
+  expect(coordinator.hasFreshSourceCapture('group', 'list')).toBe(false);
+  expect(await coordinator.ensureSourceCapture('group', 'list')).toBe(true);
+  register('detail', targetMetrics);
+  const session = await start();
+  expect(session?.pairs[0]?.sourceMetrics).toEqual(shifted);
+});
+
+test('hasFreshSourceCapture is false without an armed capture', () => {
+  register('list', sourceMetrics);
+  expect(coordinator.hasFreshSourceCapture('group', 'list')).toBe(false);
+});
+
 test('does not use stale registry metrics when Fabric capture fails', async () => {
   register('list', sourceMetrics, { metrics: sourceMetrics });
   register('detail', targetMetrics, { metrics: targetMetrics });

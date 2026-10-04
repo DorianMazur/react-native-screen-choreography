@@ -8,10 +8,12 @@ import type { ExampleObservation } from '../ExampleObservation';
 export function TokenRow({
   token,
   onPress,
+  onPressIn,
   observation,
 }: {
   token: Token;
   onPress: () => void;
+  onPressIn?: () => void;
   observation?: ExampleObservation;
 }) {
   const dimensions = useWindowDimensions();
@@ -36,6 +38,7 @@ export function TokenRow({
         accessibilityRole="button"
         accessibilityLabel={`Open ${token.name}`}
         onPress={onPress}
+        onPressIn={onPressIn}
         style={StyleSheet.absoluteFill}
       />
     </View>

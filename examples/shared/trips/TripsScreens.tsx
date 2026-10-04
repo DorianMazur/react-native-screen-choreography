@@ -37,7 +37,7 @@ export function TripsListScreen({
       ? (phase) => observation.rendered?.('list', phase)
       : undefined
   );
-  const { goBack, navigate } = useExampleNavigation();
+  const { goBack, navigate, prearm } = useExampleNavigation();
   const { settleTransition } = useChoreographyControls();
   const { width, height } = useWindowDimensions();
   const insets = useSafeAreaInsets();
@@ -110,6 +110,9 @@ export function TripsListScreen({
               <Pressable
                 accessibilityRole="button"
                 accessibilityLabel={`Open ${trip.title.replace('\n', ' ')} trip`}
+                onPressIn={() =>
+                  prearm?.({ group: `trip.${trip.id}` })?.catch(() => {})
+                }
                 onPress={() =>
                   navigate(
                     { screen: 'TripsDetail', params: { tripId: trip.id } },
