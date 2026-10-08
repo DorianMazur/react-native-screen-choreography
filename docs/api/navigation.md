@@ -25,6 +25,10 @@ goBack(options?: ChoreographyNavigationOptions): Promise<void>;
 
 Pass the current screen's React Navigation `navigation` object. `navigate` uses `navigation.navigate` to open the destination and coordinates the shared transition.
 
+The returned object and its commands keep the same identities while the hook remains mounted. Retained command references use the latest committed navigation and screen binding, so they can be passed through context or used in event handlers without a ref wrapper.
+
+Call commands from event handlers or layout/passive effects, never during render. Once a request starts, it keeps its original navigation action and source binding through asynchronous preparation. Stop using commands when their hook unmounts; retaining a command does not keep its screen mounted or focused.
+
 ```tsx
 void navigate(
   'Detail',
@@ -87,7 +91,9 @@ void push({
 
 Match `currentScreenId` to the current wrapper and `targetScreenId` to the destination wrapper. `push` adds a route and `navigate` uses the router's navigation behavior; both coordinate shared motion. URLs only need your application's route parameters.
 
-The same timing and promise caveats as the React Navigation adapter apply. See [Expo Router](../guide/expo-router.md).
+The returned object and its `push`, `navigate`, and `back` commands keep the same identities while the hook remains mounted. Retained command references use the latest committed router and screen binding.
+
+The same command lifetime, timing, and promise caveats as the React Navigation adapter apply. See [Expo Router](../guide/expo-router.md).
 
 ## `useInteractiveGestureLifecycle`
 

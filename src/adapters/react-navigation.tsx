@@ -1,4 +1,4 @@
-import { useCallback, useEffect } from 'react';
+import { useCallback, useEffect, useState } from 'react';
 import {
   useIsFocused,
   useNavigation,
@@ -19,6 +19,7 @@ import {
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
 import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
+import { useStableCallback } from '../hooks/useStableCallback';
 import type { ChoreographyNavigationOptions } from '../types';
 
 export type { ChoreographyScreenProps } from '../components/ChoreographyScreenBase';
@@ -33,8 +34,8 @@ export function useChoreographyNavigation(navigation: any) {
     goBack: createBackCommit(navigation, route.key, () => navigation.goBack()),
   });
 
-  return {
-    navigate: (
+  const navigate = useStableCallback(
+    (
       screenName: string,
       params?: any,
       options?: ChoreographyNavigationOptions
@@ -52,9 +53,12 @@ export function useChoreographyNavigation(navigation: any) {
         dispatchNavigation: () => navigation.navigate(screenName, params),
         resolveTargetScreenId: () =>
           waitForNavigationTarget(navigation, route.key, screenName),
-      }),
-    goBack: choreography.goBack,
-  };
+      })
+  );
+  const goBack = useStableCallback(choreography.goBack);
+
+  const [commands] = useState(() => ({ navigate, goBack }));
+  return commands;
 }
 
 export function useInteractiveTransition() {

@@ -16,6 +16,7 @@ import {
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
 import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
+import { useStableCallback } from '../hooks/useStableCallback';
 import type { ChoreographyNavigationOptions } from '../types';
 
 export interface ExpoRouterLike<Href> {
@@ -52,21 +53,18 @@ export function useChoreographyRouter<Href>(
     ),
   });
 
-  const push = useCallback(
-    (request: ChoreographyRouterRequest<Href>) => {
-      const { href, targetScreenId, ...options } = request;
-      return choreography.navigate({
-        targetScreenId,
-        options,
-        dispatchNavigation: () => router.push(href),
-        resolveTargetScreenId: () =>
-          waitForNavigationTarget(navigation, route.key),
-      });
-    },
-    [choreography, navigation, route.key, router]
-  );
+  const push = useStableCallback((request: ChoreographyRouterRequest<Href>) => {
+    const { href, targetScreenId, ...options } = request;
+    return choreography.navigate({
+      targetScreenId,
+      options,
+      dispatchNavigation: () => router.push(href),
+      resolveTargetScreenId: () =>
+        waitForNavigationTarget(navigation, route.key),
+    });
+  });
 
-  const navigate = useCallback(
+  const navigate = useStableCallback(
     (request: ChoreographyRouterRequest<Href>) => {
       const { href, targetScreenId, ...options } = request;
       return choreography.navigate({
@@ -76,11 +74,12 @@ export function useChoreographyRouter<Href>(
         resolveTargetScreenId: () =>
           waitForNavigationTarget(navigation, route.key),
       });
-    },
-    [choreography, navigation, route.key, router]
+    }
   );
+  const back = useStableCallback(choreography.goBack);
 
-  return { push, navigate, back: choreography.goBack };
+  const [commands] = useState(() => ({ push, navigate, back }));
+  return commands;
 }
 
 export function useInteractiveTransition() {
