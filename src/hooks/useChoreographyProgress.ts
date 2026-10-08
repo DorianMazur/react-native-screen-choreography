@@ -16,6 +16,17 @@ import { ChoreographyProgressContext } from '../core/ChoreographyProgressContext
 import { useScreenId } from '../core/screenIdContext';
 import { PROGRESS_RANGES, DEFAULT_BACKDROP_OPACITY } from '../core/constants';
 
+/** Read the screen-scoped expansion clock without subscribing to session state. */
+export function useChoreographyProgressValue() {
+  const controls = useContext(ChoreographyControlsContext);
+  if (!controls) {
+    throw new Error(
+      'useChoreographyProgressValue must be used within a <ChoreographyProvider>'
+    );
+  }
+  return controls.progress;
+}
+
 export function useChoreographyControls() {
   const controls = useContext(ChoreographyControlsContext);
   if (!controls) {

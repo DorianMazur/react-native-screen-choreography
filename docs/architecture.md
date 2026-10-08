@@ -322,6 +322,8 @@ session start. Custom renderers remain module-scoped and keep their host mounted
 throughout a session.
 
 `useChoreographyProgress` subscribes to screen-visible session state.
+`useChoreographyProgressValue` reads only the stable, screen-scoped expansion
+clock, without subscribing to session state or creating an animated style.
 `useChoreographyControls` provides a stable, screen-qualified settle callback.
 `useLatchedReveal` mounts companion content after a progress threshold, while
 `useRevealStyle` and named `Enter` / `Exit` components animate local views.
