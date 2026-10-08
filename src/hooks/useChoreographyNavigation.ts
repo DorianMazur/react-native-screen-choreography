@@ -1,6 +1,7 @@
 import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { PreparationTrace } from '../core/preparationTrace';
-import { useCallback, useContext, useEffect } from 'react';
+import { useCallback, useContext, useEffect, useState } from 'react';
+import { useStableCallback } from './useStableCallback';
 import type { CommitBackNavigation } from '../core/navigationCommit';
 import { Platform } from 'react-native';
 import {
@@ -588,9 +589,10 @@ export function useChoreographyNavigator({
     ]
   );
 
-  return {
-    navigate: (request: PendingNavigationRequest) =>
-      choreographyNavigate(request, true),
-    goBack: choreographyGoBack,
-  };
+  const navigate = useStableCallback((request: PendingNavigationRequest) =>
+    choreographyNavigate(request, true)
+  );
+  const goBack = useStableCallback(choreographyGoBack);
+  const [commands] = useState(() => ({ navigate, goBack }));
+  return commands;
 }
