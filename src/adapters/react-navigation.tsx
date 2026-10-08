@@ -19,7 +19,7 @@ import {
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
 import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
-import type { ChoreographyNavigationOptions } from '../types';
+import type { ChoreographyNavigateOptions } from '../types';
 
 export type { ChoreographyScreenProps } from '../components/ChoreographyScreenBase';
 
@@ -37,7 +37,7 @@ export function useChoreographyNavigation(navigation: any) {
     navigate: (
       screenName: string,
       params?: any,
-      options?: ChoreographyNavigationOptions
+      options?: ChoreographyNavigateOptions
     ) =>
       choreography.navigate({
         targetScreenId: screenName,

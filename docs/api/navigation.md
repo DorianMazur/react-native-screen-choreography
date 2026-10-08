@@ -17,7 +17,7 @@ const { navigate, goBack } = useChoreographyNavigation(navigation);
 navigate(
   screenName: string,
   params?: any,
-  options?: ChoreographyNavigationOptions,
+  options?: ChoreographyNavigateOptions,
 ): Promise<void>;
 
 goBack(options?: ChoreographyNavigationOptions): Promise<void>;
@@ -38,7 +38,7 @@ void navigate(
 
 Without `transitionConfig.group`, navigation is ordinary navigation. For compatibility, the root adapter also reads `params.transitionGroup` when explicit `transitionConfig` is absent. Prefer the explicit option so route data and motion stay separate.
 
-The returned promise is **not an animation-completion signal**. Navigation preparation is asynchronous and the animation runs independently. Use provider lifecycle callbacks for session events.
+The returned promise is **not an animation-completion signal**. Navigation preparation is asynchronous and the animation runs independently. Use `onNavigationEvent` for this request's queue and terminal outcome, or provider lifecycle callbacks for session events.
 
 ### Navigation options
 
@@ -47,6 +47,10 @@ interface ChoreographyNavigationOptions {
   transitionConfig?: { group: string };
   spring?: SpringConfig;
   duration?: number;
+}
+
+interface ChoreographyNavigateOptions extends ChoreographyNavigationOptions {
+  onNavigationEvent?: (event: ChoreographyNavigationEvent) => void;
 }
 ```
 
@@ -67,7 +71,7 @@ push(request: ChoreographyRouterRequest<Href>): Promise<void>;
 navigate(request: ChoreographyRouterRequest<Href>): Promise<void>;
 back(options?: ChoreographyNavigationOptions): Promise<void>;
 
-type ChoreographyRouterRequest<Href> = ChoreographyNavigationOptions & {
+type ChoreographyRouterRequest<Href> = ChoreographyNavigateOptions & {
   href: Href;
   targetScreenId: string;
 };
@@ -88,6 +92,52 @@ void push({
 Match `currentScreenId` to the current wrapper and `targetScreenId` to the destination wrapper. `push` adds a route and `navigate` uses the router's navigation behavior; both coordinate shared motion. URLs only need your application's route parameters.
 
 The same timing and promise caveats as the React Navigation adapter apply. See [Expo Router](../guide/expo-router.md).
+
+## `ChoreographyNavigationEvent`
+
+Pass `onNavigationEvent` to `navigate` or Expo Router's `push` to observe one forward request through queueing, preparation, and settlement. The callback receives a stable `requestId`, a `sourceScreenId`, a `targetScreenId`, and a nullable `sessionId`. The target starts as the requested screen name and becomes the resolved route-instance ID when available.
+
+| Status       | `finished` | Meaning                                                                                                                                      |
+| ------------ | ---------- | -------------------------------------------------------------------------------------------------------------------------------------------- |
+| `queued`     | `false`    | Waiting for navigation ownership or source focus.                                                                                            |
+| `started`    | `false`    | The request began preparation, or ordinary navigation was dispatched. This does not prove that a frame is visible.                           |
+| `completed`  | `true`     | The choreography settled at this request's destination after presentation, through animation completion or explicit settlement.              |
+| `superseded` | `true`     | A newer request replaced this queued request. `reason` is `newer-request`.                                                                   |
+| `cancelled`  | `true`     | The request cannot continue, or its session settled away from the destination.                                                               |
+| `fallback`   | `true`     | The request finished without a fully presented animated choreography. Ordinary navigation or direct reduced-motion transfer owns the result. |
+| `failed`     | `true`     | Preparation or dispatch threw; `error` contains the original value. The navigation promise still rejects when the error propagates.          |
+
+Each observed request emits exactly one terminal event (`finished: true`) once it ends. A queued request can remain pending while its source stays mounted but unfocused. Replay keeps the same ID and observer. Back during an unfinished opening can cancel that opening; these observers do not create a separate Back request. `back` and `goBack` continue to accept `ChoreographyNavigationOptions`.
+
+Cancellation reasons are `source-removed`, `provider-unmounted`, `interrupted`, `target-unavailable`, `blocked`, and `queue-cleared`. Fallback reasons are `no-transition`, `reduced-motion`, `screen-not-ready`, `transition-unavailable`, and `overlay-unavailable`. A fallback event reports the choreography outcome, not proof that native presentation or input handoff completed. In particular, `no-transition` follows the ordinary navigation dispatch.
+
+```tsx
+const launchToken = useRef(0);
+
+function openArtwork(id: string) {
+  const token = ++launchToken.current;
+  setLaunching(true);
+  void push({
+    href: { pathname: '/artwork/[id]', params: { id } },
+    targetScreenId: 'ArtworkDetail',
+    transitionConfig: { group: `artwork.${id}` },
+    onNavigationEvent(event) {
+      if (!event.finished || launchToken.current !== token) return;
+      setLaunching(false);
+      if (event.status === 'fallback') showSettledContent();
+    },
+  }).catch(reportError);
+}
+
+useEffect(
+  () => () => {
+    launchToken.current += 1;
+  },
+  []
+);
+```
+
+The controller retains the observer across queue replay and session settlement, independently of the calling component. Guard component-local updates after unmount, as above. Callbacks run on JavaScript after the current bookkeeping completes; exceptions in an observer are caught and logged through the library's debug logger so they cannot strand navigation. No observer is retained when the option is omitted. Existing navigation promises retain their preparation/queueing semantics; awaiting them does not wait for the terminal event.
 
 ## `useInteractiveGestureLifecycle`
 

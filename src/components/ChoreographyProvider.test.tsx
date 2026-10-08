@@ -498,6 +498,134 @@ describe('ChoreographyProvider lifecycle', () => {
     }
   );
 
+  test.each([
+    ['ios', 'completed'],
+    ['android', 'completed'],
+    ['ios', 'cancelled'],
+    ['ios', 'presentation-failed'],
+    ['android', 'reduced-motion'],
+    ['ios', 'missing-endpoint'],
+    ['ios', 'unmount'],
+  ] as const)(
+    '%s navigation request ends once after %s',
+    async (platform, outcome) => {
+      Platform.OS = platform;
+      jest
+        .mocked(useReducedMotion)
+        .mockReturnValue(outcome === 'reduced-motion');
+      jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
+      let context!: ChoreographyContextType;
+      let navigation!: ReturnType<typeof useChoreographyNavigator>;
+      let tree!: ReactTestRenderer;
+      let pending: Promise<void> | undefined;
+      const listener = jest.fn();
+      function Caller() {
+        context = useContext(ChoreographyContext)!;
+        navigation = useChoreographyNavigator({
+          currentScreenId: 'list',
+          isFocused: true,
+          goBack: jest.fn(),
+        });
+        return null;
+      }
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider>
+              <FabricScreens />
+              <Caller />
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of outcome === 'missing-endpoint'
+          ? ['list']
+          : ['list', 'detail']) {
+          context.setScreenReady(screenId, true, screenId);
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        await act(async () => {
+          pending = navigation.navigate({
+            targetScreenId: 'detail',
+            dispatchNavigation: jest.fn(),
+            options: {
+              transitionConfig: { group: 'group' },
+              onNavigationEvent: listener,
+            },
+          });
+          await jest.advanceTimersByTimeAsync(
+            outcome === 'missing-endpoint' ? 2000 : 0
+          );
+        });
+        const sessionId = context.activeSession?.id;
+        const host = tree.root.findByType(NativeTransitionHost).props;
+        if (outcome === 'completed') {
+          expect(sessionId).toBeDefined();
+          await act(async () => {
+            host.onPresentationReady(sessionId);
+            await pending;
+          });
+          expect(listener.mock.calls.map(([event]) => event.status)).toEqual([
+            'started',
+          ]);
+          await act(async () => context.completeTransition(sessionId));
+        } else if (outcome === 'cancelled') {
+          await act(async () => context.cancelTransition(sessionId));
+        } else if (outcome === 'presentation-failed') {
+          await act(async () =>
+            host.onPresentationFailed(sessionId, 'invalidated')
+          );
+        } else if (outcome === 'unmount') {
+          await act(async () => tree.unmount());
+        }
+        await act(async () => {
+          await pending;
+        });
+        const terminal = listener.mock.calls
+          .map(([event]) => event)
+          .filter((event) => event.finished);
+        expect(terminal).toHaveLength(1);
+        expect(terminal[0]).toMatchObject(
+          outcome === 'completed'
+            ? { status: 'completed' }
+            : outcome === 'cancelled'
+              ? { status: 'cancelled', reason: 'interrupted' }
+              : outcome === 'unmount'
+                ? { status: 'cancelled', reason: 'provider-unmounted' }
+                : {
+                    status: 'fallback',
+                    reason:
+                      outcome === 'presentation-failed'
+                        ? 'overlay-unavailable'
+                        : outcome === 'missing-endpoint'
+                          ? 'transition-unavailable'
+                          : 'reduced-motion',
+                  }
+        );
+        expect(terminal[0].requestId).toBe(
+          listener.mock.calls[0]![0].requestId
+        );
+        await act(async () => {
+          host.onPresentationReady(sessionId);
+          context.completeTransition(sessionId);
+        });
+        expect(
+          listener.mock.calls.filter(([event]) => event.finished)
+        ).toHaveLength(1);
+      } finally {
+        await act(async () => tree?.unmount());
+        await pending;
+        jest.useRealTimers();
+      }
+    }
+  );
+
   test('unregistering the preparation source invalidates its dispatch and queue', async () => {
     let context!: ChoreographyContextType;
     let navigation!: ReturnType<typeof useChoreographyNavigator>;

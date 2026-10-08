@@ -161,6 +161,45 @@ export interface ChoreographyNavigationOptions {
   duration?: number;
 }
 
+/** One push/navigate request, including queue replay and eventual settlement. */
+export type ChoreographyNavigationEvent = {
+  requestId: string;
+  sourceScreenId: string;
+  targetScreenId: string;
+  sessionId: string | null;
+} & (
+  | { status: 'queued' | 'started'; finished: false }
+  | { status: 'completed'; finished: true }
+  | {
+      status: 'cancelled';
+      finished: true;
+      reason:
+        | 'source-removed'
+        | 'provider-unmounted'
+        | 'interrupted'
+        | 'target-unavailable'
+        | 'blocked'
+        | 'queue-cleared';
+    }
+  | { status: 'superseded'; finished: true; reason: 'newer-request' }
+  | {
+      status: 'fallback';
+      finished: true;
+      reason:
+        | 'no-transition'
+        | 'reduced-motion'
+        | 'screen-not-ready'
+        | 'transition-unavailable'
+        | 'overlay-unavailable';
+    }
+  | { status: 'failed'; finished: true; error: unknown }
+);
+
+export interface ChoreographyNavigateOptions extends ChoreographyNavigationOptions {
+  /** Observe this forward request. Exactly one event has finished: true. */
+  onNavigationEvent?: (event: ChoreographyNavigationEvent) => void;
+}
+
 export interface ChoreographyPreparationStage {
   name: string;
   startedAtMs: number;
