@@ -47,6 +47,8 @@ export type {
   TransitionEndpoint,
   TransitionConfig,
   ChoreographyNavigationOptions,
+  ChoreographyNavigateOptions,
+  ChoreographyNavigationEvent,
   ChoreographyNavigationLineage,
   InteractiveBackOptions,
   InteractiveTransitionSession,

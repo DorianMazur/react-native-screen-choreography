@@ -1,19 +1,22 @@
 import type {
-  ChoreographyNavigationOptions,
+  ChoreographyNavigateOptions,
   TransitionSessionData,
 } from '../types';
 import type { PreparationTrace } from './preparationTrace';
 import type { PresentationFailureDetails } from './nativePresentation';
+import { NavigationRequestObserver } from './NavigationRequestObserver';
 
 export interface PendingNavigationRequest {
   targetScreenId: string;
   sourceScreenId?: string;
   dispatchNavigation: () => void;
   resolveTargetScreenId?: () => Promise<string | null>;
-  options?: ChoreographyNavigationOptions;
+  options?: ChoreographyNavigateOptions;
+  observer?: NavigationRequestObserver;
 }
 
 interface PrepareForwardTransitionArgs {
+  observer?: NavigationRequestObserver;
   groupId: string;
   sourceScreenId: string;
   targetScreenId: string;
@@ -34,6 +37,7 @@ interface PrepareForwardTransitionArgs {
     targetScreenId: string;
     direction: 'forward';
     trace?: PreparationTrace;
+    onUnavailable?: (sessionId: string) => void;
   }) => Promise<TransitionSessionData | null>;
   waitForOverlayReady: (
     sessionId: string,
@@ -56,9 +60,77 @@ export class NavigationSessionController {
   private pendingRequest: PendingNavigationRequest | null = null;
   private animationToken = 0;
   private activeSession: TransitionSessionData | null = null;
+  private requests = new Set<NavigationRequestObserver>();
 
-  setActiveSession(session: TransitionSessionData | null): void {
+  setActiveSession(
+    session: TransitionSessionData | null,
+    settledScreenId?: string | null,
+    presented = true
+  ): void {
+    const previous = this.activeSession;
     this.activeSession = session;
+    if (!previous || previous.id === session?.id) return;
+    for (const request of [...this.requests]) {
+      if (request.sessionId !== previous.id) continue;
+      if (!session && settledScreenId === request.targetScreenId) {
+        request.emit(
+          previous.reducedMotion
+            ? { status: 'fallback', finished: true, reason: 'reduced-motion' }
+            : !presented
+              ? {
+                  status: 'fallback',
+                  finished: true,
+                  reason: 'overlay-unavailable',
+                }
+              : { status: 'completed', finished: true }
+        );
+      } else {
+        request.emit({
+          status: 'cancelled',
+          finished: true,
+          reason: 'interrupted',
+        });
+      }
+    }
+  }
+
+  observeNavigation(
+    sourceScreenId: string,
+    targetScreenId: string,
+    listener: ChoreographyNavigateOptions['onNavigationEvent']
+  ): NavigationRequestObserver | undefined {
+    if (!listener) return undefined;
+    const observer = new NavigationRequestObserver(
+      sourceScreenId,
+      targetScreenId,
+      listener,
+      () => this.requests.delete(observer)
+    );
+    this.requests.add(observer);
+    return observer;
+  }
+
+  cancelRequestsForScreen(screenId: string): void {
+    for (const request of [...this.requests]) {
+      if (request.sourceScreenId === screenId && request.sessionId === null) {
+        request.emit({
+          status: 'cancelled',
+          finished: true,
+          reason: 'source-removed',
+        });
+      }
+    }
+  }
+
+  disposeRequests(): void {
+    this.pendingRequest = null;
+    for (const request of [...this.requests]) {
+      request.emit({
+        status: 'cancelled',
+        finished: true,
+        reason: 'provider-unmounted',
+      });
+    }
   }
 
   getActiveSession(): TransitionSessionData | null {
@@ -94,7 +166,16 @@ export class NavigationSessionController {
   }
 
   queueNavigation(request: PendingNavigationRequest): void {
+    const previous = this.pendingRequest;
     this.pendingRequest = request;
+    if (previous?.observer !== request.observer) {
+      previous?.observer?.emit({
+        status: 'superseded',
+        finished: true,
+        reason: 'newer-request',
+      });
+    }
+    request.observer?.emit({ status: 'queued', finished: false });
   }
 
   peekQueuedNavigation(): PendingNavigationRequest | null {
@@ -107,8 +188,16 @@ export class NavigationSessionController {
     return request;
   }
 
-  clearQueuedNavigation(): void {
+  clearQueuedNavigation(
+    reason: 'queue-cleared' | 'newer-request' = 'queue-cleared'
+  ): void {
+    const previous = this.pendingRequest;
     this.pendingRequest = null;
+    previous?.observer?.emit(
+      reason === 'newer-request'
+        ? { status: 'superseded', finished: true, reason }
+        : { status: 'cancelled', finished: true, reason }
+    );
   }
 
   createAnimationToken(): number {
@@ -129,6 +218,7 @@ export class NavigationSessionController {
   }
 
   async prepareForwardTransition({
+    observer,
     groupId,
     sourceScreenId,
     targetScreenId,
@@ -148,6 +238,11 @@ export class NavigationSessionController {
     isSessionCurrent = () => true,
   }: PrepareForwardTransitionArgs): Promise<TransitionSessionData | null> {
     let outcome: Parameters<PreparationTrace['finish']>[0] = 'cancelled';
+    let fallbackReason:
+      | 'screen-not-ready'
+      | 'transition-unavailable'
+      | 'overlay-unavailable' = 'transition-unavailable';
+    let targetUnavailable = false;
     try {
       const sourceMeasured = trace?.start('source-capture');
       await captureSourceGroup(groupId, sourceScreenId);
@@ -163,11 +258,13 @@ export class NavigationSessionController {
       instanceResolved?.();
       if (!isPreparationCurrent()) return null;
       if (!targetInstanceId) {
+        targetUnavailable = true;
         outcome = 'unavailable';
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
         return null;
       }
+      if (observer) observer.targetScreenId = targetInstanceId;
       if (targetInstanceId !== targetScreenId) {
         setPendingTargetScreen(targetInstanceId, sourceScreenId);
       }
@@ -176,6 +273,7 @@ export class NavigationSessionController {
       screenBecameReady?.({ ready: screenReady });
       if (!isPreparationCurrent()) return null;
       if (!screenReady) {
+        fallbackReason = 'screen-not-ready';
         outcome = 'unavailable';
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
@@ -196,6 +294,16 @@ export class NavigationSessionController {
         targetScreenId: targetInstanceId,
         direction: 'forward',
         ...(trace ? { trace } : {}),
+        ...(observer
+          ? {
+              onUnavailable: () =>
+                observer.emit({
+                  status: 'fallback',
+                  finished: true,
+                  reason: 'transition-unavailable',
+                }),
+            }
+          : {}),
       });
       coordinatorReady?.();
 
@@ -208,6 +316,7 @@ export class NavigationSessionController {
       }
 
       trace?.setSession(session.id, targetInstanceId);
+      if (observer) observer.sessionId = session.id;
       onSessionPrepared?.(session);
       const endOverlay = trace?.start('overlay-ready');
       const overlayReady = await waitForOverlayReady(
@@ -225,6 +334,7 @@ export class NavigationSessionController {
       endOverlay?.({ ready: overlayReady, acknowledged });
       if (!isSessionCurrent(session.id)) return null;
       if (!overlayReady) {
+        fallbackReason = 'overlay-unavailable';
         outcome = 'unavailable';
         this.releaseNavigationLock();
         setPendingTargetScreen(null);
@@ -235,12 +345,30 @@ export class NavigationSessionController {
       return session;
     } catch (error) {
       if (!isPreparationCurrent()) return null;
+      observer?.emit({ status: 'failed', finished: true, error });
       outcome = 'failed';
       this.releaseNavigationLock();
       setPendingTargetScreen(null);
       throw error;
     } finally {
       trace?.finish(outcome);
+      if (outcome === 'cancelled') {
+        observer?.emit({
+          status: 'cancelled',
+          finished: true,
+          reason: 'interrupted',
+        });
+      } else if (outcome === 'unavailable') {
+        observer?.emit(
+          targetUnavailable
+            ? {
+                status: 'cancelled',
+                finished: true,
+                reason: 'target-unavailable',
+              }
+            : { status: 'fallback', finished: true, reason: fallbackReason }
+        );
+      }
     }
   }
 }

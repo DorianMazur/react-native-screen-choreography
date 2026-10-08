@@ -312,6 +312,13 @@ preparation finishes, the pending opening is cancelled.
 `NavigationSessionController` owns navigation locks, queued requests, and replay
 checks for these paths.
 
+Forward requests can carry an optional observer. The controller retains its
+identity through queue replacement, replay, and session settlement, and releases
+it after one terminal event. The provider reports the settled screen and overlay
+presentation acknowledgement so completion, cancellation, and fallback remain
+distinct. Observers run after bookkeeping and never determine animation or native
+navigation completion.
+
 ## Transition composition and companion motion
 
 `defineTransition` compiles named bounds and surface recipes into module-stable
