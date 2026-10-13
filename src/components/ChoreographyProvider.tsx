@@ -29,7 +29,11 @@ import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { hostsReportAttachment } from '../native/attachmentCapability';
 import { TransitionCoordinator } from '../core/TransitionCoordinator';
 import { hasFabricLayoutCapture } from '../core/fabricLayout';
-import { TransitionOverlay } from '../core/TransitionOverlay';
+import {
+  TransitionOverlay,
+  retainOverlayPresentation,
+  type OverlayPresentation,
+} from '../core/TransitionOverlay';
 import {
   ChoreographyContext,
   ChoreographyActionsContext,
@@ -102,6 +106,11 @@ interface OverlayWaiter {
   onUnavailable?: (details: PresentationFailureDetails) => void;
 }
 
+type OverlayState =
+  | { session: TransitionSessionData; handingOff: false }
+  | { session: OverlayPresentation; handingOff: true }
+  | null;
+
 function resolveDebugConfig(debug: ChoreographyDebugConfig | undefined) {
   if (!debug) {
     return { enabled: false, level: 'info' as const, coalesce: true };
@@ -153,8 +162,30 @@ export function ChoreographyProvider({
   );
   const [activeSession, setActiveSession] =
     useState<TransitionSessionData | null>(null);
-  const [overlaySession, setOverlaySession] =
-    useState<TransitionSessionData | null>(null);
+  const [overlay, setOverlay] = useState<OverlayState>(null);
+  const overlayRef = useRef<OverlayState>(null);
+  const overlaySession = overlay?.session ?? null;
+  const overlayHandoffSessionId = overlay?.handingOff
+    ? overlay.session.id
+    : null;
+  const updateOverlay = useCallback(
+    (next: OverlayState) => {
+      const previous = overlayRef.current;
+      const previousHandoffId = previous?.handingOff
+        ? previous.session.id
+        : null;
+      const nextHandoffId = next?.handingOff ? next.session.id : null;
+      if (previousHandoffId !== nextHandoffId) {
+        if (previousHandoffId)
+          navigationController.completeOverlayHandoff(previousHandoffId);
+        if (nextHandoffId)
+          navigationController.beginOverlayHandoff(nextHandoffId);
+      }
+      overlayRef.current = next;
+      setOverlay(next);
+    },
+    [navigationController]
+  );
   const [pendingTargetScreenId, setPendingTargetScreenId] = useState<
     string | null
   >(null);
@@ -168,7 +199,9 @@ export function ChoreographyProvider({
     overlaySession.pairs.length > 0 &&
     !overlaySession.reducedMotion;
   const preparingSession =
-    overlaySession?.state === 'preparing' ? overlaySession : null;
+    overlay?.handingOff === false && overlay.session.state === 'preparing'
+      ? overlay.session
+      : null;
   const activeSessionRef = useRef<TransitionSessionData | null>(null);
   const hostPresentedSessionIdRef = useRef<string | null>(null);
   const overlayContentReadySessionIdRef = useRef<string | null>(null);
@@ -270,7 +303,22 @@ export function ChoreographyProvider({
       }
       const previousSession = activeSessionRef.current;
       activeSessionRef.current = session;
-      setOverlaySession(session);
+      const retainOverlay =
+        Platform.OS === 'android' &&
+        !session &&
+        previousSession != null &&
+        previousSession.pairs.length > 0 &&
+        !previousSession.reducedMotion;
+      if (retainOverlay) {
+        // Fabric removes deleted hosts before updating their retained portals.
+        // Keep hosts attached until native confirms that their content has left.
+        updateOverlay({
+          session: retainOverlayPresentation(previousSession),
+          handingOff: true,
+        });
+      } else if (session || !overlayRef.current?.handingOff) {
+        updateOverlay(session ? { session, handingOff: false } : null);
+      }
       // Screens treat preparing like measuring; skip an app-wide render.
       if (session?.state !== 'preparing') setActiveSession(session);
       if (previousSession && previousSession.id !== session?.id) {
@@ -310,6 +358,7 @@ export function ChoreographyProvider({
     });
 
     return () => {
+      updateOverlay(null);
       navigationController.setActiveSession(null);
       navigationController.releaseNavigationLock();
       navigationController.clearQueuedNavigation();
@@ -330,6 +379,7 @@ export function ChoreographyProvider({
     syncHiddenElements,
     visibilityRegistry,
     interactionOwner,
+    updateOverlay,
   ]);
 
   useEffect(() => {
@@ -527,6 +577,11 @@ export function ChoreographyProvider({
       onUnavailable?: (sessionId: string) => void;
       trace?: PreparationTrace;
     }) => {
+      if (
+        overlayRef.current?.handingOff ||
+        coordinatorRef.current!.getActiveSession()
+      )
+        return null;
       return coordinatorRef.current!.startTransition({
         ...config,
         reducedMotion,
@@ -734,6 +789,20 @@ export function ChoreographyProvider({
     coordinatorRef.current?.acknowledgeAttachment(sessionId);
   }, []);
 
+  const handleHostSettled = useCallback(
+    (sessionId: string) => {
+      const current = overlayRef.current;
+      if (
+        !current?.handingOff ||
+        current.session.id !== sessionId ||
+        activeSessionRef.current
+      )
+        return;
+      updateOverlay(null);
+    },
+    [updateOverlay]
+  );
+
   const handleHostPresentationReady = useCallback(
     (sessionId: string) => {
       const session = activeSessionRef.current;
@@ -835,6 +904,7 @@ export function ChoreographyProvider({
       waitForScreenReady,
       isElementHidden,
       activeSession,
+      overlayHandoffSessionId,
       pendingTargetScreenId,
       pendingSourceScreenId,
       setPendingTargetScreen,
@@ -870,6 +940,7 @@ export function ChoreographyProvider({
       waitForScreenReady,
       isElementHidden,
       activeSession,
+      overlayHandoffSessionId,
       pendingTargetScreenId,
       pendingSourceScreenId,
       setPendingTargetScreen,
@@ -924,6 +995,8 @@ export function ChoreographyProvider({
                     active={Boolean(isOverlayActive && overlaySession)}
                     onPresentationReady={handleHostPresentationReady}
                     onAttached={handleHostAttached}
+                    settlementSessionId={overlayHandoffSessionId ?? undefined}
+                    onSettled={handleHostSettled}
                   >
                     <TransitionOverlay
                       session={overlaySession}

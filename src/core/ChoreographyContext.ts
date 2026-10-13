@@ -85,6 +85,7 @@ export interface ChoreographyContextType {
     groupId?: string
   ) => SharedValue<number>;
   activeSession: TransitionSessionData | null;
+  overlayHandoffSessionId: string | null;
   pendingTargetScreenId: string | null;
   pendingSourceScreenId: string | null;
   setPendingTargetScreen: (
