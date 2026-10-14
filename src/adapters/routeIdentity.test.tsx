@@ -128,10 +128,6 @@ test.each([
       const screenId = useScreenId();
       useEffect(() => {
         registeredIds.add(screenId);
-        const release = actions.registerScreenPresentation(screenId, {
-          current: { tag: pageX + 1000 },
-        } as any);
-
         actions.registerElement({
           id: 'card',
           groupId: 'group',
@@ -144,7 +140,6 @@ test.each([
           }),
         });
         return () => {
-          release();
           actions.unregisterElement('card', screenId, 'group');
         };
       }, [actions, pageX, screenId]);
@@ -174,7 +169,9 @@ test.each([
     }
     try {
       await act(async () => {
-        tree = create(render());
+        tree = create(render(), {
+          createNodeMock: () => ({ tag: 1000 }),
+        });
       });
       expect([...registeredIds]).toEqual(['detail-first', 'detail-second']);
       expect(context.resolveScreenId('Detail')).toBeNull();
