@@ -293,7 +293,13 @@ export function ChoreographyProvider({
     const hiddenMap = visibilityRegistry;
     const navigationLineage = navigationLineageRef.current;
     coordinator.setOnSessionChange((session) => {
-      navigationController.setActiveSession(session);
+      const previousId = activeSessionRef.current?.id;
+      navigationController.setActiveSession(
+        session,
+        coordinator.getSettledScreenId(),
+        hostPresentedSessionIdRef.current === previousId &&
+          overlayContentReadySessionIdRef.current === previousId
+      );
       progressOwnership.setSession(session?.id ?? null);
       if (session && activeSessionRef.current?.id !== session.id) {
         scheduleOnUI(() => {
@@ -358,6 +364,7 @@ export function ChoreographyProvider({
     });
 
     return () => {
+      navigationController.disposeRequests();
       updateOverlay(null);
       navigationController.setActiveSession(null);
       navigationController.releaseNavigationLock();
@@ -425,6 +432,7 @@ export function ChoreographyProvider({
 
   const unregisterScreen = useCallback(
     (screenId: string) => {
+      navigationController.cancelRequestsForScreen(screenId);
       screenReadinessRef.current.unregister(screenId);
       coordinatorRef.current?.revalidatePresentation(screenId);
       screenNamesRef.current.delete(screenId);

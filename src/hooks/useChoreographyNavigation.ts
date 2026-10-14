@@ -248,6 +248,8 @@ export function useChoreographyNavigator({
       const { targetScreenId, dispatchNavigation, options } = request;
       const groupId = options?.transitionConfig?.group;
       const sourceScreenId = currentScreenId;
+      const { observer } = request;
+      if (observer?.finished) return;
       let interruptedSettlingReturn = false;
 
       logNavigation(
@@ -257,7 +259,18 @@ export function useChoreographyNavigator({
 
       if (!groupId) {
         logNavigation(() => `plain navigate target=${targetScreenId}`);
-        dispatchNavigation();
+        observer?.emit({ status: 'started', finished: false });
+        try {
+          dispatchNavigation();
+          observer?.emit({
+            status: 'fallback',
+            finished: true,
+            reason: 'no-transition',
+          });
+        } catch (error) {
+          observer?.emit({ status: 'failed', finished: true, error });
+          throw error;
+        }
         return;
       }
 
@@ -295,17 +308,37 @@ export function useChoreographyNavigator({
         );
         if (allowQueue) {
           controller.queueNavigation({ ...request, sourceScreenId });
+        } else if (!interruptedSettlingReturn) {
+          observer?.emit({
+            status: 'cancelled',
+            finished: true,
+            reason: 'blocked',
+          });
         }
         return;
       }
 
-      controller.clearQueuedNavigation();
-      if (!controller.acquireNavigationLock(sourceScreenId)) return;
+      if (interruptedSettlingReturn) {
+        // This is the same request queued during interruption, not a replacement.
+        controller.takeQueuedNavigation();
+      } else {
+        controller.clearQueuedNavigation('newer-request');
+      }
+      if (!controller.acquireNavigationLock(sourceScreenId)) {
+        observer?.emit({
+          status: 'cancelled',
+          finished: true,
+          reason: 'blocked',
+        });
+        return;
+      }
       progressOwnership.invalidate();
       const preparationVersion = progressOwnership.version;
+      observer?.emit({ status: 'started', finished: false });
 
       try {
         const session = await controller.prepareForwardTransition({
+          observer,
           groupId,
           sourceScreenId,
           targetScreenId,
@@ -512,6 +545,11 @@ export function useChoreographyNavigator({
     };
 
     replayPendingNavigation().catch((error) => {
+      pendingRequest.observer?.emit({
+        status: 'failed',
+        finished: true,
+        error,
+      });
       logNavigation(
         () =>
           `replay error target=${pendingRequest.targetScreenId} error=${error instanceof Error ? error.message : String(error)}`
@@ -595,8 +633,20 @@ export function useChoreographyNavigator({
   );
 
   return {
-    navigate: (request: PendingNavigationRequest) =>
-      choreographyNavigate(request, true),
+    navigate: (request: PendingNavigationRequest) => {
+      const observer = controller.observeNavigation(
+        currentScreenId,
+        request.targetScreenId,
+        request.options?.onNavigationEvent
+      );
+      if (!observer) return choreographyNavigate(request, true);
+      return choreographyNavigate({ ...request, observer }, true).catch(
+        (error: unknown) => {
+          observer?.emit({ status: 'failed', finished: true, error });
+          throw error;
+        }
+      );
+    },
     goBack: choreographyGoBack,
   };
 }
