@@ -49,8 +49,9 @@ Each owner selects its participating pair before a memoized presentation
 boundary. Unrelated elements, groups, and pending screens therefore do not
 update that owner's retained presentation. Application prop changes and direct
 subscriptions to screen-wide progress still update normally. A participating
-pair can receive refreshed bounds, and settlement retargets its portal in the
-commit that removes the overlay.
+pair can receive refreshed bounds. Settlement retargets its portal when the
+session ends; Android keeps the receiving hosts mounted until native confirms
+that the transferred content has left them.
 
 While content is away, the owner reserves its measured intrinsic dimensions.
 This keeps empty text or icon wrappers from collapsing and changing their return
@@ -197,7 +198,7 @@ tokens reject stale transfers and animation starts. Reverse and interactive
 navigation use the same presentation protocol with their own progress and
 commit controllers.
 
-The React Native overlay-readiness deadline, UI driver, and native retries each
+The startup overlay-readiness deadline, UI driver, and native retries each
 use one-second limits. These bound failures without delaying ready transitions.
 If native presentation is already confirmed on the UI thread but its React
 Native callback is delayed, the overlay safety check preserves the confirmation.
@@ -221,9 +222,16 @@ reports overlay readiness, and the native host confirms presentation. Those
 signals coordinate visible content with the first overlay paint.
 
 On dismissal, iOS keeps its window container attached while pending portal
-commits settle. Android keeps drawing the live host while it still holds
-transferred content, for at most two frames. Both platforms finish the handoff
-with live content. Overlay content is excluded from touch hit testing. On iOS,
+commits settle. Android retains the overlay hosts while the settlement commit
+retargets the live portals. A native pre-draw check confirms that no transferred
+content remains, hides the renderer decorations, and acknowledges the session.
+The UI driver can replay this confirmation if its event handler was not yet ready.
+The provider then removes the empty hosts and releases the navigation handoff
+lock. Delayed acknowledgments cannot release another session, and queued taps
+resume after the matching acknowledgment. During this handoff the overlay retains
+only renderer inputs, without endpoint registrations or native validation refs.
+Both platforms finish the handoff with live content. Overlay content is excluded
+from touch hit testing. On iOS,
 the window container resolves the returning screen's live input view within the
 same Fabric root and window, bypassing decorative opacity while preserving its
 input gate. Empty shared-element owners use `box-only` to prevent Teleport from
@@ -294,7 +302,9 @@ motion immediately instead of waiting for the spring tail. Once animation
 completion and route removal are both confirmed, the provider queues the UI
 input handoff and completes the session in the same JavaScript turn. The handoff
 is queued before completion invalidates UI ownership, allowing portal retargeting
-and navigation unlock without another UI-to-JavaScript round trip.
+without another UI-to-JavaScript round trip. Android's separate native settlement
+acknowledgment releases the overlay handoff lock before another shared transition
+can start.
 
 An interrupted forward transition refreshes source metrics and uses the same
 return controller, with the original source as its destination. That destination
@@ -311,6 +321,13 @@ metrics and follows the in-app reversal. If Back removes the destination before
 preparation finishes, the pending opening is cancelled.
 `NavigationSessionController` owns navigation locks, queued requests, and replay
 checks for these paths.
+
+Forward requests can carry an optional observer. The controller retains its
+identity through queue replacement, replay, and session settlement, and releases
+it after one terminal event. The provider reports the settled screen and overlay
+presentation acknowledgement so completion, cancellation, and fallback remain
+distinct. Observers run after bookkeeping and never determine animation or native
+navigation completion.
 
 ## Transition composition and companion motion
 

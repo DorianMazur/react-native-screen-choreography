@@ -289,114 +289,153 @@ test('queued replay survives focus changes and only its source instance dispatch
   }
 });
 
-test('a tap queued during removal replays as soon as the return is interruptible, despite the settling lock', async () => {
-  const frames: Array<(timestamp: number) => void> = [];
-  const raf = jest
-    .spyOn(global, 'requestAnimationFrame')
-    .mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
-  const progress = { value: 0.2 } as ChoreographyContextType['progress'];
-  const ownership = new ProgressOwnership(
-    { value: 0 } as ChoreographyContextType['progress'],
-    progress
-  );
-  ownership.setSession('return');
-  const controller = new NavigationSessionController();
-  controller.acquireNavigationLock('detail');
-  const reverse = new ReverseTransitionController();
-  let resolveRemoval!: (result: {
-    removed: boolean;
-    presented: boolean;
-  }) => void;
-  const completion = reverse.start({
-    sessionId: 'return',
-    sourceScreenId: 'detail',
-    targetScreenId: 'list',
-    commitNavigation: () =>
-      new Promise((resolve) => {
-        resolveRemoval = resolve;
-      }),
-    animate: () => {},
-    settleToTarget: jest.fn(),
-    cancel: jest.fn(),
-    handoff: () => {
-      ownership.setSession(null);
-      controller.releaseNavigationLock();
-    },
-    isCurrent: () => ownership.isSession('return'),
-  });
-  reverse.commitNearEndpoint('return');
-  const dispatchNavigation = jest.fn();
-  const ctx = {
-    progress,
-    progressOwnership: ownership,
-    navigationController: controller,
-    reverseController: reverse,
-    interruptibleReturnSessionId: null,
-    activeSession: {
-      id: 'return',
+test.each(['none', 'before-frame', 'after-frame'] as const)(
+  'a tap queued during removal survives native settlement (%s)',
+  async (acknowledgment) => {
+    const frames: Array<(timestamp: number) => void> = [];
+    const raf = jest
+      .spyOn(global, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
+      });
+    const progress = { value: 0.2 } as ChoreographyContextType['progress'];
+    const ownership = new ProgressOwnership(
+      { value: 0 } as ChoreographyContextType['progress'],
+      progress
+    );
+    ownership.setSession('return');
+    const controller = new NavigationSessionController();
+    controller.acquireNavigationLock('detail');
+    const reverse = new ReverseTransitionController();
+    let resolveRemoval!: (result: {
+      removed: boolean;
+      presented: boolean;
+    }) => void;
+    const completion = reverse.start({
+      sessionId: 'return',
       sourceScreenId: 'detail',
       targetScreenId: 'list',
-      direction: 'backward',
-      state: 'active',
-    },
-    pendingTargetScreenId: null,
-    captureSourceGroup: jest.fn(async () => {}),
-    setPendingTargetScreen: jest.fn(),
-    waitForScreenReady: jest.fn(async () => false),
-  } as unknown as ChoreographyContextType;
-  let navigation!: ReturnType<typeof useChoreographyNavigator>;
-  function Caller() {
-    navigation = useChoreographyNavigator({
-      currentScreenId: 'list',
-      isFocused: true,
-      goBack: jest.fn(),
+      commitNavigation: () =>
+        new Promise((resolve) => {
+          resolveRemoval = resolve;
+        }),
+      animate: () => {},
+      settleToTarget: jest.fn(),
+      cancel: jest.fn(),
+      handoff: () => {
+        ownership.setSession(null);
+        controller.releaseNavigationLock();
+        if (acknowledgment !== 'none') {
+          controller.beginOverlayHandoff('return');
+          ctx.activeSession = null;
+          ctx.overlayHandoffSessionId = 'return';
+          tree.update(render());
+        }
+      },
+      isCurrent: () => ownership.isSession('return'),
     });
-    return null;
-  }
-  const render = () => (
-    <ChoreographyContext.Provider value={{ ...ctx }}>
-      <Caller />
-    </ChoreographyContext.Provider>
-  );
-  let tree!: ReactTestRenderer;
-  try {
-    await act(async () => {
-      tree = create(render());
-    });
-    await act(async () =>
-      navigation.navigate({
-        targetScreenId: 'detail',
-        dispatchNavigation,
-        options: { transitionConfig: { group: 'group' } },
-      })
-    );
-    expect(dispatchNavigation).not.toHaveBeenCalled();
-    expect(controller.peekQueuedNavigation()).not.toBeNull();
-    await act(async () => {
-      resolveRemoval({ removed: true, presented: false });
-    });
-    expect(controller.isNavigationLocked()).toBe(true);
-    await act(async () => {
-      ctx.interruptibleReturnSessionId = 'return';
-      tree.update(render());
-    });
-    while (frames.length) {
-      await act(async () => {
-        frames.splice(0).forEach((frame) => frame(0));
+    reverse.commitNearEndpoint('return');
+    const dispatchNavigation = jest.fn();
+    const onNavigationEvent = jest.fn();
+    const ctx = {
+      progress,
+      progressOwnership: ownership,
+      navigationController: controller,
+      reverseController: reverse,
+      interruptibleReturnSessionId: null,
+      activeSession: {
+        id: 'return',
+        sourceScreenId: 'detail',
+        targetScreenId: 'list',
+        direction: 'backward',
+        state: 'active',
+      },
+      pendingTargetScreenId: null,
+      captureSourceGroup: jest.fn(async () => {}),
+      setPendingTargetScreen: jest.fn(),
+      waitForScreenReady: jest.fn(async () => false),
+    } as unknown as ChoreographyContextType;
+    let navigation!: ReturnType<typeof useChoreographyNavigator>;
+    function Caller() {
+      navigation = useChoreographyNavigator({
+        currentScreenId: 'list',
+        isFocused: true,
+        goBack: jest.fn(),
       });
+      return null;
     }
-    await completion;
-    expect(dispatchNavigation).toHaveBeenCalledTimes(1);
-    expect(controller.peekQueuedNavigation()).toBeNull();
-  } finally {
-    await act(async () => tree?.unmount());
-    reverse.dispose();
-    raf.mockRestore();
+    const render = () => (
+      <ChoreographyContext.Provider value={{ ...ctx }}>
+        <Caller />
+      </ChoreographyContext.Provider>
+    );
+    let tree!: ReactTestRenderer;
+    try {
+      await act(async () => {
+        tree = create(render());
+      });
+      await act(async () =>
+        navigation.navigate({
+          targetScreenId: 'detail',
+          dispatchNavigation,
+          options: { transitionConfig: { group: 'group' }, onNavigationEvent },
+        })
+      );
+      expect(dispatchNavigation).not.toHaveBeenCalled();
+      expect(controller.peekQueuedNavigation()).not.toBeNull();
+      await act(async () => {
+        resolveRemoval({ removed: true, presented: false });
+      });
+      expect(controller.isNavigationLocked()).toBe(true);
+      await act(async () => {
+        ctx.interruptibleReturnSessionId = 'return';
+        tree.update(render());
+      });
+      const acknowledge = async () => {
+        expect(dispatchNavigation).not.toHaveBeenCalled();
+        expect(controller.peekQueuedNavigation()).not.toBeNull();
+        await act(async () => {
+          controller.completeOverlayHandoff('return');
+          ctx.overlayHandoffSessionId = null;
+          tree.update(render());
+        });
+      };
+      if (acknowledgment === 'before-frame') await acknowledge();
+      while (frames.length) {
+        await act(async () => {
+          frames.splice(0).forEach((frame) => frame(0));
+        });
+      }
+      if (acknowledgment === 'after-frame') {
+        await acknowledge();
+        while (frames.length) {
+          await act(async () => {
+            frames.splice(0).forEach((frame) => frame(0));
+          });
+        }
+      }
+      await completion;
+      expect(dispatchNavigation).toHaveBeenCalledTimes(1);
+      expect(controller.peekQueuedNavigation()).toBeNull();
+      expect(
+        onNavigationEvent.mock.calls.map(([event]) => event.status)
+      ).toEqual(['queued', 'started', 'fallback']);
+      expect(
+        new Set(onNavigationEvent.mock.calls.map(([event]) => event.requestId))
+          .size
+      ).toBe(1);
+      expect(onNavigationEvent.mock.calls.at(-1)![0]).toMatchObject({
+        reason: 'screen-not-ready',
+        finished: true,
+      });
+    } finally {
+      await act(async () => tree?.unmount());
+      reverse.dispose();
+      raf.mockRestore();
+    }
   }
-});
+);
 
 describe('Back preparation ownership', () => {
   test('Back from an unrelated route does not claim another route transition', async () => {

@@ -42,6 +42,8 @@ interface NativeTransitionHostProps {
   onPresentationReady?: (sessionId: string) => void;
   /** Overlay hosts are attached; the session may now move content into them. */
   onAttached?: (sessionId: string) => void;
+  settlementSessionId?: string;
+  onSettled?: (sessionId: string) => void;
   onPresentationFailed: (
     sessionId: string,
     reason: PresentationFailureReason
@@ -60,6 +62,8 @@ export function NativeTransitionHost({
   children,
   onPresentationReady,
   onAttached,
+  settlementSessionId,
+  onSettled,
   onPresentationFailed,
 }: NativeTransitionHostProps) {
   const { width, height } = useWindowDimensions();
@@ -67,7 +71,15 @@ export function NativeTransitionHost({
   const hostRef =
     useAnimatedRef<React.ComponentRef<typeof NativeScreenChoreographyView>>();
   const deadline = useSharedValue<{ id: string; at: number } | null>(null);
+  const settledSession = useSharedValue('');
   const frame = useFrameCallback(({ timestamp }) => {
+    if (settlementSessionId) {
+      // Replay an acknowledgment that preceded installation of the UI handler.
+      // Native checks emptiness only at pre-draw, after the retargeting commit.
+      if (active && settledSession.value !== settlementSessionId)
+        dispatchCommand(hostRef, 'prepare', [settlementSessionId]);
+      return;
+    }
     if (
       !active ||
       !presentation ||
@@ -120,7 +132,15 @@ export function NativeTransitionHost({
   const onReady = useEvent<PresentationReadyEvent>(
     (event) => {
       'worklet';
+      // Settlement outlives presentation validity and can arrive before this
+      // worklet refreshes. The provider validates the pending handoff identity.
+      if (event.stage === 'settled') {
+        settledSession.value = event.sessionId;
+        if (onSettled) scheduleOnRN(onSettled, event.sessionId);
+        return;
+      }
       if (
+        settlementSessionId ||
         !active ||
         event.sessionId !== sessionId ||
         !presentation?.valid.value
@@ -188,15 +208,16 @@ export function NativeTransitionHost({
     }
   );
   useEffect(() => {
-    frame.setActive(Boolean(active && presentation));
+    frame.setActive(Boolean(active && (presentation || settlementSessionId)));
     return () => frame.setActive(false);
-  }, [frame, active, presentation]);
+  }, [frame, active, presentation, settlementSessionId]);
   return (
     <AnimatedHost
       ref={hostRef}
-      active={active && Boolean(presentation)}
+      active={active && Boolean(presentation || settlementSessionId)}
       sessionId={sessionId}
       expectedHostNames={presentation?.hostNames}
+      settlementSessionId={settlementSessionId}
       animatedProps={animatedProps}
       collapsable={false}
       pointerEvents="none"

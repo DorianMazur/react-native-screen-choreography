@@ -60,12 +60,16 @@ test('retained core commands use the current source, preparation callback and ba
 
     expect(commands).toBe(retained);
     const dispatchNavigation = jest.fn();
+    const onNavigationEvent = jest.fn();
     await act(async () => {
       await expect(
         retained.navigate({
           targetScreenId: 'Detail',
           dispatchNavigation,
-          options: { transitionConfig: { group: 'cards' } },
+          options: {
+            transitionConfig: { group: 'cards' },
+            onNavigationEvent,
+          },
         })
       ).resolves.toBeUndefined();
       await expect(retained.goBack()).resolves.toBeUndefined();
@@ -73,6 +77,18 @@ test('retained core commands use the current source, preparation callback and ba
     expect(captureFirst).not.toHaveBeenCalled();
     expect(captureCurrent).toHaveBeenCalledWith('cards', 'source-current');
     expect(dispatchNavigation).toHaveBeenCalledTimes(1);
+    expect(onNavigationEvent.mock.calls.map(([event]) => event.status)).toEqual(
+      ['started', 'fallback']
+    );
+    expect(onNavigationEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        requestId: onNavigationEvent.mock.calls[0]![0].requestId,
+        sourceScreenId: 'source-current',
+        targetScreenId: 'Detail',
+        finished: true,
+        reason: 'screen-not-ready',
+      })
+    );
     expect(backFirst).not.toHaveBeenCalled();
     expect(backCurrent).toHaveBeenCalledTimes(1);
   } finally {

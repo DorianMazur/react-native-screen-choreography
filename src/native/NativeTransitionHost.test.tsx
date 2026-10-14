@@ -362,3 +362,59 @@ test.each([true, false])(
     expect(startOwnedProgressOnUI).toHaveBeenCalledTimes(1);
   }
 );
+
+test('settlement survives invalidated presentation without accepting startup events', async () => {
+  const settled = jest.fn();
+  const attached = jest.fn();
+  const r = await setup(true, {
+    settlementSessionId: 'A',
+    onSettled: settled,
+    onAttached: attached,
+  });
+  r.presentation.valid.value = false;
+  await r.ack('A', 'attached');
+  await r.ack();
+  await r.ack('A', 'settled');
+  expect(settled).toHaveBeenCalledWith('A');
+  expect(attached).not.toHaveBeenCalled();
+  expect(r.ready).not.toHaveBeenCalled();
+  expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
+  expect(r.failed).not.toHaveBeenCalled();
+});
+
+test('the previous UI handler forwards settlement for provider identity validation', async () => {
+  const settled = jest.fn();
+  const r = await setup(true, { onSettled: settled });
+  r.presentation.valid.value = false;
+  // Native can receive the settlement prop before Reanimated installs the
+  // refreshed worklet. The provider checks its synchronous handoff ref.
+  await r.ack('A', 'settled');
+  expect(settled).toHaveBeenCalledWith('A');
+});
+
+test('keeps a settling native host active without retaining its presentation validator', async () => {
+  const settled = jest.fn();
+  const r = await setup(false, {
+    presentation: undefined,
+    settlementSessionId: 'A',
+    onSettled: settled,
+  });
+  expect(
+    tree.root.findByType('ScreenChoreographyView' as React.ElementType).props
+      .active
+  ).toBe(true);
+  await r.tick(1);
+  await r.ack('old', 'settled');
+  await r.tick(18);
+  expect(dispatchCommand).toHaveBeenCalledTimes(2);
+  expect(dispatchCommand).toHaveBeenLastCalledWith(
+    expect.any(Function),
+    'prepare',
+    ['A']
+  );
+  await r.ack('A', 'settled');
+  await r.tick(35);
+  expect(settled).toHaveBeenCalledWith('A');
+  expect(dispatchCommand).toHaveBeenCalledTimes(2);
+  expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
+});

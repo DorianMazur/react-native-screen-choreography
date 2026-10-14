@@ -16,6 +16,24 @@ function createSession(id: string): TransitionSessionData {
 }
 
 describe('NavigationSessionController', () => {
+  test('native handoff keeps navigation locked until its matching acknowledgment', () => {
+    const controller = new NavigationSessionController();
+    controller.acquireNavigationLock('detail');
+    controller.beginOverlayHandoff('A');
+    controller.releaseNavigationLock();
+    expect(controller.isNavigationLocked()).toBe(true);
+    expect(controller.acquireNavigationLock('list')).toBe(false);
+    controller.beginOverlayHandoff('B');
+    expect(controller.completeOverlayHandoff('A')).toBe(false);
+    expect(controller.isNavigationLocked()).toBe(true);
+    expect(controller.completeOverlayHandoff('B')).toBe(true);
+    expect(controller.acquireNavigationLock('list')).toBe(true);
+    expect(controller.completeOverlayHandoff('B')).toBe(false);
+    expect(controller.isNavigationLocked()).toBe(true);
+    controller.releaseNavigationLock();
+    expect(controller.isNavigationLocked()).toBe(false);
+  });
+
   test('preserves the failed presentation phase before session settlement', async () => {
     jest.useFakeTimers();
     try {

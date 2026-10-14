@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react';
+import { useLayoutEffect, useState } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { useChoreographyNavigation } from './react-navigation';
 import { useChoreographyRouter } from './expo-router';
@@ -64,8 +64,8 @@ beforeEach(() => {
   routeHooks.useRoute.mockReturnValue({ key: 'source-first' });
 });
 
-test.each(['React Navigation', 'Expo Router'] as const)(
-  '%s exposes the current focus gate to a child layout effect through the real core',
+test.each(['React Navigation', 'Expo push', 'Expo navigate'] as const)(
+  '%s retained commands use the current focus gate and report outcomes from a child layout effect',
   async (adapter) => {
     useChoreographyNavigator.mockImplementation(
       jest.requireActual('../hooks/useChoreographyNavigation')
@@ -79,6 +79,7 @@ test.each(['React Navigation', 'Expo Router'] as const)(
     } as unknown as ChoreographyContextType;
     const navigation = makeNavigation();
     const router = makeRouter();
+    const onNavigationEvent = jest.fn();
     let pending: Promise<void> | undefined;
     routeHooks.useNavigation.mockReturnValue(navigation);
     function Child({
@@ -95,12 +96,14 @@ test.each(['React Navigation', 'Expo Router'] as const)(
     }
     function NativeCaller({ attempt }: { attempt: boolean }) {
       const commands = useChoreographyNavigation(navigation);
+      const [retained] = useState(commands);
       return (
         <Child
           attempt={attempt}
           navigate={() =>
-            commands.navigate('Detail', undefined, {
+            retained.navigate('Detail', undefined, {
               transitionConfig: { group: 'cards' },
+              onNavigationEvent,
             })
           }
         />
@@ -108,14 +111,16 @@ test.each(['React Navigation', 'Expo Router'] as const)(
     }
     function ExpoCaller({ attempt }: { attempt: boolean }) {
       const commands = useChoreographyRouter(router, 'Source');
+      const [retained] = useState(commands);
       return (
         <Child
           attempt={attempt}
           navigate={() =>
-            commands.push({
+            retained[adapter === 'Expo push' ? 'push' : 'navigate']({
               href: '/detail',
               targetScreenId: 'Detail',
               transitionConfig: { group: 'cards' },
+              onNavigationEvent,
             })
           }
         />
@@ -141,10 +146,31 @@ test.each(['React Navigation', 'Expo Router'] as const)(
     await expect(pending).resolves.toBeUndefined();
     expect(navigation.navigate).not.toHaveBeenCalled();
     expect(router.push).not.toHaveBeenCalled();
+    expect(router.navigate).not.toHaveBeenCalled();
     expect(controller.peekQueuedNavigation()).toMatchObject({
       sourceScreenId: 'source-current',
       targetScreenId: 'Detail',
     });
+    expect(onNavigationEvent).toHaveBeenCalledTimes(1);
+    expect(onNavigationEvent).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sourceScreenId: 'source-current',
+        targetScreenId: 'Detail',
+        status: 'queued',
+        finished: false,
+      })
+    );
+    await act(async () => controller.clearQueuedNavigation());
+    expect(onNavigationEvent).toHaveBeenCalledTimes(2);
+    expect(onNavigationEvent).toHaveBeenLastCalledWith(
+      expect.objectContaining({
+        requestId: onNavigationEvent.mock.calls[0]![0].requestId,
+        sourceScreenId: 'source-current',
+        status: 'cancelled',
+        finished: true,
+        reason: 'queue-cleared',
+      })
+    );
   }
 );
 
