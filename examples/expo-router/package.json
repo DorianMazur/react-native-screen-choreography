@@ -3,6 +3,7 @@
   "main": "expo-router/entry",
   "version": "1.0.0",
   "dependencies": {
+    "@swmansion/react-native-bottom-sheet": "0.16.2",
     "expo": "~57.0.19",
     "expo-constants": "~57.0.17",
     "expo-linking": "~57.0.9",

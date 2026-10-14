@@ -5062,6 +5062,16 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@swmansion/react-native-bottom-sheet@npm:0.16.2":
+  version: 0.16.2
+  resolution: "@swmansion/react-native-bottom-sheet@npm:0.16.2"
+  peerDependencies:
+    react: ">=18.0.0"
+    react-native: ">=0.76.0"
+  checksum: 10c0/76877ff24ea0dedcfeb33f4e59330367fa2295aaa9348dbfd26e1679ff60523a2cea03741fd331774ca6aeb66cf32a55ad06f81d39470fbddc6a7bbe6dcfd697
+  languageName: node
+  linkType: hard
+
 "@types/babel__core@npm:^7.1.14":
   version: 7.20.5
   resolution: "@types/babel__core@npm:7.20.5"
@@ -12903,6 +12913,7 @@ __metadata:
     "@react-native/typescript-config": "npm:0.83.0"
     "@react-navigation/native": "npm:^7.1.0"
     "@react-navigation/native-stack": "npm:^7.3.0"
+    "@swmansion/react-native-bottom-sheet": "npm:0.16.2"
     "@types/react": "npm:^19.2.0"
     react: "npm:19.2.0"
     react-native: "npm:0.83.0"
@@ -12929,6 +12940,7 @@ __metadata:
     "@react-native/eslint-config": "npm:0.83.0"
     "@react-navigation/native": "npm:^7.1.0"
     "@react-navigation/native-stack": "npm:^7.3.0"
+    "@swmansion/react-native-bottom-sheet": "npm:0.16.2"
     "@types/jest": "npm:^29.5.0"
     "@types/react": "npm:^19.2.0"
     "@types/react-test-renderer": "npm:^19.1.0"
@@ -12954,6 +12966,7 @@ __metadata:
   peerDependencies:
     "@react-navigation/native": ">=6.0.0"
     "@react-navigation/native-stack": ">=6.0.0"
+    "@swmansion/react-native-bottom-sheet": ^0.16.2
     expo-router: ">=56.1.1"
     react: ">=18.0.0"
     react-native: ">=0.81.0"
@@ -12964,6 +12977,8 @@ __metadata:
     "@react-navigation/native":
       optional: true
     "@react-navigation/native-stack":
+      optional: true
+    "@swmansion/react-native-bottom-sheet":
       optional: true
     expo-router:
       optional: true
@@ -13790,6 +13805,7 @@ __metadata:
   resolution: "screen-choreography-expo-router-example@workspace:examples/expo-router"
   dependencies:
     "@babel/core": "npm:^7.25.2"
+    "@swmansion/react-native-bottom-sheet": "npm:0.16.2"
     "@types/react": "npm:~19.2.2"
     babel-preset-expo: "npm:~57.0.10"
     expo: "npm:~57.0.19"

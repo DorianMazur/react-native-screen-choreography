@@ -75,3 +75,7 @@ Transition recipes live alongside their screens in [the shared source](../shared
 The definitions coordinate endpoints and local section reveals. Internal layout and visual changes stay inside retained
 components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
 ordinary screen content, not to content hosted on another route.
+
+## Dynamic tray demo
+
+Open **Dynamic tray** on the landing screen to try a wallet flow with retained forms and a full-screen recipient list. See the [dynamic tray guide](../../docs/guide/dynamic-trays.md) for setup and usage.

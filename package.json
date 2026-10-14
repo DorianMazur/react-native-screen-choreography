@@ -20,7 +20,12 @@
       "types": "./lib/typescript/src/entries/core.d.ts",
       "default": "./lib/module/entries/core.js"
     },
-    "./package.json": "./package.json"
+    "./package.json": "./package.json",
+    "./tray": {
+      "source": "./src/entries/tray.ts",
+      "types": "./lib/typescript/src/entries/tray.d.ts",
+      "default": "./lib/module/entries/tray.js"
+    }
   },
   "files": [
     "src",
@@ -99,6 +104,7 @@
     "@react-native/eslint-config": "0.83.0",
     "@react-navigation/native": "^7.1.0",
     "@react-navigation/native-stack": "^7.3.0",
+    "@swmansion/react-native-bottom-sheet": "0.16.2",
     "@types/jest": "^29.5.0",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19.1.0",
@@ -125,6 +131,7 @@
   "peerDependencies": {
     "@react-navigation/native": ">=6.0.0",
     "@react-navigation/native-stack": ">=6.0.0",
+    "@swmansion/react-native-bottom-sheet": "^0.16.2",
     "expo-router": ">=56.1.1",
     "react": ">=18.0.0",
     "react-native": ">=0.81.0",
@@ -137,6 +144,9 @@
       "optional": true
     },
     "@react-navigation/native-stack": {
+      "optional": true
+    },
+    "@swmansion/react-native-bottom-sheet": {
       "optional": true
     },
     "expo-router": {

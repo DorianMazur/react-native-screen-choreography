@@ -346,6 +346,26 @@ detail, 1 at completed return), velocity-aware settlement, and cancellation.
 Connecting it to a gesture is explicit; native-stack's built-in swipe gesture
 does not supply this progress automatically.
 
+## Dynamic trays
+
+The optional `/tray` entry combines a local stack with Software Mansion's native
+bottom sheet. Each provider owns its stack and presents through
+`ChoreographyOverlay`. The provider reads `Tray.Stack` and `Tray.Screen`
+declarations during render; screens mount only when opened. Definitions must
+remain available while used by a live view or queued command.
+
+Software Mansion handles dragging, scrolling, the backdrop, and native sheet
+settlement. Reanimated handles page crossfades and card resizing. Content measures
+in a fixed destination viewport so intermediate animated heights cannot feed back
+into layout. Full-screen views use the available window and keep safe-area padding
+inside the card. Stack options control icons and resize motion.
+
+Each entry has one live React instance. Previous entries stay mounted for Back;
+popped or replaced entries remain until their transition finishes. Native sheet
+settlement releases the whole stack. Navigation requests run in order, dismissal
+clears pending requests, and reopening waits for closure. Session and transition
+IDs reject callbacks from earlier operations.
+
 ## Diagnostics
 
 The two example apps share screen implementations and transition recipes.
