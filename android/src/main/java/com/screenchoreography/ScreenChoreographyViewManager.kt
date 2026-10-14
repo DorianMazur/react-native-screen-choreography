@@ -81,6 +81,11 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     view?.setExpectedHostNames(values)
   }
 
+  @ReactProp(name = "settlementSessionId")
+  override fun setSettlementSessionId(view: ScreenChoreographyView?, sessionId: String?) {
+    view?.setSettlementSessionId(sessionId ?: "")
+  }
+
   override fun prepare(view: ScreenChoreographyView?, sessionId: String?) {
     view?.prepare(sessionId ?: "")
   }

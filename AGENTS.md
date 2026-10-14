@@ -70,7 +70,7 @@ Current important exports include:
 - real elements are hidden in the same frame the overlay first paints (driven by `handleOverlayReady` / `handleHostPresentationReady`), not when the session activates
 - the provider exposes two contexts: stable `ChoreographyActionsContext` for lifecycle callbacks and volatile `ChoreographyContext` for active-session state — keep registration effects depending on the actions context only
 - select each live owner's participating pair before the memoized presentation boundary; unrelated groups, elements, and pending screens must not propagate through that boundary. Preserve normal application prop updates and direct progress subscriptions.
-- retain collapsed/expanded presentation data after settlement, never whole pairs or registrations/refs belonging to removed screens; portal retargeting must share the commit that removes the overlay
+- retain collapsed/expanded presentation data after settlement, never whole pairs or registrations/refs belonging to removed screens; portal retargeting must share the session-settlement commit; on Android, keep overlay hosts until native confirms their content has left, then remove them and release the navigation handoff lock
 - screen-level visibility lives in `src/core/screenVisibility.ts` and must stay direction-agnostic: derive `(role, phase)` from the session, then compute opacity and pointer-events from `(direction, role, phase, progress)`. Do not add forward-only special cases back to `ChoreographyScreen`.
 
 ## Current Feature Boundaries

@@ -41,11 +41,15 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private var dismissalRequestId = 0
   private var pendingPresentationAck = false
   private var pendingPresentationSessionId = ""
+  private var settlementSessionId = ""
+  private var settlementAcknowledged = false
   // Deactivation can precede the commit that returns retained content, so the
   // live container keeps drawing until its hosts are empty (bounded by frames).
   private var dismissing = false
   private val mainHandler = Handler(Looper.getMainLooper())
   private val contentReadiness = ViewTreeObserver.OnPreDrawListener {
+    acknowledgeSettlementIfReady()
+    if (settlementAcknowledged) return@OnPreDrawListener true
     // Hosts mount empty and hidden; report them in the first traversal that lays
     // them out, since the draw gate below skips dispatchDraw until content arrives.
     if (active && prepared && !attachmentAcknowledged) acknowledgeAttachmentIfReady()
@@ -130,6 +134,9 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
     cancelPresentationReady()
     sessionId = value
+    // Props can arrive in either order when React batches activation and
+    // settlement. Keep the requested ID; the pre-draw check matches both IDs.
+    settlementAcknowledged = false
     preparedAtMs = -1.0
     attachedAtMs = -1.0
     contentReadyAtMs = -1.0
@@ -147,6 +154,16 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
   fun prepare(expectedSessionId: String) {
     if (expectedSessionId.isEmpty() || expectedSessionId != sessionId) return
+    if (settlementSessionId == sessionId) {
+      // A UI handler installed after the pre-draw acknowledgment can replay it.
+      // Never infer settlement from a command issued during a Fabric transaction.
+      if (settlementAcknowledged) {
+        onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), sessionId, "settled")
+      } else {
+        invalidate()
+      }
+      return
+    }
     val replayPresentation = presentationAcknowledged
     val replayAttachment = attachmentAcknowledged
     if (!prepared) {
@@ -184,6 +201,28 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     if (prepared && presentationRequested) schedulePresentationReady()
   }
 
+  fun setSettlementSessionId(value: String) {
+    if (settlementSessionId == value) return
+    settlementSessionId = value
+    settlementAcknowledged = false
+    if (value.isNotEmpty() && value == sessionId) cancelPresentationReady()
+    invalidate()
+  }
+
+  private fun acknowledgeSettlementIfReady() {
+    if (settlementAcknowledged || settlementSessionId.isEmpty() ||
+      settlementSessionId != sessionId || !isAttachedToWindow) return
+    // Inspect after Fabric has applied the entire retargeting transaction.
+    if (holdsTransferredContent()) {
+      postInvalidateOnAnimation()
+      return
+    }
+    settlementAcknowledged = true
+    // Renderer decorations must not cover content that now draws at its endpoint.
+    alpha = 0f
+    onPresentationReady?.invoke(SystemClock.uptimeMillis().toDouble(), settlementSessionId, "settled")
+  }
+
   private fun acknowledgeAttachmentIfReady() {
     if (!prepared || attachmentAcknowledged || !active || !isAttachedToWindow || windowToken == null ||
       SystemClock.uptimeMillis() >= attachmentDeadline || !transitionHostsAreReady(false)) return
@@ -202,6 +241,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   override fun dispatchDraw(canvas: Canvas) {
+    if (settlementAcknowledged) return
     if (dismissing) {
       // Content returned in this traversal draws at its destination instead.
       if (!holdsTransferredContent()) {

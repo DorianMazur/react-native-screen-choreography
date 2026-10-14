@@ -61,6 +61,7 @@ export class NavigationSessionController {
   private animationToken = 0;
   private activeSession: TransitionSessionData | null = null;
   private requests = new Set<NavigationRequestObserver>();
+  private overlayHandoffSessionId: string | null = null;
 
   setActiveSession(
     session: TransitionSessionData | null,
@@ -138,7 +139,7 @@ export class NavigationSessionController {
   }
 
   acquireNavigationLock(sourceScreenId?: string): boolean {
-    if (this.navigationLocked) {
+    if (this.isNavigationLocked()) {
       return false;
     }
     this.navigationLocked = true;
@@ -162,7 +163,17 @@ export class NavigationSessionController {
   }
 
   isNavigationLocked(): boolean {
-    return this.navigationLocked;
+    return this.navigationLocked || this.overlayHandoffSessionId !== null;
+  }
+
+  beginOverlayHandoff(sessionId: string): void {
+    this.overlayHandoffSessionId = sessionId;
+  }
+
+  completeOverlayHandoff(sessionId: string): boolean {
+    if (this.overlayHandoffSessionId !== sessionId) return false;
+    this.overlayHandoffSessionId = null;
+    return true;
   }
 
   queueNavigation(request: PendingNavigationRequest): void {
