@@ -337,6 +337,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
     });
     reverse.commitNearEndpoint('return');
     const dispatchNavigation = jest.fn();
+    const onNavigationEvent = jest.fn();
     const ctx = {
       progress,
       progressOwnership: ownership,
@@ -378,7 +379,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
         navigation.navigate({
           targetScreenId: 'detail',
           dispatchNavigation,
-          options: { transitionConfig: { group: 'group' } },
+          options: { transitionConfig: { group: 'group' }, onNavigationEvent },
         })
       );
       expect(dispatchNavigation).not.toHaveBeenCalled();
@@ -417,6 +418,17 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
       await completion;
       expect(dispatchNavigation).toHaveBeenCalledTimes(1);
       expect(controller.peekQueuedNavigation()).toBeNull();
+      expect(
+        onNavigationEvent.mock.calls.map(([event]) => event.status)
+      ).toEqual(['queued', 'started', 'fallback']);
+      expect(
+        new Set(onNavigationEvent.mock.calls.map(([event]) => event.requestId))
+          .size
+      ).toBe(1);
+      expect(onNavigationEvent.mock.calls.at(-1)![0]).toMatchObject({
+        reason: 'screen-not-ready',
+        finished: true,
+      });
     } finally {
       await act(async () => tree?.unmount());
       reverse.dispose();

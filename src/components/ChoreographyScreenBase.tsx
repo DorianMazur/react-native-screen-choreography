@@ -1,6 +1,7 @@
 import React, {
   useCallback,
   useContext,
+  useEffect,
   useLayoutEffect,
   useMemo,
   useRef,
@@ -66,7 +67,7 @@ export function ChoreographyScreenBase({
   const actions = useContext(ChoreographyActionsContext);
   const controls = useContext(ChoreographyControlsContext);
   const presentationRef = useRef<React.ComponentRef<typeof View> | null>(null);
-  const layoutReadyRef = useRef(false);
+  const layoutReadyRef = useRef({ screenId, ready: false });
   const readyRef = useRef(ready);
   readyRef.current = ready;
 
@@ -190,36 +191,46 @@ export function ChoreographyScreenBase({
   const unregisterScreen = actions?.unregisterScreen;
   const registerScreenPresentation = actions?.registerScreenPresentation;
 
-  useLayoutEffect(
+  useEffect(
     () => registerScreenPresentation?.(screenId, presentationRef, lifetime),
     [registerScreenPresentation, screenId, lifetime]
   );
 
   useLayoutEffect(() => {
     // Initialize before native layout events can publish immediate readiness.
-    layoutReadyRef.current = false;
-    setScreenReady?.(screenId, false, screenName);
+    // Reveal reconnects layout effects without another native onLayout.
+    if (layoutReadyRef.current.screenId !== screenId) {
+      layoutReadyRef.current = { screenId, ready: false };
+    }
+    setScreenReady?.(
+      screenId,
+      layoutReadyRef.current.ready && readyRef.current,
+      screenName
+    );
+  }, [screenId, screenName, setScreenReady]);
 
+  // Suspense hides are not route removals. Release on unmount or identity change.
+  useEffect(() => {
     return () => {
       unregisterScreen?.(screenId);
     };
-  }, [screenId, screenName, setScreenReady, unregisterScreen]);
+  }, [screenId, unregisterScreen]);
 
   useLayoutEffect(() => {
     if (!ready) {
       setScreenReady?.(screenId, false);
-    } else if (layoutReadyRef.current) {
+    } else if (layoutReadyRef.current.ready) {
       setScreenReady?.(screenId, true);
     }
   }, [ready, screenId, setScreenReady]);
 
   const handleLayout = useCallback(() => {
-    if (!setScreenReady) {
+    if (!setScreenReady || layoutReadyRef.current.screenId !== screenId) {
       return;
     }
 
     // Application readiness only. Completed mounting is verified by Fabric capture.
-    layoutReadyRef.current = true;
+    layoutReadyRef.current.ready = true;
     setScreenReady(screenId, readyRef.current);
   }, [screenId, setScreenReady]);
 

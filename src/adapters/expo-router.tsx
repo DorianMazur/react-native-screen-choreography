@@ -16,7 +16,7 @@ import {
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
 import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
-import type { ChoreographyNavigationOptions } from '../types';
+import type { ChoreographyNavigateOptions } from '../types';
 
 export interface ExpoRouterLike<Href> {
   push: (href: Href) => unknown;
@@ -24,7 +24,7 @@ export interface ExpoRouterLike<Href> {
   back: () => unknown;
 }
 
-export type ChoreographyRouterRequest<Href> = ChoreographyNavigationOptions & {
+export type ChoreographyRouterRequest<Href> = ChoreographyNavigateOptions & {
   href: Href;
   /** Must match the destination ChoreographyScreen's screenId. */
   targetScreenId: string;

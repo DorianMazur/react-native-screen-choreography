@@ -286,14 +286,17 @@ export function ChoreographyProvider({
     );
   }
 
+  // Install before descendant passive effects can start a synchronous session.
   useLayoutEffect(() => {
     const coordinator = coordinatorRef.current!;
-    const screenReadiness = screenReadinessRef.current;
-    const screenNames = screenNamesRef.current;
-    const hiddenMap = visibilityRegistry;
-    const navigationLineage = navigationLineageRef.current;
     coordinator.setOnSessionChange((session) => {
-      navigationController.setActiveSession(session);
+      const previousId = activeSessionRef.current?.id;
+      navigationController.setActiveSession(
+        session,
+        coordinator.getSettledScreenId(),
+        hostPresentedSessionIdRef.current === previousId &&
+          overlayContentReadySessionIdRef.current === previousId
+      );
       progressOwnership.setSession(session?.id ?? null);
       if (session && activeSessionRef.current?.id !== session.id) {
         scheduleOnUI(() => {
@@ -356,8 +359,25 @@ export function ChoreographyProvider({
       // so reals are hidden the same frame the overlay first paints. Hiding
       // here would cause a one-frame blank flash at transition start.
     });
+  }, [
+    navigationController,
+    progressOwnership,
+    settleOverlayWaiters,
+    syncHiddenElements,
+    interactionOwner,
+    updateOverlay,
+  ]);
 
+  // Suspense disconnects layout effects while native screens remain mounted.
+  // Session ownership is released by passive cleanup, not a temporary hide.
+  useEffect(() => {
+    const coordinator = coordinatorRef.current!;
+    const screenReadiness = screenReadinessRef.current;
+    const screenNames = screenNamesRef.current;
+    const hiddenMap = visibilityRegistry;
+    const navigationLineage = navigationLineageRef.current;
     return () => {
+      navigationController.disposeRequests();
       updateOverlay(null);
       navigationController.setActiveSession(null);
       navigationController.releaseNavigationLock();
@@ -375,10 +395,7 @@ export function ChoreographyProvider({
     cancelAllOverlayWaiters,
     navigationController,
     progressOwnership,
-    settleOverlayWaiters,
-    syncHiddenElements,
     visibilityRegistry,
-    interactionOwner,
     updateOverlay,
   ]);
 
@@ -425,6 +442,7 @@ export function ChoreographyProvider({
 
   const unregisterScreen = useCallback(
     (screenId: string) => {
+      navigationController.cancelRequestsForScreen(screenId);
       screenReadinessRef.current.unregister(screenId);
       coordinatorRef.current?.revalidatePresentation(screenId);
       screenNamesRef.current.delete(screenId);
