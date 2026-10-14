@@ -116,6 +116,8 @@ export async function runReverseTransition(
   let reverseSessionId: string | null = null;
   const preparationVersion = progressOwnership.version;
   let animationToken: number | null = null;
+  let reverseCompletion: Promise<void> | null = null;
+  let preparedPresentation: TransitionSessionData['presentation'];
   let navigationCommitted = false;
   let navigationResult: Promise<NavigationCommitResult | void> | null = null;
   const commitNavigation = () => {
@@ -123,7 +125,9 @@ export async function runReverseTransition(
       navigationCommitted ||
       !canContinue() ||
       (reverseSessionId
-        ? !progressOwnership.isSession(reverseSessionId)
+        ? animationToken === null
+          ? !progressOwnership.isSession(reverseSessionId)
+          : !progressOwnership.isCurrent(animationToken, reverseSessionId)
         : progressOwnership.version !== preparationVersion)
     ) {
       return Promise.resolve({ removed: false, presented: false });
@@ -163,6 +167,20 @@ export async function runReverseTransition(
         0
       );
     completeTransition(sessionId);
+  };
+  const revokePreparedAnimation = () => {
+    if (
+      !reverseSessionId ||
+      animationToken === null ||
+      !progressOwnership.isCurrent(animationToken, reverseSessionId)
+    )
+      return;
+    if (preparedPresentation) preparedPresentation.valid.value = false;
+    // Cancel queued/running UI work before fallback removal can await navigation.
+    // Keep a fresh token so delayed fallback settlement still has an owner.
+    animationToken = progressOwnership.claim(reverseSessionId);
+    if (reverseCompletion)
+      ctx.reverseController.abandon(reverseSessionId, reverseCompletion);
   };
 
   try {
@@ -204,7 +222,7 @@ export async function runReverseTransition(
     if (animationToken === null) return;
 
     const endOverlay = trace?.start('overlay-ready');
-    const overlayReady = await waitForOverlayReady(
+    const overlayReadiness = waitForOverlayReady(
       reverseSession.id,
       trace
         ? (details) => {
@@ -213,11 +231,39 @@ export async function runReverseTransition(
           }
         : undefined
     );
+    const delegateReverse = () =>
+      ctx.commitReverseTransition({
+        sessionId: reverseSession.id,
+        token: animationToken!,
+        options: { spring },
+        ...(preparedPresentation ? { presentation: preparedPresentation } : {}),
+        navigateBack: async () => {
+          const result = await commitNavigation();
+          return (
+            result ?? {
+              removed: isRouteRemoved?.() ?? true,
+              presented: false,
+            }
+          );
+        },
+      });
+    // Register the failure waiter before arming. Native presentation may start
+    // motion while its RN acknowledgement is still queued. Reduced motion has
+    // no overlay and retains the direct, content-commit-gated settlement path.
+    if (reverseSession.presentation && !reverseSession.reducedMotion) {
+      preparedPresentation = reverseSession.presentation;
+      reverseCompletion = delegateReverse();
+      // Observe rejection immediately while awaiting readiness; the original
+      // promise below still propagates errors through fallback navigation.
+      reverseCompletion.catch(() => {});
+    }
+    const overlayReady = await overlayReadiness;
     const acknowledged =
       overlayReady && (ctx.isOverlayPresented?.(reverseSession.id) ?? true);
     endOverlay?.({ ready: overlayReady, acknowledged });
     if (!progressOwnership.isCurrent(animationToken, reverseSession.id)) return;
     if (!overlayReady || !canContinue()) {
+      revokePreparedAnimation();
       // Unready overlay content must not swallow a requested Back action.
       const returned =
         !overlayReady && canContinue() && (await commitFallbackNavigation());
@@ -225,20 +271,7 @@ export async function runReverseTransition(
       return;
     }
     trace?.finish(acknowledged ? 'overlay-ready' : 'overlay-timeout');
-    await ctx.commitReverseTransition({
-      sessionId: reverseSession.id,
-      token: animationToken,
-      options: { spring },
-      navigateBack: async () => {
-        const result = await commitNavigation();
-        return (
-          result ?? {
-            removed: isRouteRemoved?.() ?? true,
-            presented: false,
-          }
-        );
-      },
-    });
+    await (reverseCompletion ?? delegateReverse());
   } catch (error) {
     debugLog(
       `[BackIntercept] reverse transition error: ${
@@ -250,11 +283,14 @@ export async function runReverseTransition(
       (animationToken === null ||
         progressOwnership.isCurrent(animationToken, reverseSessionId))
     ) {
+      revokePreparedAnimation();
       endFallbackSession(reverseSessionId, await commitFallbackNavigation());
       return;
     }
     commitNavigation();
   } finally {
+    if (reverseSessionId && reverseCompletion)
+      ctx.reverseController.abandon(reverseSessionId, reverseCompletion);
     trace?.finish('cancelled');
     if (!reverseSessionId || !progressOwnership.isSession(reverseSessionId)) {
       navigationController.releaseNavigationLock(navigationToken);
