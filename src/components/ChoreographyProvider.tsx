@@ -286,12 +286,9 @@ export function ChoreographyProvider({
     );
   }
 
+  // Install before descendant passive effects can start a synchronous session.
   useLayoutEffect(() => {
     const coordinator = coordinatorRef.current!;
-    const screenReadiness = screenReadinessRef.current;
-    const screenNames = screenNamesRef.current;
-    const hiddenMap = visibilityRegistry;
-    const navigationLineage = navigationLineageRef.current;
     coordinator.setOnSessionChange((session) => {
       const previousId = activeSessionRef.current?.id;
       navigationController.setActiveSession(
@@ -362,7 +359,23 @@ export function ChoreographyProvider({
       // so reals are hidden the same frame the overlay first paints. Hiding
       // here would cause a one-frame blank flash at transition start.
     });
+  }, [
+    navigationController,
+    progressOwnership,
+    settleOverlayWaiters,
+    syncHiddenElements,
+    interactionOwner,
+    updateOverlay,
+  ]);
 
+  // Suspense disconnects layout effects while native screens remain mounted.
+  // Session ownership is released by passive cleanup, not a temporary hide.
+  useEffect(() => {
+    const coordinator = coordinatorRef.current!;
+    const screenReadiness = screenReadinessRef.current;
+    const screenNames = screenNamesRef.current;
+    const hiddenMap = visibilityRegistry;
+    const navigationLineage = navigationLineageRef.current;
     return () => {
       navigationController.disposeRequests();
       updateOverlay(null);
@@ -382,10 +395,7 @@ export function ChoreographyProvider({
     cancelAllOverlayWaiters,
     navigationController,
     progressOwnership,
-    settleOverlayWaiters,
-    syncHiddenElements,
     visibilityRegistry,
-    interactionOwner,
     updateOverlay,
   ]);
 

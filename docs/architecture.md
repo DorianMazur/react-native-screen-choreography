@@ -45,6 +45,13 @@ instances of the same logical screen label distinct. Latest-value refs provide
 current presentation metadata while registration remains stable. The provider separates lifecycle actions in
 `ChoreographyActionsContext` from active-session state in `ChoreographyContext`.
 
+Suspense can hide a mounted screen and reconnect its layout effects without
+another native layout event. Screen registration and provider session ownership
+use passive cleanup so a hide does not act as route removal. Layout readiness
+survives a reveal of the same route instance and resets for a different instance.
+The provider installs its session listener in a layout effect so transitions
+started by descendant mount effects are observed.
+
 Each owner selects its participating pair before a memoized presentation
 boundary. Unrelated elements, groups, and pending screens therefore do not
 update that owner's retained presentation. Application prop changes and direct
