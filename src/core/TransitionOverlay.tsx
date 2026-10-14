@@ -3,12 +3,48 @@ import { StyleSheet, View } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
 import type {
   ElementMetrics,
+  ElementTransitionPair,
   TransitionAnchor,
   TransitionSessionData,
 } from '../types';
 
+// Settlement keeps renderer inputs and host identity, never endpoint refs.
+export type OverlayPresentation = Omit<TransitionSessionData, 'pairs'> & {
+  pairs: Array<
+    Omit<ElementTransitionPair, 'source' | 'target'> & {
+      source: Pick<ElementTransitionPair['source'], 'screenId'>;
+      target: Pick<ElementTransitionPair['target'], 'screenId'>;
+    }
+  >;
+};
+
+export function retainOverlayPresentation(
+  session: TransitionSessionData
+): OverlayPresentation {
+  return {
+    id: session.id,
+    groupId: session.groupId,
+    sourceScreenId: session.sourceScreenId,
+    targetScreenId: session.targetScreenId,
+    state: session.state,
+    direction: session.direction,
+    progress: session.progress,
+    reducedMotion: session.reducedMotion,
+    pairs: session.pairs.map((pair) => ({
+      id: pair.id,
+      source: { screenId: pair.source.screenId },
+      target: { screenId: pair.target.screenId },
+      sourceMetrics: pair.sourceMetrics,
+      targetMetrics: pair.targetMetrics,
+      sourcePresentation: pair.sourcePresentation,
+      targetPresentation: pair.targetPresentation,
+      transition: pair.transition,
+    })),
+  };
+}
+
 interface TransitionOverlayProps {
-  session: TransitionSessionData | null;
+  session: OverlayPresentation | null;
   progress: SharedValue<number>;
   onReady?: (sessionId: string) => void;
 }

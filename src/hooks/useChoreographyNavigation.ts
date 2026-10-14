@@ -266,8 +266,13 @@ export function useChoreographyNavigator({
       );
 
       if (canInterruptActiveReturn) {
-        controller.clearQueuedNavigation();
+        // Native settlement can outlast the interruption frame. Keep this tap
+        // queued so its acknowledgment can replay it, including a tap that was
+        // already being replayed when removal became interruptible.
+        const interruptedRequest = { ...request, sourceScreenId };
+        controller.queueNavigation(interruptedRequest);
         await interruptReturnTransition();
+        if (controller.peekQueuedNavigation() !== interruptedRequest) return;
         interruptedSettlingReturn = true;
         logNavigation(
           () =>
@@ -522,6 +527,7 @@ export function useChoreographyNavigator({
     controller,
     ctx.activeSession,
     ctx.interruptibleReturnSessionId,
+    ctx.overlayHandoffSessionId,
     ctx.pendingTargetScreenId,
     currentScreenId,
     getNavigationBlockReasons,
