@@ -3,6 +3,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
 import { theme as palette } from '../../../shared/theme';
 import { JSStressMenu } from '../../../shared/performance/JSStressMenu';
+import { TrayDemoProvider } from '../../../shared/tray/TrayDemo';
 
 const theme = {
   dark: true,
@@ -25,42 +26,44 @@ const theme = {
 export default function RootLayout() {
   return (
     <ChoreographyProvider>
-      <ThemeProvider value={theme}>
-        <StatusBar style="light" />
-        <Stack
-          screenOptions={{
-            headerShown: false,
-            animation: 'none',
-            contentStyle: { backgroundColor: palette.bg },
-          }}
-        >
-          <Stack.Screen name="index" />
-          <Stack.Screen
-            name="gallery/[photoId]"
-            options={{
-              presentation: 'containedTransparentModal',
-              contentStyle: { backgroundColor: 'transparent' },
-              gestureEnabled: false,
+      <TrayDemoProvider>
+        <ThemeProvider value={theme}>
+          <StatusBar style="light" />
+          <Stack
+            screenOptions={{
+              headerShown: false,
+              animation: 'none',
+              contentStyle: { backgroundColor: palette.bg },
             }}
-          />
-          <Stack.Screen
-            name="trips/[tripId]"
-            options={{
-              presentation: 'containedTransparentModal',
-              contentStyle: { backgroundColor: 'transparent' },
-              gestureEnabled: false,
-            }}
-          />
-          <Stack.Screen
-            name="wallet/[tokenId]"
-            options={{
-              presentation: 'containedTransparentModal',
-              contentStyle: { backgroundColor: 'transparent' },
-              gestureEnabled: false,
-            }}
-          />
-        </Stack>
-      </ThemeProvider>
+          >
+            <Stack.Screen name="index" />
+            <Stack.Screen
+              name="gallery/[photoId]"
+              options={{
+                presentation: 'containedTransparentModal',
+                contentStyle: { backgroundColor: 'transparent' },
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
+              name="trips/[tripId]"
+              options={{
+                presentation: 'containedTransparentModal',
+                contentStyle: { backgroundColor: 'transparent' },
+                gestureEnabled: false,
+              }}
+            />
+            <Stack.Screen
+              name="wallet/[tokenId]"
+              options={{
+                presentation: 'containedTransparentModal',
+                contentStyle: { backgroundColor: 'transparent' },
+                gestureEnabled: false,
+              }}
+            />
+          </Stack>
+        </ThemeProvider>
+      </TrayDemoProvider>
       {__DEV__ && <JSStressMenu />}
     </ChoreographyProvider>
   );

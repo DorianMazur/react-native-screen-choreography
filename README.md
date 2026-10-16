@@ -51,6 +51,8 @@ The library also needs native peer dependencies and a native app rebuild. Follow
 
 The checked-in examples use React Native 0.83 and Expo SDK 57. Native-stack swipe progress is not connected automatically; use [interactive Back](https://screen-choreography.dev/guide/interactive-back.html) for custom gesture control.
 
+Build content-sized sheets with their own typed view stack using the optional [dynamic tray API](docs/guide/dynamic-trays.md) and Software Mansion bottom sheets.
+
 ## Documentation
 
 | Start here                                                                      | Build with motion                                                               | Go deeper                                                                     |
