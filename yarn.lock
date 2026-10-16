@@ -12860,6 +12860,20 @@ __metadata:
   languageName: node
   linkType: hard
 
+"react-native-reanimated@npm:4.3.4":
+  version: 4.3.4
+  resolution: "react-native-reanimated@npm:4.3.4"
+  dependencies:
+    react-native-is-edge-to-edge: "npm:^1.3.1"
+    semver: "npm:^7.7.3"
+  peerDependencies:
+    react: "*"
+    react-native: 0.81 - 0.85
+    react-native-worklets: 0.8.x
+  checksum: 10c0/970800550322d6c052ad109b9be4d92c04b3cf326305b3f8175f64afb215a2cda6fc1978c0029f8039ad5a7e324616038148adbd3bdc967283851941caaaaafc
+  languageName: node
+  linkType: hard
+
 "react-native-reanimated@npm:4.5.1":
   version: 4.5.1
   resolution: "react-native-reanimated@npm:4.5.1"
@@ -12871,20 +12885,6 @@ __metadata:
     react-native: 0.83 - 0.86
     react-native-worklets: 0.10.x
   checksum: 10c0/86c64529fc5d59fb1a9083e0934c957c95c7319149efe02f92252237aa1fb208958da1c42705447c12b1d6bff3c23a354e10a05787995082eda1c284703ec0bc
-  languageName: node
-  linkType: hard
-
-"react-native-reanimated@npm:^4.3.0":
-  version: 4.3.0
-  resolution: "react-native-reanimated@npm:4.3.0"
-  dependencies:
-    react-native-is-edge-to-edge: "npm:^1.3.1"
-    semver: "npm:^7.7.3"
-  peerDependencies:
-    react: "*"
-    react-native: 0.81 - 0.85
-    react-native-worklets: 0.8.x
-  checksum: 10c0/e882660f8876b5571b4cb6fe99cbf123f7329e1282376cd92fb4b45991a765aa364b295781acea2658bee1b0196ea122b624be63b3a906c06a72c2a67ab56486
   languageName: node
   linkType: hard
 
@@ -12919,7 +12919,7 @@ __metadata:
     react-native: "npm:0.83.0"
     react-native-builder-bob: "npm:^0.41.0"
     react-native-monorepo-config: "npm:^0.3.3"
-    react-native-reanimated: "npm:^4.3.0"
+    react-native-reanimated: "npm:4.3.4"
     react-native-safe-area-context: "npm:^5.7.0"
     react-native-screen-choreography: "workspace:*"
     react-native-screens: "npm:^4.24.0"
@@ -12957,7 +12957,7 @@ __metadata:
     react: "npm:19.2.0"
     react-native: "npm:0.83.0"
     react-native-builder-bob: "npm:^0.41.0"
-    react-native-reanimated: "npm:^4.3.0"
+    react-native-reanimated: "npm:4.3.4"
     react-native-teleport: "npm:1.2.2"
     react-native-worklets: "npm:>=0.8.0"
     react-test-renderer: "npm:19.2.0"
