@@ -398,15 +398,24 @@ test('ignores invalid measurements and keeps a stable viewport while resizing', 
   act(() => renderer.unmount());
 });
 
-test.each(['floating', 'sheet'] as const)(
-  'expands a middle screen and restores %s geometry and form state on Back',
-  (appearance) => {
+test.each([
+  { appearance: 'floating', topInset: 0 },
+  { appearance: 'floating', topInset: 50 },
+  { appearance: 'sheet', topInset: 0 },
+  { appearance: 'sheet', topInset: 50 },
+] as const)(
+  'restores $appearance geometry and form state with topInset=$topInset on Back',
+  ({ appearance, topInset }) => {
     let renderer!: TestRenderer.ReactTestRenderer;
     act(() => {
       renderer = TestRenderer.create(
         <Tray.Provider>
           <Observer />
-          <Tray.Stack appearance={appearance} topInset={50} bottomInset={20}>
+          <Tray.Stack
+            appearance={appearance}
+            topInset={topInset}
+            bottomInset={20}
+          >
             <Tray.Screen name="form" component={Form} />
             <Tray.Screen
               name="preview"
@@ -436,17 +445,20 @@ test.each(['floating', 'sheet'] as const)(
     act(() => navigation.push('preview', { label: 'full screen' }));
     layout(200);
     expect(viewport().width).toBe(window.width);
-    expect(viewport().height).toBe(window.height);
+    expect(viewport().height).toBe(window.height - topInset);
     expect(content().props.style).toEqual({
-      paddingTop: 50,
       paddingBottom: 20,
     });
     const page = renderer.root.findByType(Preview).parent!.parent!;
     expect(StyleSheet.flatten(page.props.style)).toMatchObject({
-      height: window.height - 140,
+      height: window.height - topInset - 90,
     });
     expect(renderer.root.findAllByType(Form)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
+    expect(viewport().transform).toEqual([{ translateY: topInset }]);
+    expect(viewport().height + viewport().transform[0].translateY).toBe(
+      window.height
+    );
     expect(card()).toMatchObject({
       height: window.height,
       marginHorizontal: 0,
@@ -458,6 +470,7 @@ test.each(['floating', 'sheet'] as const)(
     layout(200);
     expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
+    expect(viewport().transform).toEqual([{ translateY: 0 }]);
     expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
     expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
     expect(card()).toMatchObject({
@@ -469,6 +482,43 @@ test.each(['floating', 'sheet'] as const)(
     act(() => renderer.unmount());
   }
 );
+
+test('uses the new transition start visibility for pushed and retained Back pages', () => {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        {stack()}
+      </Tray.Provider>
+    );
+  });
+  const opacity = (component: React.ElementType) =>
+    StyleSheet.flatten(
+      renderer.root.findByType(component).parent!.parent!.props.style
+    ).opacity;
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  expect(opacity(Form)).toBe(1);
+
+  act(() => navigation.push('preview', { label: 'next' }));
+  expect(opacity(Preview)).toBe(0);
+  expect(opacity(Form)).toBe(1);
+  const forwardComplete = mockCompletions.shift()!;
+  act(() => forwardComplete(true));
+  expect(opacity(Preview)).toBe(1);
+  expect(opacity(Form)).toBe(0);
+
+  act(() => navigation.back());
+  expect(opacity(Form)).toBe(0);
+  expect(opacity(Preview)).toBe(1);
+  act(() => forwardComplete(true));
+  expect(opacity(Form)).toBe(0);
+  act(() => mockCompletions.shift()!(true));
+  expect(opacity(Form)).toBe(1);
+  expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
+  act(() => renderer.unmount());
+});
 
 test('presents a full-screen root and shrinks for a pushed content-sized page', () => {
   let renderer!: TestRenderer.ReactTestRenderer;

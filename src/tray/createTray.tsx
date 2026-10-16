@@ -277,7 +277,6 @@ function TrayHost<P extends TrayParamList>({
   const availableHeight = Math.max(0, height - keyboardInset);
   const margin = appearance === 'floating' ? horizontalInset : 0;
   const gap = appearance === 'floating' ? bottomInset + 12 : 0;
-  const paddingTop = fullScreen ? topInset : 0;
   const paddingBottom = fullScreen || appearance === 'sheet' ? bottomInset : 0;
   const fullScreenMaxHeight = Math.max(
     0,
@@ -293,6 +292,7 @@ function TrayHost<P extends TrayParamList>({
   );
   const maxHeight = fullScreen ? fullScreenMaxHeight : trayMaxHeight;
   const progress = useSharedValue(state.transition ? 0 : 1);
+  const progressTransitionId = useSharedValue<number | undefined>(undefined);
   const expansion = useSharedValue(fullScreen ? 1 : 0);
   const wasFullScreen = useRef(fullScreen);
   useLayoutEffect(() => {
@@ -325,8 +325,7 @@ function TrayHost<P extends TrayParamList>({
   const contentPosition = useAnimatedStyle(() => ({
     transform: [
       {
-        translateY:
-          Math.max(0, Math.min(1, expansion.value)) * topInset - paddingTop,
+        translateY: Math.max(0, Math.min(1, expansion.value)) * topInset,
       },
     ],
   }));
@@ -383,14 +382,14 @@ function TrayHost<P extends TrayParamList>({
                 {
                   width: width - (fullScreen ? 0 : 2 * margin),
                   height: hasMeasured
-                    ? maxHeight + HEADER_HEIGHT + paddingTop + paddingBottom
+                    ? maxHeight + HEADER_HEIGHT + paddingBottom
                     : undefined,
                 },
                 contentPosition,
               ]}
             >
               <View
-                style={{ paddingTop, paddingBottom }}
+                style={{ paddingBottom }}
                 onLayout={(event) => {
                   const next = fullScreen
                     ? availableHeight
@@ -483,6 +482,7 @@ function TrayHost<P extends TrayParamList>({
                         from={state.transition?.from === entry.key}
                         transitioning={!!state.transition}
                         progress={progress}
+                        progressTransitionId={progressTransitionId}
                         animation={animation}
                         session={state.session}
                         transitionId={state.transition?.id}
@@ -528,6 +528,7 @@ function TrayPage({
   from,
   transitioning,
   progress,
+  progressTransitionId,
   animation,
   session,
   transitionId,
@@ -541,6 +542,7 @@ function TrayPage({
   from: boolean;
   transitioning: boolean;
   progress: SharedValue<number>;
+  progressTransitionId: SharedValue<number | undefined>;
   animation: ResolvedTrayAnimation;
   session: number;
   transitionId: number | undefined;
@@ -565,9 +567,22 @@ function TrayPage({
       'worklet';
       if (finished) scheduleOnRN(onComplete, session, transitionId);
     });
-  }, [active, animation, onComplete, progress, session, transitionId]);
+    progressTransitionId.value = transitionId;
+  }, [
+    active,
+    animation,
+    onComplete,
+    progress,
+    progressTransitionId,
+    session,
+    transitionId,
+  ]);
   const pageStyle = useAnimatedStyle(() => {
-    const p = transitioning ? Math.max(0, Math.min(1, progress.value)) : 1;
+    const p = !transitioning
+      ? 1
+      : progressTransitionId.value === transitionId
+        ? Math.max(0, Math.min(1, progress.value))
+        : 0;
     return {
       opacity: active ? p : from ? 1 - p : 0,
     };
