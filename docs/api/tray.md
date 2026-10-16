@@ -9,7 +9,7 @@ Import from `react-native-screen-choreography/tray`. See [Build a dynamic tray](
 
 ## `createTray`
 
-`createTray<Routes>()` returns `{ Provider, Stack, Screen, useTray }`. Call it outside render. Each provider owns an independent stack; `useTray()` finds the nearest provider from the same factory and throws if none exists.
+`createTray<Routes>()` returns `{ Provider, Stack, Screen, useTray, useTrayState }`. Call it outside render. Each provider owns an independent stack; both hooks find the nearest provider from the same factory and throw if none exists.
 
 Mount the provider in your root layout or around a feature, outside `ChoreographyScreen`. It manages its own native sheet provider. Present one tray at a time.
 
@@ -82,7 +82,7 @@ Full-screen views fill the available window with no outside spacing or rounded c
 
 ## `TrayNavigation`
 
-Returned by `useTray()` and passed to screens as `tray`:
+Returned by `useTray()` and passed to screens as `tray`. The object and its methods stay stable for the provider's lifetime. Using them does not subscribe a component to stack changes.
 
 | Member                  | Behavior                                          |
 | ----------------------- | ------------------------------------------------- |
@@ -92,13 +92,32 @@ Returned by `useTray()` and passed to screens as `tray`:
 | `back()`                | Return to the previous screen; close at the root. |
 | `popToRoot()`           | Return to the first screen.                       |
 | `dismiss()`             | Close the whole tray.                             |
-| `route`                 | Current route, or `undefined` when closed.        |
-| `depth`                 | Number of screens in the stack.                   |
-| `isPresented`           | True while opening, open, or closing.             |
 
 Parameters are optional only when the route type includes `undefined`. Methods return `void`.
 
 Rapid navigation requests run in order. Dismissal clears pending navigation. A `present()` during closing waits until the sheet closes; the latest request wins. Other commands do nothing while closed or closing.
+
+## `TrayState`
+
+Read reactive state with `Tray.useTrayState(selector)`:
+
+```tsx
+const isPresented = Tray.useTrayState((state) => state.isPresented);
+const depth = Tray.useTrayState((state) => state.depth);
+const route = Tray.useTrayState((state) => state.route);
+```
+
+| Member        | Behavior                                   |
+| ------------- | ------------------------------------------ |
+| `route`       | Current route, or `undefined` when closed. |
+| `depth`       | Number of screens in the stack.            |
+| `isPresented` | True while opening, open, or closing.      |
+
+The selector receives `TrayState<Routes>`. A stack update rerenders the consumer only if the selected value changes according to `Object.is`. Prefer selecting a field or primitive; returning a new object or array counts as a change. To observe every state change, select `(state) => state`.
+
+### Migrating from 0.8.0-alpha.0
+
+Replace `tray.route`, `tray.depth`, and `tray.isPresented` with the corresponding `Tray.useTrayState` selection above. Navigation calls stay the same.
 
 ## `TrayParamList`
 

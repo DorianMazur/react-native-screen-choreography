@@ -373,6 +373,13 @@ settlement releases the whole stack. Navigation requests run in order, dismissal
 clears pending requests, and reopening waits for closure. Session and transition
 IDs reject callbacks from earlier operations.
 
+Navigation actions use a stable context. The reducer runs in a provider-owned
+store; the provider subscribes to the stack, while `useTrayState` subscribes to
+selected public state. Screen content is memoized with its component, route, and
+actions; layout and transition state stay outside that boundary. Retained screens
+still receive local state, context, and subscribed
+store updates without changing their effect lifecycle.
+
 ## Diagnostics
 
 The two example apps share screen implementations and transition recipes.

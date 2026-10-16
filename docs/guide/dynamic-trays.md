@@ -110,7 +110,15 @@ function OpenNoteButton() {
 | `popToRoot()`           | Return to the first screen.                      |
 | `dismiss()`             | Close the whole tray.                            |
 
-The hook also exposes `route`, `depth`, and `isPresented`. Route names and parameters are typed.
+Route names and parameters are typed. The navigation object stays stable, so calling `useTray()` does not subscribe your component to stack changes.
+
+When your UI needs tray state, select the value with `useTrayState`:
+
+```tsx
+const isPresented = Tray.useTrayState((state) => state.isPresented);
+```
+
+This subscription updates only when `isPresented` changes. You can also select `state.route` or `state.depth`.
 
 Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
 
@@ -178,6 +186,8 @@ Use normal React Native inputs and scroll views. The tray handles keyboard avoid
 A root `ScrollView` is bounded by the available height. For short, content-sized screens, avoid `flex: 1` on a non-scrollable root.
 
 Previous screens stay mounted for Back, so their effects continue running. Popped screens unmount after their transition; closing releases the whole stack. Keep state outside the tray if it should survive reopening.
+
+Screen content is memoized separately from its animated wrapper. Unchanged screens skip renders caused by navigation and tray layout. Their own state, context, and selected tray state still update normally, including while another screen is above them.
 
 ## Multiple trays
 

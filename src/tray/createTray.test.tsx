@@ -1,8 +1,8 @@
-import React, { useEffect, useState } from 'react';
+import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Dimensions, StyleSheet, Text, TextInput, View } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { createTray } from './createTray';
-import type { TrayNavigation, TrayScreenProps } from './types';
+import type { TrayNavigation, TrayScreenProps, TrayState } from './types';
 
 const mockCompletions: Array<(finished: boolean) => void> = [];
 jest.mock('react-native-reanimated', () => {
@@ -51,9 +51,11 @@ export function checkDeclarationTypes() {
   />;
 }
 let navigation: TrayNavigation<Routes>;
+let navigationState: TrayState<Routes>;
 const unmounted: string[] = [];
 function Observer() {
   navigation = Tray.useTray();
+  navigationState = Tray.useTrayState((state) => state);
   return null;
 }
 function Form() {
@@ -98,6 +100,199 @@ function sheet(renderer: TestRenderer.ReactTestRenderer) {
 beforeEach(() => {
   mockCompletions.length = 0;
   unmounted.length = 0;
+});
+
+test('isolates screen content from navigation and layout updates while preserving local state and context updates', () => {
+  const ValueContext = createContext('initial');
+  const renders = jest.fn();
+  const actionsRendered = jest.fn();
+  function Actions() {
+    actionsRendered(Tray.useTray());
+    return null;
+  }
+  function Content({ route, tray }: TrayScreenProps<Routes, 'form'>) {
+    const actions = Tray.useTray();
+    const value = useContext(ValueContext);
+    const [text, setText] = useState('draft');
+    renders({ route, tray, actions, value, text });
+    return <TextInput value={text} onChangeText={setText} />;
+  }
+  const actions = <Actions />;
+  const render = (value = 'initial', title = 'Form') => (
+    <ValueContext.Provider value={value}>
+      <Tray.Provider>
+        <Observer />
+        {actions}
+        <Tray.Stack>
+          <Tray.Screen name="form" component={Content} options={{ title }} />
+          <Tray.Screen name="preview" component={Preview} />
+        </Tray.Stack>
+      </Tray.Provider>
+    </ValueContext.Provider>
+  );
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(render());
+  });
+  const originalActions = navigation;
+  act(() => navigation.present('form'));
+  const originalRoute = renders.mock.calls[0]![0].route;
+  act(() => sheet(renderer).props.onSettle(1));
+  const content = sheet(renderer)
+    .findAllByType(View)
+    .find((view) => typeof view.props.onLayout === 'function')!;
+  act(() =>
+    content.props.onLayout({ nativeEvent: { layout: { height: 200 } } })
+  );
+  act(() => navigation.push('preview', { label: 'next' }));
+  act(() => mockCompletions.shift()!(true));
+  act(() => renderer.update(render('initial', 'Updated title')));
+  expect(renders).toHaveBeenCalledTimes(1);
+  expect(actionsRendered).toHaveBeenCalledTimes(1);
+  expect(navigation).toBe(originalActions);
+
+  act(() => renderer.root.findByType(TextInput).props.onChangeText('edited'));
+  expect(renders).toHaveBeenCalledTimes(2);
+  act(() => renderer.update(render('updated')));
+  expect(renders).toHaveBeenCalledTimes(3);
+  expect(renders).toHaveBeenLastCalledWith({
+    route: originalRoute,
+    tray: originalActions,
+    actions: originalActions,
+    value: 'updated',
+    text: 'edited',
+  });
+  act(() => navigation.back());
+  act(() => mockCompletions.shift()!(true));
+  expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
+  act(() => navigation.dismiss());
+  expect(renders).toHaveBeenCalledTimes(3);
+  expect(actionsRendered).toHaveBeenCalledTimes(1);
+  act(() => sheet(renderer).props.onSettle(0));
+  expect(renderer.root.findAllByType(Content)).toHaveLength(0);
+  expect(actionsRendered).toHaveBeenCalledTimes(1);
+  act(() => renderer.unmount());
+});
+
+test('notifies state consumers only when their selection changes', () => {
+  const presented = jest.fn();
+  const depth = jest.fn();
+  const route = jest.fn();
+  function Presented() {
+    presented(Tray.useTrayState((state) => state.isPresented));
+    return null;
+  }
+  function Depth() {
+    depth(Tray.useTrayState((state) => state.depth));
+    return null;
+  }
+  function Route() {
+    route(Tray.useTrayState((state) => state.route));
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Presented />
+        <Depth />
+        <Route />
+        {stack()}
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  expect(presented.mock.calls).toEqual([[false], [true]]);
+  expect(depth.mock.calls).toEqual([[0], [1]]);
+  expect(route).toHaveBeenCalledTimes(2);
+
+  act(() => navigation.push('preview', { label: 'first' }));
+  act(() => mockCompletions.shift()!(true));
+  const previousRoute = navigationState.route;
+  act(() => navigation.replace('preview', { label: 'replacement' }));
+  act(() => mockCompletions.shift()!(true));
+  expect(presented).toHaveBeenCalledTimes(2);
+  expect(depth.mock.calls).toEqual([[0], [1], [2]]);
+  expect(route).toHaveBeenCalledTimes(4);
+  expect(route).toHaveBeenLastCalledWith(navigationState.route);
+  expect(navigationState.route).not.toBe(previousRoute);
+  expect(navigationState.route?.params).toEqual({ label: 'replacement' });
+
+  act(() => navigation.back());
+  act(() => mockCompletions.shift()!(true));
+  act(() => navigation.dismiss());
+  expect(presented).toHaveBeenCalledTimes(2);
+  expect(depth.mock.calls).toEqual([[0], [1], [2], [1]]);
+  expect(route).toHaveBeenCalledTimes(5);
+  act(() => sheet(renderer).props.onSettle(0));
+  expect(presented.mock.calls).toEqual([[false], [true], [false]]);
+  expect(depth.mock.calls).toEqual([[0], [1], [2], [1], [0]]);
+  expect(route).toHaveBeenCalledTimes(6);
+  expect(route).toHaveBeenLastCalledWith(undefined);
+  act(() => renderer.unmount());
+});
+
+test('caches object selections, accepts changed selectors, and unsubscribes removed consumers', () => {
+  const selected = jest.fn();
+  function Selection({ field }: { field: 'depth' | 'isPresented' }) {
+    selected(Tray.useTrayState((state) => ({ value: state[field] })));
+    return null;
+  }
+  const render = (field?: 'depth' | 'isPresented') => (
+    <Tray.Provider>
+      <Observer />
+      {field && <Selection field={field} />}
+      {stack()}
+    </Tray.Provider>
+  );
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(render('depth'));
+  });
+  expect(selected).toHaveBeenLastCalledWith({ value: 0 });
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  expect(selected).toHaveBeenLastCalledWith({ value: 1 });
+  act(() => renderer.update(render('isPresented')));
+  expect(selected).toHaveBeenLastCalledWith({ value: true });
+  act(() => renderer.update(render()));
+  selected.mockClear();
+  act(() => navigation.dismiss());
+  act(() => sheet(renderer).props.onSettle(0));
+  expect(selected).not.toHaveBeenCalled();
+  act(() => renderer.unmount());
+});
+
+test('screen subscriptions read the current stack on mount and keep updating behind the memo boundary', () => {
+  const rendered = jest.fn();
+  function SubscribedForm() {
+    rendered(Tray.useTrayState((state) => state.depth));
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack>
+          <Tray.Screen name="form" component={SubscribedForm} />
+          <Tray.Screen name="preview" component={Preview} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  expect(rendered.mock.calls).toEqual([[1]]);
+  act(() => navigation.push('preview', { label: 'next' }));
+  act(() => mockCompletions.shift()!(true));
+  expect(rendered.mock.calls).toEqual([[1], [2]]);
+  act(() => navigation.back());
+  act(() => mockCompletions.shift()!(true));
+  expect(rendered.mock.calls).toEqual([[1], [2], [1]]);
+  act(() => renderer.unmount());
 });
 
 test('custom stack icons preserve Back and Close actions and accessibility', () => {
@@ -147,7 +342,7 @@ test('custom stack icons preserve Back and Close actions and accessibility', () 
   ).toHaveLength(1);
   expect(button('Back in tray').props.disabled).toBe(false);
   act(() => button('Back in tray').props.onPress());
-  expect(navigation.route?.name).toBe('form');
+  expect(navigationState.route?.name).toBe('form');
   act(() => mockCompletions.shift()!(true));
   act(() => button('Close tray').props.onPress());
   expect(sheet(renderer).props.index).toBe(0);
@@ -246,7 +441,7 @@ test.each(['floating', 'sheet'] as const)(
       paddingTop: 50,
       paddingBottom: 20,
     });
-    const page = renderer.root.findByType(Preview).parent!;
+    const page = renderer.root.findByType(Preview).parent!.parent!;
     expect(StyleSheet.flatten(page.props.style)).toMatchObject({
       height: window.height - 140,
     });
@@ -310,7 +505,9 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
   act(() => sheet(renderer).props.onSettle(1));
   act(() => navigation.push('form'));
   expect(
-    StyleSheet.flatten(renderer.root.findByType(Preview).parent!.props.style)
+    StyleSheet.flatten(
+      renderer.root.findByType(Preview).parent!.parent!.props.style
+    )
   ).toMatchObject({
     height: Dimensions.get('window').height - 140,
     width: Dimensions.get('window').width,
@@ -387,9 +584,9 @@ test('dismissal keeps content until native ack and an old ack cannot dismiss the
   act(() => oldSettled(0));
   expect(unmounted).toEqual(['form']);
   expect(onDismiss).toHaveBeenCalledTimes(1);
-  expect(navigation.route?.name).toBe('preview');
+  expect(navigationState.route?.name).toBe('preview');
   act(() => oldSettled(0));
-  expect(navigation.isPresented).toBe(true);
+  expect(navigationState.isPresented).toBe(true);
   expect(onDismiss).toHaveBeenCalledTimes(1);
   act(() => renderer.unmount());
 });
@@ -408,7 +605,7 @@ test('rejects missing screens before opening a native sheet', () => {
     // @ts-expect-error Also exercise the runtime guard for untyped callers.
     navigation.present('missing');
   }).toThrow('Unknown tray screen: missing');
-  expect(navigation.isPresented).toBe(false);
+  expect(navigationState.isPresented).toBe(false);
   act(() => renderer.unmount());
 });
 
@@ -419,14 +616,18 @@ test.each(['separate factories', 'the same factory'])(
       definition === 'the same factory' ? Tray : createTray<Routes>();
     let outer!: TrayNavigation<Routes>;
     let inner!: TrayNavigation<Routes>;
+    let outerState!: TrayState<Routes>;
+    let innerState!: TrayState<Routes>;
     const outerDismissed = jest.fn();
     const innerDismissed = jest.fn();
     function OuterObserver() {
       outer = Tray.useTray();
+      outerState = Tray.useTrayState((state) => state);
       return null;
     }
     function InnerObserver() {
       inner = InnerTray.useTray();
+      innerState = InnerTray.useTrayState((state) => state);
       return null;
     }
     let renderer!: TestRenderer.ReactTestRenderer;
@@ -448,9 +649,9 @@ test.each(['separate factories', 'the same factory'])(
     act(() => outerSettled(1));
     act(() => outer.push('preview', { label: 'outer' }));
     act(() => mockCompletions.shift()!(true));
-    expect(outer.depth).toBe(2);
-    expect(inner.depth).toBe(0);
-    expect(inner.isPresented).toBe(false);
+    expect(outerState.depth).toBe(2);
+    expect(innerState.depth).toBe(0);
+    expect(innerState.isPresented).toBe(false);
     act(() => outer.dismiss());
     act(() => outerSettled(0));
     expect(outerDismissed).toHaveBeenCalledTimes(1);
@@ -462,14 +663,14 @@ test.each(['separate factories', 'the same factory'])(
     act(() => mockCompletions.shift()!(true));
     act(() => outer.back());
     act(() => outerSettled(0));
-    expect(outer.depth).toBe(0);
-    expect(outer.isPresented).toBe(false);
-    expect(inner.depth).toBe(2);
-    expect(inner.route?.params).toEqual({ label: 'inner' });
+    expect(outerState.depth).toBe(0);
+    expect(outerState.isPresented).toBe(false);
+    expect(innerState.depth).toBe(2);
+    expect(innerState.route?.params).toEqual({ label: 'inner' });
     act(() => inner.back());
     act(() => mockCompletions.shift()!(true));
-    expect(inner.depth).toBe(1);
-    expect(inner.route?.name).toBe('form');
+    expect(innerState.depth).toBe(1);
+    expect(innerState.route?.name).toBe('form');
     expect(innerDismissed).not.toHaveBeenCalled();
     expect(outerDismissed).toHaveBeenCalledTimes(1);
     act(() => renderer.unmount());
@@ -538,7 +739,7 @@ test('validates missing declarations and accepts new declarations after a commit
   expect(() => navigation.present('preview', { label: 'missing' })).toThrow(
     'Unknown tray screen: preview'
   );
-  expect(navigation.isPresented).toBe(false);
+  expect(navigationState.isPresented).toBe(false);
   act(() => renderer.update(<ConfigurableTray />));
   act(() => navigation.present('preview', { label: 'available' }));
   expect(renderer.root.findAllByType(Preview)).toHaveLength(1);

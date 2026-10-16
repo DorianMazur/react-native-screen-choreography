@@ -21,6 +21,9 @@ export interface TrayNavigation<P extends TrayParamList> {
   back(): void;
   popToRoot(): void;
   dismiss(): void;
+}
+
+export interface TrayState<P extends TrayParamList> {
   readonly route: TrayRoute<P> | undefined;
   readonly depth: number;
   readonly isPresented: boolean;

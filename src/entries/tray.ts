@@ -10,4 +10,5 @@ export type {
   TrayScreenOptions,
   TrayScreenProps,
   TrayStackProps,
+  TrayState,
 } from '../tray/types';

@@ -1,13 +1,14 @@
 import React, {
   createContext,
+  memo,
   useCallback,
   useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
-  useReducer,
   useRef,
   useState,
+  useSyncExternalStore,
 } from 'react';
 import {
   AccessibilityInfo,
@@ -37,8 +38,8 @@ import { readTrayDeclaration } from './declarations';
 import { animateTrayValue } from './animation';
 import type { ResolvedTrayAnimation } from './animation';
 import type { TrayScreenMap } from './declarations';
-import { initialTrayState, trayReducer } from './stack';
 import type { TrayAction, TrayStackState } from './stack';
+import { createTrayStateStore } from './state';
 import type {
   TrayNavigation,
   TrayParamList,
@@ -47,6 +48,7 @@ import type {
   TrayScreenDeclarationProps,
   TrayScreenProps,
   TrayStackProps,
+  TrayState,
 } from './types';
 
 const DETENTS = [0, 'content'] as const;
@@ -55,12 +57,34 @@ const HEADER_HEIGHT = 70;
 /** Call outside render to preserve the provider and screen identities. */
 export function createTray<P extends TrayParamList>() {
   const Context = createContext<TrayNavigation<P> | null>(null);
+  const StateContext = createContext<ReturnType<
+    typeof createTrayStateStore<P>
+  > | null>(null);
 
   function useTray(): TrayNavigation<P> {
     const tray = useContext(Context);
     if (!tray)
       throw new Error('useTray must be used inside its Tray.Provider.');
     return tray;
+  }
+
+  function useTrayState<T>(selector: (state: TrayState<P>) => T): T {
+    const store = useContext(StateContext);
+    if (!store)
+      throw new Error('useTrayState must be used inside its Tray.Provider.');
+    const getSnapshot = useMemo(() => {
+      let snapshot: TrayState<P> | undefined;
+      let selected: T;
+      return () => {
+        const next = store.getSnapshot();
+        if (next !== snapshot) {
+          selected = selector(next);
+          snapshot = next;
+        }
+        return selected;
+      };
+    }, [store, selector]);
+    return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
   }
 
   function Stack(_props: TrayStackProps): React.ReactElement | null {
@@ -75,7 +99,13 @@ export function createTray<P extends TrayParamList>() {
 
   function Provider({ children }: TrayProviderProps) {
     const declaration = readTrayDeclaration<P>(children, Stack, Screen);
-    const [state, dispatch] = useReducer(trayReducer, initialTrayState);
+    const [store] = useState(() => createTrayStateStore<P>());
+    const state = useSyncExternalStore(
+      store.subscribe,
+      store.getStackSnapshot,
+      store.getStackSnapshot
+    );
+    const { dispatch } = store;
     const screens = useRef(declaration.screens);
     const onDismiss = useRef(declaration.options.onDismiss);
     for (const entry of [
@@ -98,7 +128,7 @@ export function createTray<P extends TrayParamList>() {
       screens.current = declaration.screens;
       onDismiss.current = declaration.options.onDismiss;
     });
-    const commands = useMemo(() => {
+    const tray = useMemo<TrayNavigation<P>>(() => {
       const destination =
         (type: 'present' | 'push' | 'replace') =>
         (name: string, params?: unknown) => {
@@ -124,18 +154,8 @@ export function createTray<P extends TrayParamList>() {
           dispatch({ type: 'dismiss' });
         },
       };
-    }, []);
-    const tray = useMemo<TrayNavigation<P>>(
-      () => ({
-        ...commands,
-        route: state.entries[state.entries.length - 1] as
-          | TrayRoute<P>
-          | undefined,
-        depth: state.entries.length,
-        isPresented: state.phase !== 'closed',
-      }),
-      [commands, state.entries, state.phase]
-    );
+    }, [dispatch]);
+    const isPresented = state.phase !== 'closed';
 
     const notified = useRef(0);
     useEffect(() => {
@@ -146,44 +166,46 @@ export function createTray<P extends TrayParamList>() {
     }, [state.dismissals]);
 
     useEffect(() => {
-      if (!tray.isPresented) return;
+      if (!isPresented) return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         if (Keyboard.isVisible()) Keyboard.dismiss();
-        else commands.back();
+        else tray.back();
         return true;
       });
       return () => listener.remove();
-    }, [commands, tray.isPresented]);
+    }, [tray, isPresented]);
 
     return (
       <Context.Provider value={tray}>
-        <View
-          style={styles.app}
-          collapsable={false}
-          accessibilityElementsHidden={tray.isPresented}
-          importantForAccessibility={
-            tray.isPresented ? 'no-hide-descendants' : 'auto'
-          }
-        >
-          {declaration.content}
-        </View>
-        {tray.isPresented && (
-          <ChoreographyOverlay>
-            <TrayHost
-              key={state.session}
-              {...declaration.options}
-              screens={declaration.screens}
-              state={state}
-              dispatch={dispatch}
-              tray={tray}
-            />
-          </ChoreographyOverlay>
-        )}
+        <StateContext.Provider value={store}>
+          <View
+            style={styles.app}
+            collapsable={false}
+            accessibilityElementsHidden={isPresented}
+            importantForAccessibility={
+              isPresented ? 'no-hide-descendants' : 'auto'
+            }
+          >
+            {declaration.content}
+          </View>
+          {isPresented && (
+            <ChoreographyOverlay>
+              <TrayHost
+                key={state.session}
+                {...declaration.options}
+                screens={declaration.screens}
+                state={state}
+                dispatch={dispatch}
+                tray={tray}
+              />
+            </ChoreographyOverlay>
+          )}
+        </StateContext.Provider>
       </Context.Provider>
     );
   }
 
-  return { Provider, Stack, Screen, useTray };
+  return { Provider, Stack, Screen, useTray, useTrayState };
 }
 
 function TrayHost<P extends TrayParamList>({
@@ -471,7 +493,11 @@ function TrayHost<P extends TrayParamList>({
                         fullScreen={entryFullScreen}
                         width={width - (entryFullScreen ? 0 : 2 * margin)}
                       >
-                        <Component route={entry as TrayRoute<P>} tray={tray} />
+                        <MemoTrayContent
+                          component={Component}
+                          route={entry as TrayRoute<P>}
+                          tray={tray}
+                        />
                       </TrayPage>
                     );
                   })}
@@ -484,6 +510,18 @@ function TrayHost<P extends TrayParamList>({
     </View>
   );
 }
+
+function TrayContent<P extends TrayParamList>({
+  component: Component,
+  route,
+  tray,
+}: TrayScreenProps<P> & {
+  component: React.ComponentType<TrayScreenProps<P>>;
+}) {
+  return <Component route={route} tray={tray} />;
+}
+
+const MemoTrayContent = memo(TrayContent) as typeof TrayContent;
 
 function TrayPage({
   active,
