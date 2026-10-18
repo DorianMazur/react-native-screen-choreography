@@ -1,6 +1,7 @@
 import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { PreparationTrace } from '../core/preparationTrace';
-import { useCallback, useContext, useEffect } from 'react';
+import { useCallback, useContext, useEffect, useState } from 'react';
+import { useStableCallback } from './useStableCallback';
 import type { CommitBackNavigation } from '../core/navigationCommit';
 import { Platform } from 'react-native';
 import {
@@ -632,21 +633,21 @@ export function useChoreographyNavigator({
     ]
   );
 
-  return {
-    navigate: (request: PendingNavigationRequest) => {
-      const observer = controller.observeNavigation(
-        currentScreenId,
-        request.targetScreenId,
-        request.options?.onNavigationEvent
-      );
-      if (!observer) return choreographyNavigate(request, true);
-      return choreographyNavigate({ ...request, observer }, true).catch(
-        (error: unknown) => {
-          observer?.emit({ status: 'failed', finished: true, error });
-          throw error;
-        }
-      );
-    },
-    goBack: choreographyGoBack,
-  };
+  const navigate = useStableCallback((request: PendingNavigationRequest) => {
+    const observer = controller.observeNavigation(
+      currentScreenId,
+      request.targetScreenId,
+      request.options?.onNavigationEvent
+    );
+    if (!observer) return choreographyNavigate(request, true);
+    return choreographyNavigate({ ...request, observer }, true).catch(
+      (error: unknown) => {
+        observer?.emit({ status: 'failed', finished: true, error });
+        throw error;
+      }
+    );
+  });
+  const goBack = useStableCallback(choreographyGoBack);
+  const [commands] = useState(() => ({ navigate, goBack }));
+  return commands;
 }
