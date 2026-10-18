@@ -3,6 +3,7 @@ export type {
   TrayAnimationConfig,
   TrayHeaderIconProps,
   TrayNavigation,
+  TrayNavigationOptions,
   TrayParamList,
   TrayProviderProps,
   TrayRoute,

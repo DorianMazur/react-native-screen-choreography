@@ -2,6 +2,8 @@ export interface TrayEntry {
   key: string;
   name: string;
   params: unknown;
+  groupId?: string;
+  sharedFrom?: string;
 }
 export type TrayCommand =
   | {
@@ -9,6 +11,7 @@ export type TrayCommand =
         type: K;
         name: string;
         params: unknown;
+        groupId?: string;
       };
     }['present' | 'push' | 'replace']
   | { type: 'back' }
@@ -20,7 +23,14 @@ export interface TrayStackState {
   revision: number;
   phase: 'closed' | 'opening' | 'open' | 'closing';
   entries: TrayEntry[];
+  preparation?: {
+    id: number;
+    command: TrayCommand;
+    groupId: string;
+    from: string;
+  };
   transition?: {
+    groupId?: string;
     id: number;
     from: string;
     to: string;
@@ -44,10 +54,16 @@ export type TrayAction =
   | TrayCommand
   | { type: 'settled'; session: number; index: number }
   | { type: 'snapped'; session: number; index: number }
-  | { type: 'transitionEnd'; session: number; id: number };
+  | { type: 'transitionEnd'; session: number; id: number }
+  | { type: 'prepared'; session: number; id: number };
 
 function drain(state: TrayStackState): TrayStackState {
-  if (state.phase !== 'open' || state.transition || !state.queue.length)
+  if (
+    state.phase !== 'open' ||
+    state.preparation ||
+    state.transition ||
+    !state.queue.length
+  )
     return state;
   const [command, ...queue] = state.queue;
   return command ? trayReducer({ ...state, queue }, command) : state;
@@ -55,8 +71,22 @@ function drain(state: TrayStackState): TrayStackState {
 
 export function trayReducer(
   state: TrayStackState,
-  action: TrayAction
+  action: TrayAction,
+  prepared = false
 ): TrayStackState {
+  if (action.type === 'prepared') {
+    if (
+      action.session !== state.session ||
+      action.id !== state.preparation?.id ||
+      state.phase !== 'open'
+    )
+      return state;
+    return trayReducer(
+      { ...state, preparation: undefined },
+      state.preparation.command,
+      true
+    );
+  }
   if (action.type === 'transitionEnd') {
     if (action.session !== state.session || action.id !== state.transition?.id)
       return state;
@@ -67,7 +97,7 @@ export function trayReducer(
       return state;
     if (action.type === 'snapped') {
       return action.index === 0
-        ? { ...state, phase: 'closing', queue: [] }
+        ? { ...state, phase: 'closing', preparation: undefined, queue: [] }
         : drain({ ...state, phase: 'open' });
     }
     if (action.index === 0 && state.phase === 'closing') {
@@ -89,7 +119,7 @@ export function trayReducer(
   if (action.type === 'dismiss') {
     return state.phase === 'closed'
       ? state
-      : { ...state, phase: 'closing', queue: [] };
+      : { ...state, phase: 'closing', preparation: undefined, queue: [] };
   }
   if (action.type === 'present' && state.phase === 'closed') {
     const revision = state.revision + 1;
@@ -107,10 +137,27 @@ export function trayReducer(
   if (state.phase === 'closing') {
     return action.type === 'present' ? { ...state, queue: [action] } : state;
   }
-  if (state.phase === 'opening' || state.transition) {
+  if (state.phase === 'opening' || state.preparation || state.transition) {
     return { ...state, queue: [...state.queue, action] };
   }
   const from = state.entries[state.entries.length - 1]!;
+  const groupId =
+    action.type === 'push'
+      ? action.groupId
+      : (action.type === 'back' || action.type === 'popToRoot') &&
+          from.sharedFrom ===
+            state.entries[action.type === 'back' ? state.entries.length - 2 : 0]
+              ?.key
+        ? from.groupId
+        : undefined;
+  if (groupId && !prepared) {
+    const id = state.revision + 1;
+    return {
+      ...state,
+      revision: id,
+      preparation: { id, command: action, groupId, from: from.key },
+    };
+  }
   const revision = state.revision + 1;
   let entries: TrayEntry[];
   let direction: 1 | -1 = 1;
@@ -127,6 +174,7 @@ export function trayReducer(
       key: String(revision),
       name: action.name,
       params: action.params,
+      ...(groupId ? { groupId, sharedFrom: from.key } : {}),
     };
     entries =
       action.type === 'present'
@@ -144,6 +192,7 @@ export function trayReducer(
     revision,
     entries,
     transition: {
+      ...(groupId ? { groupId } : {}),
       id: revision,
       from: from.key,
       to: entries[entries.length - 1]!.key,

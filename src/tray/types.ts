@@ -1,6 +1,5 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { ColorValue } from 'react-native';
-import type { WithTimingConfig } from 'react-native-reanimated';
 
 export type TrayParamList = Record<string, unknown>;
 export type TrayRoute<P extends TrayParamList, N extends keyof P = keyof P> = {
@@ -13,10 +12,21 @@ type Destination<P extends TrayParamList> = {
     : [name: K, params: P[K]];
 }[keyof P & string];
 
+export interface TrayNavigationOptions {
+  /** Match this group on the current and pushed screens. Back reverses it. */
+  groupId: string;
+}
+
+type PushDestination<P extends TrayParamList> = {
+  [K in keyof P & string]: undefined extends P[K]
+    ? [name: K, params?: P[K], options?: TrayNavigationOptions]
+    : [name: K, params: P[K], options?: TrayNavigationOptions];
+}[keyof P & string];
+
 export interface TrayNavigation<P extends TrayParamList> {
   /** Open a new root. While closing, wait for native dismissal first. */
   present(...destination: Destination<P>): void;
-  push(...destination: Destination<P>): void;
+  push(...destination: PushDestination<P>): void;
   replace(...destination: Destination<P>): void;
   back(): void;
   popToRoot(): void;
@@ -71,8 +81,6 @@ export type TrayAnimationConfig =
       type: 'timing';
       /** Milliseconds. Defaults to 240. */
       duration?: number;
-      /** Defaults to cubic ease-out. */
-      easing?: WithTimingConfig['easing'];
     }
   | {
       type: 'spring';
@@ -96,7 +104,7 @@ export interface TrayStackProps {
   renderBackIcon?: (props: TrayHeaderIconProps) => ReactNode;
   /** Icon content only. The stack owns the Close button and its accessibility. */
   renderCloseIcon?: (props: TrayHeaderIconProps) => ReactNode;
-  /** Card resizing and page crossfades. Native dragging/dismissal is separate. */
+  /** Card resizing, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
   /** Called only after the native sheet confirms dismissal. */
   onDismiss?: () => void;

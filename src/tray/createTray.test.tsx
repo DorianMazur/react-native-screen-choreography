@@ -2,6 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import { Dimensions, StyleSheet, Text, TextInput, View } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
 import { createTray } from './createTray';
+import { useTrayKeyboard } from './useTrayKeyboard';
+import type { KeyboardHandler } from 'react-native-keyboard-controller';
 import type { TrayNavigation, TrayScreenProps, TrayState } from './types';
 
 const mockCompletions: Array<(finished: boolean) => void> = [];
@@ -21,7 +23,28 @@ jest.mock('react-native-reanimated', () => {
     withSpring: animate,
   };
 });
+let mockKeyboardHandlers: KeyboardHandler;
+jest.mock('react-native-keyboard-controller', () => ({
+  KeyboardController: {
+    isVisible: () => false,
+    state: () => ({ height: 0 }),
+  },
+  useKeyboardHandler: (handlers: KeyboardHandler) => {
+    mockKeyboardHandlers = handlers;
+  },
+}));
+jest.mock('react-native-teleport', () => ({
+  PortalProvider: ({ children }: { children: React.ReactNode }) => children,
+}));
+jest.mock('../native/NativeTransitionHost', () => ({
+  NativeTransitionHost: 'TransitionHost',
+}));
+jest.mock('../native/NativeChoreographyPreparation', () => ({
+  __esModule: true,
+  default: { install: jest.fn() },
+}));
 jest.mock('react-native-worklets', () => ({
+  scheduleOnUI: (fn: () => void) => fn(),
   scheduleOnRN: (fn: (...args: unknown[]) => void, ...args: unknown[]) =>
     fn(...args),
 }));
@@ -352,6 +375,51 @@ test('custom stack icons preserve Back and Close actions and accessibility', () 
   act(() => renderer.unmount());
 });
 
+test('keeps the outgoing title until settlement while exposing only the current heading', () => {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        {stack()}
+      </Tray.Provider>
+    );
+  });
+  const headings = () =>
+    renderer.root
+      .findAllByType(Text)
+      .filter((node) => node.props.accessibilityRole === 'header')
+      .map((node) => node.props.children);
+  const outgoing = () =>
+    renderer.root
+      .findAllByType(Text)
+      .filter((node) => node.props.accessibilityElementsHidden)
+      .map((node) => node.props.children);
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  act(() => navigation.push('preview', { label: 'next' }));
+  expect(headings()).toEqual(['Preview']);
+  expect(outgoing()).toEqual(['Form']);
+  const forwardComplete = mockCompletions.shift()!;
+  act(() => forwardComplete(true));
+  expect(outgoing()).toEqual([]);
+
+  act(() => navigation.back());
+  expect(headings()).toEqual(['Form']);
+  expect(outgoing()).toEqual(['Preview']);
+  act(() => forwardComplete(true));
+  expect(outgoing()).toEqual(['Preview']);
+  act(() => mockCompletions.shift()!(true));
+  expect(outgoing()).toEqual([]);
+
+  act(() => navigation.replace('preview', { label: 'root' }));
+  expect(headings()).toEqual(['Preview']);
+  expect(outgoing()).toEqual(['Form']);
+  act(() => mockCompletions.shift()!(true));
+  expect(outgoing()).toEqual([]);
+  act(() => renderer.unmount());
+});
+
 test('ignores invalid measurements and keeps a stable viewport while resizing', () => {
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
@@ -397,6 +465,119 @@ test('ignores invalid measurements and keeps a stable viewport while resizing', 
   );
   act(() => renderer.unmount());
 });
+
+test('keyboard frames update shared geometry without rerendering React content', () => {
+  let keyboard!: ReturnType<typeof useTrayKeyboard>;
+  const renders = jest.fn();
+  function KeyboardObserver() {
+    keyboard = useTrayKeyboard();
+    renders();
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(<KeyboardObserver />);
+  });
+  const frames = renders.mock.calls.length;
+  const event = { height: 150, progress: 0.5, duration: 250, target: 1 };
+  act(() => mockKeyboardHandlers.onMove!(event));
+  expect(keyboard.height.value).toBe(150);
+  expect(keyboard.progress.value).toBe(0.5);
+  expect(keyboard.layoutHeight).toBe(0);
+  act(() =>
+    mockKeyboardHandlers.onInteractive!({
+      ...event,
+      height: 75,
+      progress: 0.25,
+    })
+  );
+  expect(keyboard.height.value).toBe(75);
+  expect(renders).toHaveBeenCalledTimes(frames);
+  act(() =>
+    mockKeyboardHandlers.onEnd!({ ...event, height: 300, progress: 1 })
+  );
+  expect(keyboard.layoutHeight).toBe(300);
+  act(() =>
+    mockKeyboardHandlers.onStart!({ ...event, height: 0, progress: 0 })
+  );
+  expect(keyboard.layoutHeight).toBe(0);
+  expect(keyboard.height.value).toBe(300);
+  act(() => mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 }));
+  expect(keyboard.layoutHeight).toBe(0);
+  expect(keyboard.height.value).toBe(0);
+  act(() => renderer.unmount());
+});
+
+test.each(['floating', 'sheet', 'fullScreen'] as const)(
+  'replaces the bottom safe area with the keyboard edge for %s',
+  (mode) => {
+    const dimensions = {
+      window: Dimensions.get('window'),
+      screen: Dimensions.get('screen'),
+    };
+    Dimensions.set({
+      window: { ...dimensions.window, height: 800 },
+      screen: { ...dimensions.screen, height: 800 },
+    });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      act(() => {
+        renderer = TestRenderer.create(
+          <Tray.Provider>
+            <Observer />
+            <Tray.Stack
+              appearance={mode === 'sheet' ? 'sheet' : 'floating'}
+              topInset={50}
+              bottomInset={20}
+            >
+              <Tray.Screen
+                name="form"
+                component={Form}
+                options={{
+                  presentation: mode === 'fullScreen' ? 'fullScreen' : 'tray',
+                }}
+              />
+            </Tray.Stack>
+          </Tray.Provider>
+        );
+      });
+      act(() => navigation.present('form'));
+      const content = () =>
+        sheet(renderer)
+          .findAllByType(View)
+          .find((view) => typeof view.props.onLayout === 'function')!;
+      const card = () =>
+        StyleSheet.flatten(content().parent!.parent!.props.style);
+      act(() =>
+        content().props.onLayout({ nativeEvent: { layout: { height: 200 } } })
+      );
+      const event = { height: 300, progress: 1, duration: 250, target: 1 };
+      expect(card().marginBottom).toBe(mode === 'floating' ? 32 : 0);
+      act(() => mockKeyboardHandlers.onEnd!(event));
+      expect(card().marginBottom).toBe(mode === 'floating' ? 12 : 0);
+      expect(sheet(renderer).props.style.bottom).toBe(300);
+      expect(card().height).toBe(
+        mode === 'fullScreen' ? 500 : mode === 'sheet' ? 180 : 200
+      );
+      if (mode === 'fullScreen')
+        expect(
+          StyleSheet.flatten(pageFor(renderer, Form).props.style).height
+        ).toBe(380);
+      act(() =>
+        mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 })
+      );
+      expect(card().marginBottom).toBe(mode === 'floating' ? 32 : 0);
+      expect(card().height).toBe(mode === 'fullScreen' ? 800 : 200);
+      expect(sheet(renderer).props.style.bottom).toBe(0);
+      expect(renderer.root.findByProps({ testID: 'draft' }).props.value).toBe(
+        'draft'
+      );
+    } finally {
+      if (renderer) act(() => renderer.unmount());
+      Dimensions.set(dimensions);
+    }
+  }
+);
 
 test.each([
   { appearance: 'floating', topInset: 0 },
@@ -449,7 +630,7 @@ test.each([
     expect(content().props.style).toEqual({
       paddingBottom: 20,
     });
-    const page = renderer.root.findByType(Preview).parent!.parent!;
+    const page = pageFor(renderer, Preview);
     expect(StyleSheet.flatten(page.props.style)).toMatchObject({
       height: window.height - topInset - 90,
     });
@@ -493,10 +674,16 @@ test('uses the new transition start visibility for pushed and retained Back page
       </Tray.Provider>
     );
   });
-  const opacity = (component: React.ElementType) =>
-    StyleSheet.flatten(
-      renderer.root.findByType(component).parent!.parent!.props.style
-    ).opacity;
+  const opacity = (component: React.ElementType) => {
+    const page = pageFor(renderer, component);
+    let node = renderer.root.findByType(component).parent;
+    let value = 1;
+    while (node && node !== page.parent) {
+      value *= StyleSheet.flatten(node.props.style)?.opacity ?? 1;
+      node = node.parent;
+    }
+    return value;
+  };
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   expect(opacity(Form)).toBe(1);
@@ -517,6 +704,30 @@ test('uses the new transition start visibility for pushed and retained Back page
   act(() => mockCompletions.shift()!(true));
   expect(opacity(Form)).toBe(1);
   expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
+  act(() => renderer.unmount());
+});
+
+test('gates a shared destination before its layout is ready without releasing the source', async () => {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        {stack()}
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  await act(async () => {
+    navigation.push('preview', { label: 'shared' }, { groupId: 'avatar' });
+  });
+  const target = pageFor(renderer, Preview);
+  expect(StyleSheet.flatten(target.props.style).opacity).toBe(0);
+  expect(target.props.pointerEvents).toBe('none');
+  expect(target.props.accessibilityElementsHidden).toBe(true);
+  expect(renderer.root.findAllByType(Form)).toHaveLength(1);
+  expect(mockCompletions).toHaveLength(0);
   act(() => renderer.unmount());
 });
 
@@ -555,9 +766,7 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
   act(() => sheet(renderer).props.onSettle(1));
   act(() => navigation.push('form'));
   expect(
-    StyleSheet.flatten(
-      renderer.root.findByType(Preview).parent!.parent!.props.style
-    )
+    StyleSheet.flatten(pageFor(renderer, Preview).props.style)
   ).toMatchObject({
     height: Dimensions.get('window').height - 140,
     width: Dimensions.get('window').width,
@@ -857,3 +1066,13 @@ test('rejects replacing the component of a live screen', () => {
     act(() => renderer.unmount());
   }
 });
+
+function pageFor(
+  renderer: TestRenderer.ReactTestRenderer,
+  component: React.ElementType
+) {
+  let node = renderer.root.findByType(component).parent!;
+  while (node.props.accessibilityElementsHidden === undefined)
+    node = node.parent!;
+  return node;
+}

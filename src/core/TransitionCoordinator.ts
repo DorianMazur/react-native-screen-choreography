@@ -8,6 +8,7 @@ import {
   type FabricLayoutEntry,
   type FabricLayoutSnapshot,
 } from './fabricLayout';
+import type { ScreenGeometry } from './ScreenGeometryContext';
 import type { PreparationTrace } from './preparationTrace';
 import { type SharedValue } from 'react-native-reanimated';
 import type {
@@ -60,6 +61,7 @@ export class TransitionCoordinator {
       isScreenReady: (screenId: string) => boolean;
       /** Hold sessions in `preparing` until the native host reports attachment. */
       waitsForAttachment?: boolean;
+      screenGeometry?: ScreenGeometry;
     }
   ) {
     this.registry = registry;
@@ -81,7 +83,47 @@ export class TransitionCoordinator {
         screenRef,
       });
     }
+    if (this.nativeReadiness?.screenGeometry) {
+      for (const screenId of new Set(
+        elements.map((element) => element.screenId)
+      )) {
+        const ref = this.nativeReadiness.getScreenRef(screenId)!;
+        result.push({ id: JSON.stringify([screenId]), ref, screenRef: ref });
+      }
+    }
     return result;
+  }
+
+  private normalizeLayout<T extends FabricLayoutSnapshot>(
+    snapshot: T | null,
+    elements: RegisteredElement[]
+  ): T | null {
+    const geometry = this.nativeReadiness?.screenGeometry;
+    if (!snapshot || !geometry) return snapshot;
+    const metrics = new Map<string, ElementMetrics>();
+    for (const element of elements) {
+      const key = JSON.stringify([
+        element.screenId,
+        element.groupId,
+        element.id,
+      ]);
+      const frame = snapshot.metrics.get(key);
+      const screen = snapshot.metrics.get(JSON.stringify([element.screenId]));
+      const origin = geometry(element.screenId);
+      if (
+        !frame ||
+        !screen ||
+        !origin ||
+        ![origin.x, origin.y].every(Number.isFinite)
+      )
+        return null;
+      metrics.set(key, {
+        ...frame,
+        pageX: frame.pageX - screen.pageX + origin.x,
+        pageY: frame.pageY - screen.pageY + origin.y,
+      });
+    }
+    return { ...snapshot, metrics };
   }
 
   private elementsAreCurrent(elements: RegisteredElement[]): boolean {
@@ -213,14 +255,17 @@ export class TransitionCoordinator {
     const elements = this.registry.getGroupElements(groupId, screenId);
     const entries = this.entries(elements);
     if (!entries?.length) return;
-    const snapshot = await requestFabricLayout({
-      entries,
-      isCurrent: () =>
-        this.operationGeneration === generation &&
-        this.sourceCaptureGeneration === captureGeneration &&
-        this.elementsAreCurrent(elements),
-      cancellers: this.preparationCancellers,
-    });
+    const snapshot = this.normalizeLayout(
+      await requestFabricLayout({
+        entries,
+        isCurrent: () =>
+          this.operationGeneration === generation &&
+          this.sourceCaptureGeneration === captureGeneration &&
+          this.elementsAreCurrent(elements),
+        cancellers: this.preparationCancellers,
+      }),
+      elements
+    );
     if (
       !snapshot ||
       !snapshot.isCurrent() ||
@@ -243,13 +288,16 @@ export class TransitionCoordinator {
     );
     const entries = this.entries(elements);
     if (!entries) return;
-    const snapshot = await requestFabricLayout({
-      entries,
-      isCurrent: () =>
-        this.activeSession?.id === session.id &&
-        this.elementsAreCurrent(elements),
-      cancellers: this.preparationCancellers,
-    });
+    const snapshot = this.normalizeLayout(
+      await requestFabricLayout({
+        entries,
+        isCurrent: () =>
+          this.activeSession?.id === session.id &&
+          this.elementsAreCurrent(elements),
+        cancellers: this.preparationCancellers,
+      }),
+      elements
+    );
     if (
       !snapshot ||
       !snapshot.isCurrent() ||
@@ -493,7 +541,10 @@ export class TransitionCoordinator {
       isCurrent,
       cancellers: this.preparationCancellers,
     });
-    const snapshot = capture instanceof Promise ? await capture : capture;
+    const snapshot = this.normalizeLayout(
+      capture instanceof Promise ? await capture : capture,
+      endpoints
+    );
     let session: TransitionSessionData | null = null;
     if (snapshot && snapshot.isCurrent() && isCurrent()) {
       const pairs: ElementTransitionPair[] = presentations.flatMap((pair) => {
@@ -560,7 +611,10 @@ export class TransitionCoordinator {
           current.pairs.map((pair) => pair.target)
         );
         if (!targetEntries) return;
-        const updated = captureFabricLayout(targetEntries);
+        const updated = this.normalizeLayout(
+          captureFabricLayout(targetEntries),
+          current.pairs.map((pair) => pair.target)
+        );
         if (!updated) return;
         let changed = false;
         const nextPairs = current.pairs.map((pair) => {

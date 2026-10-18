@@ -24,12 +24,12 @@ export function resolveTrayAnimation(animation = DEFAULT_ANIMATION) {
   }
   if (animation.type !== 'timing')
     throw new Error('Tray.Stack animation type must be "timing" or "spring".');
-  const { duration = 240, easing = Easing.out(Easing.cubic) } = animation;
+  const { duration = 240 } = animation;
   if (!Number.isFinite(duration) || duration < 0)
     throw new Error(
       'Tray.Stack animation duration must be a finite number greater than or equal to zero.'
     );
-  return { type: 'timing', duration, easing } as const;
+  return { type: 'timing', duration } as const;
 }
 
 export type ResolvedTrayAnimation = ReturnType<typeof resolveTrayAnimation>;
@@ -55,7 +55,7 @@ export function animateTrayValue(
         value,
         {
           duration: animation.duration,
-          easing: animation.easing,
+          easing: Easing.out(Easing.cubic),
           reduceMotion: ReduceMotion.System,
         },
         onComplete

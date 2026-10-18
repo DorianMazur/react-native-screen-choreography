@@ -1,6 +1,7 @@
 import type { PreparationTrace } from '../core/preparationTrace';
 import React, {
   useCallback,
+  useContext,
   useEffect,
   useLayoutEffect,
   useMemo,
@@ -56,6 +57,7 @@ import { NavigationSessionController } from '../core/NavigationSessionController
 import { useReverseTransitionCommit } from '../hooks/useReverseTransitionCommit';
 import { scheduleOnUI } from 'react-native-worklets';
 import { TRANSITION_LAYER_Z_INDEX } from '../core/layers';
+import { ScreenGeometryContext } from '../core/ScreenGeometryContext';
 import {
   PRESENTATION_TIMEOUT_MS,
   type PresentationFailureDetails,
@@ -132,6 +134,7 @@ export function ChoreographyProvider({
   onTransitionEnd,
   onPreparationTrace,
 }: ChoreographyProviderProps) {
+  const screenGeometry = useContext(ScreenGeometryContext);
   const progress = useSharedValue(0);
   const reducedMotion = useReducedMotion();
   const progressOwner = useSharedValue(0);
@@ -282,6 +285,7 @@ export function ChoreographyProvider({
         isScreenReady: (screenId) =>
           screenReadinessRef.current.isReady(screenId),
         waitsForAttachment: hostsReportAttachment,
+        screenGeometry,
       }
     );
   }

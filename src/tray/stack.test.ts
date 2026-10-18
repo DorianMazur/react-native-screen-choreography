@@ -178,3 +178,80 @@ test('no-op popToRoot drains queued commands and stale animation completion is i
     })
   ).toBe(state);
 });
+
+test('captures the source before mounting a shared destination and remembers the return group', () => {
+  const root = opened();
+  const pending = trayReducer(root, {
+    type: 'push',
+    name: 'preview',
+    params: 1,
+    groupId: 'person',
+  });
+  expect(pending.entries).toBe(root.entries);
+  expect(pending.transition).toBeUndefined();
+  const queued = trayReducer(pending, { type: 'back' });
+  const pushed = trayReducer(queued, {
+    type: 'prepared',
+    session: pending.session,
+    id: pending.preparation!.id,
+  });
+  expect(pushed.transition?.groupId).toBe('person');
+  expect(pushed.entries.at(-1)?.sharedFrom).toBe(root.entries[0]!.key);
+  const returning = finish(pushed);
+  expect(returning.preparation?.groupId).toBe('person');
+  expect(returning.entries).toBe(pushed.entries);
+  const back = trayReducer(returning, {
+    type: 'prepared',
+    session: returning.session,
+    id: returning.preparation!.id,
+  });
+  expect(back.transition).toMatchObject({ groupId: 'person', direction: -1 });
+  expect(back.transition?.retained).toEqual([pushed.entries[1]]);
+  expect(finish(back).entries).toEqual(root.entries);
+});
+
+test('dismissal rejects late shared preparation and does not reopen its destination', () => {
+  const pending = trayReducer(opened(), {
+    type: 'push',
+    name: 'preview',
+    params: 1,
+    groupId: 'person',
+  });
+  const closing = trayReducer(pending, { type: 'dismiss' });
+  expect(closing.preparation).toBeUndefined();
+  expect(
+    trayReducer(closing, {
+      type: 'prepared',
+      session: pending.session,
+      id: pending.preparation!.id,
+    })
+  ).toBe(closing);
+  const closed = trayReducer(closing, {
+    type: 'settled',
+    session: closing.session,
+    index: 0,
+  });
+  expect(closed.entries).toEqual([]);
+});
+
+test('popToRoot only shares elements when the root is the original source', () => {
+  const middle = finish(
+    trayReducer(opened(), { type: 'push', name: 'middle', params: undefined })
+  );
+  const pending = trayReducer(middle, {
+    type: 'push',
+    name: 'preview',
+    params: undefined,
+    groupId: 'person',
+  });
+  const pushed = finish(
+    trayReducer(pending, {
+      type: 'prepared',
+      session: pending.session,
+      id: pending.preparation!.id,
+    })
+  );
+  const root = trayReducer(pushed, { type: 'popToRoot' });
+  expect(root.preparation).toBeUndefined();
+  expect(root.transition?.groupId).toBeUndefined();
+});

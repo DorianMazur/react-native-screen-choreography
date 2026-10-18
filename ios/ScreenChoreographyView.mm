@@ -246,11 +246,17 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
     while (content.superview != nil && content.superview != window) content = content.superview;
     if (content.superview == window) below = content;
   }
+  UIView *enclosingForeground = self.superview;
+  while (enclosingForeground != nil) {
+    if ([enclosingForeground isKindOfClass:ScreenChoreographyWindowContainer.class] &&
+        ((ScreenChoreographyWindowContainer *)enclosingForeground).foreground) break;
+    enclosingForeground = enclosingForeground.superview;
+  }
   NSArray<UIView *> *siblings = window.subviews;
   for (UIView *view in siblings) {
     if (view == _windowContainer || ![view isKindOfClass:ScreenChoreographyWindowContainer.class]) continue;
     ScreenChoreographyWindowContainer *layer = (ScreenChoreographyWindowContainer *)view;
-    if (layer.foreground && !_foreground) continue;
+    if (layer.foreground && !_foreground && layer != enclosingForeground) continue;
     if (below == nil || [siblings indexOfObject:view] > [siblings indexOfObject:below]) below = view;
   }
   if (below != nil) {
@@ -363,8 +369,8 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 {
   [super finalizeUpdates:updateMask];
   const auto &viewProps = *std::static_pointer_cast<ScreenChoreographyViewProps const>(_props);
-  // Start attachment from the React mount; the UI command remains a bounded retry.
-  if (viewProps.active && !_foreground && _expectedHostNames.count > 0) {
+  // Only UI retries may replay readiness; replaying on layout re-enters Reanimated frame flushing.
+  if (viewProps.active && !_foreground && !_prepared && _expectedHostNames.count > 0) {
     [self prepare:[NSString stringWithUTF8String:_sessionId.c_str()]];
   }
 }

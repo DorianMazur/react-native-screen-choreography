@@ -23,7 +23,7 @@ Use these files as the source of truth:
 ## Repository Layout
 
 - `src/entries/`: export-only public entries (`index.ts`, `core.ts`, `expo-router.ts`); shared exports belong in `core.ts`
-- `src/entries/tray.ts` and `src/tray/`: optional Software Mansion sheet integration and its navigator-independent view stack. Keep sheet imports out of the other entries.
+- `src/entries/tray.ts` and `src/tray/`: optional Software Mansion sheet integration and its navigator-independent view stack. Keep sheet and keyboard-controller imports out of the other entries. Both are optional peers; core-only consumers must not need to install them.
 - `src/adapters/`: React Navigation and Expo Router hooks and `ChoreographyScreen` wrappers
 - `src/types.ts`: shared runtime and public types
 - `src/components/`: navigator-independent `ChoreographyProvider`, `ChoreographyScreenBase`, `SharedElement`
@@ -76,7 +76,7 @@ Current important exports include:
 
 ## Current Feature Boundaries
 
-- dynamic trays own a separate local stack, not shared-element navigation sessions. Retain each view once for Back; release popped views on Reanimated completion and the whole stack on native sheet settlement. Session and transition IDs must reject stale acknowledgements. Local content `onLayout` sizes the tray card; it is not a transition endpoint capture or cache.
+- dynamic trays own a separate local stack and an isolated choreography provider. Shared pushes capture their source before mounting the destination; Back reuses the recorded group. Map Fabric-captured page bounds into the tray viewport and drive card resizing from the shared session progress. Retain each view once for Back; release popped views on Reanimated completion and the whole stack on native sheet settlement. Session and transition IDs must reject stale acknowledgements. Local content `onLayout` sizes the tray card; it is not a transition endpoint capture or cache.
 - tray JSX configuration uses one direct `Tray.Stack` per provider with `Tray.Screen` declarations (fragments are supported). Read declarations synchronously; never mount them or register them through effects. Keep live, retained, and queued screen definitions available until released.
 - tray actions stay stable; reactive state uses `useTrayState(selector)`. Keep animation/layout props outside the memoized screen-content boundary, and preserve local state, context, and store updates for retained screens.
 - custom gesture progress is exposed through `useInteractiveTransition`; native-stack swipe progress is not connected automatically yet

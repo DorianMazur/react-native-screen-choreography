@@ -12,6 +12,14 @@ import {
   createTray,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import {
+  SharedElement,
+  makeTransition,
+  TransitionFrame,
+  useSharedElementPresentation,
+  type TransitionRendererProps,
+} from 'react-native-screen-choreography/core';
 import { useSafeAreaInsets } from '../runtime';
 import { AppIcon } from '../AppChrome';
 
@@ -32,11 +40,13 @@ function Action({
   title,
   subtitle,
   symbol,
+  avatar,
   onPress,
 }: {
   title: string;
   subtitle: string;
   symbol: string;
+  avatar?: React.ReactNode;
   onPress: () => void;
 }) {
   return (
@@ -46,9 +56,11 @@ function Action({
       onPress={onPress}
       style={({ pressed }) => [styles.action, pressed && styles.pressed]}
     >
-      <View style={styles.symbol}>
-        <Text style={styles.symbolText}>{symbol}</Text>
-      </View>
+      {avatar ?? (
+        <View style={styles.symbol}>
+          <Text style={styles.symbolText}>{symbol}</Text>
+        </View>
+      )}
       <View style={styles.grow}>
         <Text style={styles.actionTitle}>{title}</Text>
         <Text style={styles.muted}>{subtitle}</Text>
@@ -159,6 +171,60 @@ const people = [
   'Robin Ellis',
   'Drew Carter',
 ];
+
+function AvatarTransition({
+  source,
+  target,
+  progress,
+  direction,
+  children,
+  zIndex,
+}: TransitionRendererProps) {
+  const arc = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY:
+          -24 * Math.sin(Math.PI * Math.max(0, Math.min(1, progress.value))),
+      },
+    ],
+  }));
+  return (
+    <Animated.View style={[StyleSheet.absoluteFill, arc]} pointerEvents="none">
+      <TransitionFrame
+        sourceMetrics={source.metrics}
+        targetMetrics={target.metrics}
+        progress={progress}
+        direction={direction}
+        zIndex={zIndex}
+      >
+        {children}
+      </TransitionFrame>
+    </Animated.View>
+  );
+}
+const avatarTransition = makeTransition({ renderer: AvatarTransition });
+const recipientGroup = (person: string) => `recipient:${person}`;
+
+function RecipientAvatar({ person }: { person: string }) {
+  const { presentationProgress } = useSharedElementPresentation();
+  const frame = useAnimatedStyle(() => ({
+    borderRadius: 15 + 13 * presentationProgress.value,
+  }));
+  const letters = useAnimatedStyle(() => ({
+    fontSize: 19 + 13 * presentationProgress.value,
+  }));
+  return (
+    <Animated.View style={[styles.avatar, frame]}>
+      <Animated.Text style={[styles.symbolText, letters]}>
+        {person
+          .split(' ')
+          .map((part) => part[0])
+          .join('')}
+      </Animated.Text>
+    </Animated.View>
+  );
+}
+
 function Recipient({ tray, route }: TrayScreenProps<Routes, 'recipient'>) {
   return (
     <ScrollView
@@ -169,13 +235,29 @@ function Recipient({ tray, route }: TrayScreenProps<Routes, 'recipient'>) {
       {people.map((person, i) => (
         <Action
           key={person}
+          avatar={
+            <SharedElement
+              id="avatar"
+              groupId={recipientGroup(person)}
+              transition={avatarTransition}
+              style={styles.avatarSource}
+            >
+              <RecipientAvatar person={person} />
+            </SharedElement>
+          }
           symbol={person
             .split(' ')
             .map((p) => p[0])
             .join('')}
           title={person}
           subtitle={i < 3 ? 'Recent recipient' : 'In your contacts'}
-          onPress={() => tray.push('review', { ...route.params, person })}
+          onPress={() =>
+            tray.push(
+              'review',
+              { ...route.params, person },
+              { groupId: recipientGroup(person) }
+            )
+          }
         />
       ))}
     </ScrollView>
@@ -185,9 +267,12 @@ function Review({ tray, route }: TrayScreenProps<Routes, 'review'>) {
   return (
     <View style={styles.body}>
       <View style={styles.balance}>
-        <View style={styles.largeSymbol}>
-          <Text style={styles.largeSymbolText}>↗</Text>
-        </View>
+        <SharedElement.Target
+          id="avatar"
+          groupId={recipientGroup(route.params.person)}
+          transition={avatarTransition}
+          style={styles.avatarTarget}
+        />
         <Text style={styles.amount}>${route.params.amount}</Text>
         <Text style={styles.actionTitle}>To {route.params.person}</Text>
         <Text style={styles.balanceHint}>
@@ -351,6 +436,15 @@ const styles = StyleSheet.create({
     justifyContent: 'center',
     backgroundColor: '#33373b',
   },
+  avatar: {
+    width: '100%',
+    height: '100%',
+    backgroundColor: '#33373b',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  avatarSource: { width: 42, height: 42 },
+  avatarTarget: { width: 72, height: 72 },
   symbolText: { color: accent, fontSize: 19, fontWeight: '600' },
   chevron: { fontSize: 26, color: muted },
   balance: { alignItems: 'center', paddingTop: 18, paddingBottom: 28, gap: 10 },

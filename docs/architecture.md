@@ -367,6 +367,16 @@ in a fixed destination viewport so intermediate animated heights cannot feed bac
 into layout. Full-screen views use the available window and keep safe-area padding
 inside the card. Stack options control icons and resize motion.
 
+Each presented tray owns an isolated choreography provider. A shared push captures
+its source before committing the destination. The coordinator captures each page
+origin in the same Fabric batch as its elements, then converts page-relative bounds
+into the tray's source and destination positions. This accounts for the native
+sheet's offset without sampling native layout. Shared progress drives the card
+height, safe-area offset, and crossfade together. Back uses the group recorded on
+the pushed entry; retained pages are released after the shared host settles.
+On iOS, a transition host nested inside a foreground overlay presents above that
+owning overlay while unrelated foreground overlays retain their ordering.
+
 Each entry has one live React instance. Previous entries stay mounted for Back;
 popped or replaced entries remain until their transition finishes. Native sheet
 settlement releases the whole stack. Navigation requests run in order, dismissal

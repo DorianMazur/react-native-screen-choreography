@@ -7,21 +7,23 @@ description: Build a bottom sheet that resizes as you move between views.
 
 A tray holds several views inside one bottom sheet. Moving between them resizes the sheet and crossfades the content. Back restores the previous view, including form values and scroll position.
 
-The optional `/tray` entry uses Software Mansion's native bottom sheet and provides its own typed stack. It works alongside your app's navigation without adding another navigation library.
+The optional `/tray` entry uses Software Mansion's native bottom sheet. It works alongside your app's navigation without adding another navigation library.
 
 ## Install
 
-Follow the [base installation](./installation.md), then add the sheet package:
+Follow the [base installation](./installation.md), then add the tray dependencies:
 
 ```sh
-npm install @swmansion/react-native-bottom-sheet@0.16.2
+npm install @swmansion/react-native-bottom-sheet@0.16.2 react-native-keyboard-controller@^1.22.7
 ```
 
-Install iOS pods and rebuild the native app. Expo requires a development build. Apps that don't use `/tray` don't need the sheet package.
+These packages are required only for trays. Apps using the main, `/core`, or `/expo-router` entry without trays don't need either one.
+
+Install iOS pods and rebuild the native app. Expo requires a development build.
 
 ## Define your screens
 
-Create the tray and screen components outside render. The route type defines each screen's parameters:
+Create the tray and screen components outside render. This example lets someone write a note, preview it, and go Back to edit it:
 
 ```tsx
 import { useState } from 'react';
@@ -59,7 +61,7 @@ function Preview({ route }: TrayScreenProps<Routes, 'preview'>) {
 
 ## Add the provider
 
-Place the provider in your root layout or around the feature that uses it. It owns only this tray's stack. Keep it outside `ChoreographyScreen` wrappers.
+Place the provider in your root layout or around the feature that uses it, outside `ChoreographyScreen` wrappers. Declare the screens in `Tray.Stack`:
 
 ```tsx
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -86,9 +88,26 @@ function NoteTrayProvider({ children }: { children: React.ReactNode }) {
 }
 ```
 
-This example uses your app's `SafeAreaProvider`. You can also pass numeric insets directly. There is no need to add Software Mansion's `BottomSheetProvider`.
+Wrap the tray provider with `KeyboardProvider` so the sheet moves with the keyboard. This example also uses `SafeAreaProvider` for the screen insets. Reuse these providers if your app already has them; no `BottomSheetProvider` is needed.
 
-Each provider needs one direct `Tray.Stack` containing `Tray.Screen` declarations. Fragments are supported; custom components that return declarations are not. Screens mount only when opened.
+```tsx
+import { KeyboardProvider } from 'react-native-keyboard-controller';
+import { SafeAreaProvider } from 'react-native-safe-area-context';
+
+export default function App() {
+  return (
+    <SafeAreaProvider>
+      <KeyboardProvider>
+        <NoteTrayProvider>
+          <OpenNoteButton />
+        </NoteTrayProvider>
+      </KeyboardProvider>
+    </SafeAreaProvider>
+  );
+}
+```
+
+In an existing app, place your navigation or Expo Router layout where `OpenNoteButton` appears above.
 
 ## Open, navigate, and close
 
@@ -110,17 +129,31 @@ function OpenNoteButton() {
 | `popToRoot()`           | Return to the first screen.                      |
 | `dismiss()`             | Close the whole tray.                            |
 
-Route names and parameters are typed. The navigation object stays stable, so calling `useTray()` does not subscribe your component to stack changes.
-
-When your UI needs tray state, select the value with `useTrayState`:
+Use `useTrayState` when your UI needs to react to tray state:
 
 ```tsx
 const isPresented = Tray.useTrayState((state) => state.isPresented);
 ```
 
-This subscription updates only when `isPresented` changes. You can also select `state.route` or `state.depth`.
+You can also select `state.route` or `state.depth`. Components update only when their selected value changes; `useTray()` alone doesn't subscribe to changes.
 
 Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
+
+## Expand to full screen
+
+Give a screen more room with `presentation: 'fullScreen'`:
+
+```tsx
+<Tray.Screen
+  name="preview"
+  component={Preview}
+  options={{ title: 'Preview', presentation: 'fullScreen' }}
+/>
+```
+
+The sheet expands to fill the available window, keeping the supplied safe-area insets inside it. Returning to a normal screen shrinks it back to that screen's content.
+
+Full-screen sizing is chosen per screen. Dragging down still dismisses the tray.
 
 ## Change the appearance and motion
 
@@ -159,40 +192,66 @@ For a fixed duration:
 animation={{ type: 'timing', duration: 300 }}
 ```
 
-You can also pass `easing` using Reanimated's `Easing` helpers. The default is 240 ms with cubic ease-out.
-
-These settings control resizing, full-screen expansion, and page crossfades, and respect system Reduce Motion. Opening, dragging, and dismissal use Software Mansion's native motion.
-
-## Expand to full screen
-
-Give a screen more room with `presentation: 'fullScreen'`:
-
-```tsx
-<Tray.Screen
-  name="preview"
-  component={Preview}
-  options={{ title: 'Preview', presentation: 'fullScreen' }}
-/>
-```
-
-The same sheet expands to fill the available window, with the supplied safe-area insets inside it. Moving to a normal screen shrinks it back to that screen's content. Going Back preserves each screen's state and scroll position.
-
-Full-screen sizing is chosen per screen. Dragging down still dismisses the tray.
+The default is 240 ms with cubic ease-out. These settings control transitions between screens, including shared elements and resizing, and respect system Reduce Motion. Opening and dismissal use the native sheet's motion; keyboard movement follows the system keyboard.
 
 ## Forms and scrolling
 
-Use normal React Native inputs and scroll views. The tray handles keyboard avoidance. For scrolling forms, use `keyboardShouldPersistTaps="handled"` so buttons work while typing.
+Use normal React Native inputs and scroll views. The tray moves with the keyboard. For scrolling forms, use `keyboardShouldPersistTaps="handled"` so buttons work while typing.
 
-A root `ScrollView` is bounded by the available height. For short, content-sized screens, avoid `flex: 1` on a non-scrollable root.
+Navigating between screens dismisses the keyboard. Back preserves the form values and scroll position, but doesn't automatically focus an input again. Call the input's `focus()` only when your flow needs it.
 
-Previous screens stay mounted for Back, so their effects continue running. Popped screens unmount after their transition; closing releases the whole stack. Keep state outside the tray if it should survive reopening.
+A root `ScrollView` fits within the available height. For short, content-sized screens, avoid `flex: 1` on a non-scrollable root.
 
-Screen content is memoized separately from its animated wrapper. Unchanged screens skip renders caused by navigation and tray layout. Their own state, context, and selected tray state still update normally, including while another screen is above them.
+Previous screens stay mounted for Back, so their effects and subscriptions remain active. Closing the tray resets its screens. Keep drafts outside the tray if they should survive reopening.
 
 ## Multiple trays
 
 Call `createTray` for each flow, such as a wallet or search filters. Each provider has its own stack and hook scope. You can keep several providers in the root layout or place them around individual features.
 
 Present one tray at a time. To open another after closing, use the first tray's `onDismiss` callback.
+
+## Share an element between tray screens
+
+For a flow such as choosing a recipient and reviewing a payment, an avatar can move between screens. Define a [transition recipe](./transitions.md) outside render:
+
+```tsx
+import { defineTransition } from 'react-native-screen-choreography/core';
+
+const recipient = defineTransition({
+  shared: { avatar: { kind: 'bounds', radius: [21, 36] } },
+});
+```
+
+Wrap the avatar on the source screen:
+
+```tsx
+<recipient.Element
+  name="avatar"
+  groupId={`recipient:${person.id}`}
+  style={{ width: 42, height: 42 }}
+>
+  <Avatar person={person} />
+</recipient.Element>
+```
+
+Place its destination on the review screen, using the same name and group:
+
+```tsx
+<recipient.Element.Target
+  name="avatar"
+  groupId={`recipient:${route.params.person.id}`}
+  style={{ width: 72, height: 72 }}
+/>
+```
+
+Pass the group when pushing your declared `review` screen:
+
+```tsx
+tray.push('review', { person }, { groupId: `recipient:${person.id}` });
+```
+
+Back reverses the transition automatically. The stack's `animation` controls its timing. Keep the source element mounted and use a distinct group for each item; the destination displays the same avatar, so it doesn't need another child.
+
+Shared elements must belong to the same tray. If a matching element is unavailable, the screens use the normal crossfade. No extra choreography provider is needed.
 
 See the [wallet tray demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/TrayDemo.tsx) for a full-screen recipient list and retained forms, or the [API reference](../api/tray.md) for all options.
