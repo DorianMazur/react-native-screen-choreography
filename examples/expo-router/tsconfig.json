@@ -10,7 +10,8 @@
       "@/*": ["./src/*"],
       "react-native-screen-choreography/expo-router": [
         "../../src/entries/expo-router.ts"
-      ]
+      ],
+      "react-native-screen-choreography/tray": ["../../src/entries/tray.ts"]
     }
   },
   "include": ["**/*.ts", "**/*.tsx", ".expo/types/**/*.ts", "expo-env.d.ts"]

@@ -253,11 +253,12 @@ export function startOwnedProgressOnUI({
     complete(true);
     return;
   }
-  progress.value = duration
-    ? withTiming(
-        target,
-        { duration, easing: Easing.out(Easing.cubic) },
-        complete
-      )
-    : withSpring(target, spring, complete);
+  progress.value =
+    duration !== undefined
+      ? withTiming(
+          target,
+          { duration, easing: Easing.out(Easing.cubic) },
+          complete
+        )
+      : withSpring(target, spring, complete);
 }

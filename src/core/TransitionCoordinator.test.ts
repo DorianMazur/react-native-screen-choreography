@@ -503,3 +503,53 @@ test('target element cleanup before screen cleanup returns content to its surviv
   coordinator.revalidatePresentation('detail');
   expect(coordinator.getSettledScreenId()).toBe('list');
 });
+
+test('maps one mounted batch to tray coordinates and freezes the captured source origin', async () => {
+  const origins = new Map([
+    ['list', { x: 16, y: 120 }],
+    ['detail', { x: 0, y: 500 }],
+  ]);
+  coordinator.dispose();
+  coordinator = new TransitionCoordinator(registry, { value: 0 } as any, {
+    getScreenRef: (id) => screenRefs.get(id),
+    isScreenReady: () => true,
+    screenGeometry: (id) => origins.get(id),
+  });
+  layouts.set(100, { pageX: 30, pageY: 80, width: 300, height: 600 });
+  layouts.set(200, { pageX: 20, pageY: 100, width: 320, height: 400 });
+  register('list', { pageX: 40, pageY: 110, width: 42, height: 42 });
+  register('detail', { pageX: 60, pageY: 130, width: 72, height: 72 });
+  await coordinator.captureSourceGroup('group', 'list');
+  origins.set('list', { x: 100, y: 900 });
+  const session = await start();
+  expect(session?.pairs[0]?.sourceMetrics).toEqual({
+    pageX: 26,
+    pageY: 150,
+    width: 42,
+    height: 42,
+  });
+  expect(session?.pairs[0]?.targetMetrics).toEqual({
+    pageX: 40,
+    pageY: 530,
+    width: 72,
+    height: 72,
+  });
+  expect(capture).toHaveBeenCalledWith(
+    expect.arrayContaining([200]),
+    expect.arrayContaining([200])
+  );
+});
+
+test('rejects a tray destination without a finite origin', async () => {
+  coordinator.dispose();
+  coordinator = new TransitionCoordinator(registry, { value: 0 } as any, {
+    getScreenRef: (id) => screenRefs.get(id),
+    isScreenReady: () => true,
+    screenGeometry: () => ({ x: 0, y: NaN }),
+  });
+  layouts.set(100, { pageX: 0, pageY: 0, width: 300, height: 600 });
+  layouts.set(200, { pageX: 0, pageY: 0, width: 300, height: 600 });
+  register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  expect(await start()).toBeNull();
+});

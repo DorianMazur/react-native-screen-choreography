@@ -185,7 +185,8 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   fun prepareFromReact() {
-    if (reactActive && !foregroundLayer && expectedHostNames.isNotEmpty()) prepare(sessionId)
+    // Only explicit UI retries may replay readiness, not animated prop updates.
+    if (reactActive && !foregroundLayer && !prepared && expectedHostNames.isNotEmpty()) prepare(sessionId)
   }
 
   fun setPresentationRequested(value: Boolean) {
