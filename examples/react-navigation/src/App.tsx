@@ -1,3 +1,4 @@
+import { KeyboardProvider } from 'react-native-keyboard-controller';
 import React from 'react';
 import { NavigationContainer, DefaultTheme } from '@react-navigation/native';
 import {
@@ -13,6 +14,7 @@ import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
 import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
+import { TrayDemoProvider } from '../../shared/tray/TrayDemo';
 import { JSStressMenu } from '../../shared/performance/JSStressMenu';
 
 import {
@@ -73,42 +75,46 @@ const TokenDetailRoute = withExampleScreen(
 
 export default function App() {
   return (
-    <SafeAreaProvider>
-      <ChoreographyProvider debug={false}>
-        <NavigationContainer theme={navTheme}>
-          <Stack.Navigator
-            screenOptions={{
-              headerShown: false,
-              animation: 'none',
-              contentStyle: { backgroundColor: palette.bg },
-            }}
-          >
-            <Stack.Screen name="Landing" component={LandingRoute} />
+    <KeyboardProvider>
+      <SafeAreaProvider>
+        <ChoreographyProvider debug={false}>
+          <TrayDemoProvider>
+            <NavigationContainer theme={navTheme}>
+              <Stack.Navigator
+                screenOptions={{
+                  headerShown: false,
+                  animation: 'none',
+                  contentStyle: { backgroundColor: palette.bg },
+                }}
+              >
+                <Stack.Screen name="Landing" component={LandingRoute} />
 
-            <Stack.Screen name="GalleryList" component={GalleryListRoute} />
-            <Stack.Screen
-              name="GalleryDetail"
-              component={GalleryDetailRoute}
-              options={detailOptions}
-            />
+                <Stack.Screen name="GalleryList" component={GalleryListRoute} />
+                <Stack.Screen
+                  name="GalleryDetail"
+                  component={GalleryDetailRoute}
+                  options={detailOptions}
+                />
 
-            <Stack.Screen name="TripsList" component={TripsListRoute} />
-            <Stack.Screen
-              name="TripsDetail"
-              component={TripsDetailRoute}
-              options={detailOptions}
-            />
+                <Stack.Screen name="TripsList" component={TripsListRoute} />
+                <Stack.Screen
+                  name="TripsDetail"
+                  component={TripsDetailRoute}
+                  options={detailOptions}
+                />
 
-            <Stack.Screen name="TokenList" component={TokenListRoute} />
-            <Stack.Screen
-              name="TokenDetail"
-              component={TokenDetailRoute}
-              options={detailOptions}
-            />
-          </Stack.Navigator>
-        </NavigationContainer>
-        {__DEV__ && <JSStressMenu />}
-      </ChoreographyProvider>
-    </SafeAreaProvider>
+                <Stack.Screen name="TokenList" component={TokenListRoute} />
+                <Stack.Screen
+                  name="TokenDetail"
+                  component={TokenDetailRoute}
+                  options={detailOptions}
+                />
+              </Stack.Navigator>
+            </NavigationContainer>
+          </TrayDemoProvider>
+          {__DEV__ && <JSStressMenu />}
+        </ChoreographyProvider>
+      </SafeAreaProvider>
+    </KeyboardProvider>
   );
 }

@@ -10,6 +10,7 @@ import {
 import { AppIcon } from './AppChrome';
 import { SafeAreaView, useExampleNavigation } from './runtime';
 import { theme } from './theme';
+import { TrayDemoLauncher } from './tray/TrayDemo';
 
 const demos = [
   {
@@ -84,6 +85,7 @@ export function LandingScreen() {
             <AppIcon name="arrow" size={18} color={theme.textSecondary} />
           </Pressable>
         ))}
+        <TrayDemoLauncher />
       </ScrollView>
     </SafeAreaView>
   );

@@ -1,9 +1,16 @@
-import React, { StrictMode, useContext, useLayoutEffect } from 'react';
+import React, {
+  StrictMode,
+  Suspense,
+  useContext,
+  useEffect,
+  useLayoutEffect,
+} from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import { Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
 import { ChoreographyProvider } from './ChoreographyProvider';
+import { ChoreographyScreenBase } from './ChoreographyScreenBase';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import NativePreparation from '../native/NativeChoreographyPreparation';
 import { PRESENTATION_TIMEOUT_MS } from '../core/nativePresentation';
@@ -13,6 +20,7 @@ import { ScreenIdContext } from '../core/screenIdContext';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
+  type ChoreographyActionsType,
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 
@@ -96,6 +104,185 @@ describe('ChoreographyProvider lifecycle', () => {
     delete fabricGlobals.__screenChoreographySubscribeFabricMount;
     jest.mocked(NativePreparation!.install).mockReset();
     jest.restoreAllMocks();
+  });
+
+  test.each([
+    ['ios', false],
+    ['ios', true],
+    ['android', false],
+    ['android', true],
+  ] as const)(
+    '%s preserves sessions across Suspense with provider inside boundary=%s',
+    async (platform, providerInside) => {
+      Platform.OS = platform;
+      let context!: ChoreographyContextType;
+      let actions!: ChoreographyActionsType;
+      let tree!: ReactTestRenderer;
+      const removed = jest.fn();
+      const layoutCleanup = jest.fn();
+      const ended = jest.fn();
+      const suspended = new Promise<void>(() => {});
+      function Consumer() {
+        context = useContext(ChoreographyContext)!;
+        actions = useContext(ChoreographyActionsContext)!;
+        useLayoutEffect(() => layoutCleanup, []);
+        return null;
+      }
+      function Freeze({ frozen }: { frozen: boolean }) {
+        if (frozen) throw suspended;
+        return null;
+      }
+      const render = (frozen: boolean) => {
+        const screens = (
+          <>
+            <Consumer />
+            <ChoreographyScreenBase screenId="List" instanceId="list">
+              {null}
+            </ChoreographyScreenBase>
+            <ChoreographyScreenBase screenId="Detail" instanceId="detail">
+              {null}
+            </ChoreographyScreenBase>
+            <Freeze frozen={frozen} />
+          </>
+        );
+        return providerInside ? (
+          <Suspense fallback={null}>
+            <ChoreographyProvider onTransitionEnd={ended}>
+              {screens}
+            </ChoreographyProvider>
+          </Suspense>
+        ) : (
+          <ChoreographyProvider onTransitionEnd={ended}>
+            <Suspense fallback={null}>{screens}</Suspense>
+          </ChoreographyProvider>
+        );
+      };
+      try {
+        await act(async () => {
+          tree = create(render(false), {
+            createNodeMock: () => ({ tag: 100 }),
+          });
+        });
+        await act(async () => {
+          for (const screen of tree.root.findAllByType(
+            ChoreographyScreenBase
+          )) {
+            screen
+              .findAll((node) => Boolean(node.props.onLayout))[0]!
+              .props.onLayout();
+          }
+        });
+        actions.subscribeToScreenRemoval('detail', removed);
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        context.setNavigationLineage({
+          sourceScreenId: 'list',
+          targetScreenId: 'detail',
+          groupId: 'group',
+        });
+        for (let cycle = 0; cycle < 3; cycle++) {
+          await act(async () => {
+            await context.startTransition({
+              groupId: 'group',
+              sourceScreenId: 'list',
+              targetScreenId: 'detail',
+              direction: 'forward',
+            });
+          });
+          const session = context.activeSession!;
+          expect(session.pairs).toHaveLength(1);
+          const token = context.progressOwnership.claim(session.id)!;
+          context.navigationController.acquireNavigationLock('list');
+          layoutCleanup.mockClear();
+          await act(async () => tree.update(render(true)));
+          expect(layoutCleanup).toHaveBeenCalledTimes(1);
+          expect(removed).not.toHaveBeenCalled();
+          expect(context.progressOwnership.isSession(session.id)).toBe(true);
+          expect(context.progressOwnership.isCurrent(token, session.id)).toBe(
+            true
+          );
+          expect(context.navigationController.isNavigationLocked()).toBe(true);
+          expect(context.getNavigationLineage('detail')?.sourceScreenId).toBe(
+            'list'
+          );
+          expect(ended).toHaveBeenCalledTimes(cycle);
+          await act(async () => tree.update(render(false)));
+          // Native screens did not lay out again during reveal.
+          expect(context.resolveScreenId('Detail')).toBe('detail');
+          expect(await context.waitForScreenReady('detail')).toBe(true);
+          expect(context.activeSession?.id).toBe(session.id);
+          await act(async () => context.completeTransition(session.id));
+          if (platform === 'android') {
+            await act(async () =>
+              tree.root
+                .findByType(NativeTransitionHost)
+                .props.onSettled(session.id)
+            );
+          }
+          expect(context.activeSession).toBeNull();
+          expect(context.navigationController.isNavigationLocked()).toBe(false);
+        }
+        await act(async () => tree.update(render(true)));
+        await act(async () => tree.unmount());
+        expect(removed).toHaveBeenCalledTimes(1);
+        expect(context.getNavigationLineage('detail')).toBeNull();
+        expect(context.progressOwnership.hasSession).toBe(false);
+      } finally {
+        await act(async () => tree?.unmount());
+      }
+    }
+  );
+
+  test('observes a synchronous transition started in a descendant mount effect', async () => {
+    let context!: ChoreographyContextType;
+    let tree!: ReactTestRenderer;
+    const started = jest.fn();
+    function Starter() {
+      context = useContext(ChoreographyContext)!;
+      const actions = useContext(ChoreographyActionsContext)!;
+      const startTransition = context.startTransition;
+      useEffect(() => {
+        for (const screenId of ['list', 'detail']) {
+          actions.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        startTransition({
+          groupId: 'group',
+          sourceScreenId: 'list',
+          targetScreenId: 'detail',
+          direction: 'forward',
+        });
+      }, [actions, startTransition]);
+      return null;
+    }
+    try {
+      await act(async () => {
+        tree = create(
+          <ChoreographyProvider onTransitionStart={started}>
+            <FabricScreens />
+            <Starter />
+          </ChoreographyProvider>
+        );
+      });
+      expect(context.activeSession?.pairs).toHaveLength(1);
+      expect(started).toHaveBeenCalledTimes(1);
+    } finally {
+      await act(async () => tree?.unmount());
+    }
   });
 
   test('installs the mount observer before descendant screens render, without reinstalling on updates', async () => {

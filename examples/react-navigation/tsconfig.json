@@ -7,8 +7,10 @@
         "./node_modules/react-native-safe-area-context"
       ],
       "react-native-screen-choreography/core": ["../../src/entries/core.ts"],
-      "react-native-screen-choreography": ["../../src/entries/index.ts"]
-    }
+      "react-native-screen-choreography": ["../../src/entries/index.ts"],
+      "react-native-screen-choreography/tray": ["../../src/entries/tray.ts"]
+    },
+    "types": ["jest", "node"]
   },
   "include": [
     "src/**/*.ts",

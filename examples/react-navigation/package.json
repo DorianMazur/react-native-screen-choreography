@@ -13,9 +13,11 @@
   "dependencies": {
     "@react-navigation/native": "^7.1.0",
     "@react-navigation/native-stack": "^7.3.0",
+    "@swmansion/react-native-bottom-sheet": "0.16.2",
     "react": "19.2.0",
     "react-native": "0.83.0",
-    "react-native-reanimated": "^4.3.0",
+    "react-native-keyboard-controller": "1.22.7",
+    "react-native-reanimated": "4.3.4",
     "react-native-safe-area-context": "^5.7.0",
     "react-native-screen-choreography": "workspace:*",
     "react-native-screens": "^4.24.0",

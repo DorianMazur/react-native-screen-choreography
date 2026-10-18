@@ -1,4 +1,4 @@
-import { useLayoutEffect } from 'react';
+import { Suspense, useLayoutEffect } from 'react';
 import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import {
   ChoreographyActionsContext,
@@ -36,6 +36,12 @@ function CommitLayoutEvent({ deliver }: { deliver: () => void }) {
   return null;
 }
 
+const suspended = new Promise<void>(() => {});
+function Freeze({ frozen }: { frozen: boolean }) {
+  if (frozen) throw suspended;
+  return null;
+}
+
 async function mountScreen({
   ready = true,
   layoutDuringCommit = false,
@@ -57,17 +63,20 @@ async function mountScreen({
   const outer = () =>
     tree.root.findAll((node) => Boolean(node.props?.onLayout))[0]!;
   const deliverLayout = () => outer().props.onLayout();
-  const render = (isReady: boolean, screenId = 'detail') => (
-    <ChoreographyContext.Provider value={context}>
-      <ChoreographyActionsContext.Provider
-        value={actions as unknown as ChoreographyActionsType}
-      >
-        <ChoreographyScreenBase screenId={screenId} ready={isReady}>
-          {null}
-        </ChoreographyScreenBase>
-        {layoutDuringCommit && <CommitLayoutEvent deliver={deliverLayout} />}
-      </ChoreographyActionsContext.Provider>
-    </ChoreographyContext.Provider>
+  const render = (isReady: boolean, screenId = 'detail', frozen = false) => (
+    <Suspense fallback={null}>
+      <ChoreographyContext.Provider value={context}>
+        <ChoreographyActionsContext.Provider
+          value={actions as unknown as ChoreographyActionsType}
+        >
+          <ChoreographyScreenBase screenId={screenId} ready={isReady}>
+            {null}
+          </ChoreographyScreenBase>
+          {layoutDuringCommit && <CommitLayoutEvent deliver={deliverLayout} />}
+          <Freeze frozen={frozen} />
+        </ChoreographyActionsContext.Provider>
+      </ChoreographyContext.Provider>
+    </Suspense>
   );
   await act(async () => {
     tree = create(render(ready));
@@ -81,6 +90,8 @@ async function mountScreen({
     layout: () => act(async () => deliverLayout()),
     update: (isReady: boolean, screenId?: string) =>
       act(async () => tree.update(render(isReady, screenId))),
+    freeze: (frozen: boolean, isReady = ready) =>
+      act(async () => tree.update(render(isReady, 'detail', frozen))),
   };
 }
 
@@ -146,15 +157,74 @@ test('unmount unregisters the screen and presentation', async () => {
   expect(screen.actions.setScreenReady).not.toHaveBeenCalled();
 });
 
+test.each([true, false])(
+  'preserves registration and readiness through repeated Suspense hides with ready=%s',
+  async (ready) => {
+    const screen = await mountScreen({ ready });
+    await screen.layout();
+    for (let cycle = 0; cycle < 3; cycle++) {
+      screen.actions.setScreenReady.mockClear();
+      await screen.freeze(true);
+      expect(screen.actions.unregisterScreen).not.toHaveBeenCalled();
+      expect(screen.unregisterPresentation).not.toHaveBeenCalled();
+      await screen.freeze(false);
+      expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
+        'detail',
+        ready
+      );
+      expect(screen.actions.registerScreenPresentation).toHaveBeenCalledTimes(
+        1
+      );
+      expect(requestAnimationFrame).not.toHaveBeenCalled();
+    }
+    await screen.freeze(true);
+    await act(async () => screen.tree.unmount());
+    expect(screen.actions.unregisterScreen).toHaveBeenCalledTimes(1);
+    expect(screen.unregisterPresentation).toHaveBeenCalledTimes(1);
+  }
+);
+
+test('reveal still waits for the first layout and honors readiness changed while hidden', async () => {
+  const screen = await mountScreen();
+  await screen.freeze(true);
+  await screen.freeze(false);
+  expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
+    'detail',
+    true
+  );
+  await screen.layout();
+  await screen.freeze(true);
+  await screen.freeze(false, false);
+  expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
+    'detail',
+    false
+  );
+  await screen.update(true);
+  expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
+    'detail',
+    true
+  );
+});
+
 test('does not carry layout readiness into a new screen identity', async () => {
   const screen = await mountScreen();
   await screen.layout();
+  const staleLayout = screen.outer().props.onLayout;
   await screen.update(true, 'replacement');
   expect(screen.actions.unregisterScreen).toHaveBeenCalledWith('detail');
   expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
     'replacement',
     true
   );
+  screen.actions.setScreenReady.mockClear();
+  await act(async () => staleLayout());
+  expect(screen.actions.setScreenReady).not.toHaveBeenCalled();
+  await screen.update(true, 'detail');
+  expect(screen.actions.setScreenReady).not.toHaveBeenCalledWith(
+    'detail',
+    true
+  );
+  await screen.update(true, 'replacement');
   await screen.layout();
   expect(screen.actions.setScreenReady).toHaveBeenLastCalledWith(
     'replacement',

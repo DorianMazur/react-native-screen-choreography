@@ -9,7 +9,8 @@
       ],
       "react-native-safe-area-context": [
         "./examples/react-navigation/node_modules/react-native-safe-area-context"
-      ]
+      ],
+      "react-native-screen-choreography/tray": ["./src/entries/tray.ts"]
     },
     "allowUnreachableCode": false,
     "allowUnusedLabels": false,

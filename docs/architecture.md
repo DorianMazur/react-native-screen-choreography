@@ -353,6 +353,43 @@ detail, 1 at completed return), velocity-aware settlement, and cancellation.
 Connecting it to a gesture is explicit; native-stack's built-in swipe gesture
 does not supply this progress automatically.
 
+## Dynamic trays
+
+The optional `/tray` entry combines a local stack with Software Mansion's native
+bottom sheet. Each provider owns its stack and presents through
+`ChoreographyOverlay`. The provider reads `Tray.Stack` and `Tray.Screen`
+declarations during render; screens mount only when opened. Definitions must
+remain available while used by a live view or queued command.
+
+Software Mansion handles dragging, scrolling, the backdrop, and native sheet
+settlement. Reanimated handles page crossfades and card resizing. Content measures
+in a fixed destination viewport so intermediate animated heights cannot feed back
+into layout. Full-screen views use the available window and keep safe-area padding
+inside the card. Stack options control icons and resize motion.
+
+Each presented tray owns an isolated choreography provider. A shared push captures
+its source before committing the destination. The coordinator captures each page
+origin in the same Fabric batch as its elements, then converts page-relative bounds
+into the tray's source and destination positions. This accounts for the native
+sheet's offset without sampling native layout. Shared progress drives the card
+height, safe-area offset, and crossfade together. Back uses the group recorded on
+the pushed entry; retained pages are released after the shared host settles.
+On iOS, a transition host nested inside a foreground overlay presents above that
+owning overlay while unrelated foreground overlays retain their ordering.
+
+Each entry has one live React instance. Previous entries stay mounted for Back;
+popped or replaced entries remain until their transition finishes. Native sheet
+settlement releases the whole stack. Navigation requests run in order, dismissal
+clears pending requests, and reopening waits for closure. Session and transition
+IDs reject callbacks from earlier operations.
+
+Navigation actions use a stable context. The reducer runs in a provider-owned
+store; the provider subscribes to the stack, while `useTrayState` subscribes to
+selected public state. Screen content is memoized with its component, route, and
+actions; layout and transition state stay outside that boundary. Retained screens
+still receive local state, context, and subscribed
+store updates without changing their effect lifecycle.
+
 ## Diagnostics
 
 The two example apps share screen implementations and transition recipes.

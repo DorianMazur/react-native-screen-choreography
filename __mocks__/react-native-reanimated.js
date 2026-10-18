@@ -89,6 +89,7 @@ module.exports = {
   },
   default: {
     View: 'Animated.View',
+    Text: require('react-native').Text,
     createAnimatedComponent: (Component) => Component,
   },
 };

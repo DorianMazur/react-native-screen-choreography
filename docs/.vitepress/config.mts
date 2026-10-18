@@ -97,6 +97,7 @@ export default defineConfig({
         items: [
           { text: 'Transition recipes', link: '/guide/transitions' },
           { text: 'Interactive Back', link: '/guide/interactive-back' },
+          { text: 'Dynamic trays', link: '/guide/dynamic-trays' },
           { text: 'Readiness & loading', link: '/guide/readiness' },
           { text: 'Troubleshooting', link: '/guide/troubleshooting' },
           { text: 'Example apps', link: '/examples' },
@@ -107,6 +108,7 @@ export default defineConfig({
         items: [
           { text: 'Components', link: '/api/components' },
           { text: 'Navigation', link: '/api/navigation' },
+          { text: 'Trays', link: '/api/tray' },
           { text: 'Transitions', link: '/api/transitions' },
           { text: 'Hooks & utilities', link: '/api/hooks' },
         ],
