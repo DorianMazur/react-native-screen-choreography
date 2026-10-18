@@ -64,6 +64,7 @@ import type {
 
 const DETENTS = [0, 'content'] as const;
 const HEADER_HEIGHT = 70;
+const CONTENT_FADE_END = 0.75;
 
 /** Call outside render to preserve the provider and screen identities. */
 export function createTray<P extends TrayParamList>() {
@@ -845,8 +846,9 @@ function TrayPage({
         : progressTransitionId.value === transitionId
           ? Math.max(0, Math.min(1, progress.value))
           : 0;
+    const opacity = Math.min(1, p / CONTENT_FADE_END);
     return {
-      opacity: active ? p : from ? 1 - p : 0,
+      opacity: active ? opacity : from ? 1 - opacity : 0,
     };
   });
   const [visibleTransition, setVisibleTransition] = useState<number>();
