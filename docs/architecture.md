@@ -393,9 +393,17 @@ IDs reject callbacks from earlier operations.
 Navigation actions use a stable context. The reducer runs in a provider-owned
 store; the provider subscribes to the stack, while `useTrayState` subscribes to
 selected public state. Screen content is memoized with its component, route, and
-actions; layout and transition state stay outside that boundary. Retained screens
-still receive local state, context, and subscribed
-store updates without changing their effect lifecycle.
+actions; custom header content is memoized with its renderer and header props.
+Layout, keyboard, and transition state stay outside these boundaries. Retained
+screens still receive local state, context, and subscribed store updates without
+changing their effect lifecycle.
+
+Each factory also supplies a stable route-key context around screen content and
+custom header components. `useFocusEffect` selects whether that key matches the
+store's current route and uses a React effect to balance setup and cleanup.
+Focus therefore follows route changes during navigation, while dismissal retains
+focus until native settlement removes the screen. Provider boundaries reset the
+route scope, so nested providers cannot inherit an outer screen's identity.
 
 ## Diagnostics
 
