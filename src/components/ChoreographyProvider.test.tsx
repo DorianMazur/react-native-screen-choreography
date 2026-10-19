@@ -686,6 +686,84 @@ describe('ChoreographyProvider lifecycle', () => {
   );
 
   test.each([
+    ['detail', 'group', 'card', false, true],
+    ['list', 'group', 'card', false, true],
+    ['other', 'group', 'card', false, false],
+    ['detail', 'other', 'card', false, false],
+    ['detail', 'group', 'other', false, false],
+    ['detail', 'group', 'card', true, false],
+  ] as const)(
+    'prepares matched companion mappers before opening the screen gate (%s/%s/%s, released=%s)',
+    async (screen, group, id, released, prepares) => {
+      Platform.OS = 'android';
+      jest.useFakeTimers();
+      let context!: ChoreographyContextType;
+      let actions!: ChoreographyActionsType;
+      let tree!: ReactTestRenderer;
+      function Consumer() {
+        context = useContext(ChoreographyContext)!;
+        actions = useContext(ChoreographyActionsContext)!;
+        return null;
+      }
+      try {
+        await act(async () => {
+          tree = create(
+            <ChoreographyProvider>
+              <FabricScreens />
+              <Consumer />
+            </ChoreographyProvider>
+          );
+        });
+        for (const screenId of ['list', 'detail']) {
+          context.registerElement({
+            id: 'card',
+            groupId: 'group',
+            screenId,
+            metrics: null,
+            ref: { current: { tag: screenId === 'list' ? 1 : 2 } },
+            getPresentation: () => ({ transition: { renderer: () => null } }),
+          });
+        }
+        const release = actions.registerTargetContent(screen, group, id);
+        if (released) release();
+        await act(async () => context.setPendingTargetScreen('detail', 'list'));
+        let pending!: ReturnType<ChoreographyContextType['startTransition']>;
+        await act(async () => {
+          pending = context.startTransition({
+            groupId: 'group',
+            sourceScreenId: 'list',
+            targetScreenId: 'detail',
+            direction: 'forward',
+          });
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        const host = tree.root.findByType(NativeTransitionHost).props;
+        expect(context.pendingTargetScreenId).toBe('detail');
+        if (prepares) {
+          expect(context.activeSession?.state).toBe('measuring');
+          await act(async () => host.onAttached('stale'));
+          expect(context.pendingTargetScreenId).toBe('detail');
+          await act(async () => {
+            host.onAttached(host.sessionId);
+            await pending;
+          });
+          expect(context.pendingTargetScreenId).toBeNull();
+          expect(context.pendingSourceScreenId).toBeNull();
+        } else {
+          await pending;
+        }
+        expect(context.activeSession?.state).toBe('active');
+        // The screen is prepared before native's later presentation callback.
+        expect(context.isOverlayPresented!(host.sessionId)).toBe(false);
+        release();
+      } finally {
+        await act(async () => tree?.unmount());
+        jest.useRealTimers();
+      }
+    }
+  );
+
+  test.each([
     ['ios', 'completed'],
     ['android', 'completed'],
     ['ios', 'cancelled'],

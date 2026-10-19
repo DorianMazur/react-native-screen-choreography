@@ -22,6 +22,24 @@ import {
   TripsDetailScreen,
 } from '../../shared/trips/TripsScreens';
 
+import {
+  JournalScreen,
+  JournalDetailScreen,
+} from '../../shared/journal/JournalScreens';
+
+const JournalListRoute = withExampleScreen('JournalList', JournalScreen, {
+  keepVisible: true,
+});
+const JournalDetailRoute = withExampleScreen(
+  'JournalDetail',
+  function JournalDetailRoute({
+    route,
+  }: NativeStackScreenProps<ExampleStackParams, 'JournalDetail'>) {
+    return <JournalDetailScreen {...route.params} />;
+  },
+  { keepVisible: true }
+);
+
 const Stack = createNativeStackNavigator<ExampleStackParams>();
 const LandingRoute = withExampleScreen('Landing', LandingScreen);
 const GalleryListRoute = withExampleScreen('GalleryList', GalleryListScreen);
@@ -88,6 +106,12 @@ export default function App() {
                 }}
               >
                 <Stack.Screen name="Landing" component={LandingRoute} />
+                <Stack.Screen name="JournalList" component={JournalListRoute} />
+                <Stack.Screen
+                  name="JournalDetail"
+                  component={JournalDetailRoute}
+                  options={detailOptions}
+                />
 
                 <Stack.Screen name="GalleryList" component={GalleryListRoute} />
                 <Stack.Screen

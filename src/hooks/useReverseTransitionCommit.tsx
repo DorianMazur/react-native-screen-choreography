@@ -25,6 +25,7 @@ import type {
   InteractiveTransitionSettleOptions,
   TransitionSessionData,
 } from '../types';
+import { getElementIdentityKey } from '../core/elementIdentity';
 
 export interface ReverseCommitRequest {
   sessionId: string;
@@ -83,6 +84,27 @@ export function useReverseTransitionCommit({
     }
   );
   const screens = useRef(new Map<string, ScreenPresentation>());
+  const targetContent = useRef(new Map<string, Set<object>>());
+  const hasTargetContent = useCallback(
+    (screenId: string, groupId: string | undefined, id: string) =>
+      targetContent.current.has(getElementIdentityKey(screenId, groupId, id)),
+    []
+  );
+  const registerTargetContent = useCallback(
+    (screenId: string, groupId: string | undefined, id: string) => {
+      const key = getElementIdentityKey(screenId, groupId, id);
+      const token = {};
+      const owners = targetContent.current.get(key) ?? new Set<object>();
+      owners.add(token);
+      targetContent.current.set(key, owners);
+      return () => {
+        owners.delete(token);
+        if (!owners.size && targetContent.current.get(key) === owners)
+          targetContent.current.delete(key);
+      };
+    },
+    []
+  );
   const navigationDispatch = useRef<{
     sessionId: string;
     token: number;
@@ -154,6 +176,12 @@ export function useReverseTransitionCommit({
         : session.targetScreenId;
       const sourcePresentation = screens.current.get(sourceScreenId);
       const sourceAnimationLifetime = sourcePresentation?.animationLifetime;
+      const removeAfterAnimation = session.pairs.some(
+        (pair) =>
+          (pair.source.screenId === sourceScreenId ||
+            pair.target.screenId === sourceScreenId) &&
+          hasTargetContent(sourceScreenId, session.groupId, pair.id)
+      );
       scheduleOnUI(() => {
         'worklet';
         if (owner.value !== token) return;
@@ -193,6 +221,7 @@ export function useReverseTransitionCommit({
         });
       };
       return reverseController.start({
+        removeAfterAnimation,
         sessionId,
         sourceScreenId,
         targetScreenId,
@@ -303,6 +332,7 @@ export function useReverseTransitionCommit({
       cancelTransition,
       completeTransition,
       getSession,
+      hasTargetContent,
       interactionOwner,
       navigationController,
       progress,
@@ -318,5 +348,7 @@ export function useReverseTransitionCommit({
     interruptibleReturnSessionId,
     commitReverseTransition,
     registerScreenPresentation,
+    registerTargetContent,
+    hasTargetContent,
   };
 }

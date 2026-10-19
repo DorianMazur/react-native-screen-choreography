@@ -10,6 +10,8 @@ import { ExampleBindings, type DemoScreenId } from '../../shared/runtime';
 
 export type ExampleStackParams = {
   Landing: undefined;
+  JournalList: undefined;
+  JournalDetail: { collectionId: string };
   GalleryList: undefined;
   GalleryDetail: { photoId: string };
   TripsList: undefined;
@@ -44,11 +46,12 @@ function Bindings({ children }: { children: React.ReactNode }) {
 
 export function withExampleScreen<Props extends object>(
   screenId: DemoScreenId,
-  Screen: React.ComponentType<Props>
+  Screen: React.ComponentType<Props>,
+  options: { keepVisible?: boolean } = {}
 ) {
   return function ExampleScreen(props: Props) {
     return (
-      <ChoreographyScreen screenId={screenId}>
+      <ChoreographyScreen screenId={screenId} {...options}>
         <Bindings>
           <Screen {...props} />
         </Bindings>

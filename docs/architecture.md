@@ -80,6 +80,22 @@ A fallback Back completes its session on the returned screen. If the destination
 is removed through another route operation, its receiving host disappears and
 the owner returns home, collapsed.
 
+### Destination-owned target content
+
+`SharedElement.Target` can contain ordinary route-owned children alongside its
+receiving portal host. They read `useSharedElementPresentation` through a scoped
+presentation boundary. Pair selection happens outside that memoized boundary, so
+unrelated groups, elements, and pending screens do not rerender its content.
+Normal prop, context, and state changes remain live.
+
+The boundary reads frozen pair inputs directly from preparation and active
+sessions. It installs its screen-protected progress mapper during preparation,
+retains only endpoint presentation data after activation, and settles with the
+provider's session commit. Renderer disposal does not publish or clear this
+data. Idle targets disconnect their derived frame and presentation progress from
+other sessions; later transitions capture fresh endpoints. Target children stay
+in the route and do not enter the retained owner's portal or native overlay.
+
 ## Pairing and frozen presentations
 
 Pair discovery is scoped to the requested source group and requires both
@@ -171,9 +187,12 @@ pixels reach the display.
 
 ### Android activation
 
-Android mounts hosts and content in the same native transaction, so the session
-activates as soon as geometry is captured. The host remains hidden until every
-receiving host contains its content. Android acknowledges presentation after
+Android sessions with destination companion content first prepare empty hosts,
+allowing companion animation mappers to install behind the closed screen gate.
+Native attachment then activates the session and opens that gate in the content
+transfer commit. Other sessions mount hosts and content in the same native
+transaction and activate as soon as geometry is captured. The host remains
+hidden until every receiving host contains its content. Android acknowledges presentation after
 the content draw traversal, using an asynchronous main-queue message to avoid
 an extra frame behind a pending synchronization barrier. It validates session
 and request identity, attachment, and live content before dispatching the event.
@@ -244,7 +263,9 @@ Screen opacity and input gating come from `screenVisibility.ts`, using
 and 1 at the detail, including during a return. A plain outer view applies the
 pending or preparing-target visibility gate before Reanimated's initial style
 commit, preventing an Android mount flash. Active motion runs on an animated
-inner view.
+inner view. Activation after attachment preparation clears the pending gate in
+the same React commit that transfers shared content. Native presentation can
+then start UI-thread motion without waiting for its RN acknowledgement to reveal destination companions.
 
 The `screenFade` prop controls active decorative opacity, with a default
 expansion interval of `[0, 0.4]` or a custom increasing interval within `[0, 1]`.
@@ -288,7 +309,12 @@ reaction asks `ReverseTransitionController` to remove that route when expansion
 progress reaches 0.20. This threshold measures remaining expansion, starts
 dismissal, and leaves retained content in the overlay until the spring finishes.
 Exact animation completion also commits navigation if the early reaction has
-not run. Cancelling an interactive return keeps the detail route.
+not run. Targets with route-owned children register their compound identity through
+stable actions. If that identity participates in the outgoing session, the return
+controller skips early removal and commits navigation from animation completion.
+The registration keeps no content or native refs; token-specific cleanup cannot
+release a newer target. Unmatched and empty targets keep early removal.
+Cancelling an interactive return keeps the detail route.
 
 On Android, each screen has derived progress for companion animations. Before
 removing a route, the controller freezes its progress and pointer events, then

@@ -32,6 +32,37 @@ function createOperation() {
 }
 
 describe('reverse settlement ordering', () => {
+  test('target content waits for completion and cancels when navigation rejects removal', async () => {
+    const operation = createOperation();
+    const controller = new ReverseTransitionController();
+    const completed = controller.start({
+      ...operation.config,
+      removeAfterAnimation: true,
+    });
+    controller.commitNearEndpoint('reverse');
+    expect(operation.config.commitNavigation).not.toHaveBeenCalled();
+    expect(controller.canInterrupt('reverse')).toBe(false);
+    operation.finishAnimation();
+    expect(operation.config.commitNavigation).toHaveBeenCalledTimes(1);
+    operation.navigation.resolve({ removed: false, presented: false });
+    await completed;
+    expect(operation.config.cancel).toHaveBeenCalledTimes(1);
+    expect(operation.config.handoff).not.toHaveBeenCalled();
+  });
+
+  test('external removal before completion cancels target content and rejects its stale completion', async () => {
+    const operation = createOperation();
+    const controller = new ReverseTransitionController();
+    const completed = controller.start({
+      ...operation.config,
+      removeAfterAnimation: true,
+    });
+    expect(controller.cancelBeforeCommit('reverse')).toBe(true);
+    operation.finishAnimation();
+    await completed;
+    expect(operation.config.cancel).toHaveBeenCalledTimes(1);
+    expect(operation.config.commitNavigation).not.toHaveBeenCalled();
+  });
   test.each(['before', 'after'] as const)(
     'source unmount %s animation completion hands off without waiting for navigation acknowledgement',
     async (order) => {

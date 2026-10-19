@@ -5,11 +5,11 @@ import { useInteractiveGestureLifecycle } from 'react-native-screen-choreography
 import {
   useExampleInteractiveTransition,
   useExampleNavigation,
-} from '../runtime';
+} from './runtime';
 
 const DISMISS_DISTANCE = 280;
 
-export function useWalletDismiss(tokenId: string) {
+export function usePullToDismiss(scopeKey: string) {
   const controller = useExampleInteractiveTransition();
   const { goBack } = useExampleNavigation();
   const reduceMotion = useReducedMotion();
@@ -17,7 +17,7 @@ export function useWalletDismiss(tokenId: string) {
   const { begin, update, release } = useInteractiveGestureLifecycle(
     controller,
     {
-      scopeKey: tokenId,
+      scopeKey,
       threshold: 0.5,
       velocityImpact: 0,
       duration: reduceMotion ? 1 : undefined,

@@ -6,7 +6,7 @@ import {
 } from '../runtime';
 import { TOKENS } from './data';
 import { walletTransition } from './walletTransitions';
-import { useWalletDismiss } from './useWalletDismiss';
+import { usePullToDismiss } from '../usePullToDismiss';
 import type { WalletCardActions } from './WalletCard';
 import {
   useRenderObservation,
@@ -34,7 +34,7 @@ export function TokenDetailScreen({
   const { goBack } = useExampleNavigation();
   const { settleTransition } = useChoreographyControls();
   const insets = useSafeAreaInsets();
-  const panHandlers = useWalletDismiss(token.id);
+  const panHandlers = usePullToDismiss(token.id);
   const onBack = () => goBack(walletTransition.navigationOptions);
   const actions: WalletCardActions = {
     settleTransition,
