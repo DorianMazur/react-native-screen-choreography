@@ -45,10 +45,11 @@ import {
 } from './TrayChoreography';
 import { readTrayDeclaration } from './declarations';
 import { useTrayKeyboard } from './useTrayKeyboard';
+import { TrayHeaderLayer } from './TrayHeaderLayer';
 import { animateTrayValue } from './animation';
 import type { ResolvedTrayAnimation } from './animation';
 import type { TrayScreenMap } from './declarations';
-import type { TrayAction, TrayStackState } from './stack';
+import type { TrayAction, TrayEntry, TrayStackState } from './stack';
 import { createTrayStateStore } from './state';
 import type {
   TrayNavigation,
@@ -63,7 +64,8 @@ import type {
 } from './types';
 
 const DETENTS = [0, 'content'] as const;
-const HEADER_HEIGHT = 70;
+const DEFAULT_HEADER_HEIGHT = 56;
+const HANDLE_HEIGHT = 14;
 const CONTENT_FADE_END = 0.75;
 
 /** Call outside render to preserve the provider and screen identities. */
@@ -99,7 +101,7 @@ export function createTray<P extends TrayParamList>() {
     return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
   }
 
-  function Stack(_props: TrayStackProps): React.ReactElement | null {
+  function Stack(_props: TrayStackProps<P>): React.ReactElement | null {
     throw new Error('Tray.Stack must be a direct child of its Tray.Provider.');
   }
 
@@ -243,10 +245,10 @@ function TrayHost<P extends TrayParamList>({
   horizontalInset = 16,
   backgroundColor = '#ffffff',
   textColor = '#18181b',
-  renderBackIcon,
-  renderCloseIcon,
+  renderHeader: stackRenderHeader,
+  handleVisible: stackHandleVisible = true,
   animation,
-}: Omit<TrayStackProps, 'children' | 'animation'> & {
+}: Omit<TrayStackProps<P>, 'children' | 'animation'> & {
   animation: ResolvedTrayAnimation;
   screens: TrayScreenMap<P>;
   state: TrayStackState;
@@ -275,6 +277,28 @@ function TrayHost<P extends TrayParamList>({
   }, []);
   const active = state.entries[state.entries.length - 1]!;
   const entries = [...state.entries, ...(state.transition?.retained ?? [])];
+  const renderHeader = screens[active.name]?.renderHeader ?? stackRenderHeader;
+  const headerHeights = useRef(new Map<string, number>());
+  const [headerLayout, setHeaderLayout] = useState<{
+    key: string;
+    custom: boolean;
+    height?: number;
+  }>({ key: active.key, custom: !!renderHeader });
+  // A returning header needs a fresh layout, including after a built-in header.
+  if (headerLayout.key !== active.key || headerLayout.custom !== !!renderHeader)
+    setHeaderLayout({ key: active.key, custom: !!renderHeader });
+  const headerHeightFor = (entry: TrayEntry) => {
+    const options = screens[entry.name];
+    const custom = options?.renderHeader ?? stackRenderHeader;
+    const handle = options?.handleVisible ?? stackHandleVisible;
+    return (
+      (handle ? HANDLE_HEIGHT : 0) +
+      (custom
+        ? (headerHeights.current.get(entry.key) ?? DEFAULT_HEADER_HEIGHT)
+        : DEFAULT_HEADER_HEIGHT)
+    );
+  };
+  const headerHeight = headerHeightFor(active);
   const title = screens[active.name]?.title ?? active.name;
   const previous = entries.find(
     (entry) => entry.key === state.transition?.from
@@ -282,7 +306,12 @@ function TrayHost<P extends TrayParamList>({
   const previousTitle = previous
     ? (screens[previous.name]?.title ?? previous.name)
     : title;
-  const changingTitle = previousTitle !== title;
+  const previousRenderHeader = previous
+    ? (screens[previous.name]?.renderHeader ?? stackRenderHeader)
+    : undefined;
+  const crossfadeHeaders =
+    !!previous && !!(renderHeader || previousRenderHeader);
+  const headerEntries = crossfadeHeaders ? [previous, active] : [active];
   const canGoBack = state.entries.length > 1;
   const previousDepth = state.transition
     ? entries.length - (state.transition.direction === 1 ? 1 : 0)
@@ -294,19 +323,19 @@ function TrayHost<P extends TrayParamList>({
   const margin = appearance === 'floating' ? horizontalInset : 0;
   const gap = appearance === 'floating' ? safeBottomInset + 12 : 0;
   const paddingBottom = fullScreen || appearance === 'sheet' ? bottomInset : 0;
-  const fullScreenMaxHeight = Math.max(
-    0,
-    availableHeight - topInset - safeBottomInset - HEADER_HEIGHT
-  );
-  const trayMaxHeight = Math.max(
-    80,
-    availableHeight -
-      topInset -
-      gap -
-      (appearance === 'sheet' ? safeBottomInset : 0) -
-      76
-  );
-  const maxHeight = fullScreen ? fullScreenMaxHeight : trayMaxHeight;
+  const maxHeightFor = (expanded: boolean, chromeHeight: number) =>
+    expanded
+      ? Math.max(0, availableHeight - topInset - safeBottomInset - chromeHeight)
+      : Math.max(
+          80,
+          availableHeight -
+            topInset -
+            gap -
+            (appearance === 'sheet' ? safeBottomInset : 0) -
+            chromeHeight -
+            6
+        );
+  const maxHeight = maxHeightFor(fullScreen, headerHeight);
   const { screenId, origins } = useTrayGeometry();
   const pageHeights = useRef(new Map<string, number>());
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -322,14 +351,17 @@ function TrayHost<P extends TrayParamList>({
   const measuredKeyboardHeight = useRef(keyboard.layoutHeight);
   const destinationHeight = fullScreen
     ? height
-    : (pageHeights.current.get(active.key) ?? -HEADER_HEIGHT - paddingBottom) +
-      HEADER_HEIGHT +
+    : (pageHeights.current.get(active.key) ?? -headerHeight - paddingBottom) +
+      headerHeight +
       paddingBottom;
   const shared = useTraySharedTransition({
     state,
     dispatch,
     animation,
-    targetReady: pageHeights.current.has(active.key),
+    targetReady:
+      pageHeights.current.has(active.key) &&
+      (!renderHeader ||
+        (headerLayout.key === active.key && headerLayout.height !== undefined)),
     onPrepare: () => {
       sharedFromHeight.value = measuredHeight.current;
       sharedFromExpansion.value = fullScreen ? 1 : 0;
@@ -416,10 +448,10 @@ function TrayHost<P extends TrayParamList>({
         : {
             height: Math.min(
               Math.max(
-                HEADER_HEIGHT,
+                headerHeight,
                 liveAvailableHeight - (topInset + liveGap + 6) * (1 - expanded)
               ),
-              Math.max(HEADER_HEIGHT, visualHeight.value + keyboardCorrection)
+              Math.max(headerHeight, visualHeight.value + keyboardCorrection)
             ),
           }),
       marginHorizontal: margin * (1 - expanded),
@@ -469,6 +501,9 @@ function TrayHost<P extends TrayParamList>({
         origins.delete(screenId(key));
       }
     }
+    for (const key of headerHeights.current.keys()) {
+      if (!retained.has(key)) headerHeights.current.delete(key);
+    }
   }, [state.entries, state.transition, origins, screenId]);
 
   return (
@@ -513,7 +548,7 @@ function TrayHost<P extends TrayParamList>({
                 {
                   width: width - (fullScreen ? 0 : 2 * margin),
                   height: hasMeasured
-                    ? maxHeight + HEADER_HEIGHT + paddingBottom
+                    ? maxHeight + headerHeight + paddingBottom
                     : undefined,
                 },
                 contentPosition,
@@ -541,83 +576,149 @@ function TrayHost<P extends TrayParamList>({
                         : animateTrayValue(next, animation);
                 }}
               >
-                <View style={styles.handle} />
-                <Animated.View style={[styles.header, headerGeometry]}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Back in tray"
-                    disabled={!canGoBack}
-                    accessibilityElementsHidden={!canGoBack}
-                    importantForAccessibility={
-                      canGoBack ? 'auto' : 'no-hide-descendants'
-                    }
-                    onPress={tray.back}
-                    style={styles.headerButton}
-                  >
-                    <Animated.View
-                      pointerEvents="none"
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                      style={backVisibility}
-                    >
-                      {renderBackIcon ? (
-                        renderBackIcon({ color: textColor, size: 24 })
-                      ) : (
-                        <Text style={[styles.back, { color: textColor }]}>
-                          ‹
-                        </Text>
-                      )}
-                    </Animated.View>
-                  </Pressable>
-                  <View style={styles.titles}>
-                    {changingTitle && previous && (
-                      <TrayTitle
-                        key={previous.key}
-                        active={false}
-                        color={textColor}
+                <View style={styles.headers}>
+                  {headerEntries.map((entry) => {
+                    const isActive = entry.key === active.key;
+                    const entryRenderHeader =
+                      screens[entry.name]?.renderHeader ?? stackRenderHeader;
+                    const handleVisible =
+                      screens[entry.name]?.handleVisible ?? stackHandleVisible;
+                    const entryTitle = screens[entry.name]?.title ?? entry.name;
+                    const entryCanGoBack = isActive
+                      ? state.entries.length > 1
+                      : previousCanGoBack;
+                    const changingTitle =
+                      !crossfadeHeaders && previousTitle !== entryTitle;
+                    const expanded =
+                      screens[entry.name]?.presentation === 'fullScreen';
+                    return (
+                      <TrayHeaderLayer
+                        key={entryRenderHeader ? entry.key : 'default'}
+                        active={isActive}
+                        width={width - (expanded ? 0 : 2 * margin)}
                         progress={timeline}
-                        transitionId={transitionId}
-                        motionId={
-                          sharedEnabled ? sharedMotionId : progressTransitionId
+                        session={state.session}
+                        transitionId={
+                          crossfadeHeaders ? transitionId : undefined
                         }
                       >
-                        {previousTitle}
-                      </TrayTitle>
-                    )}
-                    <TrayTitle
-                      key={active.key}
-                      active
-                      color={textColor}
-                      progress={timeline}
-                      transitionId={changingTitle ? transitionId : undefined}
-                      motionId={
-                        sharedEnabled ? sharedMotionId : progressTransitionId
-                      }
-                    >
-                      {title}
-                    </TrayTitle>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Close tray"
-                    onPress={tray.dismiss}
-                    style={styles.headerButton}
-                  >
-                    <View
-                      pointerEvents="none"
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                    >
-                      {renderCloseIcon ? (
-                        renderCloseIcon({ color: textColor, size: 24 })
-                      ) : (
-                        <Text style={[styles.close, { color: textColor }]}>
-                          ×
-                        </Text>
-                      )}
-                    </View>
-                  </Pressable>
-                </Animated.View>
+                        {handleVisible && <View style={styles.handle} />}
+                        {entryRenderHeader ? (
+                          <TrayCustomHeader
+                            active={isActive}
+                            key={entry.key}
+                            onHeight={(next) => {
+                              headerHeights.current.set(entry.key, next);
+                              setHeaderLayout((current) =>
+                                current.key === entry.key &&
+                                current.height === next
+                                  ? current
+                                  : {
+                                      key: entry.key,
+                                      custom: true,
+                                      height: next,
+                                    }
+                              );
+                            }}
+                          >
+                            {entryRenderHeader({
+                              route: entry as TrayRoute<P, keyof P & string>,
+                              tray,
+                              title: entryTitle,
+                              canGoBack: entryCanGoBack,
+                              color: textColor,
+                            })}
+                          </TrayCustomHeader>
+                        ) : (
+                          <Animated.View
+                            style={[styles.header, headerGeometry]}
+                          >
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="Back in tray"
+                              disabled={!entryCanGoBack}
+                              accessibilityElementsHidden={!entryCanGoBack}
+                              importantForAccessibility={
+                                entryCanGoBack ? 'auto' : 'no-hide-descendants'
+                              }
+                              onPress={tray.back}
+                              style={styles.headerButton}
+                            >
+                              <Animated.View
+                                pointerEvents="none"
+                                accessibilityElementsHidden
+                                importantForAccessibility="no-hide-descendants"
+                                style={
+                                  crossfadeHeaders
+                                    ? { opacity: Number(entryCanGoBack) }
+                                    : backVisibility
+                                }
+                              >
+                                <Text
+                                  style={[styles.back, { color: textColor }]}
+                                >
+                                  ‹
+                                </Text>
+                              </Animated.View>
+                            </Pressable>
+                            <View style={styles.titles}>
+                              {changingTitle && previous && (
+                                <TrayTitle
+                                  key={previous.key}
+                                  active={false}
+                                  color={textColor}
+                                  progress={timeline}
+                                  transitionId={transitionId}
+                                  motionId={
+                                    sharedEnabled
+                                      ? sharedMotionId
+                                      : progressTransitionId
+                                  }
+                                >
+                                  {previousTitle}
+                                </TrayTitle>
+                              )}
+                              <TrayTitle
+                                key={entry.key}
+                                active
+                                color={textColor}
+                                progress={timeline}
+                                transitionId={
+                                  changingTitle ? transitionId : undefined
+                                }
+                                motionId={
+                                  sharedEnabled
+                                    ? sharedMotionId
+                                    : progressTransitionId
+                                }
+                              >
+                                {entryTitle}
+                              </TrayTitle>
+                            </View>
+                            <Pressable
+                              accessibilityRole="button"
+                              accessibilityLabel="Close tray"
+                              onPress={tray.dismiss}
+                              style={styles.headerButton}
+                            >
+                              <View
+                                pointerEvents="none"
+                                accessibilityElementsHidden
+                                importantForAccessibility="no-hide-descendants"
+                              >
+                                <Text
+                                  style={[styles.close, { color: textColor }]}
+                                >
+                                  ×
+                                </Text>
+                              </View>
+                            </Pressable>
+                          </Animated.View>
+                        )}
+                      </TrayHeaderLayer>
+                    );
+                  })}
+                </View>
                 <View
                   style={{
                     maxHeight,
@@ -627,6 +728,7 @@ function TrayHost<P extends TrayParamList>({
                   {entries.map((entry) => {
                     const entryFullScreen =
                       screens[entry.name]?.presentation === 'fullScreen';
+                    const entryHeaderHeight = headerHeightFor(entry);
                     const Component = screens[entry.name]?.component as
                       | React.ComponentType<TrayScreenProps<P>>
                       | undefined;
@@ -646,7 +748,7 @@ function TrayHost<P extends TrayParamList>({
                               : 0;
                           const cardHeight = entryFullScreen
                             ? availableHeight
-                            : pageHeight + HEADER_HEIGHT + entryPadding;
+                            : pageHeight + entryHeaderHeight + entryPadding;
                           origins.set(screenId(entry.key), {
                             x: entryFullScreen ? 0 : margin,
                             y:
@@ -654,7 +756,7 @@ function TrayHost<P extends TrayParamList>({
                               cardHeight -
                               (entryFullScreen ? 0 : gap) +
                               (entryFullScreen ? topInset : 0) +
-                              HEADER_HEIGHT,
+                              entryHeaderHeight,
                           });
                           if (
                             pageHeights.current.get(entry.key) !== pageHeight
@@ -672,9 +774,10 @@ function TrayHost<P extends TrayParamList>({
                         session={state.session}
                         transitionId={state.transition?.id}
                         onComplete={complete}
-                        maxHeight={
-                          entryFullScreen ? fullScreenMaxHeight : trayMaxHeight
-                        }
+                        maxHeight={maxHeightFor(
+                          entryFullScreen,
+                          entryHeaderHeight
+                        )}
                         fullScreen={entryFullScreen}
                         width={width - (entryFullScreen ? 0 : 2 * margin)}
                       >
@@ -692,6 +795,46 @@ function TrayHost<P extends TrayParamList>({
           </Animated.View>
         </ModalBottomSheet>
       </BottomSheetProvider>
+    </View>
+  );
+}
+
+function TrayCustomHeader({
+  children,
+  active,
+  onHeight,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onHeight: (height: number) => void;
+}) {
+  const current = useRef({ active, onHeight });
+  const lastHeight = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    current.current = { active, onHeight };
+    // A queued Back can reactivate this same header before it ever unmounts.
+    if (active && lastHeight.current !== undefined)
+      onHeight(lastHeight.current);
+  });
+  const mounted = useRef(true);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  return (
+    <View
+      onLayout={(event) => {
+        const next = event.nativeEvent.layout.height;
+        if (!mounted.current || !Number.isFinite(next) || next < 0) return;
+        if (current.current.active) {
+          lastHeight.current = next;
+          current.current.onHeight(next);
+        }
+      }}
+    >
+      {children}
     </View>
   );
 }
@@ -927,6 +1070,7 @@ const styles = StyleSheet.create({
   fill: { ...StyleSheet.absoluteFillObject },
   card: { overflow: 'hidden' },
   centered: { alignSelf: 'center' },
+  headers: { zIndex: 1 },
   handle: {
     width: 32,
     height: 4,
@@ -941,7 +1085,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    height: 56,
+    height: DEFAULT_HEADER_HEIGHT,
   },
   headerButton: {
     width: 44,

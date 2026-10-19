@@ -10,7 +10,7 @@ import type {
 
 export type TrayScreenMap<P extends TrayParamList> = Record<
   string,
-  {
+  TrayScreenOptions<P> & {
     component: React.ComponentType<TrayScreenProps<P, keyof P & string>>;
     title: string;
     presentation: NonNullable<TrayScreenOptions['presentation']>;
@@ -19,17 +19,17 @@ export type TrayScreenMap<P extends TrayParamList> = Record<
 
 export function readTrayDeclaration<P extends TrayParamList>(
   children: React.ReactNode,
-  Stack: React.ComponentType<TrayStackProps>,
+  Stack: React.ComponentType<TrayStackProps<P>>,
   Screen: React.ComponentType<TrayScreenDeclarationProps<P>>
 ) {
-  let declaration: React.ReactElement<TrayStackProps> | undefined;
+  let declaration: React.ReactElement<TrayStackProps<P>> | undefined;
   const collect = (nodes: React.ReactNode): React.ReactNode =>
     React.Children.map(nodes, (child) => {
       if (!React.isValidElement(child)) return child;
       if (child.type === Stack) {
         if (declaration)
           throw new Error('Tray.Provider requires exactly one Tray.Stack.');
-        declaration = child as React.ReactElement<TrayStackProps>;
+        declaration = child as React.ReactElement<TrayStackProps<P>>;
         return null;
       }
       if (child.type === React.Fragment) {
@@ -90,7 +90,7 @@ export function readTrayDeclaration<P extends TrayParamList>(
         throw new Error(
           `Tray.Screen "${name}" presentation must be "tray" or "fullScreen".`
         );
-      screens[name] = { component, title, presentation };
+      screens[name] = { ...screenOptions, component, title, presentation };
     });
   readScreens(declarations);
   if (Object.keys(screens).length === 0)

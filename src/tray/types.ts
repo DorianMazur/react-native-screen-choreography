@@ -47,11 +47,28 @@ export interface TrayScreenProps<
   tray: TrayNavigation<P>;
 }
 
-export interface TrayScreenOptions {
+export interface TrayHeaderProps<
+  P extends TrayParamList = TrayParamList,
+  N extends keyof P & string = keyof P & string,
+> extends TrayScreenProps<P, N> {
+  title: string;
+  canGoBack: boolean;
+  /** The stack's textColor. */
+  color: ColorValue;
+}
+
+export interface TrayScreenOptions<
+  P extends TrayParamList = TrayParamList,
+  N extends keyof P & string = keyof P & string,
+> {
   /** Defaults to the declared screen name. */
   title?: string;
   /** Fill the available window, keeping the supplied insets inside the sheet. */
   presentation?: 'tray' | 'fullScreen';
+  /** Replace the entire header. Return null for no header. Inherits the stack renderer. */
+  renderHeader?: (props: TrayHeaderProps<P, N>) => ReactNode;
+  /** Show the drag indicator above the header. Inherits the stack setting. */
+  handleVisible?: boolean;
 }
 
 export interface TrayScreenDeclarationProps<
@@ -61,19 +78,12 @@ export interface TrayScreenDeclarationProps<
   name: N;
   /** Define outside render to preserve each view's local state. */
   component: ComponentType<TrayScreenProps<P, NoInfer<N>>>;
-  options?: TrayScreenOptions;
+  options?: TrayScreenOptions<P, NoInfer<N>>;
 }
 
 export interface TrayProviderProps {
   /** App content and exactly one direct Tray.Stack (fragments are supported). */
   children: ReactNode;
-}
-
-export interface TrayHeaderIconProps {
-  /** The stack's textColor. */
-  color: ColorValue;
-  /** Suggested icon size in points; the button keeps its 44-point hit area. */
-  size: number;
 }
 
 export type TrayAnimationConfig =
@@ -90,7 +100,7 @@ export type TrayAnimationConfig =
       damping?: number;
     };
 
-export interface TrayStackProps {
+export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   /** Tray.Screen declarations, optionally grouped in fragments. */
   children: ReactNode;
   appearance?: 'floating' | 'sheet';
@@ -100,10 +110,10 @@ export interface TrayStackProps {
   horizontalInset?: number;
   backgroundColor?: ColorValue;
   textColor?: ColorValue;
-  /** Icon content only. The stack owns the Back button and its accessibility. */
-  renderBackIcon?: (props: TrayHeaderIconProps) => ReactNode;
-  /** Icon content only. The stack owns the Close button and its accessibility. */
-  renderCloseIcon?: (props: TrayHeaderIconProps) => ReactNode;
+  /** Replace the entire header, including its buttons. Return null for no header. */
+  renderHeader?: (props: TrayHeaderProps<P>) => ReactNode;
+  /** Show the drag indicator above the header. Defaults to true; dragging stays enabled. */
+  handleVisible?: boolean;
   /** Card resizing, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
   /** Called only after the native sheet confirms dismissal. */
