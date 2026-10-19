@@ -11,6 +11,7 @@ import TestRenderer, { act } from 'react-test-renderer';
 import { createTray } from './createTray';
 import { useTrayKeyboard } from './useTrayKeyboard';
 import { useTrayGeometry } from './TrayChoreography';
+import { TrayHeaderLayer } from './TrayHeaderLayer';
 import * as TrayChoreographyModule from './TrayChoreography';
 import type { KeyboardHandler } from 'react-native-keyboard-controller';
 import type {
@@ -355,26 +356,14 @@ test('screen subscriptions read the current stack on mount and keep updating beh
   act(() => renderer.unmount());
 });
 
-test('custom stack icons preserve Back and Close actions and accessibility', () => {
-  const backIcon = jest.fn(({ color, size }) => (
-    <View
-      testID="custom-back"
-      style={{ backgroundColor: color, width: size, height: size }}
-    />
-  ));
-  const closeIcon = jest.fn(() => <View testID="custom-close" />);
+test('built-in header preserves Back and Close actions and accessibility', () => {
   const onDismiss = jest.fn();
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
     renderer = TestRenderer.create(
       <Tray.Provider>
         <Observer />
-        <Tray.Stack
-          textColor="#123456"
-          renderBackIcon={backIcon}
-          renderCloseIcon={closeIcon}
-          onDismiss={onDismiss}
-        >
+        <Tray.Stack textColor="#123456" onDismiss={onDismiss}>
           <Tray.Screen name="form" component={Form} />
           <Tray.Screen name="preview" component={Preview} />
         </Tray.Stack>
@@ -389,17 +378,13 @@ test('custom stack icons preserve Back and Close actions and accessibility', () 
     )[0]!;
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
-  expect(backIcon).toHaveBeenLastCalledWith({ color: '#123456', size: 24 });
-  expect(closeIcon).toHaveBeenLastCalledWith({ color: '#123456', size: 24 });
+  expect(
+    StyleSheet.flatten(button('Close tray').findByType(Text).props.style).color
+  ).toBe('#123456');
   expect(button('Back in tray').props.disabled).toBe(true);
   expect(button('Back in tray').props.accessibilityElementsHidden).toBe(true);
   act(() => navigation.push('preview', { label: 'next' }));
   act(() => mockCompletions.shift()!(true));
-  expect(
-    renderer.root
-      .findAllByProps({ testID: 'custom-back' })
-      .filter((n) => n.type === View)
-  ).toHaveLength(1);
   expect(button('Back in tray').props.disabled).toBe(false);
   act(() => button('Back in tray').props.onPress());
   expect(navigationState.route?.name).toBe('form');
@@ -430,8 +415,6 @@ function CustomHeader({
 }
 
 test('custom headers inherit stack defaults, override per screen, and own their navigation buttons', () => {
-  const backIcon = jest.fn();
-  const closeIcon = jest.fn();
   const renderHeader = jest.fn((props: TrayHeaderProps<Routes>) => (
     <CustomHeader {...props} />
   ));
@@ -442,8 +425,6 @@ test('custom headers inherit stack defaults, override per screen, and own their 
       <Tray.Stack
         renderHeader={renderHeader}
         textColor="#123456"
-        renderBackIcon={backIcon}
-        renderCloseIcon={closeIcon}
         onDismiss={onDismiss}
       >
         <Tray.Screen name="form" component={Form} options={{ title }} />
@@ -475,17 +456,17 @@ test('custom headers inherit stack defaults, override per screen, and own their 
   expect(renderer.root.findAllByProps({ testID: 'header-back' })).toHaveLength(
     0
   );
-  expect(backIcon).not.toHaveBeenCalled();
-  expect(closeIcon).not.toHaveBeenCalled();
   act(() => renderer.root.findByType(TextInput).props.onChangeText('edited'));
   act(() => renderer.update(render('Updated')));
   expect(renderer.root.findByType(CustomHeader).props.title).toBe('Updated');
   act(() => navigation.push('preview', { label: 'Review draft' }));
-  expect(renderer.root.findAllByType(CustomHeader)).toHaveLength(1);
-  expect(renderer.root.findByType(CustomHeader).props.title).toBe(
-    'Review draft'
-  );
+  expect(
+    renderer.root
+      .findAllByType(CustomHeader)
+      .map((header) => header.props.title)
+  ).toEqual(['Updated', 'Review draft']);
   act(() => mockCompletions.shift()!(true));
+  expect(renderer.root.findAllByType(CustomHeader)).toHaveLength(1);
   act(() =>
     renderer.root.findByProps({ testID: 'header-back' }).props.onPress()
   );
@@ -499,6 +480,136 @@ test('custom headers inherit stack defaults, override per screen, and own their 
   act(() => sheet(renderer).props.onSettle(0));
   expect(onDismiss).toHaveBeenCalledTimes(1);
   act(() => renderer.unmount());
+});
+
+test('crossfades custom and built-in headers without changing the outgoing title or Back button', () => {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack>
+          <Tray.Screen
+            name="form"
+            component={Form}
+            options={{ title: 'Draft' }}
+          />
+          <Tray.Screen
+            name="preview"
+            component={Preview}
+            options={{
+              title: 'Review',
+              renderHeader: (props) => <CustomHeader {...props} />,
+            }}
+          />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  const builtIn = renderer.root.findByType(TrayHeaderLayer);
+  act(() => navigation.push('preview', { label: 'Next' }));
+  expect(renderer.root.findAllByType(TrayHeaderLayer)).toHaveLength(2);
+  expect(builtIn.props.active).toBe(false);
+  expect(
+    builtIn.findByProps({ accessibilityRole: 'header' }).props.children
+  ).toBe('Draft');
+  expect(
+    builtIn.findByProps({ accessibilityLabel: 'Back in tray' }).props.disabled
+  ).toBe(true);
+  expect(renderer.root.findByType(CustomHeader).props.title).toBe('Review');
+  act(() => mockCompletions.shift()!(true));
+  act(() => navigation.back());
+  expect(renderer.root.findAllByType(TrayHeaderLayer)).toHaveLength(2);
+  expect(renderer.root.findByType(CustomHeader).props.title).toBe('Review');
+  act(() => mockCompletions.shift()!(true));
+  expect(renderer.root.findAllByType(CustomHeader)).toHaveLength(0);
+  expect(renderer.root.findAllByType(TrayHeaderLayer)).toHaveLength(1);
+  act(() => renderer.unmount());
+});
+
+test('retains one outgoing header instance until settlement, including queued Back and dismissal', () => {
+  const shared = jest.spyOn(TrayChoreographyModule, 'useTraySharedTransition');
+  const mounted: string[] = [];
+  const released: string[] = [];
+  function StatefulHeader(props: TrayHeaderProps<Routes>) {
+    const [value, setValue] = useState('header draft');
+    useEffect(() => {
+      mounted.push(props.route.key);
+      return () => {
+        released.push(props.route.key);
+      };
+    }, [props.route.key]);
+    return (
+      <TextInput
+        testID={props.route.key}
+        value={value}
+        onChangeText={setValue}
+      />
+    );
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack renderHeader={(props) => <StatefulHeader {...props} />}>
+          <Tray.Screen name="form" component={Form} />
+          <Tray.Screen name="preview" component={Preview} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  const headers = () => renderer.root.findAllByType(StatefulHeader);
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  const rootKey = navigationState.route!.key;
+  const first = headers()[0]!;
+  const measure = (node: TestRenderer.ReactTestInstance, height: number) =>
+    act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
+  measure(first.parent!, 90);
+  measure(pageFor(renderer, Form), 200);
+  act(() => first.findByType(TextInput).props.onChangeText('edited header'));
+  act(() => navigation.push('preview', { label: 'Next' }));
+  const nextKey = navigationState.route!.key;
+  measure(headers()[1]!.parent!, 90);
+  measure(pageFor(renderer, Preview), 200);
+  expect(headers()[0]).toBe(first);
+  expect(first.findByType(TextInput).props.value).toBe('edited header');
+  expect(mounted).toEqual([rootKey, nextKey]);
+  const outgoing = renderer.root
+    .findAllByType(TrayHeaderLayer)
+    .find((layer) => !layer.props.active)!;
+  expect(outgoing.findByType(View).props.pointerEvents).toBe('none');
+  expect(outgoing.findByType(View).props.accessibilityElementsHidden).toBe(
+    true
+  );
+  expect(released).toEqual([]);
+  act(() => navigation.back());
+  const staleCompletion = mockCompletions.shift()!;
+  act(() => staleCompletion(true));
+  expect(navigationState.route?.key).toBe(rootKey);
+  // No new native onLayout is sent when this measured header becomes active again.
+  expect(shared.mock.calls.at(-1)![0].targetReady).toBe(true);
+  // Queued Back reuses the still-mounted header without dropping its local state.
+  expect(headers().find((header) => header.props.route.key === rootKey)).toBe(
+    first
+  );
+  act(() => staleCompletion(true));
+  expect(headers()).toHaveLength(2);
+  act(() => mockCompletions.shift()!(true));
+  expect(headers()).toHaveLength(1);
+  expect(released).toEqual([nextKey]);
+  act(() => navigation.push('preview', { label: 'Closing' }));
+  act(() => navigation.dismiss());
+  act(() => sheet(renderer).props.onSettle(0));
+  expect(headers()).toHaveLength(0);
+  expect(released).toContain(rootKey);
+  act(() => mockCompletions.shift()!(true));
+  expect(headers()).toHaveLength(0);
+  act(() => renderer.unmount());
+  shared.mockRestore();
 });
 
 test('measures custom headers independently for retained pages and ignores stale layout callbacks', () => {
@@ -535,7 +646,10 @@ test('measures custom headers independently for retained pages and ignores stale
   const layout = (callback: (event: unknown) => void, height: number) =>
     act(() => callback({ nativeEvent: { layout: { height } } }));
   const measureHeader = () =>
-    renderer.root.findByType(CustomHeader).parent!.props.onLayout;
+    renderer.root
+      .findAllByType(CustomHeader)
+      .find((header) => header.props.route.key === navigationState.route?.key)!
+      .parent!.props.onLayout;
   const pageHeight = (component: React.ElementType) =>
     StyleSheet.flatten(pageFor(renderer, component).props.style).height;
   const windowHeight = Dimensions.get('window').height;

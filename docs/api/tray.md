@@ -30,8 +30,6 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 | `textColor`       | `'#18181b'`     | Header title and icons.                                                 |
 | `renderHeader`    | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`. |
 | `handleVisible`   | `true`          | Show the drag indicator above the header.                               |
-| `renderBackIcon`  | Chevron         | Render the Back icon for this stack.                                    |
-| `renderCloseIcon` | ×               | Render the Close icon for this stack.                                   |
 | `animation`       | Timing, 240 ms  | Resize and crossfade settings.                                          |
 | `onDismiss`       | —               | Called after the sheet finishes closing.                                |
 
@@ -41,27 +39,21 @@ Declare at least one screen, using `Stack` and `Screen` from the same factory. U
 
 ## `TrayHeaderProps`
 
-`TrayHeaderProps<Routes, Name>` describes the active screen's custom header. Omit `Name` for a stack renderer; `route` is then a discriminated union of all routes.
+`TrayHeaderProps<Routes, Name>` describes a screen's custom header. Omit `Name` for a stack renderer; `route` is then a discriminated union of all routes.
 
-| Member      | Meaning                                                   |
-| ----------- | --------------------------------------------------------- |
-| `route`     | Current route, including its key, name, and typed params. |
-| `tray`      | Stable `TrayNavigation<Routes>` actions.                  |
-| `title`     | Screen title, falling back to the screen name.            |
-| `canGoBack` | Whether another screen exists below this one.             |
-| `color`     | The stack's `textColor`.                                  |
+| Member      | Meaning                                                         |
+| ----------- | --------------------------------------------------------------- |
+| `route`     | This header's route, including its key, name, and typed params. |
+| `tray`      | Stable `TrayNavigation<Routes>` actions.                        |
+| `title`     | Screen title, falling back to the screen name.                  |
+| `canGoBack` | Whether another screen exists below this one.                   |
+| `color`     | The stack's `textColor`.                                        |
 
 Return your header element from `renderHeader`, or return `null` to omit the header. The handle is controlled separately. The tray measures the header's natural height and includes it in card sizing, full-screen content space, and shared-transition geometry. Use padding or an explicit height for your design; avoid `flex: 1` on the header root.
 
-Only the current custom header is mounted, and it remounts when the route key changes. It owns its buttons, accessibility labels, and any animation of its content. The tray continues to animate card resizing. Render a component such as `(props) => <MyHeader {...props} />` to use hooks inside your header.
+Headers crossfade automatically on the same progress as the screen transition, including shared transitions and Back. The outgoing header keeps its React instance until the transition settles, with touch and accessibility disabled. It then unmounts; returning to that route mounts its header again. Custom headers own their buttons and accessibility labels. Render a component such as `(props) => <MyHeader {...props} />` to use hooks inside your header.
 
 See [Use a custom header](../guide/dynamic-trays.md#use-a-custom-header).
-
-## `TrayHeaderIconProps`
-
-Both icon renderers receive `{ color, size }`. `color` is the stack's `textColor` and `size` is 24 points. Return an image, SVG, or another icon component.
-
-The stack supplies the accessible 44-point button and its action. Back is hidden at the root. Omitting a renderer keeps the default icon. These options apply only to the built-in header; a custom header owns its buttons.
 
 ## `TrayAnimationConfig`
 

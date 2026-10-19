@@ -86,13 +86,6 @@ export interface TrayProviderProps {
   children: ReactNode;
 }
 
-export interface TrayHeaderIconProps {
-  /** The stack's textColor. */
-  color: ColorValue;
-  /** Suggested icon size in points; the button keeps its 44-point hit area. */
-  size: number;
-}
-
 export type TrayAnimationConfig =
   | {
       type: 'timing';
@@ -121,10 +114,6 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   renderHeader?: (props: TrayHeaderProps<P>) => ReactNode;
   /** Show the drag indicator above the header. Defaults to true; dragging stays enabled. */
   handleVisible?: boolean;
-  /** Icon content only. The stack owns the Back button and its accessibility. */
-  renderBackIcon?: (props: TrayHeaderIconProps) => ReactNode;
-  /** Icon content only. The stack owns the Close button and its accessibility. */
-  renderCloseIcon?: (props: TrayHeaderIconProps) => ReactNode;
   /** Card resizing, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
   /** Called only after the native sheet confirms dismissal. */

@@ -215,40 +215,24 @@ function NoteHeader({
 </Tray.Stack>;
 ```
 
-The tray measures your header automatically, including changes in its height. It renders only the current header and remounts it when navigating to a different route instance. Your header owns its buttons and accessibility; no separate Back or Close button renderer is needed.
+The tray measures your header automatically, including changes in its height, and crossfades headers with the screen transition. This also works for shared transitions, Back, and transitions to or from a hidden header. The outgoing header keeps its state until the transition settles, then unmounts; returning mounts it again. Only the current header accepts touches and is exposed to accessibility. Your header owns its buttons and accessibility labels.
 
 Set `handleVisible={false}` on the stack to remove the drag indicator and its spacing. You can override either setting in a screen's `options`. Dragging to dismiss, tapping the backdrop, and Android Back continue to work. Returning `null` removes only the header; combine it with `handleVisible: false` for content without either element.
 
 ## Change the appearance and motion
 
-Configure shared styling and icons once on `Tray.Stack`. Use `appearance="floating"` (the default) for an inset card or `appearance="sheet"` for a sheet attached to the bottom edge.
+Configure shared styling once on `Tray.Stack`. Use `appearance="floating"` (the default) for an inset card or `appearance="sheet"` for a sheet attached to the bottom edge.
 
 ```tsx
-import { Image } from 'react-native';
-
 <Tray.Stack
   backgroundColor="#23252b"
   textColor="#f4f5f7"
-  renderBackIcon={({ color, size }) => (
-    <Image
-      source={require('./icons/arrow-left.png')}
-      style={{ width: size, height: size, tintColor: color }}
-    />
-  )}
-  renderCloseIcon={({ color, size }) => (
-    <Image
-      source={require('./icons/close.png')}
-      style={{ width: size, height: size, tintColor: color }}
-    />
-  )}
   animation={{ type: 'spring', stiffness: 300, damping: 30 }}
 >
   <Tray.Screen name="note" component={Note} />
   <Tray.Screen name="preview" component={Preview} />
-</Tray.Stack>;
+</Tray.Stack>
 ```
-
-Return just the icon; the stack supplies the button, accessibility label, and action. Omitting a renderer keeps the default icon. Use these options for small changes to the built-in header. They do not apply when `renderHeader` supplies a custom header.
 
 For a fixed duration:
 
