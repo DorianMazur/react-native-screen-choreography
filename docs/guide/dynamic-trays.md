@@ -139,6 +139,34 @@ You can also select `state.route` or `state.depth`. Components update only when 
 
 Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
 
+## Run work while a screen is focused
+
+Retained screens stay mounted when another tray screen covers them. Use `Tray.useFocusEffect` for subscriptions or refreshes that should run only while a screen is current. It also works in child components and custom header components, without passing a route key.
+
+For a wallet screen, subscribe to balance updates on focus and unsubscribe on blur. In this example, `subscribeToBalance` is your app's data source and returns an unsubscribe function:
+
+```tsx
+import { useCallback, useState } from 'react';
+import { Text } from 'react-native';
+import { subscribeToBalance } from './wallet-store';
+
+function Balance({ accountId }: { accountId: string }) {
+  const [balance, setBalance] = useState<string>();
+
+  Tray.useFocusEffect(
+    useCallback(() => {
+      return subscribeToBalance(accountId, setBalance);
+    }, [accountId])
+  );
+
+  return <Text>{balance ?? 'Loading balance…'}</Text>;
+}
+```
+
+Render `Balance` inside a tray screen. Back starts the subscription again without resetting the screen's state. Changing `accountId` while focused cleans up the old subscription and starts the new one. Keep the callback memoized with `useCallback` to avoid restarting it on unrelated renders.
+
+Focus changes with the active route, before its transition finishes. The current screen stays focused during dismissal until the sheet finishes closing; removing the provider cleans up immediately. This hook follows the tray's stack, independently of React Navigation focus and app foreground state. For whole-tray visibility, continue using `Tray.useTrayState((state) => state.isPresented)`.
+
 ## Expand to full screen
 
 Give a screen more room with `presentation: 'fullScreen'`:

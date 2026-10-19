@@ -1,4 +1,10 @@
-import React, { createContext, useContext, useEffect, useState } from 'react';
+import React, {
+  createContext,
+  useCallback,
+  useContext,
+  useEffect,
+  useState,
+} from 'react';
 import {
   Dimensions,
   Pressable,
@@ -111,6 +117,17 @@ export function checkDeclarationTypes() {
     {null}
   </Tray.Stack>;
 }
+
+export function checkFocusEffectTypes() {
+  type Effect = Parameters<typeof Tray.useFocusEffect>[0];
+  const withoutCleanup: Effect = () => {};
+  const withCleanup: Effect = () => () => {};
+  // @ts-expect-error Async work belongs inside the effect, not in its return value.
+  const asyncEffect: Effect = async () => {};
+  // @ts-expect-error Effects can only return a cleanup function or nothing.
+  const invalidCleanup: Effect = () => 1;
+  return { withoutCleanup, withCleanup, asyncEffect, invalidCleanup };
+}
 let navigation: TrayNavigation<Routes>;
 let navigationState: TrayState<Routes>;
 const unmounted: string[] = [];
@@ -162,6 +179,341 @@ beforeEach(() => {
   mockCompletions.length = 0;
   unmounted.length = 0;
 });
+
+function focusFixture(header = false) {
+  const events: string[] = [];
+  const mounted: string[] = [];
+  const ValueContext = createContext('first');
+  function Child({ id }: { id: string }) {
+    const value = useContext(ValueContext);
+    Tray.useFocusEffect(
+      useCallback(() => {
+        events.push(`focus ${id} ${value}`);
+        return () => {
+          events.push(`blur ${id} ${value}`);
+        };
+      }, [id, value])
+    );
+    return null;
+  }
+  function FocusScreen({ route }: TrayScreenProps<Routes>) {
+    useEffect(() => {
+      mounted.push(route.key);
+    }, [route.key]);
+    return <Child id={route.key} />;
+  }
+  function Header({ route }: TrayHeaderProps<Routes>) {
+    return <Child id={`header:${route.key}`} />;
+  }
+  const render = (value = 'first') => (
+    <ValueContext.Provider value={value}>
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack
+          renderHeader={header ? (props) => <Header {...props} /> : undefined}
+        >
+          <Tray.Screen name="form" component={FocusScreen} />
+          <Tray.Screen name="preview" component={FocusScreen} />
+        </Tray.Stack>
+      </Tray.Provider>
+    </ValueContext.Provider>
+  );
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(render());
+  });
+  return { renderer, events, mounted, render };
+}
+
+test('focus effects follow route instances through queued Back without remounting retained screens', () => {
+  const { renderer, events, mounted } = focusFixture();
+  act(() => navigation.present('form'));
+  const root = navigationState.route!.key;
+  expect(events).toEqual([`focus ${root} first`]);
+  act(() => sheet(renderer).props.onSettle(1));
+  act(() => navigation.push('form'));
+  const next = navigationState.route!.key;
+  expect(events).toEqual([
+    `focus ${root} first`,
+    `blur ${root} first`,
+    `focus ${next} first`,
+  ]);
+  act(() => navigation.back());
+  expect(events).toHaveLength(3);
+  const staleCompletion = mockCompletions.shift()!;
+  act(() => staleCompletion(true));
+  expect(events.slice(-2)).toEqual([
+    `blur ${next} first`,
+    `focus ${root} first`,
+  ]);
+  const count = events.length;
+  act(() => staleCompletion(true));
+  act(() => mockCompletions.shift()!(true));
+  expect(events).toHaveLength(count);
+  expect(mounted).toEqual([root, next]);
+  act(() => renderer.unmount());
+  expect(events.at(-1)).toBe(`blur ${root} first`);
+});
+
+test('focus effects restart only the focused callback when dependencies change', () => {
+  const { renderer, events, render } = focusFixture();
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  const root = navigationState.route!.key;
+  act(() => renderer.update(render()));
+  expect(events).toEqual([`focus ${root} first`]);
+  act(() => renderer.update(render('second')));
+  expect(events.slice(-2)).toEqual([
+    `blur ${root} first`,
+    `focus ${root} second`,
+  ]);
+  act(() => navigation.push('preview', { label: 'Next' }));
+  act(() => mockCompletions.shift()!(true));
+  const next = navigationState.route!.key;
+  const count = events.length;
+  act(() => renderer.update(render('third')));
+  expect(events.slice(count)).toEqual([
+    `blur ${next} second`,
+    `focus ${next} third`,
+  ]);
+  act(() => navigation.back());
+  expect(events.slice(-2)).toEqual([
+    `blur ${next} third`,
+    `focus ${root} third`,
+  ]);
+  act(() => renderer.unmount());
+});
+
+test('focus effects follow replace, popToRoot, and present without waiting for animation completion', () => {
+  const { renderer, events } = focusFixture();
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  const root = navigationState.route!.key;
+  act(() => navigation.push('preview', { label: 'First' }));
+  act(() => mockCompletions.shift()!(true));
+  const previous = navigationState.route!.key;
+  act(() => navigation.replace('preview', { label: 'Replacement' }));
+  const replacement = navigationState.route!.key;
+  expect(events.slice(-2)).toEqual([
+    `blur ${previous} first`,
+    `focus ${replacement} first`,
+  ]);
+  act(() => mockCompletions.shift()!(true));
+  act(() => navigation.popToRoot());
+  expect(events.slice(-2)).toEqual([
+    `blur ${replacement} first`,
+    `focus ${root} first`,
+  ]);
+  act(() => mockCompletions.shift()!(true));
+  act(() => navigation.present('form'));
+  const newRoot = navigationState.route!.key;
+  expect(events.slice(-2)).toEqual([
+    `blur ${root} first`,
+    `focus ${newRoot} first`,
+  ]);
+  act(() => renderer.unmount());
+  expect(events.at(-1)).toBe(`blur ${newRoot} first`);
+});
+
+test.each(['programmatic', 'native'] as const)(
+  'focus cleanup waits for %s dismissal and ignores stale sheet callbacks after reopening',
+  (mode) => {
+    const { renderer, events } = focusFixture();
+    act(() => navigation.present('form'));
+    act(() => sheet(renderer).props.onSettle(1));
+    const root = navigationState.route!.key;
+    const settle = sheet(renderer).props.onSettle;
+    if (mode === 'programmatic') act(() => navigation.dismiss());
+    else act(() => sheet(renderer).props.onIndexChange(0));
+    expect(events).toEqual([`focus ${root} first`]);
+    act(() => navigation.present('preview', { label: 'Reopened' }));
+    expect(events).toHaveLength(1);
+    act(() => settle(0));
+    const reopened = navigationState.route!.key;
+    expect(events).toEqual([
+      `focus ${root} first`,
+      `blur ${root} first`,
+      `focus ${reopened} first`,
+    ]);
+    act(() => settle(0));
+    expect(events).toHaveLength(3);
+    act(() => renderer.unmount());
+    expect(events.at(-1)).toBe(`blur ${reopened} first`);
+  }
+);
+
+test('focus follows shared navigation after source preparation, even while the target waits for layout', async () => {
+  const { renderer, events } = focusFixture();
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  const root = navigationState.route!.key;
+  act(() =>
+    navigation.push('preview', { label: 'Shared' }, { groupId: 'avatar' })
+  );
+  expect(events).toEqual([`focus ${root} first`]);
+  await act(async () => {});
+  const target = navigationState.route!.key;
+  expect(target).not.toBe(root);
+  expect(events.slice(-2)).toEqual([
+    `blur ${root} first`,
+    `focus ${target} first`,
+  ]);
+  expect(mockCompletions).toHaveLength(0);
+  act(() => navigation.dismiss());
+  act(() => sheet(renderer).props.onSettle(0));
+  expect(events.at(-1)).toBe(`blur ${target} first`);
+  act(() => renderer.unmount());
+});
+
+test('custom header components receive the same focus lifecycle as their screen descendants', () => {
+  const { renderer, events } = focusFixture(true);
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  const root = navigationState.route!.key;
+  act(() => navigation.push('preview', { label: 'Next' }));
+  const target = navigationState.route!.key;
+  expect(events.filter((event) => event.includes('header:'))).toEqual([
+    `focus header:${root} first`,
+    `blur header:${root} first`,
+    `focus header:${target} first`,
+  ]);
+  act(() => mockCompletions.shift()!(true));
+  expect(
+    events.filter((event) => event === `blur header:${root} first`)
+  ).toHaveLength(1);
+  act(() => navigation.back());
+  expect(events.filter((event) => event.includes('header:')).slice(-2)).toEqual(
+    [`blur header:${target} first`, `focus header:${root} first`]
+  );
+  act(() => renderer.unmount());
+});
+
+test.each(['same factory', 'different factory'] as const)(
+  'keeps focus independent across nested providers from the %s',
+  (kind) => {
+    const Inner = kind === 'same factory' ? Tray : createTray<Routes>();
+    const outerFocus = jest.fn();
+    const innerEvents: string[] = [];
+    let inner!: TrayNavigation<Routes>;
+    function InnerObserver() {
+      inner = Inner.useTray();
+      return null;
+    }
+    function InnerScreen({ route }: TrayScreenProps<Routes>) {
+      Inner.useFocusEffect(
+        useCallback(() => {
+          innerEvents.push(`focus ${route.key}`);
+          return () => {
+            innerEvents.push(`blur ${route.key}`);
+          };
+        }, [route.key])
+      );
+      return null;
+    }
+    function OuterScreen() {
+      Tray.useFocusEffect(outerFocus);
+      return (
+        <Inner.Provider>
+          <InnerObserver />
+          <Inner.Stack>
+            <Inner.Screen name="form" component={InnerScreen} />
+          </Inner.Stack>
+        </Inner.Provider>
+      );
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack>
+            <Tray.Screen name="form" component={OuterScreen} />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+    });
+    act(() => navigation.present('form'));
+    act(() => sheet(renderer).props.onSettle(1));
+    act(() => inner.present('form'));
+    const innerSheet = renderer.root.findAllByType(
+      'BottomSheet' as React.ElementType
+    )[1]!;
+    act(() => innerSheet.props.onSettle(1));
+    expect(innerEvents).toEqual(['focus 1']);
+    act(() => inner.push('form'));
+    expect(innerEvents).toEqual(['focus 1', 'blur 1', 'focus 2']);
+    expect(outerFocus).toHaveBeenCalledTimes(1);
+    act(() => renderer.unmount());
+    expect(innerEvents.at(-1)).toBe('blur 2');
+  }
+);
+
+test.each([
+  'outside',
+  'provider body',
+  'other factory',
+  'nested provider body',
+] as const)(
+  'rejects a focus effect in %s without an owning tray screen',
+  (location) => {
+    const effect = jest.fn();
+    const Other = createTray<Routes>();
+    function Invalid() {
+      Tray.useFocusEffect(effect);
+      return null;
+    }
+    function Nested() {
+      return (
+        <Tray.Provider>
+          <Invalid />
+          {stack()}
+        </Tray.Provider>
+      );
+    }
+    const tree =
+      location === 'outside' ? (
+        <Invalid />
+      ) : location === 'other factory' ? (
+        <Other.Provider>
+          <OtherObserver />
+          <Other.Stack>
+            <Other.Screen name="form" component={Invalid} />
+          </Other.Stack>
+        </Other.Provider>
+      ) : (
+        <Tray.Provider>
+          <Observer />
+          {location === 'provider body' && <Invalid />}
+          <Tray.Stack>
+            <Tray.Screen name="form" component={Nested} />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+    let other!: TrayNavigation<Routes>;
+    function OtherObserver() {
+      other = Other.useTray();
+      return null;
+    }
+    const error = jest.spyOn(console, 'error').mockImplementation(() => {});
+    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    try {
+      expect(() => {
+        act(() => {
+          renderer = TestRenderer.create(tree);
+        });
+        if (location === 'other factory') act(() => other.present('form'));
+        if (location === 'nested provider body')
+          act(() => navigation.present('form'));
+      }).toThrow(
+        'useFocusEffect must be used inside a screen or custom header of its Tray.Provider.'
+      );
+      expect(effect).not.toHaveBeenCalled();
+    } finally {
+      if (renderer) act(() => renderer!.unmount());
+      error.mockRestore();
+    }
+  }
+);
 
 test('isolates screen content from navigation and layout updates while preserving local state and context updates', () => {
   const ValueContext = createContext('initial');

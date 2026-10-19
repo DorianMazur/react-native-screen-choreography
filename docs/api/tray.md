@@ -9,7 +9,7 @@ Import from `react-native-screen-choreography/tray`. See [Build a dynamic tray](
 
 ## `createTray`
 
-`createTray<Routes>()` returns `{ Provider, Stack, Screen, useTray, useTrayState }`. Call it outside render. Each provider owns an independent stack; both hooks find the nearest provider from the same factory and throw if none exists.
+`createTray<Routes>()` returns `{ Provider, Stack, Screen, useTray, useTrayState, useFocusEffect }`. Call it outside render. Each provider owns an independent stack. `useTray` and `useTrayState` find the nearest provider from the same factory; `useFocusEffect` also requires one of that provider's screens or custom header components.
 
 Mount the provider in your root layout or around a feature, outside `ChoreographyScreen`. It requires an app-level `KeyboardProvider` from `react-native-keyboard-controller` and manages its own native sheet provider. Present one tray at a time.
 
@@ -137,6 +137,27 @@ const route = Tray.useTrayState((state) => state.route);
 | `isPresented` | True while opening, open, or closing.      |
 
 The selector receives `TrayState<Routes>`. A stack update rerenders the consumer only if the selected value changes according to `Object.is`. Prefer selecting a field or primitive; returning a new object or array counts as a change. To observe every state change, select `(state) => state`.
+
+## `Tray.useFocusEffect`
+
+Run an effect while the enclosing tray screen is the current route:
+
+```tsx
+Tray.useFocusEffect(
+  useCallback(() => {
+    const unsubscribe = subscribeToUpdates();
+    return unsubscribe;
+  }, [subscribeToUpdates])
+);
+```
+
+Call it inside a screen, a descendant component, or a component returned by `renderHeader`. The hook identifies the route instance automatically. Calling it elsewhere, including the app content directly inside `Tray.Provider`, throws.
+
+The callback runs after the focused component commits and again when Back returns to it. Its optional cleanup runs on blur, unmount, or before a changed callback runs while focused. Wrap the callback in React's `useCallback` with all of its dependencies; an inline callback restarts the effect on every focused render. Changes while blurred take effect on the next focus. Return a cleanup function or nothing, not a Promise; start asynchronous work inside the callback and cancel or ignore its results during cleanup.
+
+Focus follows `state.route.key`, independently of animation completion or app foreground state. A shared push keeps the source focused during source preparation, then focuses the destination when the route changes, even if its layout is still pending. Dismissal keeps the current route focused until native sheet settlement unmounts it. Unmounting the provider cleans up immediately. Separate tray providers have independent focus.
+
+See [Run work while a screen is focused](../guide/dynamic-trays.md#run-work-while-a-screen-is-focused).
 
 ## `TrayParamList`
 

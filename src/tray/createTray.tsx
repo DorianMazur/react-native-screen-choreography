@@ -74,6 +74,7 @@ export function createTray<P extends TrayParamList>() {
   const StateContext = createContext<ReturnType<
     typeof createTrayStateStore<P>
   > | null>(null);
+  const ScreenContext = createContext<string | undefined>(undefined);
 
   function useTray(): TrayNavigation<P> {
     const tray = useContext(Context);
@@ -99,6 +100,19 @@ export function createTray<P extends TrayParamList>() {
       };
     }, [store, selector]);
     return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
+  }
+
+  /** Run an effect while this tray screen is current. Memoize it with useCallback. */
+  function useFocusEffect(effect: React.EffectCallback): void {
+    const key = useContext(ScreenContext);
+    if (key === undefined)
+      throw new Error(
+        'useFocusEffect must be used inside a screen or custom header of its Tray.Provider.'
+      );
+    const isFocused = useTrayState((state) => state.route?.key === key);
+    useEffect(() => {
+      if (isFocused) return effect();
+    }, [effect, isFocused]);
   }
 
   function Stack(_props: TrayStackProps<P>): React.ReactElement | null {
@@ -202,42 +216,46 @@ export function createTray<P extends TrayParamList>() {
     return (
       <Context.Provider value={tray}>
         <StateContext.Provider value={store}>
-          <View
-            style={styles.app}
-            collapsable={false}
-            accessibilityElementsHidden={isPresented}
-            importantForAccessibility={
-              isPresented ? 'no-hide-descendants' : 'auto'
-            }
-          >
-            {declaration.content}
-          </View>
-          {isPresented && (
-            <ChoreographyOverlay>
-              <TrayChoreography key={state.session}>
-                <TrayHost
-                  key={state.session}
-                  {...declaration.options}
-                  screens={declaration.screens}
-                  state={state}
-                  dispatch={dispatch}
-                  tray={tray}
-                />
-              </TrayChoreography>
-            </ChoreographyOverlay>
-          )}
+          <ScreenContext.Provider value={undefined}>
+            <View
+              style={styles.app}
+              collapsable={false}
+              accessibilityElementsHidden={isPresented}
+              importantForAccessibility={
+                isPresented ? 'no-hide-descendants' : 'auto'
+              }
+            >
+              {declaration.content}
+            </View>
+            {isPresented && (
+              <ChoreographyOverlay>
+                <TrayChoreography key={state.session}>
+                  <TrayHost
+                    key={state.session}
+                    {...declaration.options}
+                    screens={declaration.screens}
+                    state={state}
+                    dispatch={dispatch}
+                    tray={tray}
+                    screenContext={ScreenContext}
+                  />
+                </TrayChoreography>
+              </ChoreographyOverlay>
+            )}
+          </ScreenContext.Provider>
         </StateContext.Provider>
       </Context.Provider>
     );
   }
 
-  return { Provider, Stack, Screen, useTray, useTrayState };
+  return { Provider, Stack, Screen, useTray, useTrayState, useFocusEffect };
 }
 
 function TrayHost<P extends TrayParamList>({
   state,
   dispatch,
   tray,
+  screenContext: ScreenContext,
   screens,
   appearance = 'floating',
   topInset = 0,
@@ -254,6 +272,7 @@ function TrayHost<P extends TrayParamList>({
   state: TrayStackState;
   dispatch: React.Dispatch<TrayAction>;
   tray: TrayNavigation<P>;
+  screenContext: React.Context<string | undefined>;
 }) {
   const { height, width } = useWindowDimensions();
   const keyboard = useTrayKeyboard();
@@ -621,13 +640,15 @@ function TrayHost<P extends TrayParamList>({
                               );
                             }}
                           >
-                            {entryRenderHeader({
-                              route: entry as TrayRoute<P, keyof P & string>,
-                              tray,
-                              title: entryTitle,
-                              canGoBack: entryCanGoBack,
-                              color: textColor,
-                            })}
+                            <ScreenContext.Provider value={entry.key}>
+                              {entryRenderHeader({
+                                route: entry as TrayRoute<P, keyof P & string>,
+                                tray,
+                                title: entryTitle,
+                                canGoBack: entryCanGoBack,
+                                color: textColor,
+                              })}
+                            </ScreenContext.Provider>
                           </TrayCustomHeader>
                         ) : (
                           <Animated.View
@@ -782,6 +803,7 @@ function TrayHost<P extends TrayParamList>({
                         width={width - (entryFullScreen ? 0 : 2 * margin)}
                       >
                         <MemoTrayContent
+                          screenContext={ScreenContext}
                           component={Component}
                           route={entry as TrayRoute<P>}
                           tray={tray}
@@ -879,12 +901,18 @@ function TrayTitle({
 
 function TrayContent<P extends TrayParamList>({
   component: Component,
+  screenContext: ScreenContext,
   route,
   tray,
 }: TrayScreenProps<P> & {
   component: React.ComponentType<TrayScreenProps<P>>;
+  screenContext: React.Context<string | undefined>;
 }) {
-  return <Component route={route} tray={tray} />;
+  return (
+    <ScreenContext.Provider value={route.key}>
+      <Component route={route} tray={tray} />
+    </ScreenContext.Provider>
+  );
 }
 
 const MemoTrayContent = memo(TrayContent) as typeof TrayContent;
