@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import {
   createTray,
+  type TrayHeaderProps,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
@@ -35,6 +36,51 @@ const Tray = createTray<Routes>();
 const ink = '#f4f5f7';
 const muted = '#969aa5';
 const accent = '#c8f79d';
+
+function WalletHeader({
+  title,
+  canGoBack,
+  tray,
+  color,
+}: TrayHeaderProps<Routes>) {
+  return (
+    <View style={styles.header}>
+      {canGoBack && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Back in tray"
+          onPress={tray.back}
+          style={({ pressed }) => [
+            styles.headerButton,
+            pressed && styles.pressed,
+          ]}
+        >
+          <AppIcon name="back" color={ink} size={24} />
+        </Pressable>
+      )}
+      <View style={styles.grow}>
+        <Text style={styles.headerEyebrow}>WALLET</Text>
+        <Text
+          accessibilityRole="header"
+          style={[styles.headerTitle, { color }]}
+        >
+          {title}
+        </Text>
+      </View>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Close tray"
+        onPress={tray.dismiss}
+        style={({ pressed }) => [
+          styles.headerButton,
+          pressed && styles.pressed,
+        ]}
+      >
+        <AppIcon name="close" color={ink} size={22} />
+      </Pressable>
+    </View>
+  );
+}
 
 function Action({
   title,
@@ -351,12 +397,8 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
         bottomInset={insets.bottom}
         backgroundColor="#23252b"
         textColor={ink}
-        renderBackIcon={({ size }) => (
-          <AppIcon name="back" color={ink} size={size} />
-        )}
-        renderCloseIcon={({ size }) => (
-          <AppIcon name="close" color={ink} size={size} />
-        )}
+        renderHeader={(props) => <WalletHeader {...props} />}
+        handleVisible={false}
         animation={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
         <Tray.Screen
@@ -382,7 +424,7 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
         <Tray.Screen
           name="success"
           component={Success}
-          options={{ title: 'Payment sent' }}
+          options={{ title: 'Payment sent', renderHeader: () => null }}
         />
         <Tray.Screen
           name="settings"
@@ -416,6 +458,29 @@ export function TrayDemoLauncher() {
 }
 
 const styles = StyleSheet.create({
+  header: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    paddingHorizontal: 16,
+    paddingTop: 20,
+    paddingBottom: 16,
+    gap: 10,
+  },
+  headerButton: {
+    width: 44,
+    height: 44,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderRadius: 22,
+    backgroundColor: '#ffffff08',
+  },
+  headerEyebrow: {
+    color: accent,
+    fontSize: 10,
+    fontWeight: '600',
+    letterSpacing: 2,
+  },
+  headerTitle: { fontSize: 22, fontWeight: '600', letterSpacing: -0.5 },
   body: { paddingHorizontal: 22, paddingBottom: 24 },
   grow: { flex: 1, gap: 5 },
   action: {

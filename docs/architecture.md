@@ -365,7 +365,12 @@ Software Mansion handles dragging, scrolling, the backdrop, and native sheet
 settlement. Reanimated handles page crossfades and card resizing. Content measures
 in a fixed destination viewport so intermediate animated heights cannot feed back
 into layout. Full-screen views use the available window and keep safe-area padding
-inside the card. Stack options control icons and resize motion.
+inside the card. Stack options control headers, handle visibility, icons, and
+resize motion; screens can override the header and handle. Only the active custom
+header mounts. Its local layout height sizes the card and content viewport, while
+retained entries keep their header height for page-origin mapping. Shared startup
+waits for the active custom header's layout. Header heights are released with their
+entries and never replace Fabric endpoint capture.
 
 Each presented tray owns an isolated choreography provider. A shared push captures
 its source before committing the destination. The coordinator captures each page

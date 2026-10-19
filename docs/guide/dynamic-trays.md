@@ -155,6 +155,70 @@ The sheet expands to fill the available window, keeping the supplied safe-area i
 
 Full-screen sizing is chosen per screen. Dragging down still dismisses the tray.
 
+## Use a custom header
+
+Use `renderHeader` to replace the title and buttons together. Its props include the current route, title, Back availability, text color, and stable tray actions:
+
+```tsx
+import { Pressable, Text, View } from 'react-native';
+import type { TrayHeaderProps } from 'react-native-screen-choreography/tray';
+
+function NoteHeader({
+  title,
+  canGoBack,
+  tray,
+  color,
+}: TrayHeaderProps<Routes>) {
+  return (
+    <View style={{ padding: 16, gap: 8 }}>
+      <Text accessibilityRole="header" style={{ color, fontSize: 24 }}>
+        {title}
+      </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {canGoBack && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back in tray"
+            onPress={tray.back}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text style={{ color }}>Back</Text>
+          </Pressable>
+        )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close tray"
+          onPress={tray.dismiss}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <Text style={{ color }}>Close</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+<Tray.Stack
+  renderHeader={(props) => <NoteHeader {...props} />}
+  handleVisible={false}
+>
+  <Tray.Screen
+    name="note"
+    component={Note}
+    options={{ title: 'Write a note' }}
+  />
+  <Tray.Screen
+    name="preview"
+    component={Preview}
+    options={{ renderHeader: () => null }}
+  />
+</Tray.Stack>;
+```
+
+The tray measures your header automatically, including changes in its height. It renders only the current header and remounts it when navigating to a different route instance. Your header owns its buttons and accessibility; no separate Back or Close button renderer is needed.
+
+Set `handleVisible={false}` on the stack to remove the drag indicator and its spacing. You can override either setting in a screen's `options`. Dragging to dismiss, tapping the backdrop, and Android Back continue to work. Returning `null` removes only the header; combine it with `handleVisible: false` for content without either element.
+
 ## Change the appearance and motion
 
 Configure shared styling and icons once on `Tray.Stack`. Use `appearance="floating"` (the default) for an inset card or `appearance="sheet"` for a sheet attached to the bottom edge.
@@ -184,7 +248,7 @@ import { Image } from 'react-native';
 </Tray.Stack>;
 ```
 
-Return just the icon; the stack supplies the button, accessibility label, and action. Omitting a renderer keeps the default icon.
+Return just the icon; the stack supplies the button, accessibility label, and action. Omitting a renderer keeps the default icon. Use these options for small changes to the built-in header. They do not apply when `renderHeader` supplies a custom header.
 
 For a fixed duration:
 
