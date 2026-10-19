@@ -52,6 +52,7 @@ import type { TrayScreenMap } from './declarations';
 import type { TrayAction, TrayEntry, TrayStackState } from './stack';
 import { createTrayStateStore } from './state';
 import type {
+  TrayHeaderProps,
   TrayNavigation,
   TrayNavigationOptions,
   TrayParamList,
@@ -640,15 +641,15 @@ function TrayHost<P extends TrayParamList>({
                               );
                             }}
                           >
-                            <ScreenContext.Provider value={entry.key}>
-                              {entryRenderHeader({
-                                route: entry as TrayRoute<P, keyof P & string>,
-                                tray,
-                                title: entryTitle,
-                                canGoBack: entryCanGoBack,
-                                color: textColor,
-                              })}
-                            </ScreenContext.Provider>
+                            <MemoTrayHeaderContent
+                              screenContext={ScreenContext}
+                              renderHeader={entryRenderHeader}
+                              route={entry as TrayRoute<P, keyof P & string>}
+                              tray={tray}
+                              title={entryTitle}
+                              canGoBack={entryCanGoBack}
+                              color={textColor}
+                            />
                           </TrayCustomHeader>
                         ) : (
                           <Animated.View
@@ -898,6 +899,25 @@ function TrayTitle({
     </Animated.Text>
   );
 }
+
+function TrayHeaderContent<P extends TrayParamList>({
+  screenContext: ScreenContext,
+  renderHeader,
+  ...props
+}: TrayHeaderProps<P> & {
+  screenContext: React.Context<string | undefined>;
+  renderHeader: (props: TrayHeaderProps<P>) => React.ReactNode;
+}) {
+  return (
+    <ScreenContext.Provider value={props.route.key}>
+      {renderHeader(props)}
+    </ScreenContext.Provider>
+  );
+}
+
+const MemoTrayHeaderContent = memo(
+  TrayHeaderContent
+) as typeof TrayHeaderContent;
 
 function TrayContent<P extends TrayParamList>({
   component: Component,

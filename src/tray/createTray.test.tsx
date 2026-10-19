@@ -647,6 +647,214 @@ test('notifies state consumers only when their selection changes', () => {
   act(() => renderer.unmount());
 });
 
+test('isolates custom header content from tray layout and settlement while preserving application updates', () => {
+  const ValueContext = createContext('initial');
+  const renders = jest.fn();
+  function Header(props: TrayHeaderProps<Routes>) {
+    const value = useContext(ValueContext);
+    const [text, setText] = useState('header draft');
+    renders({ ...props, value, text });
+    return (
+      <TextInput testID="header-input" value={text} onChangeText={setText} />
+    );
+  }
+  const renderHeader = jest.fn((props: TrayHeaderProps<Routes>) => (
+    <Header {...props} />
+  ));
+  const updatedRenderer = jest.fn((props: TrayHeaderProps<Routes>) => (
+    <Header {...props} title={`Custom ${props.title}`} />
+  ));
+  const render = (
+    value = 'initial',
+    title = 'Form',
+    color = '#123456',
+    header = renderHeader
+  ) => (
+    <ValueContext.Provider value={value}>
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack renderHeader={header} textColor={color}>
+          <Tray.Screen name="form" component={Form} options={{ title }} />
+          <Tray.Screen name="preview" component={Preview} />
+        </Tray.Stack>
+      </Tray.Provider>
+    </ValueContext.Provider>
+  );
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(render());
+  });
+  act(() => navigation.present('form'));
+  const rootKey = navigationState.route!.key;
+  act(() => sheet(renderer).props.onSettle(1));
+  const layout = (node: TestRenderer.ReactTestInstance, height: number) =>
+    act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
+  layout(headerFor(renderer.root.findByType(Header)), 90);
+  layout(pageFor(renderer, Form), 200);
+  layout(
+    sheet(renderer)
+      .findAllByType(View)
+      .find((node) => node.props.onLayout)!,
+    290
+  );
+  act(() =>
+    mockKeyboardHandlers.onEnd!({
+      height: 200,
+      progress: 1,
+      duration: 250,
+      target: 1,
+    })
+  );
+  act(() =>
+    mockKeyboardHandlers.onEnd!({
+      height: 0,
+      progress: 0,
+      duration: 250,
+      target: 1,
+    })
+  );
+  expect(renders).toHaveBeenCalledTimes(1);
+  expect(renderHeader).toHaveBeenCalledTimes(1);
+  act(() => renderer.update(render()));
+  expect(renders).toHaveBeenCalledTimes(1);
+  act(() => renderer.update(render('initial', 'Updated')));
+  expect(renders).toHaveBeenCalledTimes(2);
+  act(() => renderer.update(render('initial', 'Updated', '#abcdef')));
+  expect(renders).toHaveBeenCalledTimes(3);
+  act(() =>
+    renderer.update(render('initial', 'Updated', '#abcdef', updatedRenderer))
+  );
+  expect(renders).toHaveBeenCalledTimes(4);
+  act(() =>
+    renderer.update(render('changed', 'Updated', '#abcdef', updatedRenderer))
+  );
+  expect(renders).toHaveBeenCalledTimes(5);
+  act(() =>
+    renderer.root
+      .findByProps({ testID: 'header-input' })
+      .props.onChangeText('edited')
+  );
+  expect(renders).toHaveBeenCalledTimes(6);
+  expect(renders).toHaveBeenLastCalledWith(
+    expect.objectContaining({
+      title: 'Custom Updated',
+      color: '#abcdef',
+      value: 'changed',
+      text: 'edited',
+    })
+  );
+  expect(updatedRenderer).toHaveBeenCalledTimes(1);
+  const rootRenders = () =>
+    renders.mock.calls.filter(([props]) => props.route.key === rootKey).length;
+  act(() => navigation.push('preview', { label: 'Next' }));
+  expect(rootRenders()).toBe(6);
+  const targetKey = navigationState.route!.key;
+  const count = renders.mock.calls.length;
+  act(() => mockCompletions.shift()!(true));
+  expect(renders).toHaveBeenCalledTimes(count);
+  expect(
+    renders.mock.calls.filter(([props]) => props.route.key === targetKey)
+  ).toHaveLength(1);
+  act(() => navigation.dismiss());
+  expect(renders).toHaveBeenCalledTimes(count);
+  act(() => renderer.unmount());
+});
+
+test('focus consumers rerender only when their own focus changes, including deep retained screens', () => {
+  const renders = jest.fn();
+  const focus = jest.fn();
+  function Focused({ route }: TrayScreenProps<Routes>) {
+    Tray.useFocusEffect(focus);
+    renders(route.key);
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack>
+          <Tray.Screen name="form" component={Focused} />
+          <Tray.Screen name="preview" component={Focused} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  const root = navigationState.route!.key;
+  act(() => sheet(renderer).props.onSettle(1));
+  expect(renders.mock.calls).toEqual([[root]]);
+  act(() => navigation.push('preview', { label: 'First' }));
+  const first = navigationState.route!.key;
+  act(() => mockCompletions.shift()!(true));
+  expect(renders.mock.calls.filter(([key]) => key === root)).toHaveLength(2);
+  act(() => navigation.push('preview', { label: 'Second' }));
+  const second = navigationState.route!.key;
+  act(() => mockCompletions.shift()!(true));
+  expect(renders.mock.calls.filter(([key]) => key === root)).toHaveLength(2);
+  expect(renders.mock.calls.filter(([key]) => key === first)).toHaveLength(2);
+  expect(renders.mock.calls.filter(([key]) => key === second)).toHaveLength(1);
+  const count = renders.mock.calls.length;
+  act(() =>
+    mockKeyboardHandlers.onEnd!({
+      height: 200,
+      progress: 1,
+      duration: 250,
+      target: 1,
+    })
+  );
+  expect(renders).toHaveBeenCalledTimes(count);
+  act(() => navigation.popToRoot());
+  act(() => mockCompletions.shift()!(true));
+  expect(renders.mock.calls.filter(([key]) => key === root)).toHaveLength(3);
+  expect(renders.mock.calls.filter(([key]) => key === first)).toHaveLength(2);
+  expect(focus).toHaveBeenCalledTimes(4);
+  act(() => renderer.unmount());
+});
+
+test('custom header state subscriptions remain live behind the memo boundary', () => {
+  const renders = jest.fn();
+  function Header({ route }: TrayHeaderProps<Routes>) {
+    renders(
+      route.key,
+      Tray.useTrayState((state) => state.depth)
+    );
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack renderHeader={(props) => <Header {...props} />}>
+          <Tray.Screen name="form" component={Form} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  act(() => sheet(renderer).props.onSettle(1));
+  const root = navigationState.route!.key;
+  expect(renders.mock.calls).toEqual([[root, 1]]);
+  act(() => navigation.push('form'));
+  const target = navigationState.route!.key;
+  expect(renders.mock.calls.filter(([key]) => key === root)).toEqual([
+    [root, 1],
+    [root, 2],
+  ]);
+  expect(renders.mock.calls.filter(([key]) => key === target)).toEqual([
+    [target, 2],
+  ]);
+  act(() => mockCompletions.shift()!(true));
+  expect(renders).toHaveBeenCalledTimes(3);
+  act(() => navigation.back());
+  expect(renders.mock.calls.filter(([key]) => key === target)).toEqual([
+    [target, 2],
+    [target, 1],
+  ]);
+  act(() => renderer.unmount());
+});
+
 test('caches object selections, accepts changed selectors, and unsubscribes removed consumers', () => {
   const selected = jest.fn();
   function Selection({ field }: { field: 'depth' | 'isPresented' }) {
@@ -920,12 +1128,12 @@ test('retains one outgoing header instance until settlement, including queued Ba
   const first = headers()[0]!;
   const measure = (node: TestRenderer.ReactTestInstance, height: number) =>
     act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
-  measure(first.parent!, 90);
+  measure(headerFor(first), 90);
   measure(pageFor(renderer, Form), 200);
   act(() => first.findByType(TextInput).props.onChangeText('edited header'));
   act(() => navigation.push('preview', { label: 'Next' }));
   const nextKey = navigationState.route!.key;
-  measure(headers()[1]!.parent!, 90);
+  measure(headerFor(headers()[1]!), 90);
   measure(pageFor(renderer, Preview), 200);
   expect(headers()[0]).toBe(first);
   expect(first.findByType(TextInput).props.value).toBe('edited header');
@@ -998,10 +1206,13 @@ test('measures custom headers independently for retained pages and ignores stale
   const layout = (callback: (event: unknown) => void, height: number) =>
     act(() => callback({ nativeEvent: { layout: { height } } }));
   const measureHeader = () =>
-    renderer.root
-      .findAllByType(CustomHeader)
-      .find((header) => header.props.route.key === navigationState.route?.key)!
-      .parent!.props.onLayout;
+    headerFor(
+      renderer.root
+        .findAllByType(CustomHeader)
+        .find(
+          (header) => header.props.route.key === navigationState.route?.key
+        )!
+    ).props.onLayout;
   const pageHeight = (component: React.ElementType) =>
     StyleSheet.flatten(pageFor(renderer, component).props.style).height;
   const windowHeight = Dimensions.get('window').height;
@@ -1066,7 +1277,7 @@ test('waits for fresh custom-header layout when returning from a built-in header
     const ready = () => shared.mock.calls.at(-1)![0].targetReady;
     const measureHeader = () =>
       act(() =>
-        renderer.root.findByType(CustomHeader).parent!.props.onLayout({
+        headerFor(renderer.root.findByType(CustomHeader)).props.onLayout({
           nativeEvent: { layout: { height: 90 } },
         })
       );
@@ -1822,6 +2033,14 @@ test('rejects replacing the component of a live screen', () => {
     act(() => renderer.unmount());
   }
 });
+
+function headerFor(node: TestRenderer.ReactTestInstance) {
+  let ancestor = node.parent;
+  while (ancestor && typeof ancestor.props.onLayout !== 'function')
+    ancestor = ancestor.parent;
+  if (!ancestor) throw new Error('Header layout view not found');
+  return ancestor;
+}
 
 function pageFor(
   renderer: TestRenderer.ReactTestRenderer,

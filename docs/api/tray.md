@@ -53,6 +53,8 @@ Return your header element from `renderHeader`, or return `null` to omit the hea
 
 Headers crossfade automatically on the same progress as the screen transition, including shared transitions and Back. The outgoing header keeps its React instance until the transition settles, with touch and accessibility disabled. It then unmounts; returning to that route mounts its header again. Custom headers own their buttons and accessibility labels. Render a component such as `(props) => <MyHeader {...props} />` to use hooks inside your header.
 
+Layout and transition updates do not rerender custom header content when its renderer and props are unchanged. Local state, context, and `useTrayState` subscriptions still update normally. If the parent renders frequently, define `renderHeader` outside render or memoize it with `useCallback` and its dependencies.
+
 See [Use a custom header](../guide/dynamic-trays.md#use-a-custom-header).
 
 ## `TrayAnimationConfig`
