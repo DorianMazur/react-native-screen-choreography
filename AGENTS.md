@@ -126,6 +126,12 @@ When changing preparation, presentation, navigation, or retained-content ownersh
 - Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, and system image before showing baseline deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
 - PR performance comments hide timing and render-count rows with an absolute change below 1%, using unrounded values and compatible baselines. Keep changes of 1% or more and measurements without comparable baselines visible; full reports retain all measurements.
 
+### iOS hang diagnostics
+
+- The iOS runner samples the owned simulator app once when XCTest retries a `benchmark-*` existence query. Sampling runs outside the app for five seconds; lookup commands have five-second limits and the sampler has a fifteen-second limit. Keep XCTest's failure status and upload diagnostics even if sampling is denied or the app has exited. Never select a process by name across simulators.
+- `PERFORMANCE_NATIVE_BREADCRUMBS=1` (or the Performance workflow's `ios-native-breadcrumbs` manual input) enables `SCREEN_CHOREOGRAPHY_TRACE_HANGS`. It records bounded native scope entry/exit, thread IDs, nesting depth, and session/request identities in the `dev.screenchoreography.hang` unified-log subsystem. Ordinary builds compile this out. Keep breadcrumbs at capture and presentation boundaries, not per-frame interpolation.
+- `diagnostics/hang-trigger.json`, `hang-sample.txt`, `sample.log`, and opt-in `native-breadcrumbs.log` are retained with the raw iOS artifact. Sampling attempts and breadcrumb-enabled runs must produce invalid performance summaries, even if XCTest recovers, so their timings never become comparison baselines. The hosted runner's sampling permissions and native log export still need CI validation.
+
 ### Headless performance checks
 
 - `yarn perf:fantom` builds pinned RN 0.83 Fantom with the production C++ capture code and benchmarks layout preparation and gallery/trips/wallet journeys through the production navigation controller and coordinator in optimized Hermes. Screen geometry is simplified; Reanimated value storage and native presentation signals are adapted, not platform timing measurements. Keep timing metrics in benchmark suites; use ordinary pass/fail tests for safety and edge cases, including handoff coordination. See `scripts/performance/fantom/README.md` for prerequisites and scope.

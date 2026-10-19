@@ -73,6 +73,20 @@ const options = {
   metadata: {},
 };
 
+test('diagnostic instrumentation invalidates otherwise complete benchmark reports', () => {
+  assert.equal(summarize(documents(), options).valid, true);
+  for (const metadata of [
+    { nativeBreadcrumbs: true },
+    { hangSamplingTriggered: true },
+  ]) {
+    const report = summarize(documents(), { ...options, metadata });
+    assert.equal(report.valid, false);
+    assert.ok(
+      report.errors.some((error) => error.startsWith('Diagnostic run:'))
+    );
+  }
+});
+
 test('CLI prints collection failures and preserves diagnostic summaries', async () => {
   const directory = await mkdtemp(path.join(tmpdir(), 'choreography-report-'));
   try {

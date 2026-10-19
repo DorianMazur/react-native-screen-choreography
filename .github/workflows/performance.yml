@@ -6,6 +6,11 @@ on:
   push:
     branches: [main]
   workflow_dispatch:
+    inputs:
+      ios-native-breadcrumbs:
+        description: 'Enable iOS native hang breadcrumbs (diagnostic run; no performance comparison)'
+        type: boolean
+        default: false
 
 permissions:
   contents: read
@@ -114,6 +119,7 @@ jobs:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-native-release
       PERFORMANCE_TIMING_CYCLES: '20'
       PERFORMANCE_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-2
+      PERFORMANCE_NATIVE_BREADCRUMBS: ${{ inputs.ios-native-breadcrumbs && '1' || '0' }}
       RCT_USE_RN_DEP: '1'
       RCT_USE_PREBUILT_RNCORE: '1'
       # RN's pod installer enables its compiler wrappers when this is set.

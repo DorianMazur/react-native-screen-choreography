@@ -1,4 +1,5 @@
 #include "FabricLayoutCapture.h"
+#include "HangDiagnostics.h"
 #include <cxxreact/ReactNativeVersion.h>
 
 #if REACT_NATIVE_VERSION_MINOR < 81
@@ -104,6 +105,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
 
   jsi::Value prepareNativeCapture(jsi::Runtime &runtime, const std::vector<Tag> &screens,
       const std::vector<Tag> &tags) {
+    SC_HANG_SCOPE("capture.prepare", std::to_string(screens.front()).c_str());
     if (invalidated_.load()) return jsi::Value::null();
     std::shared_ptr<NativeCaptureRequest> request;
     RootShadowNode::Shared committedRoot;
@@ -159,6 +161,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
     return jsi::Function::createFromHostFunction(runtime,
         jsi::PropNameID::forAscii(runtime, "readNativeCapture"), 0,
         [owner, request](jsi::Runtime &rt, const jsi::Value &, const jsi::Value *args, size_t count) -> jsi::Value {
+          SC_HANG_SCOPE("capture.invoke", std::to_string(reinterpret_cast<uintptr_t>(request.get())).c_str());
           const bool validateOnly = count == 1 && args[0].isBool() && args[0].getBool();
           if (count == 1 && args[0].isBool() && !args[0].getBool()) {
             request->consumed.store(true);
@@ -185,6 +188,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
   }
 
   jsi::Value capture(jsi::Runtime &runtime, const std::vector<Tag> &screens, const std::vector<Tag> &tags) {
+    SC_HANG_SCOPE("capture.mounted", std::to_string(screens.front()).c_str());
     std::vector<RootShadowNode::Shared> roots;
     {
       std::lock_guard lock(mutex_);
@@ -254,7 +258,9 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
 
   void refreshRequest(const std::shared_ptr<NativeCaptureRequest> &request,
       const RootShadowNode::Shared &root) {
-    if (invalidated_.load() || request->consumed.load() || !isCurrent(root)) return;
+    if (invalidated_.load() || request->consumed.load()) return;
+    SC_HANG_SCOPE("capture.refresh", std::to_string(reinterpret_cast<uintptr_t>(request.get())).c_str());
+    if (!isCurrent(root)) return;
     std::lock_guard lock(request->mutex);
     if (request->invalidated || request->consumed.load()) return;
     std::vector<CapturedFrame> frames;
@@ -288,6 +294,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
   }
 
   jsi::Value readNativeCapture(jsi::Runtime &runtime, const std::shared_ptr<NativeCaptureRequest> &request) {
+    SC_HANG_SCOPE("capture.read", std::to_string(reinterpret_cast<uintptr_t>(request.get())).c_str());
     if (invalidated_.load()) return jsi::Value::null();
     RootShadowNode::Shared root;
     std::vector<CapturedFrame> frames;
@@ -319,6 +326,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
   }
 
   bool validateNativeCapture(const std::shared_ptr<NativeCaptureRequest> &request) const {
+    SC_HANG_SCOPE("capture.validate", std::to_string(reinterpret_cast<uintptr_t>(request.get())).c_str());
     if (invalidated_.load()) return false;
     {
       std::lock_guard lock(request->mutex);

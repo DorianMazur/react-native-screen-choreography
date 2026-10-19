@@ -446,6 +446,14 @@ export function summarize(
   if (!MODES.includes(mode)) throw new Error('Unknown build mode');
   const metrics: MetricSamples = {};
   const errors = [];
+  if (
+    metadata.nativeBreadcrumbs === true ||
+    metadata.hangSamplingTriggered === true
+  ) {
+    errors.push(
+      'Diagnostic run: native breadcrumbs or hang sampling enabled; excluded from performance comparisons'
+    );
+  }
   const fixtures = new Set<string>();
   const sources = [];
   const runIds = new Set<string>();
