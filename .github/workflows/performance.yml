@@ -17,7 +17,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: performance-${{ github.workflow }}-${{ github.ref }}
+  # Keep repeated manual diagnostic runs independent; supersede stale PR/push runs.
+  group: performance-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
