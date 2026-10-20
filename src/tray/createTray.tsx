@@ -158,25 +158,30 @@ export function createTray<P extends TrayParamList>() {
       screens.current = declaration.screens;
       onDismiss.current = declaration.options.onDismiss;
     });
-    const tray = useMemo<TrayNavigation<P>>(() => {
+    const { tray, bindNavigation } = useMemo(() => {
+      const validate = (name: string, options?: TrayNavigationOptions) => {
+        if (!Object.prototype.hasOwnProperty.call(screens.current, name))
+          throw new Error(`Unknown tray screen: ${name}`);
+        if (options && (!options.groupId || !options.groupId.trim()))
+          throw new Error(
+            'Tray shared transitions require a non-empty groupId.'
+          );
+      };
       const destination =
-        (type: 'present' | 'push' | 'replace') =>
+        (type: 'present' | 'push' | 'replace', sourceRouteKey?: string) =>
         (name: string, params?: unknown, options?: TrayNavigationOptions) => {
-          if (!Object.prototype.hasOwnProperty.call(screens.current, name))
-            throw new Error(`Unknown tray screen: ${name}`);
-          Keyboard.dismiss();
-          if (options && (!options.groupId || !options.groupId.trim()))
-            throw new Error(
-              'Tray shared transitions require a non-empty groupId.'
-            );
-          dispatch({
+          validate(name, options);
+          if (type !== 'push') Keyboard.dismiss();
+          const accepted = dispatch({
             type,
             name,
             params,
             ...(type === 'push' && options ? { groupId: options.groupId } : {}),
+            ...(sourceRouteKey !== undefined ? { sourceRouteKey } : {}),
           });
+          if (type === 'push' && accepted) Keyboard.dismiss();
         };
-      return {
+      const actions: TrayNavigation<P> = {
         present: destination('present'),
         push: destination('push'),
         replace: destination('replace'),
@@ -192,6 +197,13 @@ export function createTray<P extends TrayParamList>() {
           Keyboard.dismiss();
           dispatch({ type: 'dismiss' });
         },
+      };
+      return {
+        tray: actions,
+        bindNavigation: (key: string): TrayNavigation<P> => ({
+          ...actions,
+          push: destination('push', key),
+        }),
       };
     }, [dispatch]);
     const isPresented = state.phase !== 'closed';
@@ -239,6 +251,8 @@ export function createTray<P extends TrayParamList>() {
                     dispatch={dispatch}
                     tray={tray}
                     screenContext={ScreenContext}
+                    navigationContext={Context}
+                    bindNavigation={bindNavigation}
                   />
                 </TrayChoreography>
               </ChoreographyOverlay>
@@ -257,6 +271,8 @@ function TrayHost<P extends TrayParamList>({
   dispatch,
   tray,
   screenContext: ScreenContext,
+  navigationContext,
+  bindNavigation,
   screens,
   appearance = 'floating',
   topInset = 0,
@@ -274,6 +290,8 @@ function TrayHost<P extends TrayParamList>({
   dispatch: React.Dispatch<TrayAction>;
   tray: TrayNavigation<P>;
   screenContext: React.Context<string | undefined>;
+  navigationContext: React.Context<TrayNavigation<P> | null>;
+  bindNavigation: (key: string) => TrayNavigation<P>;
 }) {
   const { height, width } = useWindowDimensions();
   const keyboard = useTrayKeyboard();
@@ -643,9 +661,10 @@ function TrayHost<P extends TrayParamList>({
                           >
                             <MemoTrayHeaderContent
                               screenContext={ScreenContext}
+                              navigationContext={navigationContext}
+                              bindNavigation={bindNavigation}
                               renderHeader={entryRenderHeader}
                               route={entry as TrayRoute<P, keyof P & string>}
-                              tray={tray}
                               title={entryTitle}
                               canGoBack={entryCanGoBack}
                               color={textColor}
@@ -805,9 +824,10 @@ function TrayHost<P extends TrayParamList>({
                       >
                         <MemoTrayContent
                           screenContext={ScreenContext}
+                          navigationContext={navigationContext}
+                          bindNavigation={bindNavigation}
                           component={Component}
                           route={entry as TrayRoute<P>}
-                          tray={tray}
                         />
                       </TrayPage>
                     );
@@ -902,15 +922,25 @@ function TrayTitle({
 
 function TrayHeaderContent<P extends TrayParamList>({
   screenContext: ScreenContext,
+  navigationContext: NavigationContext,
+  bindNavigation,
   renderHeader,
   ...props
-}: TrayHeaderProps<P> & {
+}: Omit<TrayHeaderProps<P>, 'tray'> & {
   screenContext: React.Context<string | undefined>;
+  navigationContext: React.Context<TrayNavigation<P> | null>;
+  bindNavigation: (key: string) => TrayNavigation<P>;
   renderHeader: (props: TrayHeaderProps<P>) => React.ReactNode;
 }) {
+  const tray = useMemo(
+    () => bindNavigation(props.route.key),
+    [bindNavigation, props.route.key]
+  );
   return (
     <ScreenContext.Provider value={props.route.key}>
-      {renderHeader(props)}
+      <NavigationContext.Provider value={tray}>
+        {renderHeader({ ...props, tray })}
+      </NavigationContext.Provider>
     </ScreenContext.Provider>
   );
 }
@@ -922,15 +952,24 @@ const MemoTrayHeaderContent = memo(
 function TrayContent<P extends TrayParamList>({
   component: Component,
   screenContext: ScreenContext,
+  navigationContext: NavigationContext,
+  bindNavigation,
   route,
-  tray,
-}: TrayScreenProps<P> & {
+}: Omit<TrayScreenProps<P>, 'tray'> & {
   component: React.ComponentType<TrayScreenProps<P>>;
   screenContext: React.Context<string | undefined>;
+  navigationContext: React.Context<TrayNavigation<P> | null>;
+  bindNavigation: (key: string) => TrayNavigation<P>;
 }) {
+  const tray = useMemo(
+    () => bindNavigation(route.key),
+    [bindNavigation, route.key]
+  );
   return (
     <ScreenContext.Provider value={route.key}>
-      <Component route={route} tray={tray} />
+      <NavigationContext.Provider value={tray}>
+        <Component route={route} tray={tray} />
+      </NavigationContext.Provider>
     </ScreenContext.Provider>
   );
 }

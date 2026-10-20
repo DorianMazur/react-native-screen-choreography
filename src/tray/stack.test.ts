@@ -33,7 +33,7 @@ test('push retains the same root; back retains the outgoing view until completio
   expect(finish(back).transition).toBeUndefined();
 });
 
-test('serializes rapid push, back, and push without losing the newest destination', () => {
+test('preserves Back while ignoring another push until the return settles', () => {
   let state = opened();
   state = trayReducer(state, { type: 'push', name: 'a', params: undefined });
   state = trayReducer(state, { type: 'back' });
@@ -41,6 +41,8 @@ test('serializes rapid push, back, and push without losing the newest destinatio
   state = finish(state);
   expect(state.transition?.direction).toBe(-1);
   state = finish(state);
+  expect(state.entries.map((e) => e.name)).toEqual(['home']);
+  state = trayReducer(state, { type: 'push', name: 'b', params: 2 });
   expect(state.entries.map((e) => e.name)).toEqual(['home', 'b']);
   state = finish(state);
   expect(state.queue).toEqual([]);
@@ -167,9 +169,13 @@ test('no-op popToRoot drains queued commands and stale animation completion is i
   });
   const oldTransition = state.transition!;
   state = trayReducer(state, { type: 'popToRoot' });
-  state = trayReducer(state, { type: 'push', name: 'next', params: undefined });
+  state = trayReducer(state, {
+    type: 'replace',
+    name: 'next',
+    params: undefined,
+  });
   state = finish(state);
-  expect(state.entries.map((e) => e.name)).toEqual(['newRoot', 'next']);
+  expect(state.entries.map((e) => e.name)).toEqual(['next']);
   expect(
     trayReducer(state, {
       type: 'transitionEnd',
