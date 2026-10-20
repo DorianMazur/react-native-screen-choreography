@@ -64,7 +64,10 @@ fi
     write('examples/react-navigation/ios/Podfile.lock', 'matching');
     write('examples/react-navigation/ios/Pods/Manifest.lock', 'matching');
     // Report validation is covered separately; exercise the real launcher/watcher here.
-    write('scripts/performance/report.mts', '');
+    write(
+      'scripts/performance/report.mts',
+      'process.exitCode = Number(process.env.REPORT_EXIT_STATUS ?? 0);'
+    );
     for (const file of ['run-ios.sh', 'ios-hang-diagnostics.mts']) {
       copyFileSync(
         new URL(file, import.meta.url),
@@ -87,6 +90,7 @@ fi
             PERFORMANCE_DERIVED_DATA: path.join(root, 'derived'),
             PERFORMANCE_NATIVE_BREADCRUMBS: breadcrumbs,
             TEST_EXIT_STATUS: breadcrumbs === '1' ? '65' : '0',
+            REPORT_EXIT_STATUS: breadcrumbs === '1' ? '1' : '0',
           },
         }
       );
@@ -96,6 +100,13 @@ fi
       );
       assert.equal(metadata.nativeBreadcrumbs, breadcrumbs === '1');
       assert.equal(metadata.hangSamplingTriggered, breadcrumbs === '1');
+      assert.equal(metadata.lifecycleValidation, 1);
+      assert.equal(metadata.runnerExitCode, breadcrumbs === '1' ? 65 : 0);
+      if (breadcrumbs === '1')
+        assert.match(
+          metadata.diagnosticErrors.join(),
+          /Incomplete native breadcrumb coverage/
+        );
       assert.ok(
         readFileSync(path.join(output, 'xcode-arguments'), 'utf8').includes(
           `SCREEN_CHOREOGRAPHY_TRACE_HANGS=${breadcrumbs}`

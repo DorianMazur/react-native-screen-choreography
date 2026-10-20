@@ -73,7 +73,7 @@ const options = {
   metadata: {},
 };
 
-test('diagnostic instrumentation invalidates otherwise complete benchmark reports', () => {
+test('diagnostic instrumentation excludes comparisons without failing valid collection', () => {
   assert.equal(summarize(documents(), options).valid, true);
   for (const metadata of [
     { nativeBreadcrumbs: true },
@@ -81,10 +81,43 @@ test('diagnostic instrumentation invalidates otherwise complete benchmark report
   ]) {
     const report = summarize(documents(), { ...options, metadata });
     assert.equal(report.valid, false);
+    assert.equal(report.collectionPassed, true);
+    assert.deepEqual(report.errors, []);
     assert.ok(
-      report.errors.some((error) => error.startsWith('Diagnostic run:'))
+      report.comparisonExclusions.some((error) =>
+        error.startsWith('Diagnostic run:')
+      )
     );
+    assert.match(markdown(report), /Diagnostic collection passed/);
   }
+  const missingLogs = summarize(documents(), {
+    ...options,
+    metadata: {
+      nativeBreadcrumbs: true,
+      diagnosticErrors: ['Missing native logs'],
+    },
+  });
+  assert.equal(missingLogs.collectionPassed, false);
+  assert.match(missingLogs.errors.join(), /Missing native logs/);
+});
+
+test('current runners reject missing lifecycle instrumentation instead of skipping checks', () => {
+  const report = summarize(documents(), {
+    ...options,
+    metadata: { lifecycleValidation: 1 },
+  });
+  assert.equal(report.collectionPassed, false);
+  assert.match(report.errors.join(), /Required lifecycle telemetry missing/);
+});
+
+test('complete fixture exports cannot mask a native test failure', () => {
+  const report = summarize(documents(), {
+    ...options,
+    metadata: { runnerExitCode: 65 },
+  });
+  assert.equal(report.collectionPassed, false);
+  assert.equal(report.valid, false);
+  assert.match(report.errors.join(), /runner failed with exit code 65/);
 });
 
 test('CLI prints collection failures and preserves diagnostic summaries', async () => {
@@ -132,6 +165,29 @@ test('CLI prints collection failures and preserves diagnostic summaries', async 
       await readFile(path.join(output, 'summary.md'), 'utf8'),
       /Collection failed/
     );
+    // Diagnostic collection still fails for broken fixtures, but exclusion alone
+    // is not a failed test. Its summary remains ineligible as a timing baseline.
+    await writeFile(metadata, JSON.stringify({ nativeBreadcrumbs: true }));
+    const command = [
+      '--experimental-transform-types',
+      fileURLToPath(new URL('./report.mts', import.meta.url)),
+      '--platform=android',
+      '--mode=native-release',
+      `--input=${input}`,
+      `--output=${output}`,
+      `--metadata=${metadata}`,
+    ];
+    assert.equal(spawnSync(process.execPath, command).status, 1);
+    await writeFile(
+      path.join(input, 'gallery.json'),
+      JSON.stringify(fixture('gallery'))
+    );
+    assert.equal(spawnSync(process.execPath, command).status, 0);
+    const diagnostic = JSON.parse(
+      await readFile(path.join(output, 'summary.json'), 'utf8')
+    );
+    assert.equal(diagnostic.valid, false);
+    assert.equal(diagnostic.collectionPassed, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }

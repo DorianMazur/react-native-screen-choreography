@@ -90,6 +90,8 @@ exit 127
     assert.equal(metadata.emulatorVersion, '37.2.12 (16428233)');
     assert.equal(metadata.graphicsRenderer, 'Mesa llvmpipe');
     assert.equal(metadata.timingCycles, 20);
+    assert.equal(metadata.lifecycleValidation, 1);
+    assert.equal(metadata.runnerExitCode, 0);
     const sequence = readFileSync(path.join(root, 'launch-sequence'), 'utf8')
       .trim()
       .split('\n');

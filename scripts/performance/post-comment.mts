@@ -89,6 +89,14 @@ function collectionStatus(
   mode: string
 ) {
   if (!report) return 'missing';
+  if (
+    report.schemaVersion === 1 &&
+    report.platform === platform &&
+    report.mode === mode &&
+    report.collectionPassed === true &&
+    report.valid === false
+  )
+    return 'passed (diagnostic)';
   return report.schemaVersion === 1 &&
     report.platform === platform &&
     report.mode === mode &&
@@ -134,6 +142,15 @@ export function renderComment(
       continue;
     }
     if (report.valid !== true) {
+      if (report.collectionPassed === true) {
+        lines.push(
+          '**Diagnostic collection passed; timings excluded from comparisons.**',
+          '',
+          '</details>',
+          ''
+        );
+        continue;
+      }
       lines.push('**Collection failed; timings are incomplete.**', '');
       for (const error of (Array.isArray(report.errors)
         ? report.errors

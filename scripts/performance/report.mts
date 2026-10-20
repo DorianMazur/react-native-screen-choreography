@@ -1,6 +1,7 @@
 import { summaryTable, renderCountsTable } from './summary-table.mts';
 import { metricDefinition, presentationStages } from './metric-definitions.mts';
 import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
+import { validateLifecycle } from './validate-lifecycle.mts';
 import type {
   InputRecord,
   MetricSamples,
@@ -446,11 +447,18 @@ export function summarize(
   if (!MODES.includes(mode)) throw new Error('Unknown build mode');
   const metrics: MetricSamples = {};
   const errors = [];
+  if (metadata.runnerExitCode !== undefined && metadata.runnerExitCode !== 0)
+    errors.push(
+      `Native build/test runner failed with exit code ${metadata.runnerExitCode}; see test logs and diagnostics`
+    );
+  for (const error of (metadata.diagnosticErrors as string[] | undefined) ?? [])
+    errors.push(`Diagnostics: ${error}`);
+  const comparisonExclusions = [];
   if (
     metadata.nativeBreadcrumbs === true ||
     metadata.hangSamplingTriggered === true
   ) {
-    errors.push(
+    comparisonExclusions.push(
       'Diagnostic run: native breadcrumbs or hang sampling enabled; excluded from performance comparisons'
     );
   }
@@ -460,6 +468,11 @@ export function summarize(
   const instrumentation = new Map<string, string>();
   let expectedCycles;
   try {
+    if (
+      metadata.lifecycleValidation !== undefined &&
+      metadata.lifecycleValidation !== 1
+    )
+      throw new Error('Unknown lifecycle validation version');
     expectedCycles = expectedCount(
       metadata.timingCycles,
       'Expected timing cycles'
@@ -480,6 +493,7 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
+        if (metadata.lifecycleValidation === 1) validateLifecycle(data);
         readFixture(data, documentMetrics, platform);
         if (
           expectedCycles !== undefined &&
@@ -542,7 +556,11 @@ export function summarize(
     fixtureVersion: 6,
     policy: 'informational-performance-require-overlay-presentation',
     metadata,
-    valid: errors.length === 0,
+    // Keep diagnostic summaries invalid for existing baseline consumers, while
+    // letting a successful diagnostic collection exit successfully.
+    valid: errors.length === 0 && comparisonExclusions.length === 0,
+    collectionPassed: errors.length === 0,
+    comparisonExclusions,
     errors,
     sources,
     metricDefinitions: Object.fromEntries(
@@ -607,12 +625,17 @@ export function markdown(
   return [
     `# Choreography performance: ${summary.platform} / ${summary.mode}`,
     '',
-    summary.valid
-      ? 'Collection and overlay presentation passed. Performance timings are informational.'
-      : '**Collection failed. Do not interpret missing data as an improvement.**',
+    summary.collectionPassed === true && summary.valid === false
+      ? 'Diagnostic collection passed. Timings are excluded from performance comparisons.'
+      : summary.valid
+        ? 'Collection and overlay presentation passed. Performance timings are informational.'
+        : '**Collection failed. Do not interpret missing data as an improvement.**',
     '',
     ...(summary.errors ?? []).map(
       (error: string) => `- ${error.replaceAll('\n', ' ')}`
+    ),
+    ...(summary.comparisonExclusions ?? []).map(
+      (reason: string) => `- ${reason.replaceAll('\n', ' ')}`
     ),
     '',
     baselineNote,
@@ -699,7 +722,7 @@ async function main() {
     JSON.stringify(summary, null, 2) + '\n'
   );
   await writeFile(path.join(args.output, 'summary.md'), markdown(summary));
-  if (!summary.valid) {
+  if (!summary.collectionPassed) {
     console.error('Performance collection failed:');
     for (const error of summary.errors) console.error(`- ${error}`);
     process.exitCode = 1;

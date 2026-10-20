@@ -55,6 +55,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  lifecycleValidation: 1,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
@@ -83,6 +84,14 @@ if [[ -d "$native_outputs" ]]; then cp -R "$native_outputs" "$output/raw/macrobe
 # Keep per-test logs and stack traces; the final logcat tail can miss an earlier scenario's crash.
 if [[ -d "$native_results" ]]; then cp -R "$native_results" "$output/test-results"; fi
 adb logcat -d -t 2000 > "$output/logcat.txt" || true
-node --experimental-transform-types scripts/performance/report.mts --platform=android "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || status=1
+node - "$output/metadata.json" "$status" <<'NODE'
+const fs = require('node:fs');
+const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+metadata.runnerExitCode = Number(process.argv[3]);
+fs.writeFileSync(process.argv[2], JSON.stringify(metadata, null, 2));
+NODE
+node --experimental-transform-types scripts/performance/report.mts --platform=android "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || {
+  if [[ "$status" -eq 0 ]]; then status=1; fi
+}
 printf 'Report: %s/report/summary.md\n' "$output"
 exit "$status"

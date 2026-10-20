@@ -188,7 +188,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
   }
 
   jsi::Value capture(jsi::Runtime &runtime, const std::vector<Tag> &screens, const std::vector<Tag> &tags) {
-    SC_HANG_SCOPE("capture.mounted", std::to_string(screens.front()).c_str());
+    SC_HANG_REPEATED_SCOPE("capture.mounted", std::to_string(screens.front()).c_str());
     std::vector<RootShadowNode::Shared> roots;
     {
       std::lock_guard lock(mutex_);

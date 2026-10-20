@@ -54,6 +54,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
   nativeBreadcrumbs: process.argv[5] === '1',
+  lifecycleValidation: 1,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
@@ -108,17 +109,21 @@ if [[ "$breadcrumbs" == 1 ]]; then
   xcrun simctl spawn "$udid" log show --style compact --last 1h \
     --predicate 'subsystem == "dev.screenchoreography.hang"' \
     > "$output/diagnostics/native-breadcrumbs.log" 2> "$output/diagnostics/breadcrumb-export.log" || true
+  node --experimental-transform-types scripts/performance/ios-hang-diagnostics.mts --check-breadcrumbs "$output" "$cycles"
 fi
-node - "$output/metadata.json" "$output/diagnostics/hang-trigger.json" <<'NODE'
+node - "$output/metadata.json" "$output/diagnostics/hang-trigger.json" "$status" <<'NODE'
 const fs = require('node:fs');
 const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 metadata.hangSamplingTriggered = fs.existsSync(process.argv[3]);
+metadata.runnerExitCode = Number(process.argv[4]);
 fs.writeFileSync(process.argv[2], JSON.stringify(metadata, null, 2));
 NODE
 container="$(xcrun simctl get_app_container "$udid" screenchoreography.example data 2>/dev/null || true)"
 if [[ -n "$container" && -d "$container/Documents/performance" ]]; then
   cp -R "$container/Documents/performance/." "$output/raw/"
 fi
-node --experimental-transform-types scripts/performance/report.mts --platform=ios "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || status=1
+node --experimental-transform-types scripts/performance/report.mts --platform=ios "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || {
+  if [[ "$status" -eq 0 ]]; then status=1; fi
+}
 printf 'Report: %s/report/summary.md\n' "$output"
 exit "$status"
