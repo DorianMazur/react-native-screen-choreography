@@ -99,7 +99,7 @@ Full-screen views fill the available window with no outside spacing or rounded c
 
 ## `TrayNavigation`
 
-Returned by `useTray()` and passed to screens as `tray`. The object and its methods stay stable for the provider's lifetime. Using them does not subscribe a component to stack changes.
+Returned by `useTray()` and passed to screens and custom headers as `tray`. Actions stay stable for that provider, screen, or header instance. Using them does not subscribe a component to stack changes.
 
 | Member                         | Behavior                                           |
 | ------------------------------ | -------------------------------------------------- |
@@ -110,9 +110,11 @@ Returned by `useTray()` and passed to screens as `tray`. The object and its meth
 | `popToRoot()`                  | Return to the first screen.                        |
 | `dismiss()`                    | Close the whole tray.                              |
 
-Parameters are optional only when the route type includes `undefined`. Methods return `void` and dismiss the keyboard without restoring input focus on Back.
+Parameters are optional only when the route type includes `undefined`. Methods return `void`. Navigation dismisses the keyboard without restoring input focus on Back; ignored pushes leave the keyboard alone.
 
-Rapid navigation requests run in order. Dismissal clears pending navigation. A `present()` during closing waits until the sheet closes; the latest request wins. Other commands do nothing while closed or closing.
+`push` accepts requests only while open, with no preparation, transition, or pending navigation; additional pushes are ignored. Inside a screen or custom header, pushes from `useTray()` or the `tray` prop also require that owning route to be current. Actions obtained outside screens apply to the current route.
+
+Other navigation requests can wait for an in-progress transition. Dismissal clears pending navigation. A `present()` during closing waits until the sheet closes; the latest request wins. Other commands do nothing while closed or closing.
 
 ## `TrayNavigationOptions`
 
@@ -138,7 +140,7 @@ const route = Tray.useTrayState((state) => state.route);
 | `depth`       | Number of screens in the stack.            |
 | `isPresented` | True while opening, open, or closing.      |
 
-The selector receives `TrayState<Routes>`. A stack update rerenders the consumer only if the selected value changes according to `Object.is`. Prefer selecting a field or primitive; returning a new object or array counts as a change. To observe every state change, select `(state) => state`.
+The selector receives `TrayState<Routes>`. A stack update rerenders the consumer only if the selected value changes according to `Object.is`. Prefer selecting a field or primitive; returning a new object or array counts as a change. To observe changes to any of these public fields, select `(state) => state`.
 
 ## `Tray.useFocusEffect`
 

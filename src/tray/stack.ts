@@ -12,6 +12,8 @@ export type TrayCommand =
         name: string;
         params: unknown;
         groupId?: string;
+        /** Bound internally for pushes originating in a tray screen/header. */
+        sourceRouteKey?: string;
       };
     }['present' | 'push' | 'replace']
   | { type: 'back' }
@@ -74,6 +76,17 @@ export function trayReducer(
   action: TrayAction,
   prepared = false
 ): TrayStackState {
+  if (action.type === 'push' && !prepared) {
+    if (
+      state.phase !== 'open' ||
+      state.preparation ||
+      state.transition ||
+      state.queue.length ||
+      (action.sourceRouteKey !== undefined &&
+        state.entries[state.entries.length - 1]?.key !== action.sourceRouteKey)
+    )
+      return state;
+  }
   if (action.type === 'prepared') {
     if (
       action.session !== state.session ||

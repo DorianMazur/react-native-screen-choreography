@@ -3,6 +3,7 @@ import React, {
   useCallback,
   useContext,
   useEffect,
+  useRef,
   useState,
 } from 'react';
 import {
@@ -19,6 +20,7 @@ import { useTrayKeyboard } from './useTrayKeyboard';
 import { useTrayGeometry } from './TrayChoreography';
 import { TrayHeaderLayer } from './TrayHeaderLayer';
 import * as TrayChoreographyModule from './TrayChoreography';
+import { TransitionCoordinator } from '../core/TransitionCoordinator';
 import type { KeyboardHandler } from 'react-native-keyboard-controller';
 import type {
   TrayHeaderProps,
@@ -128,6 +130,33 @@ export function checkFocusEffectTypes() {
   const invalidCleanup: Effect = () => 1;
   return { withoutCleanup, withCleanup, asyncEffect, invalidCleanup };
 }
+
+export function checkPushTypes(
+  tray: TrayNavigation<{
+    Position: undefined;
+    Add: { amount: number };
+    CashOut: { amount: number } | undefined;
+  }>
+) {
+  const result: void = tray.push('Add', { amount: 5 }, { groupId: 'chart' });
+  tray.push('Position');
+  tray.push('CashOut');
+  tray.push('CashOut', { amount: 5 });
+  tray.push('CashOut', undefined, { groupId: 'chart' });
+  // @ts-expect-error Required destination params cannot be omitted.
+  tray.push('Add');
+  // @ts-expect-error Required destination params cannot be undefined.
+  tray.push('Add', undefined);
+  // @ts-expect-error Route names and params remain correlated.
+  tray.push('Position', { amount: 5 });
+  // @ts-expect-error Parameter types are inferred from the route.
+  tray.push('Add', { amount: '5' });
+  // @ts-expect-error Unknown routes are rejected.
+  tray.push('Missing');
+  // @ts-expect-error Options still require a group.
+  tray.push('Position', undefined, {});
+  return result;
+}
 let navigation: TrayNavigation<Routes>;
 let navigationState: TrayState<Routes>;
 const unmounted: string[] = [];
@@ -174,6 +203,296 @@ function stack(Definition = Tray, onDismiss?: () => void) {
 function sheet(renderer: TestRenderer.ReactTestRenderer) {
   return renderer.root.findByType('BottomSheet' as React.ElementType);
 }
+
+function pendingPushFixture(
+  guard: 'ref' | 'library',
+  origin: 'hook' | 'prop' = 'hook'
+) {
+  type TradeRoutes = {
+    Position: undefined;
+    Add: { amount: number } | undefined;
+    CashOut: undefined;
+  };
+  const Trade = createTray<TradeRoutes>();
+  const captures: Array<{
+    resolve: () => void;
+    reject: (error: Error) => void;
+  }> = [];
+  const capture = jest
+    .spyOn(TransitionCoordinator.prototype, 'captureSourceGroup')
+    .mockImplementation(
+      () =>
+        new Promise<void>((resolve, reject) => {
+          captures.push({ resolve, reject });
+        })
+    );
+  let tray!: TrayNavigation<TradeRoutes>;
+  let state!: TrayState<TradeRoutes>;
+  let push!: (name: 'Add' | 'CashOut') => void | boolean;
+  const focuses = jest.fn();
+  const dismissed = jest.fn();
+  function Position({
+    tray: propTray,
+  }: TrayScreenProps<TradeRoutes, 'Position'>) {
+    const hookTray = Trade.useTray();
+    const sourceTray = origin === 'hook' ? hookTray : propTray;
+    const active = Trade.useTrayState((s) => s.route?.name === 'Position');
+    const pushing = useRef(false);
+    useEffect(() => {
+      if (active) pushing.current = false;
+    }, [active]);
+    Trade.useFocusEffect(focuses);
+    push = (name) => {
+      if (guard === 'library')
+        return sourceTray.push(name, undefined, {
+          groupId: 'props-trade-chart',
+        });
+      if (!active || pushing.current) return false;
+      pushing.current = true;
+      sourceTray.push(name, undefined, { groupId: 'props-trade-chart' });
+      return true;
+    };
+    return <Text>Position</Text>;
+  }
+  function Editor({ route }: TrayScreenProps<TradeRoutes>) {
+    return <Text>{route.name}</Text>;
+  }
+  function Observe() {
+    tray = Trade.useTray();
+    state = Trade.useTrayState((s) => s);
+    return null;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Trade.Provider>
+        <Observe />
+        <Trade.Stack onDismiss={dismissed}>
+          <Trade.Screen name="Position" component={Position} />
+          <Trade.Screen name="Add" component={Editor} />
+          <Trade.Screen name="CashOut" component={Editor} />
+        </Trade.Stack>
+      </Trade.Provider>
+    );
+  });
+  act(() => tray.present('Position'));
+  act(() => sheet(renderer).props.onSettle(1));
+  return {
+    renderer,
+    tray,
+    captures,
+    focuses,
+    dismissed,
+    push: (name: 'Add' | 'CashOut') => push(name),
+    state: () => state,
+    dispose: () => {
+      act(() => renderer.unmount());
+      capture.mockRestore();
+    },
+  };
+}
+
+test('a consumer focus-reset ref stays locked when preparation is cancelled without a route change', async () => {
+  const f = pendingPushFixture('ref');
+  try {
+    const initial = f.state();
+    act(() => expect(f.push('Add')).toBe(true));
+    expect(f.captures).toHaveLength(1);
+    act(() => sheet(f.renderer).props.onIndexChange(0));
+    act(() => sheet(f.renderer).props.onIndexChange(1));
+    await act(async () => f.captures[0]!.resolve());
+    expect(f.state()).toBe(initial);
+    expect(f.focuses).toHaveBeenCalledTimes(1);
+    expect(f.dismissed).not.toHaveBeenCalled();
+    expect(
+      f.renderer.root
+        .findAllByType(Text)
+        .some((t) => t.props.children === 'Add')
+    ).toBe(false);
+    act(() => expect(f.push('CashOut')).toBe(false));
+    expect(f.captures).toHaveLength(1);
+  } finally {
+    f.dispose();
+  }
+});
+
+test.each([
+  ['Add', 'hook'],
+  ['CashOut', 'hook'],
+  ['Add', 'prop'],
+  ['CashOut', 'prop'],
+] as const)(
+  'push ignores rapid Add/%s taps from the %s and recovers without refocusing',
+  async (second, origin) => {
+    const f = pendingPushFixture('library', origin);
+    try {
+      const initial = f.state();
+      act(() => {
+        f.push('Add');
+        f.push(second);
+      });
+      expect(f.captures).toHaveLength(1);
+      act(() => sheet(f.renderer).props.onIndexChange(0));
+      act(() => {
+        f.push(second);
+      });
+      act(() => sheet(f.renderer).props.onIndexChange(1));
+      expect(f.state()).toBe(initial);
+      expect(f.focuses).toHaveBeenCalledTimes(1);
+      expect(f.dismissed).not.toHaveBeenCalled();
+      act(() => {
+        f.push(second);
+      });
+      expect(f.captures).toHaveLength(2);
+      // Completing the obsolete capture cannot commit or unlock this attempt.
+      await act(async () => f.captures[0]!.resolve());
+      expect(f.state()).toBe(initial);
+      act(() => {
+        f.push('Add');
+      });
+      await act(async () => f.captures[1]!.resolve());
+      expect(f.state().route?.name).toBe(second);
+      expect(f.state().depth).toBe(2);
+      act(() => {
+        f.push('Add');
+      });
+      expect(f.captures).toHaveLength(2);
+      expect(f.state().depth).toBe(2);
+    } finally {
+      f.dispose();
+    }
+  }
+);
+
+test('capture rejection and missing endpoints fall back, settle, and allow navigation again', async () => {
+  const f = pendingPushFixture('library');
+  try {
+    const root = f.state().route!.key;
+    act(() => {
+      f.push('Add');
+    });
+    await act(async () =>
+      f.captures[0]!.reject(new Error('Capture unavailable'))
+    );
+    expect(f.state().route?.name).toBe('Add');
+    // No shared elements are registered in this fixture. Layout releases the
+    // real coordinator's missing-endpoint fallback into the page crossfade.
+    await act(async () => {
+      for (const view of sheet(f.renderer).findAllByType(View)) {
+        view.props.onLayout?.({ nativeEvent: { layout: { height: 200 } } });
+      }
+    });
+    act(() => mockCompletions.shift()!(true));
+    const editor = f.state();
+    act(() => {
+      f.push('CashOut');
+    });
+    expect(f.state()).toBe(editor);
+    expect(f.captures).toHaveLength(1);
+    act(() => f.tray.back());
+    await act(async () => f.captures[1]!.resolve());
+    await act(async () => {});
+    act(() => {
+      f.push('CashOut');
+    });
+    act(() => mockCompletions.shift()!(true));
+    expect(f.state().route?.key).toBe(root);
+    act(() => {
+      f.push('CashOut');
+    });
+    const oldSettle = sheet(f.renderer).props.onSettle;
+    act(() => f.tray.dismiss());
+    act(() => {
+      f.push('Add');
+    });
+    act(() => oldSettle(0));
+    expect(f.state().isPresented).toBe(false);
+    act(() => f.tray.present('Position'));
+    act(() => sheet(f.renderer).props.onSettle(1));
+    act(() => oldSettle(0));
+    await act(async () => f.captures[2]!.resolve());
+    act(() => {
+      f.push('Add');
+    });
+    expect(f.captures).toHaveLength(4);
+  } finally {
+    f.dispose();
+  }
+});
+
+test.each([
+  'screen prop',
+  'screen hook',
+  'header prop',
+  'header hook',
+] as const)(
+  '%s pushes remain bound to their owner through Back and close/reopen',
+  (origin) => {
+    const callbacks = new Map<string, () => void>();
+    function Record({ route, tray }: TrayScreenProps<Routes>) {
+      const fromHook = Tray.useTray();
+      expect(fromHook).toBe(tray);
+      const source = origin.endsWith('hook') ? fromHook : tray;
+      callbacks.set(route.key, () => source.push('form'));
+      return <Text>{route.key}</Text>;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    act(() => {
+      renderer = TestRenderer.create(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack
+            renderHeader={
+              origin.startsWith('header')
+                ? (props) => <Record {...props} />
+                : undefined
+            }
+          >
+            <Tray.Screen
+              name="form"
+              component={origin.startsWith('screen') ? Record : Form}
+            />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+    });
+    try {
+      act(() => navigation.present('form'));
+      const root = navigationState.route!;
+      const push = callbacks.get(root.key)!;
+      act(() => push()); // Still opening.
+      expect(navigationState.depth).toBe(1);
+      act(() => sheet(renderer).props.onSettle(1));
+      act(() => {
+        push();
+        push();
+      });
+      expect(navigationState.depth).toBe(2);
+      act(() => mockCompletions.shift()!(true));
+      const editor = navigationState;
+      act(() => push()); // Inactive source, even after the transition ended.
+      expect(navigationState).toBe(editor);
+      act(() => navigation.back());
+      expect(navigationState.route).toBe(root);
+      act(() => push()); // Current again, but Back still owns the transition.
+      expect(navigationState.depth).toBe(1);
+      act(() => mockCompletions.shift()!(true));
+      act(() => push());
+      expect(navigationState.depth).toBe(2);
+      act(() => navigation.dismiss());
+      act(() => sheet(renderer).props.onSettle(0));
+      act(() => navigation.present('form'));
+      act(() => sheet(renderer).props.onSettle(1));
+      const reopened = navigationState;
+      act(() => push()); // Removed source.
+      expect(navigationState).toBe(reopened);
+      act(() => callbacks.get(reopened.route!.key)!());
+      expect(navigationState.depth).toBe(2);
+    } finally {
+      act(() => renderer.unmount());
+    }
+  }
+);
 
 beforeEach(() => {
   mockCompletions.length = 0;
@@ -550,6 +869,7 @@ test('isolates screen content from navigation and layout updates while preservin
   const originalActions = navigation;
   act(() => navigation.present('form'));
   const originalRoute = renders.mock.calls[0]![0].route;
+  const screenActions = renders.mock.calls[0]![0].tray;
   act(() => sheet(renderer).props.onSettle(1));
   const content = sheet(renderer)
     .findAllByType(View)
@@ -570,8 +890,8 @@ test('isolates screen content from navigation and layout updates while preservin
   expect(renders).toHaveBeenCalledTimes(3);
   expect(renders).toHaveBeenLastCalledWith({
     route: originalRoute,
-    tray: originalActions,
-    actions: originalActions,
+    tray: screenActions,
+    actions: screenActions,
     value: 'updated',
     text: 'edited',
   });
@@ -1008,7 +1328,7 @@ test('custom headers inherit stack defaults, override per screen, and own their 
   act(() => sheet(renderer).props.onSettle(1));
   expect(renderHeader).toHaveBeenLastCalledWith({
     route: navigationState.route,
-    tray: navigation,
+    tray: renderHeader.mock.calls[0]![0].tray,
     title: 'Draft',
     canGoBack: false,
     color: '#123456',
@@ -2000,7 +2320,10 @@ test.each(['active', 'retained', 'queued'])(
     });
     act(() => navigation.present('form'));
     if (phase !== 'queued') act(() => sheet(renderer).props.onSettle(1));
-    act(() => navigation.push('preview', { label: phase }));
+    act(() => {
+      if (phase === 'queued') navigation.replace('preview', { label: phase });
+      else navigation.push('preview', { label: phase });
+    });
     if (phase === 'retained') {
       act(() => mockCompletions.shift()!(true));
       act(() => navigation.back());

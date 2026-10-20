@@ -139,6 +139,12 @@ You can also select `state.route` or `state.depth`. Components update only when 
 
 Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
 
+Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. The library ignores additional pushes while opening or navigating and allows retry after cancellation. No persistent `pushing` ref or focus-reset effect is needed; cancellation can leave the source focused throughout.
+
+::: warning Migration from 0.8.1
+Pushes made while busy are ignored instead of queued. `push(A); push(B)` accepts A and discards B, and `present(A); push(B)` does not queue B during opening. Remove application-owned duplicate-push guards and their reset effects. Back and reopening after dismissal keep their existing handling.
+:::
+
 ## Run work while a screen is focused
 
 Retained screens stay mounted when another tray screen covers them. Use `Tray.useFocusEffect` for subscriptions or refreshes that should run only while a screen is current. It also works in child components and custom header components, without passing a route key.

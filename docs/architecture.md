@@ -386,21 +386,25 @@ owning overlay while unrelated foreground overlays retain their ordering.
 
 Each entry has one live React instance. Previous entries stay mounted for Back;
 popped or replaced entries remain until their transition finishes. Native sheet
-settlement releases the whole stack. Navigation requests run in order, dismissal
-clears pending requests, and reopening waits for closure. Session and transition
-IDs reject callbacks from earlier operations.
+settlement releases the whole stack. Pushes require an open, idle stack; other
+navigation requests can wait for a transition. Dismissal clears pending requests,
+and reopening waits for closure. Session and transition IDs reject callbacks from
+earlier operations.
 
 Navigation actions use a stable context. The reducer runs in a provider-owned
 store; the provider subscribes to the stack, while `useTrayState` subscribes to
 selected public state. Screen content is memoized with its component, route, and
-actions; custom header content is memoized with its renderer and header props.
+stable navigation factory; custom header content is memoized with its renderer and
+header props.
 Layout, keyboard, and transition state stay outside these boundaries. Retained
 screens still receive local state, context, and subscribed store updates without
 changing their effect lifecycle.
 
 Each factory also supplies a stable route-key context around screen content and
-custom header components. `useFocusEffect` selects whether that key matches the
-store's current route and uses a React effect to balance setup and cleanup.
+custom header components. Their navigation actions bind pushes to that key; the
+reducer atomically rejects pushes from an inactive source or while busy.
+`useFocusEffect` selects whether that key matches the store's current route and
+uses a React effect to balance setup and cleanup.
 Focus therefore follows route changes during navigation, while dismissal retains
 focus until native settlement removes the screen. Provider boundaries reset the
 route scope, so nested providers cannot inherit an outer screen's identity.

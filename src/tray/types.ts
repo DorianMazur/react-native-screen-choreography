@@ -26,6 +26,11 @@ type PushDestination<P extends TrayParamList> = {
 export interface TrayNavigation<P extends TrayParamList> {
   /** Open a new root. While closing, wait for native dismissal first. */
   present(...destination: Destination<P>): void;
+  /**
+   * Push when the tray is open and idle. Calls during preparation, transitions,
+   * or queued navigation are ignored. Cancellation allows another attempt.
+   * Inside a screen/header, pushes also require that owning route to be current.
+   */
   push(...destination: PushDestination<P>): void;
   replace(...destination: Destination<P>): void;
   back(): void;
