@@ -13,7 +13,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-test('iOS launcher wires opt-in breadcrumbs, sampling provenance, and XCTest exit status', () => {
+test('iOS launcher defaults to breadcrumbs and preserves sampling provenance and XCTest exit status', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'ios benchmark '));
   const write = (name: string, body: string, executable = false) => {
     const file = path.join(root, name);
@@ -45,7 +45,7 @@ import plistlib,sys
 with open(sys.argv[1], 'wb') as f: plistlib.dump({'Tests': {'TestBundlePath': 'fixture'}}, f)
 PY
 else
-  if [[ "$PERFORMANCE_NATIVE_BREADCRUMBS" == 1 ]]; then
+  if [[ "\${PERFORMANCE_NATIVE_BREADCRUMBS:-1}" == 1 ]]; then
     mkdir -p "$PERFORMANCE_OUTPUT/diagnostics"
     echo '{}' > "$PERFORMANCE_OUTPUT/diagnostics/hang-trigger.json"
   fi
@@ -74,8 +74,9 @@ fi
         path.join(root, 'scripts/performance', file)
       );
     }
-    for (const breadcrumbs of ['0', '1']) {
-      const output = path.join(root, `results-${breadcrumbs}`);
+    for (const breadcrumbs of [undefined, '0', '1']) {
+      const enabled = breadcrumbs !== '0';
+      const output = path.join(root, `results-${breadcrumbs ?? 'default'}`);
       const result = spawnSync(
         'bash',
         [path.join(root, 'scripts/performance/run-ios.sh')],
@@ -89,27 +90,27 @@ fi
             PERFORMANCE_OUTPUT: output,
             PERFORMANCE_DERIVED_DATA: path.join(root, 'derived'),
             PERFORMANCE_NATIVE_BREADCRUMBS: breadcrumbs,
-            TEST_EXIT_STATUS: breadcrumbs === '1' ? '65' : '0',
-            REPORT_EXIT_STATUS: breadcrumbs === '1' ? '1' : '0',
+            TEST_EXIT_STATUS: enabled ? '65' : '0',
+            REPORT_EXIT_STATUS: enabled ? '1' : '0',
           },
         }
       );
-      assert.equal(result.status, breadcrumbs === '1' ? 65 : 0, result.stderr);
+      assert.equal(result.status, enabled ? 65 : 0, result.stderr);
       const metadata = JSON.parse(
         readFileSync(path.join(output, 'metadata.json'), 'utf8')
       );
-      assert.equal(metadata.nativeBreadcrumbs, breadcrumbs === '1');
-      assert.equal(metadata.hangSamplingTriggered, breadcrumbs === '1');
+      assert.equal(metadata.nativeBreadcrumbs, enabled);
+      assert.equal(metadata.hangSamplingTriggered, enabled);
       assert.equal(metadata.lifecycleValidation, 1);
-      assert.equal(metadata.runnerExitCode, breadcrumbs === '1' ? 65 : 0);
-      if (breadcrumbs === '1')
+      assert.equal(metadata.runnerExitCode, enabled ? 65 : 0);
+      if (enabled)
         assert.match(
           metadata.diagnosticErrors.join(),
           /Incomplete native breadcrumb coverage/
         );
       assert.ok(
         readFileSync(path.join(output, 'xcode-arguments'), 'utf8').includes(
-          `SCREEN_CHOREOGRAPHY_TRACE_HANGS=${breadcrumbs}`
+          `SCREEN_CHOREOGRAPHY_TRACE_HANGS=${enabled ? '1' : '0'}`
         )
       );
       assert.equal(
@@ -118,7 +119,7 @@ fi
       );
       assert.equal(
         existsSync(path.join(output, 'diagnostics/native-breadcrumbs.log')),
-        breadcrumbs === '1'
+        enabled
       );
     }
   } finally {

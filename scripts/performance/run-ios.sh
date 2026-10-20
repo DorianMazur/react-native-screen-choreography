@@ -7,7 +7,7 @@ mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
 [[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
-breadcrumbs="${PERFORMANCE_NATIVE_BREADCRUMBS:-0}"
+breadcrumbs="${PERFORMANCE_NATIVE_BREADCRUMBS:-1}"
 [[ "$breadcrumbs" == 0 || "$breadcrumbs" == 1 ]] || { echo 'Use PERFORMANCE_NATIVE_BREADCRUMBS=0 or 1.' >&2; exit 2; }
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
