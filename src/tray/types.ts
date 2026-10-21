@@ -121,6 +121,12 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   handleVisible?: boolean;
   /** Card resizing, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
+  /** Called when a new tray presentation begins. */
+  onWillPresent?: () => void;
+  /** Called once per presentation, after the native sheet settles open. */
+  onPresent?: () => void;
+  /** Called when closing begins, including a drag that commits to dismissal. */
+  onWillDismiss?: () => void;
   /** Called only after the native sheet confirms dismissal. */
   onDismiss?: () => void;
 }

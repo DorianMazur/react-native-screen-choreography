@@ -24,6 +24,8 @@ export interface TrayStackState {
   session: number;
   revision: number;
   phase: 'closed' | 'opening' | 'open' | 'closing';
+  /** Whether this session has received its first native open settlement. */
+  presented: boolean;
   entries: TrayEntry[];
   preparation?: {
     id: number;
@@ -47,6 +49,7 @@ export const initialTrayState: TrayStackState = {
   session: 0,
   revision: 0,
   phase: 'closed',
+  presented: false,
   entries: [],
   queue: [],
   dismissals: 0,
@@ -125,8 +128,10 @@ export function trayReducer(
       };
       return next ? trayReducer(closed, next) : closed;
     }
-    return action.index === 1 && state.phase === 'opening'
-      ? drain({ ...state, phase: 'open' })
+    return action.index === 1 &&
+      (state.phase === 'opening' || state.phase === 'open') &&
+      !state.presented
+      ? drain({ ...state, phase: 'open', presented: true })
       : state;
   }
   if (action.type === 'dismiss') {
@@ -141,6 +146,7 @@ export function trayReducer(
       session: state.session + 1,
       revision,
       phase: 'opening',
+      presented: false,
       entries: [
         { key: String(revision), name: action.name, params: action.params },
       ],

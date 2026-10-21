@@ -31,9 +31,18 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 | `renderHeader`    | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`. |
 | `handleVisible`   | `true`          | Show the drag indicator above the header.                               |
 | `animation`       | Timing, 240 ms  | Resize and crossfade settings.                                          |
+| `onWillPresent`   | —               | Called when a new tray presentation begins.                             |
+| `onPresent`       | —               | Called once after the native sheet first settles open.                  |
+| `onWillDismiss`   | —               | Called when closing begins, including a drag committed to dismissal.    |
 | `onDismiss`       | —               | Called after the sheet finishes closing.                                |
 
-Declare at least one screen, using `Stack` and `Screen` from the same factory. Unmounting the provider closes the tray directly without calling `onDismiss`.
+Declare at least one screen, using `Stack` and `Screen` from the same factory. Unmounting the provider closes the tray directly without calling dismissal callbacks.
+
+Lifecycle callbacks take no arguments and run on the JavaScript thread after React commits the accepted state changes. The `onWill…` callbacks report the start of an operation; they cannot delay or prevent native motion. `onPresent` and `onDismiss` wait for native settlement, including with Reduce Motion enabled.
+
+`onWillPresent` and `onPresent` describe a whole-tray presentation. Pushing, replacing, returning to a screen, resizing, or calling `present()` while already open does not fire them again. If dismissal interrupts opening before it settles, `onPresent` does not fire. A queued reopening fires `onDismiss` for the old presentation before `onWillPresent` for the new one.
+
+`onWillDismiss` covers `dismiss()`, Back at the root, the Close button, the backdrop, and a drag released toward closed. A drag released back to open does not fire it. If a committed close is interrupted by dragging back open, `onDismiss` does not fire; another close attempt can fire `onWillDismiss` again. Use `onDismiss` for work that requires the tray to be gone.
 
 `TrayStackProps<Routes>` types the header's route and navigation actions. Screen options can override `renderHeader` and `handleVisible`. Hiding the handle removes its spacing and leaves dragging enabled.
 
@@ -141,6 +150,8 @@ const route = Tray.useTrayState((state) => state.route);
 | `isPresented` | True while opening, open, or closing.      |
 
 The selector receives `TrayState<Routes>`. A stack update rerenders the consumer only if the selected value changes according to `Object.is`. Prefer selecting a field or primitive; returning a new object or array counts as a change. To observe changes to any of these public fields, select `(state) => state`.
+
+`isPresented` describes visibility across the whole session, not animation completion. Use the `Tray.Stack` lifecycle callbacks to observe opening and closing, or `useFocusEffect` for individual screen focus.
 
 ## `Tray.useFocusEffect`
 

@@ -145,6 +145,28 @@ Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. 
 Pushes made while busy are ignored instead of queued. `push(A); push(B)` accepts A and discards B, and `present(A); push(B)` does not queue B during opening. Remove application-owned duplicate-push guards and their reset effects. Back and reopening after dismissal keep their existing handling.
 :::
 
+## Respond to opening and closing
+
+Use lifecycle callbacks on `Tray.Stack` for work tied to the whole tray:
+
+```tsx
+<Tray.Stack
+  onWillPresent={() => analytics.track('tray_opening')}
+  onPresent={() => analytics.track('tray_opened')}
+  onWillDismiss={() => analytics.track('tray_closing')}
+  onDismiss={() => analytics.track('tray_closed')}
+>
+  <Tray.Screen name="note" component={Note} />
+  <Tray.Screen name="preview" component={Preview} />
+</Tray.Stack>
+```
+
+Here, `analytics` is your app's analytics client. `onPresent` waits for the native opening animation to settle; `onDismiss` waits for closing to settle and the tray content to unmount. The `onWill…` callbacks report accepted opening or closing on the JavaScript thread and cannot block the animation.
+
+These callbacks cover buttons, backdrop taps, and gestures. `onWillDismiss` fires when a drag commits to closing, not when the finger first moves. If closing is interrupted by dragging back open, `onDismiss` does not fire. Dismissing before opening settles skips `onPresent`. Unmounting the provider does not fire dismissal callbacks.
+
+Navigating between tray screens does not start another presentation. Use `useFocusEffect` for individual screens. Use `useTrayState((state) => state.isPresented)` for UI that stays active throughout opening, open, and closing; it cannot distinguish those phases.
+
 ## Run work while a screen is focused
 
 Retained screens stay mounted when another tray screen covers them. Use `Tray.useFocusEffect` for subscriptions or refreshes that should run only while a screen is current. It also works in child components and custom header components, without passing a route key.

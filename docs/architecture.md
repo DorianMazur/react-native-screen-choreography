@@ -396,6 +396,12 @@ store; the provider subscribes to the stack, while `useTrayState` subscribes to
 selected public state. Screen content is memoized with its component, route, and
 stable navigation factory; custom header content is memoized with its renderer and
 header props.
+The store records whole-tray lifecycle events in dispatch order, and the provider
+delivers them after React commits. This preserves events when opening, closing,
+and queued reopening are batched. Each session records its first native open
+settlement separately from the requested detent, so a drag, content resize, or
+duplicate acknowledgement cannot repeat `onPresent`. Closing intent emits
+`onWillDismiss`; native closed settlement releases content and emits `onDismiss`.
 Layout, keyboard, and transition state stay outside these boundaries. Retained
 screens still receive local state, context, and subscribed store updates without
 changing their effect lifecycle.

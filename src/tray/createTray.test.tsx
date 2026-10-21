@@ -26,6 +26,7 @@ import type {
   TrayHeaderProps,
   TrayNavigation,
   TrayScreenProps,
+  TrayStackProps,
   TrayState,
 } from './types';
 
@@ -203,6 +204,199 @@ function stack(Definition = Tray, onDismiss?: () => void) {
 function sheet(renderer: TestRenderer.ReactTestRenderer) {
   return renderer.root.findByType('BottomSheet' as React.ElementType);
 }
+
+function lifecycleFixture() {
+  const events: string[] = [];
+  const callbacks = {
+    onWillPresent: jest.fn(() => events.push('willPresent')),
+    onPresent: jest.fn(() => events.push('present')),
+    onWillDismiss: jest.fn(() => events.push('willDismiss')),
+    onDismiss: jest.fn(() => events.push('dismiss')),
+  };
+  const render = (options: Partial<TrayStackProps<Routes>> = callbacks) => (
+    <Tray.Provider>
+      <Observer />
+      {React.cloneElement(stack(), options)}
+    </Tray.Provider>
+  );
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(render());
+  });
+  return { renderer, render, events, callbacks };
+}
+
+test('tray lifecycle distinguishes opening from native settlement and ignores layout settlements', () => {
+  const f = lifecycleFixture();
+  expect(f.events).toEqual([]);
+  act(() => navigation.present('form'));
+  expect(f.events).toEqual(['willPresent']);
+  expect(navigationState.isPresented).toBe(true);
+  // A drag can target the open detent before the first opening settles.
+  act(() => sheet(f.renderer).props.onIndexChange(1));
+  expect(f.events).toEqual(['willPresent']);
+  act(() => sheet(f.renderer).props.onSettle(1));
+  expect(f.events).toEqual(['willPresent', 'present']);
+  act(() => sheet(f.renderer).props.onSettle(1));
+  act(() => navigation.push('preview', { label: 'next' }));
+  act(() => mockCompletions.shift()!(true));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  act(() => navigation.back());
+  act(() => mockCompletions.shift()!(true));
+  act(() => navigation.present('preview', { label: 'new root' }));
+  act(() => mockCompletions.shift()!(true));
+  expect(f.events).toEqual(['willPresent', 'present']);
+  act(() => navigation.dismiss());
+  act(() => navigation.dismiss());
+  act(() => sheet(f.renderer).props.onIndexChange(0));
+  expect(f.events).toEqual(['willPresent', 'present', 'willDismiss']);
+  expect(navigationState.isPresented).toBe(true);
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(f.events).toEqual([
+    'willPresent',
+    'present',
+    'willDismiss',
+    'dismiss',
+  ]);
+  expect(navigationState.isPresented).toBe(false);
+  act(() => f.renderer.unmount());
+});
+
+test('dismissal during opening suppresses onPresent and stale callbacks cannot affect reopening', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  const oldSheet = sheet(f.renderer).props;
+  act(() => navigation.dismiss());
+  act(() => oldSheet.onSettle(1));
+  act(() => navigation.present('preview', { label: 'reopened' }));
+  expect(f.events).toEqual(['willPresent', 'willDismiss']);
+  act(() => oldSheet.onSettle(0));
+  expect(f.events).toEqual([
+    'willPresent',
+    'willDismiss',
+    'dismiss',
+    'willPresent',
+  ]);
+  act(() => {
+    oldSheet.onIndexChange(0);
+    oldSheet.onIndexChange(1);
+    oldSheet.onSettle(0);
+    oldSheet.onSettle(1);
+  });
+  expect(f.events).toHaveLength(4);
+  act(() => sheet(f.renderer).props.onSettle(1));
+  expect(f.events.at(-1)).toBe('present');
+  act(() => f.renderer.unmount());
+});
+
+test('a cancelled closing gesture does not dismiss or present again', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  // A drag released back to open is not a dismissal attempt.
+  act(() => sheet(f.renderer).props.onIndexChange(1));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  expect(f.events).toEqual(['willPresent', 'present']);
+  act(() => sheet(f.renderer).props.onIndexChange(0));
+  act(() => sheet(f.renderer).props.onIndexChange(1));
+  act(() => sheet(f.renderer).props.onSettle(0));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  expect(f.events).toEqual(['willPresent', 'present', 'willDismiss']);
+  expect(navigationState.isPresented).toBe(true);
+  act(() => sheet(f.renderer).props.onIndexChange(0));
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(f.events).toEqual([
+    'willPresent',
+    'present',
+    'willDismiss',
+    'willDismiss',
+    'dismiss',
+  ]);
+  act(() => f.renderer.unmount());
+});
+
+test('Back queued during opening reports presentation before dismissal begins', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  act(() => navigation.back());
+  expect(f.events).toEqual(['willPresent']);
+  act(() => sheet(f.renderer).props.onSettle(1));
+  expect(f.events).toEqual(['willPresent', 'present', 'willDismiss']);
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(f.events.at(-1)).toBe('dismiss');
+  act(() => f.renderer.unmount());
+});
+
+test('batched native events retain their order and callback updates do not replay events', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  const updated = {
+    ...f.callbacks,
+    onPresent: jest.fn(() => f.events.push('updatedPresent')),
+    onDismiss: jest.fn(() => {
+      expect(f.renderer.root.findAllByType(Form)).toHaveLength(0);
+      f.events.push('dismiss');
+    }),
+  };
+  act(() => f.renderer.update(f.render(updated)));
+  expect(f.events).toEqual(['willPresent']);
+  const native = sheet(f.renderer).props;
+  act(() => {
+    native.onSettle(1);
+    native.onIndexChange(0);
+    native.onSettle(0);
+    native.onSettle(0);
+  });
+  expect(f.events).toEqual([
+    'willPresent',
+    'updatedPresent',
+    'willDismiss',
+    'dismiss',
+  ]);
+  expect(f.callbacks.onPresent).not.toHaveBeenCalled();
+  expect(updated.onPresent).toHaveBeenCalledTimes(1);
+  expect(updated.onDismiss).toHaveBeenCalledTimes(1);
+  act(() => f.renderer.unmount());
+});
+
+test('lifecycle callbacks can navigate and unmounting does not synthesize dismissal events', () => {
+  const f = lifecycleFixture();
+  act(() =>
+    f.renderer.update(
+      f.render({
+        ...f.callbacks,
+        onPresent: () => {
+          f.events.push('present');
+          navigation.dismiss();
+        },
+        onDismiss: () => {
+          f.events.push('dismiss');
+          navigation.present('preview', { label: 'next' });
+        },
+      })
+    )
+  );
+  act(() => navigation.present('form'));
+  const oldSheet = sheet(f.renderer).props;
+  act(() => oldSheet.onSettle(1));
+  expect(f.events).toEqual(['willPresent', 'present', 'willDismiss']);
+  act(() => oldSheet.onSettle(0));
+  expect(f.events).toEqual([
+    'willPresent',
+    'present',
+    'willDismiss',
+    'dismiss',
+    'willPresent',
+  ]);
+  const removedSheet = sheet(f.renderer).props;
+  act(() => f.renderer.unmount());
+  act(() => {
+    removedSheet.onSettle(1);
+    removedSheet.onIndexChange(0);
+    removedSheet.onSettle(0);
+  });
+  expect(f.events).toHaveLength(5);
+});
 
 function pendingPushFixture(
   guard: 'ref' | 'library',

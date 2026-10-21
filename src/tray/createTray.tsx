@@ -136,7 +136,7 @@ export function createTray<P extends TrayParamList>() {
     );
     const { dispatch } = store;
     const screens = useRef(declaration.screens);
-    const onDismiss = useRef(declaration.options.onDismiss);
+    const lifecycleCallbacks = useRef(declaration.options);
     for (const entry of [
       ...state.entries,
       ...(state.transition?.retained ?? []),
@@ -156,7 +156,7 @@ export function createTray<P extends TrayParamList>() {
     }
     useLayoutEffect(() => {
       screens.current = declaration.screens;
-      onDismiss.current = declaration.options.onDismiss;
+      lifecycleCallbacks.current = declaration.options;
     });
     const { tray, bindNavigation } = useMemo(() => {
       const validate = (name: string, options?: TrayNavigationOptions) => {
@@ -208,13 +208,13 @@ export function createTray<P extends TrayParamList>() {
     }, [dispatch]);
     const isPresented = state.phase !== 'closed';
 
-    const notified = useRef(0);
     useEffect(() => {
-      if (state.dismissals > notified.current) {
-        notified.current = state.dismissals;
-        onDismiss.current?.();
-      }
-    }, [state.dismissals]);
+      // A child effect may have dispatched again before this effect runs.
+      // Wait for that state to commit before delivering its lifecycle events.
+      if (store.getStackSnapshot() !== state) return;
+      for (const event of store.takeLifecycleEvents())
+        lifecycleCallbacks.current[event]?.();
+    }, [store, state]);
 
     useEffect(() => {
       if (!isPresented) return;
