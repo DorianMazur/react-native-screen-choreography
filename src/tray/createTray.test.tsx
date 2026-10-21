@@ -15,6 +15,7 @@ import {
   View,
 } from 'react-native';
 import TestRenderer, { act } from 'react-test-renderer';
+import * as Reanimated from 'react-native-reanimated';
 import { createTray } from './createTray';
 import { useTrayKeyboard } from './useTrayKeyboard';
 import { useTrayGeometry } from './TrayChoreography';
@@ -109,6 +110,7 @@ export function checkDeclarationTypes() {
     }}
   />;
   <Tray.Stack
+    anchor="bottom"
     renderHeader={({ route }) => {
       if (route.name === 'preview') {
         const label: string = route.params.label;
@@ -119,6 +121,14 @@ export function checkDeclarationTypes() {
   >
     {null}
   </Tray.Stack>;
+  // @ts-expect-error Only vertical content anchors are supported.
+  <Tray.Stack anchor="center">{null}</Tray.Stack>;
+  <Tray.Screen
+    name="form"
+    component={Form}
+    // @ts-expect-error Only vertical content anchors are supported.
+    options={{ anchor: 'left' }}
+  />;
 }
 
 export function checkFocusEffectTypes() {
@@ -668,10 +678,12 @@ test.each([
       expect(navigationState).toBe(editor);
       act(() => navigation.back());
       expect(navigationState.route).toBe(root);
-      act(() => push()); // Current again, but Back still owns the transition.
+      act(() => {
+        push(); // Current again: remember the first tap while Back finishes.
+        push();
+      });
       expect(navigationState.depth).toBe(1);
       act(() => mockCompletions.shift()!(true));
-      act(() => push());
       expect(navigationState.depth).toBe(2);
       act(() => navigation.dismiss());
       act(() => sheet(renderer).props.onSettle(0));
@@ -1205,12 +1217,7 @@ test('isolates custom header content from tray layout and settlement while prese
     act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
   layout(headerFor(renderer.root.findByType(Header)), 90);
   layout(pageFor(renderer, Form), 200);
-  layout(
-    sheet(renderer)
-      .findAllByType(View)
-      .find((node) => node.props.onLayout)!,
-    290
-  );
+
   act(() =>
     mockKeyboardHandlers.onEnd!({
       height: 200,
@@ -1839,9 +1846,10 @@ test('a null header and hidden handle leave no reserved header space', () => {
     renderer = TestRenderer.create(render(false));
   });
   act(() => navigation.present('form'));
-  const header = sheet(renderer)
+  const header = renderer.root
+    .findByType(TrayHeaderLayer)
     .findAllByType(View)
-    .filter((view) => view.props.onLayout)[1]!;
+    .find((view) => view.props.onLayout)!;
   act(() => header.props.onLayout({ nativeEvent: { layout: { height: 0 } } }));
   const pageHeight = () =>
     StyleSheet.flatten(pageFor(renderer, Form).props.style).height;
@@ -1901,7 +1909,7 @@ test('keeps the outgoing title until settlement while exposing only the current 
   act(() => renderer.unmount());
 });
 
-test('ignores invalid measurements and keeps a stable viewport while resizing', () => {
+test('ignores invalid page measurements and keeps a stable viewport while resizing', () => {
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {
     renderer = TestRenderer.create(
@@ -1912,38 +1920,217 @@ test('ignores invalid measurements and keeps a stable viewport while resizing', 
     );
   });
   act(() => navigation.present('form'));
-  const content = () =>
-    sheet(renderer)
-      .findAllByType(View)
-      .find((view) => typeof view.props.onLayout === 'function')!;
-  const layout = (height: number) =>
-    act(() =>
-      content().props.onLayout({ nativeEvent: { layout: { height } } })
-    );
-
-  const card = () => StyleSheet.flatten(content().parent!.parent!.props.style);
-  layout(0);
-  layout(NaN);
-  expect(card().height).toBeUndefined();
-  layout(200);
-  const viewportHeight = StyleSheet.flatten(
-    content().parent!.props.style
-  ).height;
+  layoutPage(renderer, Form, -1);
+  layoutPage(renderer, Form, NaN);
+  expect(cardStyle(renderer).height).toBeUndefined();
+  layoutPage(renderer, Form, 130);
+  const viewportHeight = viewportStyle(renderer, Form).height;
   expect(viewportHeight).toBeGreaterThan(200);
-  expect(card().height).toBe(200);
-
+  expect(cardStyle(renderer).height).toBe(200);
   act(() => sheet(renderer).props.onSettle(1));
   act(() => navigation.push('preview', { label: 'tall page' }));
-  layout(500);
-  layout(500.2);
-  expect(StyleSheet.flatten(content().parent!.props.style).height).toBe(
-    viewportHeight
-  );
+  layoutPage(renderer, Preview, 430);
+  layoutPage(renderer, Preview, 430.2);
+  expect(viewportStyle(renderer, Preview).height).toBe(viewportHeight);
   act(() => mockCompletions.shift()!(true));
-  expect(card().height).toBe(500);
-  expect(StyleSheet.flatten(content().parent!.props.style).height).toBe(
-    viewportHeight
-  );
+  expect(cardStyle(renderer).height).toBe(500);
+  expect(viewportStyle(renderer, Preview).height).toBe(viewportHeight);
+  act(() => renderer.unmount());
+});
+
+test.each([
+  [undefined, undefined],
+  ['top', undefined],
+  ['bottom', undefined],
+  ['bottom', 'top'],
+  ['top', 'bottom'],
+] as const)(
+  'keeps content at its %s anchor with a %s screen override through resize and Back',
+  (anchor, previewAnchor) => {
+    const stackAnchor = anchor ?? 'bottom';
+    // Evaluate the actual style worklets as shared values change between React
+    // commits; the ordinary mock only samples them during render.
+    const animatedStyle = jest
+      .spyOn(Reanimated, 'useAnimatedStyle')
+      .mockImplementation((updater) =>
+        Object.defineProperties(
+          {} as ReturnType<typeof Reanimated.useAnimatedStyle>,
+          Object.fromEntries(
+            Object.keys(updater()).map((key) => [
+              key,
+              {
+                enumerable: true,
+                get: () => (updater() as Record<string, unknown>)[key],
+              },
+            ])
+          )
+        )
+      );
+    const useSharedValue = Reanimated.useSharedValue;
+    const heights = new Set<Reanimated.SharedValue<number>>();
+    const sharedValues = jest
+      .spyOn(Reanimated, 'useSharedValue')
+      .mockImplementation((initial) => {
+        const value = useSharedValue(initial);
+        if (initial === -1)
+          heights.add(value as Reanimated.SharedValue<number>);
+        return value;
+      });
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      act(() => {
+        renderer = TestRenderer.create(
+          <Tray.Provider>
+            <Observer />
+            <Tray.Stack anchor={anchor}>
+              <Tray.Screen name="form" component={Form} />
+              <Tray.Screen
+                name="preview"
+                component={Preview}
+                options={{ anchor: previewAnchor }}
+              />
+            </Tray.Stack>
+          </Tray.Provider>
+        );
+      });
+      const layout = (node: TestRenderer.ReactTestInstance, height: number) =>
+        act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
+      const card = () => cardStyle(renderer);
+      const bottom = (component: React.ElementType, measuredHeight: number) => {
+        const viewport = viewportStyle(renderer, component);
+        const page = StyleSheet.flatten(
+          pageFor(renderer, component).props.style
+        );
+        const viewportTop =
+          viewport.bottom === 0
+            ? card().height - viewport.height
+            : viewport.top;
+        const pageTop =
+          page.bottom === 0 ? viewport.height - measuredHeight : page.top;
+        return (
+          viewportTop +
+          viewport.transform[0].translateY +
+          pageTop +
+          measuredHeight
+        );
+      };
+      act(() => navigation.present('form'));
+      expect(viewportStyle(renderer, Form)[stackAnchor]).toBe(0);
+      layout(pageFor(renderer, Form), 200);
+      const animatedHeight = [...heights][0]!;
+      const viewportHeight = viewportStyle(renderer, Form).height;
+      const input = renderer.root.findByType(TextInput);
+      act(() => input.props.onChangeText('retained draft'));
+      act(() => sheet(renderer).props.onSettle(1));
+      const checkFrames = (frames: number[]) => {
+        for (const height of frames) {
+          animatedHeight.value = height;
+          expect(bottom(Form, 200)).toBeCloseTo(
+            stackAnchor === 'bottom' ? card().height : 270
+          );
+          expect(bottom(Preview, 500)).toBeCloseTo(
+            (previewAnchor ?? stackAnchor) === 'bottom' ? card().height : 570
+          );
+          expect(viewportStyle(renderer, Form).height).toBe(viewportHeight);
+          expect(viewportStyle(renderer, Preview).height).toBe(viewportHeight);
+        }
+      };
+      for (let visit = 0; visit < 2; visit++) {
+        act(() => navigation.push('preview', { label: 'taller' }));
+        layout(pageFor(renderer, Preview), 500);
+        // Include a spring overshoot beyond the available window.
+        checkFrames([270, 420, 570, Dimensions.get('window').height + 100]);
+        animatedHeight.value = 570;
+        act(() => mockCompletions.shift()!(true));
+        act(() => navigation.back());
+        checkFrames([570, 420, 270]);
+        act(() => mockCompletions.shift()!(true));
+        expect(renderer.root.findByType(TextInput)).toBe(input);
+        expect(input.props.value).toBe('retained draft');
+        expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
+      }
+      // A live content resize changes its anchor offset without remounting.
+      layout(pageFor(renderer, Form), 320);
+      animatedHeight.value = 300;
+      expect(bottom(Form, 320)).toBeCloseTo(
+        stackAnchor === 'bottom' ? 300 : 390
+      );
+      layout(pageFor(renderer, Form), NaN);
+      expect(bottom(Form, 320)).toBeCloseTo(
+        stackAnchor === 'bottom' ? 300 : 390
+      );
+      // Empty content still leaves a correctly sized header.
+      layout(pageFor(renderer, Form), 0);
+      expect(card().height).toBe(70);
+      expect(bottom(Form, 0)).toBe(70);
+    } finally {
+      if (renderer) act(() => renderer.unmount());
+      sharedValues.mockRestore();
+      animatedStyle.mockRestore();
+    }
+  }
+);
+
+test('bottom alignment is independent of delayed or changed custom-header measurements', () => {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack
+          handleVisible={false}
+          renderHeader={(props) => <CustomHeader {...props} />}
+        >
+          <Tray.Screen name="form" component={Form} />
+          <Tray.Screen name="preview" component={Preview} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  const measureHeader = (name: string, height: number) => {
+    const header = renderer.root
+      .findAllByType(CustomHeader)
+      .find((node) => node.props.route.name === name)!;
+    act(() =>
+      headerFor(header).props.onLayout({ nativeEvent: { layout: { height } } })
+    );
+  };
+  const expectBottomLayout = (component: React.ElementType) => {
+    const viewport = viewportStyle(renderer, component);
+    const page = StyleSheet.flatten(pageFor(renderer, component).props.style);
+    expect(viewport).toMatchObject({ position: 'absolute', bottom: 0 });
+    expect(viewport.transform[0].translateY).toBeCloseTo(0);
+    expect(page).toMatchObject({ position: 'absolute', bottom: 0 });
+    expect(viewport.top).toBeUndefined();
+    expect(page.top).toBeUndefined();
+  };
+  act(() => navigation.present('form'));
+  layoutPage(renderer, Form, 320);
+  expect(cardStyle(renderer).height).toBeUndefined();
+  measureHeader('form', 80);
+  expect(cardStyle(renderer).height).toBe(400);
+  act(() => sheet(renderer).props.onSettle(1));
+  act(() => navigation.push('preview', { label: 'short' }));
+  layoutPage(renderer, Preview, 200);
+  // The destination still has the provisional 56-point header. Neither page
+  // should translate by the difference from the measured 80-point source.
+  expect(cardStyle(renderer).height).toBe(400);
+  expectBottomLayout(Form);
+  expectBottomLayout(Preview);
+  measureHeader('preview', 110);
+  act(() => mockCompletions.shift()!(true));
+  expect(cardStyle(renderer).height).toBe(310);
+  expectBottomLayout(Form);
+  expectBottomLayout(Preview);
+  // Runtime header changes and Back keep the same native bottom constraints.
+  measureHeader('preview', 150);
+  expectBottomLayout(Preview);
+  act(() => navigation.back());
+  expectBottomLayout(Form);
+  measureHeader('form', 100);
+  act(() => mockCompletions.shift()!(true));
+  expect(cardStyle(renderer).height).toBe(420);
+  expectBottomLayout(Form);
   act(() => renderer.unmount());
 });
 
@@ -2023,14 +2210,11 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
         );
       });
       act(() => navigation.present('form'));
-      const content = () =>
-        sheet(renderer)
-          .findAllByType(View)
-          .find((view) => typeof view.props.onLayout === 'function')!;
-      const card = () =>
-        StyleSheet.flatten(content().parent!.parent!.props.style);
-      act(() =>
-        content().props.onLayout({ nativeEvent: { layout: { height: 200 } } })
+      const card = () => cardStyle(renderer);
+      layoutPage(
+        renderer,
+        Form,
+        mode === 'fullScreen' ? 660 : mode === 'sheet' ? 110 : 130
       );
       const event = { height: 300, progress: 1, duration: 250, target: 1 };
       expect(card().marginBottom).toBe(mode === 'floating' ? 32 : 0);
@@ -2088,39 +2272,29 @@ test.each([
         </Tray.Provider>
       );
     });
-    const content = () =>
-      sheet(renderer)
-        .findAllByType(View)
-        .find((view) => typeof view.props.onLayout === 'function')!;
-    const layout = (height: number) =>
-      act(() =>
-        content().props.onLayout({ nativeEvent: { layout: { height } } })
+    const card = () => cardStyle(renderer);
+    const viewport = () =>
+      viewportStyle(
+        renderer,
+        navigationState.route?.name === 'preview' ? Preview : Form
       );
-    const viewport = () => StyleSheet.flatten(content().parent!.props.style);
-    const card = () =>
-      StyleSheet.flatten(content().parent!.parent!.props.style);
     const window = Dimensions.get('window');
     act(() => navigation.present('form'));
-    layout(200);
+    layoutPage(renderer, Form, appearance === 'sheet' ? 110 : 130);
     act(() => sheet(renderer).props.onSettle(1));
     act(() => renderer.root.findByType(TextInput).props.onChangeText('edited'));
     act(() => navigation.push('preview', { label: 'full screen' }));
-    layout(200);
+    layoutPage(renderer, Preview, window.height - topInset - 90);
     expect(viewport().width).toBe(window.width);
-    expect(viewport().height).toBe(window.height - topInset);
-    expect(content().props.style).toEqual({
-      paddingBottom: 20,
-    });
+    expect(viewport().height).toBe(window.height - topInset - 90);
     const page = pageFor(renderer, Preview);
     expect(StyleSheet.flatten(page.props.style)).toMatchObject({
       height: window.height - topInset - 90,
     });
     expect(renderer.root.findAllByType(Form)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
-    expect(viewport().transform).toEqual([{ translateY: topInset }]);
-    expect(viewport().height + viewport().transform[0].translateY).toBe(
-      window.height
-    );
+    expect(viewport().bottom).toBe(0);
+    expect(viewport().transform).toEqual([{ translateY: -20 }]);
     expect(card()).toMatchObject({
       height: window.height,
       marginHorizontal: 0,
@@ -2129,10 +2303,12 @@ test.each([
     });
 
     act(() => navigation.back());
-    layout(200);
+    layoutPage(renderer, Form, appearance === 'sheet' ? 110 : 130);
     expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
-    expect(viewport().transform).toEqual([{ translateY: 0 }]);
+    expect(viewport().transform[0].translateY).toBeCloseTo(
+      appearance === 'sheet' ? -20 : 0
+    );
     expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
     expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
     expect(card()).toMatchObject({
@@ -2229,17 +2405,15 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
       </Tray.Provider>
     );
   });
-  const content = () =>
-    sheet(renderer)
-      .findAllByType(View)
-      .find((view) => typeof view.props.onLayout === 'function')!;
   act(() => navigation.present('preview', { label: 'root' }));
-  act(() =>
-    content().props.onLayout({ nativeEvent: { layout: { height: 200 } } })
+  layoutPage(
+    renderer,
+    navigationState.route?.name === 'preview' ? Preview : Form,
+    navigationState.route?.name === 'preview'
+      ? Dimensions.get('window').height - 140
+      : 130
   );
-  expect(
-    StyleSheet.flatten(content().parent!.parent!.props.style)
-  ).toMatchObject({
+  expect(cardStyle(renderer)).toMatchObject({
     height: Dimensions.get('window').height,
     marginHorizontal: 0,
     marginBottom: 0,
@@ -2252,21 +2426,29 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
     height: Dimensions.get('window').height - 140,
     width: Dimensions.get('window').width,
   });
-  act(() =>
-    content().props.onLayout({ nativeEvent: { layout: { height: 200 } } })
+  layoutPage(
+    renderer,
+    navigationState.route?.name === 'preview' ? Preview : Form,
+    navigationState.route?.name === 'preview'
+      ? Dimensions.get('window').height - 140
+      : 130
   );
   act(() => mockCompletions.shift()!(true));
-  expect(
-    StyleSheet.flatten(content().parent!.parent!.props.style)
-  ).toMatchObject({ height: 200, marginHorizontal: 16, marginBottom: 32 });
+  expect(cardStyle(renderer)).toMatchObject({
+    height: 200,
+    marginHorizontal: 16,
+    marginBottom: 32,
+  });
   act(() => navigation.back());
-  act(() =>
-    content().props.onLayout({ nativeEvent: { layout: { height: 200 } } })
+  layoutPage(
+    renderer,
+    navigationState.route?.name === 'preview' ? Preview : Form,
+    navigationState.route?.name === 'preview'
+      ? Dimensions.get('window').height - 140
+      : 130
   );
   act(() => mockCompletions.shift()!(true));
-  expect(StyleSheet.flatten(content().parent!.parent!.props.style).height).toBe(
-    Dimensions.get('window').height
-  );
+  expect(cardStyle(renderer).height).toBe(Dimensions.get('window').height);
   expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
   act(() => renderer.unmount());
 });
@@ -2567,4 +2749,32 @@ function pageFor(
   while (node.props.accessibilityElementsHidden === undefined)
     node = node.parent!;
   return node;
+}
+
+function cardStyle(renderer: TestRenderer.ReactTestRenderer) {
+  const card = sheet(renderer)
+    .findAllByType(Reanimated.default.View)
+    .find(
+      (node) => StyleSheet.flatten(node.props.style)?.overflow === 'hidden'
+    )!;
+  return StyleSheet.flatten(card.props.style);
+}
+function viewportStyle(
+  renderer: TestRenderer.ReactTestRenderer,
+  component: React.ElementType
+) {
+  let node = pageFor(renderer, component).parent!;
+  while (node.type !== Reanimated.default.View) node = node.parent!;
+  return StyleSheet.flatten(node.props.style);
+}
+function layoutPage(
+  renderer: TestRenderer.ReactTestRenderer,
+  component: React.ElementType,
+  height: number
+) {
+  act(() =>
+    pageFor(renderer, component).props.onLayout({
+      nativeEvent: { layout: { height } },
+    })
+  );
 }

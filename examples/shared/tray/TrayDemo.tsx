@@ -393,6 +393,7 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
     <Tray.Provider>
       {children}
       <Tray.Stack
+        anchor="bottom"
         topInset={insets.top + 12}
         bottomInset={insets.bottom}
         backgroundColor="#23252b"

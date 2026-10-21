@@ -70,6 +70,8 @@ export interface TrayScreenOptions<
   title?: string;
   /** Fill the available window, keeping the supplied insets inside the sheet. */
   presentation?: 'tray' | 'fullScreen';
+  /** Keep this content edge aligned while the card resizes. Inherits the stack anchor. */
+  anchor?: 'top' | 'bottom';
   /** Replace the entire header. Return null for no header. Inherits the stack renderer. */
   renderHeader?: (props: TrayHeaderProps<P, N>) => ReactNode;
   /** Show the drag indicator above the header. Inherits the stack setting. */
@@ -109,6 +111,8 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   /** Tray.Screen declarations, optionally grouped in fragments. */
   children: ReactNode;
   appearance?: 'floating' | 'sheet';
+  /** Keep this content edge aligned while the card resizes. Defaults to 'bottom'. */
+  anchor?: 'top' | 'bottom';
   /** Supply safe-area insets from your app. No safe-area provider is required. */
   topInset?: number;
   bottomInset?: number;

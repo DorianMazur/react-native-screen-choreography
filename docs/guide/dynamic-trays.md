@@ -139,10 +139,10 @@ You can also select `state.route` or `state.depth`. Components update only when 
 
 Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
 
-Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. The library ignores additional pushes while opening or navigating and allows retry after cancellation. No persistent `pushing` ref or focus-reset effect is needed; cancellation can leave the source focused throughout.
+Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. The library ignores duplicate pushes while opening or navigating and allows retry after cancellation. If you tap a destination on a returning screen while Back or `popToRoot()` is still animating, that first push runs automatically after the return finishes. No second tap, persistent `pushing` ref, or focus-reset effect is needed; cancellation can leave the source focused throughout.
 
 ::: warning Migration from 0.8.1
-Pushes made while busy are ignored instead of queued. `push(A); push(B)` accepts A and discards B, and `present(A); push(B)` does not queue B during opening. Remove application-owned duplicate-push guards and their reset effects. Back and reopening after dismissal keep their existing handling.
+Duplicate pushes made while busy are ignored. `push(A); push(B)` accepts A and discards B, and `present(A); push(B)` does not queue B during opening. A returning screen's first push can wait for Back to finish. Remove application-owned duplicate-push guards and their reset effects.
 :::
 
 ## Respond to opening and closing
@@ -307,6 +307,21 @@ Navigating between screens dismisses the keyboard. Back preserves the form value
 A root `ScrollView` fits within the available height. For short, content-sized screens, avoid `flex: 1` on a non-scrollable root.
 
 Previous screens stay mounted for Back, so their effects and subscriptions remain active. Closing the tray resets its screens. Keep drafts outside the tray if they should survive reopening.
+
+## Anchor content during resizing
+
+Content stays anchored to the bottom by default while the card grows or shrinks between screens. Set `anchor="top"` on the stack to keep content attached to the top instead:
+
+```tsx
+<Tray.Stack anchor="top">
+  <Tray.Screen name="note" component={Note} />
+  <Tray.Screen name="preview" component={Preview} />
+</Tray.Stack>
+```
+
+With the default `"bottom"` anchor, both incoming and outgoing content follow the bottom edge, including on Back and shared transitions. The header stays at the top. Content keeps its natural height and scroll position; taller content is revealed as the card expands.
+
+To override the stack for one screen, set `anchor` to `'top'` or `'bottom'` in its `Tray.Screen` options. Each screen keeps its own anchor while entering and leaving.
 
 ## Multiple trays
 

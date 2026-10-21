@@ -72,7 +72,63 @@ test('cancelled preparation leaves the public snapshot unchanged and rejects sta
   expect(f.push()).toBe(false); // The source is no longer current.
 });
 
-test('retained source keys cannot bypass Back transitions or queued commands', () => {
+test.each([undefined, 'chart'])(
+  'retains one push from the returning screen until the %s transition ends',
+  (groupId) => {
+    const f = fixture();
+    f.settle(1);
+    expect(f.push('Add', f.root, groupId)).toBe(true);
+    if (groupId) f.prepare();
+    f.finish();
+    const editor = f.getSnapshot().route!.key;
+    f.dispatch({ type: 'back' });
+    if (groupId) {
+      expect(f.push()).toBe(false); // Source capture still owns the old route.
+      f.prepare();
+    }
+    const returning = f.state();
+    const snapshot = f.getSnapshot();
+    expect(snapshot.route?.key).toBe(f.root);
+    expect(f.push('CashOut', editor)).toBe(false);
+    expect(
+      f.dispatch({ type: 'push', name: 'Unbound', params: undefined })
+    ).toBe(false);
+    expect(f.push('CashOut', f.root, groupId)).toBe(true);
+    expect(f.getSnapshot()).toBe(snapshot);
+    expect(f.state().transition).toBe(returning.transition);
+    expect(f.state().queue).toHaveLength(1);
+    expect(f.push()).toBe(false);
+    expect(f.push('CashOut')).toBe(false);
+    expect(
+      f.dispatch({
+        type: 'transitionEnd',
+        session: returning.session,
+        id: returning.transition!.id - 1,
+      })
+    ).toBe(false);
+    f.finish();
+    if (groupId) {
+      expect(f.state().preparation?.command).toMatchObject({ name: 'CashOut' });
+      f.prepare();
+    }
+    expect(f.getSnapshot().route?.name).toBe('CashOut');
+    expect(f.getSnapshot().depth).toBe(2);
+    expect(f.state().queue).toEqual([]);
+    const next = f.state();
+    expect(
+      f.dispatch({
+        type: 'transitionEnd',
+        session: returning.session,
+        id: returning.transition!.id,
+      })
+    ).toBe(false);
+    expect(f.state()).toBe(next);
+    f.finish();
+    expect(f.getSnapshot().depth).toBe(2);
+  }
+);
+
+test('returning-screen pushes cannot bypass earlier queued commands', () => {
   const f = fixture();
   f.settle(1);
   expect(f.push()).toBe(true);
@@ -80,7 +136,6 @@ test('retained source keys cannot bypass Back transitions or queued commands', (
   const editor = f.getSnapshot().route!.key;
   f.dispatch({ type: 'back' });
   expect(f.getSnapshot().route?.key).toBe(f.root);
-  expect(f.push()).toBe(false);
   expect(f.push('CashOut', editor)).toBe(false);
   f.dispatch({ type: 'popToRoot' });
   expect(f.state().queue).toEqual([{ type: 'popToRoot' }]);
@@ -90,6 +145,53 @@ test('retained source keys cannot bypass Back transitions or queued commands', (
   expect(f.push('CashOut')).toBe(true);
   expect(f.state().queue).toEqual([]);
 });
+
+test('a returning-screen push replays before later navigation without stalling the queue', () => {
+  const f = fixture();
+  f.settle(1);
+  f.push();
+  f.finish();
+  f.dispatch({ type: 'back' });
+  expect(f.push('CashOut')).toBe(true);
+  f.dispatch({ type: 'back' });
+  f.finish();
+  expect(f.getSnapshot().route?.name).toBe('CashOut');
+  expect(f.state().queue).toEqual([{ type: 'back' }]);
+  f.finish();
+  expect(f.getSnapshot().route?.key).toBe(f.root);
+  f.finish();
+  expect(f.state().transition).toBeUndefined();
+  expect(f.state().queue).toEqual([]);
+});
+
+test.each(['dismiss', 'drag'])(
+  '%s clears a pending reopen and stale completions cannot replay it',
+  (closing) => {
+    const f = fixture();
+    f.settle(1);
+    f.push();
+    f.finish();
+    f.dispatch({ type: 'back' });
+    const returning = f.state();
+    expect(f.push('CashOut')).toBe(true);
+    if (closing === 'drag') f.snap(0);
+    else f.dispatch({ type: 'dismiss' });
+    expect(f.state().queue).toEqual([]);
+    f.settle(0);
+    f.dispatch({ type: 'present', name: 'Position', params: undefined });
+    f.settle(1);
+    const reopened = f.state();
+    expect(
+      f.dispatch({
+        type: 'transitionEnd',
+        session: returning.session,
+        id: returning.transition!.id,
+      })
+    ).toBe(false);
+    expect(f.state()).toBe(reopened);
+    expect(f.getSnapshot().depth).toBe(1);
+  }
+);
 
 test('pushes made while preparing or transitioning are discarded instead of queued', () => {
   const f = fixture();

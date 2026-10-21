@@ -71,24 +71,35 @@ function drain(state: TrayStackState): TrayStackState {
   )
     return state;
   const [command, ...queue] = state.queue;
-  return command ? trayReducer({ ...state, queue }, command) : state;
+  return command
+    ? drain(trayReducer({ ...state, queue }, command, false, true))
+    : state;
 }
 
 export function trayReducer(
   state: TrayStackState,
   action: TrayAction,
-  prepared = false
+  prepared = false,
+  replaying = false
 ): TrayStackState {
   if (action.type === 'push' && !prepared) {
     if (
       state.phase !== 'open' ||
       state.preparation ||
-      state.transition ||
-      state.queue.length ||
+      (state.queue.length && !replaying) ||
       (action.sourceRouteKey !== undefined &&
         state.entries[state.entries.length - 1]?.key !== action.sourceRouteKey)
     )
       return state;
+    if (state.transition) {
+      // A returning screen can receive input before the spring or native
+      // handoff finishes. Keep its first push; stale outgoing callbacks and
+      // repeat taps must not add destinations behind it.
+      return state.transition.direction === -1 &&
+        action.sourceRouteKey === state.transition.to
+        ? { ...state, queue: [action] }
+        : state;
+    }
   }
   if (action.type === 'prepared') {
     if (

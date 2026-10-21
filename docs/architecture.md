@@ -364,7 +364,13 @@ remain available while used by a live view or queued command.
 Software Mansion handles dragging, scrolling, the backdrop, and native sheet
 settlement. Reanimated handles page crossfades and card resizing. Content measures
 in a fixed destination viewport so intermediate animated heights cannot feed back
-into layout. Full-screen views use the available window and keep safe-area padding
+into layout. Each page's viewport and content anchor to the card's bottom through
+native layout by default; top anchoring places them below the header. Bottom
+alignment does not depend on estimated header heights or delayed page measurements.
+The card resizes from the active page and header's measured heights. Each viewport
+wraps its page's Fabric capture root, preserving page-relative shared-element
+coordinates. The header stays above the moving content. Full-screen views use the
+available window and keep safe-area padding
 inside the card. Stack options control headers, handle visibility, and resize
 motion; screens can override the header and handle. The current and outgoing
 headers crossfade on the shared stack timeline. The outgoing instance remains
@@ -386,8 +392,10 @@ owning overlay while unrelated foreground overlays retain their ordering.
 
 Each entry has one live React instance. Previous entries stay mounted for Back;
 popped or replaced entries remain until their transition finishes. Native sheet
-settlement releases the whole stack. Pushes require an open, idle stack; other
-navigation requests can wait for a transition. Dismissal clears pending requests,
+settlement releases the whole stack. Pushes normally require an open, idle stack.
+During a return, the current screen's first bound push waits for transition
+completion and any shared host handoff; later pushes are rejected. Other
+navigation requests can also wait for a transition. Dismissal clears pending requests,
 and reopening waits for closure. Session and transition IDs reject callbacks from
 earlier operations.
 
@@ -408,7 +416,9 @@ changing their effect lifecycle.
 
 Each factory also supplies a stable route-key context around screen content and
 custom header components. Their navigation actions bind pushes to that key; the
-reducer atomically rejects pushes from an inactive source or while busy.
+reducer atomically rejects pushes from an inactive source and duplicate requests.
+The bound key distinguishes a returning screen's next action from stale callbacks
+in the outgoing screen. A deferred push is checked again when replayed.
 `useFocusEffect` selects whether that key matches the store's current route and
 uses a React effect to balance setup and cleanup.
 Focus therefore follows route changes during navigation, while dismissal retains

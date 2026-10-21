@@ -19,22 +19,23 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 
 ## `TrayStackProps`
 
-| Prop              | Default         | Purpose                                                                 |
-| ----------------- | --------------- | ----------------------------------------------------------------------- |
-| `children`        | Required        | Direct `Tray.Screen` declarations; fragments are supported.             |
-| `appearance`      | `'floating'`    | Inset `'floating'` card or bottom-attached `'sheet'`.                   |
-| `topInset`        | `0`             | Space above the tray; content inset for full-screen views.              |
-| `bottomInset`     | `0`             | Bottom safe area; floating cards add 12 points of spacing.              |
-| `horizontalInset` | `16`            | Side spacing for floating cards.                                        |
-| `backgroundColor` | `'#ffffff'`     | Card background.                                                        |
-| `textColor`       | `'#18181b'`     | Header title and icons.                                                 |
-| `renderHeader`    | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`. |
-| `handleVisible`   | `true`          | Show the drag indicator above the header.                               |
-| `animation`       | Timing, 240 ms  | Resize and crossfade settings.                                          |
-| `onWillPresent`   | —               | Called when a new tray presentation begins.                             |
-| `onPresent`       | —               | Called once after the native sheet first settles open.                  |
-| `onWillDismiss`   | —               | Called when closing begins, including a drag committed to dismissal.    |
-| `onDismiss`       | —               | Called after the sheet finishes closing.                                |
+| Prop              | Default         | Purpose                                                                  |
+| ----------------- | --------------- | ------------------------------------------------------------------------ |
+| `children`        | Required        | Direct `Tray.Screen` declarations; fragments are supported.              |
+| `appearance`      | `'floating'`    | Inset `'floating'` card or bottom-attached `'sheet'`.                    |
+| `anchor`          | `'bottom'`      | Keep screen content aligned to the `'top'` or `'bottom'` while resizing. |
+| `topInset`        | `0`             | Space above the tray; content inset for full-screen views.               |
+| `bottomInset`     | `0`             | Bottom safe area; floating cards add 12 points of spacing.               |
+| `horizontalInset` | `16`            | Side spacing for floating cards.                                         |
+| `backgroundColor` | `'#ffffff'`     | Card background.                                                         |
+| `textColor`       | `'#18181b'`     | Header title and icons.                                                  |
+| `renderHeader`    | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`.  |
+| `handleVisible`   | `true`          | Show the drag indicator above the header.                                |
+| `animation`       | Timing, 240 ms  | Resize and crossfade settings.                                           |
+| `onWillPresent`   | —               | Called when a new tray presentation begins.                              |
+| `onPresent`       | —               | Called once after the native sheet first settles open.                   |
+| `onWillDismiss`   | —               | Called when closing begins, including a drag committed to dismissal.     |
+| `onDismiss`       | —               | Called after the sheet finishes closing.                                 |
 
 Declare at least one screen, using `Stack` and `Screen` from the same factory. Unmounting the provider closes the tray directly without calling dismissal callbacks.
 
@@ -44,7 +45,9 @@ Lifecycle callbacks take no arguments and run on the JavaScript thread after Rea
 
 `onWillDismiss` covers `dismiss()`, Back at the root, the Close button, the backdrop, and a drag released toward closed. A drag released back to open does not fire it. If a committed close is interrupted by dragging back open, `onDismiss` does not fire; another close attempt can fire `onWillDismiss` again. Use `onDismiss` for work that requires the tray to be gone.
 
-`TrayStackProps<Routes>` types the header's route and navigation actions. Screen options can override `renderHeader` and `handleVisible`. Hiding the handle removes its spacing and leaves dragging enabled.
+`TrayStackProps<Routes>` types the header's route and navigation actions. Screen options can override `anchor`, `renderHeader`, and `handleVisible`. Hiding the handle removes its spacing and leaves dragging enabled.
+
+The default `anchor="bottom"` keeps incoming and outgoing screens' bottom edges at the bottom of the card's content area as it grows or shrinks, including Back and shared transitions. The header stays at the top, and safe-area padding remains below the content. Anchoring moves each screen without changing its measured height or scroll position. Set `anchor="top"` for top alignment. See [Anchor content during resizing](../guide/dynamic-trays.md#anchor-content-during-resizing).
 
 ## `TrayHeaderProps`
 
@@ -101,6 +104,7 @@ Declare every destination you intend to open; navigating to an undeclared name t
 | --------------- | -------------- | ---------------------------------------------------------------------------------------------------- |
 | `title`         | Screen name    | Text shown in the header.                                                                            |
 | `presentation`  | `'tray'`       | Content-sized `'tray'` or `'fullScreen'`.                                                            |
+| `anchor`        | Stack setting  | Keep this screen's content aligned to the `'top'` or `'bottom'` while resizing.                      |
 | `renderHeader`  | Stack renderer | Replace this screen's header; receives `TrayHeaderProps<Routes, Name>`. Return `null` for no header. |
 | `handleVisible` | Stack setting  | Show or hide the drag indicator for this screen.                                                     |
 
@@ -121,7 +125,9 @@ Returned by `useTray()` and passed to screens and custom headers as `tray`. Acti
 
 Parameters are optional only when the route type includes `undefined`. Methods return `void`. Navigation dismisses the keyboard without restoring input focus on Back; ignored pushes leave the keyboard alone.
 
-`push` accepts requests only while open, with no preparation, transition, or pending navigation; additional pushes are ignored. Inside a screen or custom header, pushes from `useTray()` or the `tray` prop also require that owning route to be current. Actions obtained outside screens apply to the current route.
+`push` normally accepts requests only while open, with no preparation, transition, or pending navigation; additional pushes are ignored. Inside a screen or custom header, pushes from `useTray()` or the `tray` prop also require that owning route to be current. Actions obtained outside screens apply to the current route.
+
+During Back or `popToRoot()`, the returning screen can receive taps before the animation finishes. Its first `push` waits for completion, including any shared-element handoff, then runs automatically. Further pushes are ignored while that request is pending. This applies to actions bound to the returning screen or its header; outgoing screens and actions obtained outside screens cannot queue a push during the return.
 
 Other navigation requests can wait for an in-progress transition. Dismissal clears pending navigation. A `present()` during closing waits until the sheet closes; the latest request wins. Other commands do nothing while closed or closing.
 
