@@ -56,8 +56,6 @@ function emit(level: ChoreographyDebugLevel, message: string | (() => string)) {
 
   if (coalesceEnabled && text === lastMessage && lastEntry) {
     lastRepeatCount += 1;
-    // Update the last log entry in-place to indicate repeats. This keeps
-    // the buffer bounded and the console quieter for chatty traces.
     const repeatLabel = ` (×${lastRepeatCount + 1})`;
     const previousIndex = (logHead - 1 + MAX_LOGS) % MAX_LOGS;
     const updated = `${lastEntry}${repeatLabel}`;

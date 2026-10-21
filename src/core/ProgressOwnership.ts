@@ -152,7 +152,7 @@ export function animateOwnedProgress({
   target: number;
   spring: SpringConfig;
   duration?: number;
-  /** Navigation-owned reverse commits hand off only after native presentation. */
+  /** Set false when a controller must also wait for route removal before handoff. */
   handoffOnComplete?: boolean;
   /** Runs on the UI runtime before the RN completion is scheduled. */
   onCompleteUI?: () => void;

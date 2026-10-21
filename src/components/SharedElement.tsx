@@ -72,12 +72,6 @@ interface SharedElementRegistrationProps {
   metadata?: unknown;
 }
 
-/**
- * Wraps content participating in a shared transition. Registration is
- * stable per `(id, groupId, screenId)`; the coordinator captures a frozen
- * `ElementPresentation` via `getPresentation()` at session start, so re-renders or
- * prop changes never affect an in-flight overlay.
- */
 function SharedElementRegistration({
   id,
   groupId,
@@ -102,8 +96,7 @@ function SharedElementRegistration({
     () => (style ? (StyleSheet.flatten(style) as ViewStyle) : undefined),
     [style]
   );
-  // Latest-value refs mutated during render so getPresentation() always
-  // reflects current props without forcing re-registration.
+  // Read current presentation props at capture time without re-registering.
   const transitionRef = useRef<SharedElementTransition>(transition);
   transitionRef.current = transition;
   const styleRef = useRef<ViewStyle | undefined>(flattenedStyle);
@@ -125,7 +118,6 @@ function SharedElementRegistration({
     viewNodeRef.current = node;
   }, []);
 
-  // Stable registration. Effect deps are all stable identities.
   useEffect(() => {
     registerElement({
       id,
@@ -286,9 +278,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       : { collapsed: target, expanded: source };
   }, [pair, direction]);
 
-  // The endpoint wrapper is never hidden for live pairs, so the single Fabric
-  // commit that unmounts the overlay host and retargets this portal lands the
-  // view in a visible host at the same window bounds — no gap frame.
+  // Retarget in the session-settlement render so content and presentation
+  // settle together. Android removes the emptied overlay hosts afterward.
   let hostName: string | undefined;
   const restingHostName = () =>
     settledTargetScreenIdRef.current
@@ -302,8 +293,6 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     wasParticipatingRef.current = true;
     // Retain presentation data only, never a popped screen's registration/ref.
     if (!preparing) endpoints.current = activeEndpoints;
-    // The session commit that ends preparation moves every pair at once, into
-    // hosts native has already attached.
     hostName = preparing
       ? restingHostName()
       : reducedMotion
@@ -355,9 +344,8 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   );
   const collapsed = endpoints.current?.collapsed ?? initial;
   const expanded = endpoints.current?.expanded ?? initial;
-  // Paired from preparation, while progress rests at the session's start: the
-  // mapper is live before content enters the overlay and progress moves. Both
-  // directions run collapsed → expanded on `progress`, matching `TransitionFrame`.
+  // Prepare the mapper before content enters the overlay. In both directions,
+  // progress is 0 at collapsed and 1 at expanded, matching TransitionFrame.
   const frameEndpoints = reducedMotion ? null : activeEndpoints;
   const collapsedMetrics = frameEndpoints?.collapsed.metrics;
   const expandedMetrics = frameEndpoints?.expanded.metrics;

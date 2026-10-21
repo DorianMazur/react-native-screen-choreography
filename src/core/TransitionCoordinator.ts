@@ -351,8 +351,6 @@ export class TransitionCoordinator {
       return undefined;
     }
 
-    // Event-driven: resolve as soon as the registry mutation that satisfies
-    // the predicate lands, instead of polling on a 16ms timer.
     return new Promise<void>((resolve) => {
       let settled = false;
       let unsubscribe = () => {};
@@ -572,8 +570,7 @@ export class TransitionCoordinator {
       }
       const endpoint = direction === 'forward' ? 1 : 0;
       this.progress.value = config.reducedMotion ? endpoint : 1 - endpoint;
-      // Content moves only in the commit that activates the session, after the
-      // overlay hosts are attached; preparing renders empty, hidden hosts.
+      // Attachment-gated hosts must mount empty before content can move into them.
       const gated =
         !config.reducedMotion &&
         Boolean(this.nativeReadiness?.waitsForAttachment);
