@@ -1735,7 +1735,7 @@ test('measures custom headers independently for retained pages and ignores stale
         )!
     ).props.onLayout;
   const pageHeight = (component: React.ElementType) =>
-    StyleSheet.flatten(pageFor(renderer, component).props.style).height;
+    viewportStyle(renderer, component).height;
   const windowHeight = Dimensions.get('window').height;
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
@@ -1851,8 +1851,7 @@ test('a null header and hidden handle leave no reserved header space', () => {
     .findAllByType(View)
     .find((view) => view.props.onLayout)!;
   act(() => header.props.onLayout({ nativeEvent: { layout: { height: 0 } } }));
-  const pageHeight = () =>
-    StyleSheet.flatten(pageFor(renderer, Form).props.style).height;
+  const pageHeight = () => viewportStyle(renderer, Form).height;
   const windowHeight = Dimensions.get('window').height;
   expect(pageHeight()).toBe(windowHeight);
   act(() => renderer.update(render(true)));
@@ -2176,6 +2175,193 @@ test('keyboard frames update shared geometry without rerendering React content',
   act(() => renderer.unmount());
 });
 
+test.each(['top', 'bottom'] as const)(
+  'keeps a full-screen %s-anchored form aligned throughout keyboard frames',
+  (anchor) => {
+    const animatedStyle = jest
+      .spyOn(Reanimated, 'useAnimatedStyle')
+      .mockImplementation((updater) =>
+        Object.defineProperties(
+          {} as ReturnType<typeof Reanimated.useAnimatedStyle>,
+          Object.fromEntries(
+            Object.keys(updater()).map((key) => [
+              key,
+              {
+                enumerable: true,
+                get: () => (updater() as Record<string, unknown>)[key],
+              },
+            ])
+          )
+        )
+      );
+    const renderForm = jest.fn();
+    function KeyboardForm() {
+      renderForm();
+      return <Form />;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      act(() => {
+        renderer = TestRenderer.create(
+          <Tray.Provider>
+            <Observer />
+            <Tray.Stack topInset={50} bottomInset={20} anchor={anchor}>
+              <Tray.Screen
+                name="form"
+                component={KeyboardForm}
+                options={{ presentation: 'fullScreen' }}
+              />
+              <Tray.Screen
+                name="preview"
+                component={Preview}
+                options={{ presentation: 'fullScreen' }}
+              />
+            </Tray.Stack>
+          </Tray.Provider>
+        );
+      });
+      act(() => navigation.present('form'));
+      const windowHeight = Dimensions.get('window').height;
+      layoutPage(renderer, KeyboardForm, windowHeight - 140);
+      act(() => sheet(renderer).props.onSettle(1));
+      const input = renderer.root.findByType(TextInput);
+      act(() => input.props.onChangeText('keyboard draft'));
+      const renderCount = renderForm.mock.calls.length;
+      const checkLayout = (
+        keyboardHeight: number,
+        keyboardProgress: number
+      ) => {
+        const card = cardStyle(renderer);
+        const viewport = viewportStyle(renderer, KeyboardForm);
+        const page = StyleSheet.flatten(
+          pageFor(renderer, KeyboardForm).props.style
+        );
+        let content = renderer.root.findByType(KeyboardForm).parent!;
+        while (content.type !== Reanimated.default.View)
+          content = content.parent!;
+        const contentStyle = StyleSheet.flatten(content.props.style);
+        const bottom = 20 * (1 - keyboardProgress);
+        const keyboardSurface = renderer.root
+          .findAllByType(Reanimated.default.View)
+          .find(
+            (view) =>
+              view.props.pointerEvents === 'none' &&
+              StyleSheet.flatten(view.props.style)?.backgroundColor
+          )!;
+        expect(StyleSheet.flatten(keyboardSurface.props.style)).toMatchObject({
+          bottom: 0,
+          height: keyboardHeight,
+          opacity: 1,
+        });
+        expect(sheet(renderer).props.style.bottom).toBe(keyboardHeight);
+        expect(card.height).toBe(windowHeight - keyboardHeight);
+        expect(viewport.height).toBe(
+          windowHeight - keyboardHeight - 120 - bottom
+        );
+        // All three boxes must resize together; an old fixed height on either
+        // descendant would still push the form above the header.
+        expect(page.height).toBe('100%');
+        expect(contentStyle.height).toBe('100%');
+        expect(page.maxHeight).toBeUndefined();
+        expect(contentStyle.maxHeight).toBeUndefined();
+        const viewportTop =
+          anchor === 'bottom' ? card.height - viewport.height : 0;
+        expect(viewportTop + viewport.transform[0].translateY).toBeCloseTo(120);
+        expect(renderForm).toHaveBeenCalledTimes(renderCount);
+        expect(renderer.root.findByType(TextInput)).toBe(input);
+        expect(input.props.value).toBe('keyboard draft');
+      };
+      const event = { height: 300, progress: 1, duration: 250, target: 1 };
+      checkLayout(0, 0);
+      act(() => mockKeyboardHandlers.onStart!(event));
+      checkLayout(0, 0);
+      for (const height of [75, 150, 225, 300]) {
+        act(() =>
+          mockKeyboardHandlers.onMove!({
+            ...event,
+            height,
+            progress: height / 300,
+          })
+        );
+        checkLayout(height, height / 300);
+        // Fabric may deliver an intermediate onLayout while React still holds
+        // the previous settled keyboard height.
+        layoutPage(renderer, KeyboardForm, windowHeight - height - 140);
+        checkLayout(height, height / 300);
+      }
+      act(() => mockKeyboardHandlers.onEnd!(event));
+      checkLayout(300, 1);
+      // Interactive cancellation and keyboard type/height changes use the
+      // same live viewport without waiting for a React settlement update.
+      act(() =>
+        mockKeyboardHandlers.onInteractive!({
+          ...event,
+          height: 150,
+          progress: 0.5,
+        })
+      );
+      checkLayout(150, 0.5);
+      act(() => mockKeyboardHandlers.onMove!(event));
+      checkLayout(300, 1);
+      act(() => mockKeyboardHandlers.onMove!({ ...event, height: 340 }));
+      checkLayout(340, 1);
+      act(() => mockKeyboardHandlers.onEnd!({ ...event, height: 340 }));
+      checkLayout(340, 1);
+      act(() =>
+        mockKeyboardHandlers.onStart!({ ...event, height: 0, progress: 0 })
+      );
+      checkLayout(340, 1);
+      for (const height of [255, 170, 85, 0]) {
+        act(() =>
+          mockKeyboardHandlers.onMove!({
+            ...event,
+            height,
+            progress: height / 340,
+          })
+        );
+        checkLayout(height, height / 340);
+      }
+      act(() =>
+        mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 })
+      );
+      checkLayout(0, 0);
+      // A newly pushed full-screen page must use the live keyboard viewport,
+      // including when onStart resets React's layout height before dismissal.
+      act(() => mockKeyboardHandlers.onEnd!(event));
+      act(() => navigation.push('preview', { label: 'next page' }));
+      layoutPage(renderer, Preview, windowHeight - 420);
+      expect(viewportStyle(renderer, Preview).height).toBe(windowHeight - 420);
+      act(() =>
+        mockKeyboardHandlers.onStart!({ ...event, height: 0, progress: 0 })
+      );
+      expect(viewportStyle(renderer, Preview).height).toBe(windowHeight - 420);
+      for (const height of [225, 150, 75, 0]) {
+        act(() =>
+          mockKeyboardHandlers.onMove!({
+            ...event,
+            height,
+            progress: height / 300,
+          })
+        );
+        checkLayout(height, height / 300);
+        expect(viewportStyle(renderer, Preview).height).toBe(
+          viewportStyle(renderer, KeyboardForm).height
+        );
+      }
+      act(() =>
+        mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 })
+      );
+      act(() => mockCompletions.shift()!(true));
+      act(() => navigation.back());
+      act(() => mockCompletions.shift()!(true));
+      checkLayout(0, 0);
+    } finally {
+      if (renderer) act(() => renderer.unmount());
+      animatedStyle.mockRestore();
+    }
+  }
+);
+
 test.each(['floating', 'sheet', 'fullScreen'] as const)(
   'replaces the bottom safe area with the keyboard edge for %s',
   (mode) => {
@@ -2225,9 +2411,7 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
         mode === 'fullScreen' ? 500 : mode === 'sheet' ? 180 : 200
       );
       if (mode === 'fullScreen')
-        expect(
-          StyleSheet.flatten(pageFor(renderer, Form).props.style).height
-        ).toBe(380);
+        expect(viewportStyle(renderer, Form).height).toBe(380);
       act(() =>
         mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 })
       );
@@ -2289,7 +2473,7 @@ test.each([
     expect(viewport().height).toBe(window.height - topInset - 90);
     const page = pageFor(renderer, Preview);
     expect(StyleSheet.flatten(page.props.style)).toMatchObject({
-      height: window.height - topInset - 90,
+      height: '100%',
     });
     expect(renderer.root.findAllByType(Form)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
@@ -2423,7 +2607,7 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
   expect(
     StyleSheet.flatten(pageFor(renderer, Preview).props.style)
   ).toMatchObject({
-    height: Dimensions.get('window').height - 140,
+    height: '100%',
     width: Dimensions.get('window').width,
   });
   layoutPage(

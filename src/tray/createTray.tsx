@@ -502,6 +502,10 @@ function TrayHost<P extends TrayParamList>({
   const sheetPosition = useAnimatedStyle(() => ({
     bottom: keyboardHeight.value,
   }));
+  const keyboardBackground = useAnimatedStyle(() => ({
+    height: keyboardHeight.value,
+    opacity: Math.max(0, Math.min(1, visualExpansion.value)),
+  }));
   const cardHeight = useDerivedValue(() => {
     if (!hasMeasured) return -1;
     const expanded = Math.max(0, Math.min(1, visualExpansion.value));
@@ -531,6 +535,15 @@ function TrayHost<P extends TrayParamList>({
   const contentTop = useDerivedValue(
     () =>
       headerHeight + Math.max(0, Math.min(1, visualExpansion.value)) * topInset
+  );
+  // Full-screen endpoints keep their own size during tray navigation, but
+  // their viewport must follow keyboard frames alongside the outer card.
+  const fullScreenSpace = useDerivedValue(
+    () =>
+      height -
+      keyboardHeight.value -
+      topInset -
+      bottomInset * (1 - keyboardProgress.value)
   );
   const cardGeometry = useAnimatedStyle(() => {
     const expanded = Math.max(0, Math.min(1, visualExpansion.value));
@@ -813,6 +826,8 @@ function TrayHost<P extends TrayParamList>({
                   onComplete={complete}
                   maxHeight={maxHeightFor(entryFullScreen, entryHeaderHeight)}
                   fullScreen={entryFullScreen}
+                  fullScreenSpace={fullScreenSpace}
+                  headerHeight={entryHeaderHeight}
                   anchor={screens[entry.name]?.anchor ?? anchor}
                   contentTop={contentTop}
                   contentBottom={contentBottom}
@@ -831,6 +846,18 @@ function TrayHost<P extends TrayParamList>({
           </Animated.View>
         </ModalBottomSheet>
       </BottomSheetProvider>
+      {/* Keep the full-screen surface behind translucent keyboards without
+          adding the covered area to the sheet's content detent. */}
+      <Animated.View
+        pointerEvents="none"
+        accessibilityElementsHidden
+        importantForAccessibility="no-hide-descendants"
+        style={[
+          styles.keyboardBackground,
+          { backgroundColor },
+          keyboardBackground,
+        ]}
+      />
     </View>
   );
 }
@@ -987,6 +1014,8 @@ function TrayPage({
   onComplete,
   maxHeight,
   fullScreen,
+  fullScreenSpace,
+  headerHeight,
   anchor,
   contentTop,
   contentBottom,
@@ -1010,6 +1039,8 @@ function TrayPage({
   onComplete: (session: number, id: number) => void;
   maxHeight: number;
   fullScreen: boolean;
+  fullScreenSpace: SharedValue<number>;
+  headerHeight: number;
   anchor: 'top' | 'bottom';
   contentTop: SharedValue<number>;
   contentBottom: SharedValue<number>;
@@ -1030,8 +1061,10 @@ function TrayPage({
     [actions, screenId]
   );
   useLayoutEffect(() => {
-    if (lastHeight.current !== undefined) onPageLayout(lastHeight.current);
-  }, [active, maxHeight, width, onPageLayout]);
+    if (lastHeight.current === undefined) return;
+    if (fullScreen) lastHeight.current = maxHeight;
+    onPageLayout(lastHeight.current);
+  }, [active, fullScreen, maxHeight, width, onPageLayout]);
   // Wait for the portal to commit the destination before starting its transition.
   const startedTransition = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
@@ -1080,9 +1113,13 @@ function TrayPage({
       opacity: active ? opacity : from ? 1 - opacity : 0,
     };
   });
-  // Yoga anchors the fixed viewport and its content in the same layout as
-  // the card resize. No estimated header or asynchronously measured page
-  // height participates in bottom alignment.
+  const viewportSize = useAnimatedStyle(() => ({
+    height: fullScreen
+      ? Math.max(0, fullScreenSpace.value - headerHeight)
+      : maxHeight,
+  }));
+  // Yoga sizes full-screen descendants from this viewport in the same commit
+  // as the keyboard-driven card resize, including bottom-anchored pages.
   const anchorStyle = useAnimatedStyle(() => ({
     transform: [
       {
@@ -1128,7 +1165,8 @@ function TrayPage({
         styles.centered,
         styles.pageViewport,
         anchor === 'bottom' ? styles.bottomPage : styles.topPage,
-        { width, height: maxHeight },
+        { width },
+        viewportSize,
         anchorStyle,
       ]}
       pointerEvents={blocked ? 'none' : 'box-none'}
@@ -1139,8 +1177,11 @@ function TrayPage({
         onLayout={(event) => {
           const height = event.nativeEvent.layout.height;
           if (!Number.isFinite(height) || height < 0) return;
-          lastHeight.current = height;
-          onPageLayout(height);
+          // Full-screen sizing is already known. Intermediate keyboard layouts
+          // must not feed per-frame heights back into the React stack state.
+          const pageHeight = fullScreen ? maxHeight : height;
+          lastHeight.current = pageHeight;
+          onPageLayout(pageHeight);
           actions.setScreenReady(screenId, height > 0);
         }}
         style={[
@@ -1148,8 +1189,7 @@ function TrayPage({
           styles.pageContent,
           anchor === 'bottom' ? styles.bottomPage : styles.topPage,
           {
-            maxHeight,
-            height: fullScreen ? maxHeight : undefined,
+            ...(fullScreen ? { height: '100%' } : { maxHeight }),
             width,
             opacity: staticOpacity,
           },
@@ -1159,10 +1199,7 @@ function TrayPage({
         importantForAccessibility={blocked ? 'no-hide-descendants' : 'auto'}
       >
         <Animated.View
-          style={[
-            { maxHeight, height: fullScreen ? maxHeight : undefined },
-            pageStyle,
-          ]}
+          style={[fullScreen ? styles.fillHeight : { maxHeight }, pageStyle]}
         >
           <ScreenIdContext.Provider value={screenId}>
             <ChoreographyProgressProvider>
@@ -1210,6 +1247,8 @@ const styles = StyleSheet.create({
   title: { textAlign: 'center', fontSize: 16, fontWeight: '600' },
   pageViewport: { position: 'absolute' },
   pageContent: { position: 'absolute' },
+  fillHeight: { height: '100%' },
+  keyboardBackground: { position: 'absolute', left: 0, right: 0, bottom: 0 },
   topPage: { top: 0 },
   bottomPage: { bottom: 0 },
 });
