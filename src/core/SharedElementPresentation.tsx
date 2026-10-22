@@ -9,10 +9,10 @@ export interface SharedElementEndpoint {
 }
 
 export interface SharedElementPresentation {
-  /** Provider-wide expansion clock; other elements and groups also drive it. */
+  /** Expansion clock, screen-protected for target children; other groups also drive it. */
   progress: SharedValue<number>;
   /**
-   * This owner's expansion: follows progress while participating, otherwise
+   * This element's expansion: follows progress while participating, otherwise
    * stays at 0 (collapsed/source) or 1 (expanded/destination).
    */
   presentationProgress: DerivedValue<number>;
@@ -22,7 +22,7 @@ export interface SharedElementPresentation {
    * may differ.
    */
   frame: DerivedValue<{ width: number; height: number } | null>;
-  /** Participating with content in the overlay; can trail session start on iOS. */
+  /** The paired transition is active; target children remain in their route. */
   transitioning: boolean;
   /** Participating session direction; null when this owner is settled. */
   direction: 'forward' | 'backward' | null;
@@ -35,12 +35,12 @@ export interface SharedElementPresentation {
 export const SharedElementPresentationContext =
   createContext<SharedElementPresentation | null>(null);
 
-/** Read endpoint data without creating a second component or native subtree. */
+/** Read endpoint data inside an owner or route-owned Target children. */
 export function useSharedElementPresentation(): SharedElementPresentation {
   const value = useContext(SharedElementPresentationContext);
   if (!value)
     throw new Error(
-      'useSharedElementPresentation requires a SharedElement owner.'
+      'useSharedElementPresentation requires a SharedElement owner or Target content.'
     );
   return value;
 }

@@ -232,7 +232,7 @@ test('rejects invalid definitions early', () => {
   ).toThrow('duration');
 });
 
-test('role names and empty targets are checked by TypeScript', () => {
+test('role names and target companion children are checked by TypeScript', () => {
   const definition = defineTransition({
     shared: { hero: { kind: 'bounds' } },
     enter: { notes: {} },
@@ -245,15 +245,11 @@ test('role names and empty targets are checked by TypeScript', () => {
     // @ts-expect-error targets use the same shared role names as owners
     <definition.Element.Target name="unknown" />
   );
-  const invalidTargetChildren = () => (
-    // @ts-expect-error live targets cannot own duplicate content
-    <definition.Element.Target name="hero">Duplicate</definition.Element.Target>
+  const targetChildren = (
+    <definition.Element.Target name="hero">Details</definition.Element.Target>
   );
-  expect([
-    invalidSharedName,
-    invalidTargetName,
-    invalidTargetChildren,
-  ]).toHaveLength(3);
+  expect(targetChildren.props.children).toBe('Details');
+  expect([invalidSharedName, invalidTargetName]).toHaveLength(2);
 });
 
 test.each(['forward', 'backward'] as const)(

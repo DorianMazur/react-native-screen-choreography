@@ -35,6 +35,11 @@ import {
 } from '../core/liveHostNames';
 import { defaultTransition } from '../transitions/makeTransition';
 import { transitionFrameSize } from '../standin/TransitionSurface';
+import {
+  pairEndpoints,
+  selectPresentationPair,
+} from '../core/sharedElementPresentationData';
+import { SharedElementTargetContent } from './SharedElementTargetContent';
 
 export interface SharedElementProps {
   id: string;
@@ -52,6 +57,8 @@ export interface SharedElementProps {
 export interface SharedElementTargetProps {
   id: string;
   groupId?: string;
+  /** Route-owned companion content. Keeps the route mounted through return motion. */
+  children?: ReactNode;
   /** Reuse the owner's factory result for consistent forward and back motion. */
   transition?: Transition;
   style?: StyleProp<ViewStyle>;
@@ -167,16 +174,12 @@ function LiveSharedElement(props: SharedElementProps) {
   const session =
     useContext(PreparingSessionContext) ?? choreography.activeSession;
   const preparing = session?.state === 'preparing';
-  const pair =
-    (session?.state === 'active' || preparing) &&
-    session.groupId === props.groupId
-      ? (session.pairs.find(
-          (candidate) =>
-            candidate.id === props.id &&
-            (candidate.source.screenId === screenId ||
-              candidate.target.screenId === screenId)
-        ) ?? null)
-      : null;
+  const pair = selectPresentationPair(
+    session,
+    screenId,
+    props.groupId,
+    props.id
+  );
 
   const reducedMotion = pair ? session!.reducedMotion : false;
   const direction = pair ? session!.direction : null;
@@ -263,19 +266,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   const participates = pair !== null;
   const activeEndpoints = useMemo(() => {
     if (!pair) return null;
-    const source = {
-      metrics: pair.sourceMetrics,
-      metadata: pair.sourcePresentation.metadata,
-      style: pair.sourcePresentation.style,
-    };
-    const target = {
-      metrics: pair.targetMetrics,
-      metadata: pair.targetPresentation.metadata,
-      style: pair.targetPresentation.style,
-    };
-    return direction === 'forward'
-      ? { collapsed: source, expanded: target }
-      : { collapsed: target, expanded: source };
+    return pairEndpoints(pair, direction!);
   }, [pair, direction]);
 
   // Retarget in the session-settlement render so content and presentation
@@ -442,6 +433,7 @@ function LiveSharedElementTarget({
   transition = defaultTransition,
   hostStyle,
   metadata,
+  children,
 }: SharedElementTargetProps) {
   const screenId = useScreenId();
   return (
@@ -456,6 +448,16 @@ function LiveSharedElementTarget({
         name={getLiveDestinationHostName(screenId, id, groupId)}
         style={[styles.liveHost, hostStyle]}
       />
+      {children != null && children !== false && (
+        <SharedElementTargetContent
+          id={id}
+          groupId={groupId}
+          style={style}
+          metadata={metadata}
+        >
+          {children}
+        </SharedElementTargetContent>
+      )}
     </SharedElementRegistration>
   );
 }

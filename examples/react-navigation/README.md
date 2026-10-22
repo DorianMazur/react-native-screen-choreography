@@ -79,3 +79,17 @@ ordinary screen content, not to content hosted on another route.
 ## Dynamic tray demo
 
 Open **Dynamic tray** on the landing screen to try a wallet flow with retained forms and a full-screen recipient list. See the [dynamic tray guide](../../docs/guide/dynamic-trays.md) for setup and usage.
+
+## Field journal demo
+
+Open **Field journal** to explore a collection of observation prompts: Trails, Sky, Street, Botanical, Wildlife, and Seasons. Each collection stamp expands into a full-screen journal page.
+
+Open a collection from the grid, log an observation, then pull the top handle a short distance and release. The page returns to full size with its counter and bookmark state intact. A longer pull or the close button returns to the originating stamp. Closing and reopening starts a fresh visit.
+
+The [shared implementation](../shared/journal/JournalScreens.tsx) uses a custom `makeTransition` renderer for the single retained stamp. The destination places its live observation page inside `Element.Target` and reads `useSharedElementPresentation` for captured endpoints and progress. Both screens use `keepVisible` so the transparent page can reveal the collection grid beneath it. Page content mounts with the destination, and the same progress-driven crossfade runs in both directions.
+
+The library supplies presentation data independently of the renderer's lifetime and keeps the route mounted through the return animation. Cancelled dismissal preserves the page's local state. The example does not publish geometry, cache endpoints, or depend on an early-removal threshold. `useInteractiveGestureLifecycle` handles asynchronous gesture preparation and cancellation.
+
+The page uses native rounded clipping (`overflow: 'hidden'`). Its animated mask matches the scaled stamp's square bounds and corner radius throughout the crossfade, then unfolds to the screen's aspect ratio. Fixed-size content scales within that frame. The page stays opaque underneath the fading stamp so the grid does not show through their overlap. At rest it uses the destination's current layout.
+
+The expansion motion takes inspiration from [Enzo Manuel Mangano’s launcher transition](https://github.com/enzomanuelmangano/demos/blob/54b9041a52323d2aa7dcd000e14439608eeb0bb0/src/navigation/home/launch-transition.tsx), applied here to a journal collection flow.

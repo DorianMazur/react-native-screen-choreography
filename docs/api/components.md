@@ -151,7 +151,7 @@ The owner keeps its original React context when moved into the overlay or destin
 
 ### `SharedElement.Target`
 
-An empty receiving host with measurable bounds. It does **not** accept children.
+A receiving host with measurable bounds. Optional children are companion content owned by the destination route; the retained owner still arrives in its separate host.
 
 ```tsx
 <SharedElement.Target id="hero" groupId="artwork.42" style={{ height: 380 }} />
@@ -160,6 +160,24 @@ An empty receiving host with measurable bounds. It does **not** accept children.
 `SharedElementTargetProps` is exported. It shares `id`, `groupId`, `transition`, `style`, and `metadata` with the owner. Its additional `hostStyle?: StyleProp<ViewStyle>` adjusts the receiving host independently of the measured wrapper. The host defaults to absolute fill.
 
 Give an empty target explicit dimensions or another nonzero layout constraint. Use one owner and one target for each pair; do not duplicate the content on the destination.
+
+To animate destination content alongside a shared element, put it inside the target:
+
+```tsx
+<SharedElement.Target
+  id="collection"
+  groupId="journal.trails"
+  style={{ flex: 1 }}
+>
+  <ObservationPage />
+</SharedElement.Target>
+```
+
+Inside `ObservationPage`, use [`useSharedElementPresentation`](./hooks.md#usesharedelementpresentation) for the pair's frozen endpoints and expansion progress. These children keep the destination's React context and local state. They remain in the route, including during the transition; they do not become another overlay subtree or replace the retained owner. Keep the measured target wrapper stable and animate a child frame when changing its crop or scale.
+
+For a matched target with children, a shared Back waits for animation completion before removing the outgoing route. Cancelling keeps the children mounted. Targets without children retain the usual early-removal behavior. External resets can still remove a route immediately. With no matched source or reduced motion, render the normal destination layout; `frame.value` is `null` when no animated pair is available.
+
+Children receive presentation data, not automatic clipping or styling. Use a rounded view with `overflow: 'hidden'` for a mask, and `keepVisible` on the screen when your own styles control its reveal. `hostStyle` applies only to the receiving host, not to these children. Do not use children to render a second copy of the retained content.
 
 ::: warning Keep presentation data immutable
 Endpoint metrics and presentation inputs are captured for a session. `metadata` is retained by reference, not deeply cloned. Avoid mutating a metadata object during an active transition.

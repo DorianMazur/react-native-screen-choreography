@@ -268,6 +268,9 @@ export function ChoreographyProvider({
 
   const registryRef = useRef<ElementRegistry | null>(null);
   const coordinatorRef = useRef<TransitionCoordinator | null>(null);
+  const hasTargetContentRef = useRef<
+    (screenId: string, groupId: string | undefined, id: string) => boolean
+  >(() => false);
 
   if (!registryRef.current) {
     registryRef.current = new ElementRegistry();
@@ -283,7 +286,19 @@ export function ChoreographyProvider({
         getScreenRef: (screenId) => nativeScreenRefs.current.get(screenId),
         isScreenReady: (screenId) =>
           screenReadinessRef.current.isReady(screenId),
-        waitsForAttachment: hostsReportAttachment,
+        // Companion mappers must install while the screen gate is closed.
+        // Android can skip that preparation commit for portal-only sessions.
+        waitsForAttachment: (pairs) =>
+          hostsReportAttachment ||
+          pairs.some((pair) =>
+            [pair.source, pair.target].some((element) =>
+              hasTargetContentRef.current(
+                element.screenId,
+                element.groupId,
+                element.id
+              )
+            )
+          ),
         screenGeometry,
       }
     );
@@ -355,6 +370,12 @@ export function ChoreographyProvider({
         session.pairs.length > 0 &&
         previousSession?.state !== 'active'
       ) {
+        if (previousSession?.state === 'preparing') {
+          // Companion mappers installed behind the gate during preparation.
+          // Reveal with the transfer commit, before native starts UI motion.
+          setPendingTargetScreenId(null);
+          setPendingSourceScreenId(null);
+        }
         onTransitionStartRef.current?.(session);
       }
     });
@@ -747,6 +768,8 @@ export function ChoreographyProvider({
     interruptibleReturnSessionId,
     commitReverseTransition,
     registerScreenPresentation: registerReverseScreenPresentation,
+    registerTargetContent,
+    hasTargetContent,
   } = useReverseTransitionCommit({
     progress,
     progressOwnership,
@@ -756,6 +779,7 @@ export function ChoreographyProvider({
     completeTransition,
     cancelTransition,
   });
+  hasTargetContentRef.current = hasTargetContent;
 
   const registerScreenPresentation = useCallback<
     ChoreographyActionsType['registerScreenPresentation']
@@ -884,6 +908,7 @@ export function ChoreographyProvider({
 
   const actionsValue = useMemo<ChoreographyActionsType>(
     () => ({
+      registerTargetContent,
       registerElement,
       unregisterElement,
       isElementHidden,
@@ -896,6 +921,7 @@ export function ChoreographyProvider({
       registerScreenPresentation,
     }),
     [
+      registerTargetContent,
       registerElement,
       unregisterElement,
       isElementHidden,

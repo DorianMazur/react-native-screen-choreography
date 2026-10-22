@@ -15,7 +15,7 @@ import {
   createBackCommit,
   type NavigationCommitResult,
 } from '../core/navigationCommit';
-import type { TransitionSessionData } from '../types';
+import type { TransitionSessionData, ElementTransitionPair } from '../types';
 import { useReverseTransitionCommit } from './useReverseTransitionCommit';
 import type { ScreenAnimationLifetime } from './useScreenAnimationLifetime';
 
@@ -63,11 +63,13 @@ async function mountHook({
   direction = 'backward',
   animationLifetime,
   trace = false,
+  pairIds = [],
 }: {
   registerSource?: boolean;
   direction?: 'forward' | 'backward';
   animationLifetime?: ScreenAnimationLifetime;
   trace?: boolean;
+  pairIds?: string[];
 } = {}) {
   const visibility = new ElementVisibilityRegistry();
   const sourceHidden = visibility.get('source', false);
@@ -92,7 +94,14 @@ async function mountHook({
     direction,
     state: 'active',
     progress,
-    pairs: [],
+    pairs: pairIds.map(
+      (id) =>
+        ({
+          id,
+          source: { screenId: direction === 'forward' ? 'home' : 'article' },
+          target: { screenId: direction === 'forward' ? 'article' : 'home' },
+        }) as ElementTransitionPair
+    ),
     presentation,
   };
   const getSession = () => session;
@@ -200,6 +209,81 @@ afterEach(async () => {
 });
 
 describe('provider reverse commit integration', () => {
+  test.each(
+    (['ios', 'android'] as const).flatMap((platform) =>
+      (['forward', 'backward'] as const).map((direction) => ({
+        platform,
+        direction,
+      }))
+    )
+  )(
+    '$platform $direction keeps matched target content until completion and confirmed removal',
+    async ({ platform, direction }) => {
+      Platform.OS = platform;
+      const fence = deferred<void>();
+      const lifetime = {
+        suspend: jest.fn(() => fence.promise),
+        resume: jest.fn(),
+      };
+      const h = await mountHook({
+        direction,
+        pairIds: ['app'],
+        animationLifetime: lifetime,
+      });
+      const oldRelease = h.api.registerTargetContent('article', 'group', 'app');
+      h.api.registerTargetContent('article', 'group', 'app');
+      oldRelease();
+      oldRelease();
+      const { completion, navigation, navigateBack } = await h.start();
+      h.progress.value = 0.1;
+      await act(async () =>
+        h.api.reverseController.commitNearEndpoint('reverse')
+      );
+      expect(navigateBack).not.toHaveBeenCalled();
+      expect(lifetime.suspend).not.toHaveBeenCalled();
+      expect(h.releaseLock).not.toHaveBeenCalled();
+      await act(async () => {
+        h.finishAnimation();
+        flushRN();
+      });
+      if (platform === 'android') {
+        expect(lifetime.suspend).toHaveBeenCalledWith(h.token);
+        expect(navigateBack).not.toHaveBeenCalled();
+        await act(async () => fence.resolve());
+      }
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+      expect(h.releaseLock).not.toHaveBeenCalled();
+      await act(async () =>
+        navigation.resolve({ removed: true, presented: true })
+      );
+      await completion;
+      expect(h.releaseLock).toHaveBeenCalledTimes(1);
+      expect(
+        direction === 'forward' ? h.cancelTransition : h.completeTransition
+      ).toHaveBeenCalledWith('reverse');
+    }
+  );
+
+  test.each(['screen', 'group', 'id', 'unpaired', 'released'] as const)(
+    '%s target content does not delay an unrelated return',
+    async (mismatch) => {
+      Platform.OS = 'ios';
+      const h = await mountHook({
+        pairIds: mismatch === 'unpaired' ? [] : ['app'],
+      });
+      const release = h.api.registerTargetContent(
+        mismatch === 'screen' ? 'other' : 'article',
+        mismatch === 'group' ? 'other' : 'group',
+        mismatch === 'id' ? 'other' : 'app'
+      );
+      if (mismatch === 'released') release();
+      const { navigateBack } = await h.start();
+      await act(async () =>
+        h.api.reverseController.commitNearEndpoint('reverse')
+      );
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+    }
+  );
   test.each(['android', 'ios'] as const)(
     '%s records reverse startup without changing navigation-owned handoff',
     async (platform) => {

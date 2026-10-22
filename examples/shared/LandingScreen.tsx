@@ -14,9 +14,16 @@ import { TrayDemoLauncher } from './tray/TrayDemo';
 
 const demos = [
   {
+    route: 'JournalList',
+    title: 'Field journal',
+    subtitle: 'From collection stamp to field notes',
+    icon: 'expand',
+    color: '#8FCBE3',
+  },
+  {
     route: 'GalleryList',
     title: 'Gallery',
-    subtitle: 'A field journal',
+    subtitle: 'A photo collection',
     icon: 'camera',
     color: theme.gallery.accent,
   },

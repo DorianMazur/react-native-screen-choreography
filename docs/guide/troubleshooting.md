@@ -46,7 +46,7 @@ options={{
 
 The overlay presents the shared element above the stack. A simultaneous navigator animation can expose a second moving screen. An opaque route presentation can cover the underlying content during preparation.
 
-Also check that you mounted only one owner plus an empty target. A second copy of the artwork on the destination defeats the retained-content model.
+Also check that you mounted only one owner plus its target. Target children may supply distinct companion content. A second copy of the artwork on the destination defeats the retained-content model.
 
 ## Content arrives in the wrong size
 

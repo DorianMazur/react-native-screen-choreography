@@ -39,6 +39,12 @@ Expo Go is not supported because the library includes a custom native overlay ho
 
 Keep `animation: 'none'` and transparent stack content so the choreography overlay owns the visible motion.
 
+## Field journal demo
+
+Open **Field journal** on the landing screen. Collection stamps in the grid open their observation pages. Log an observation, cancel a short pull from the top handle, then close with a longer pull or the close button.
+
+This uses the same [journal implementation and behavior](../react-navigation/README.md#field-journal-demo) as the React Navigation app. The routes are `/journal` and `/journal/[collectionId]`. The observation page lives in `Element.Target` and reads the library-owned presentation. Both route wrappers set `keepVisible` so the transparent page can reveal the collection grid beneath it.
+
 ## Transition definitions
 
 Transition recipes live alongside their screens in [the shared source](../shared) and use `defineTransition` from the shared core API.

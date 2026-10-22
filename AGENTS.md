@@ -84,6 +84,7 @@ Current important exports include:
 - pre-navigation source geometry is scoped to one navigation, checked against native node identity, and consumed by the next preparation; do not turn it into a reusable endpoint cache
 - transition renderers receive frozen metadata, style, and metrics plus one library-owned portal host child; they must render that child exactly once
 - the registry is keyed by compound `(screenId, groupId, id)` identity, and pair discovery is scoped to the source screen's group
+- `SharedElement.Target` children are distinct route-owned companion content. Select the matched pair before their memoized presentation boundary; use frozen pair data and screen-protected progress. Keep matched outgoing target routes through animation completion; empty/unmatched targets keep early removal. Never depend on renderer effects for companion geometry or retain registrations/refs after settlement.
 - shared transitions retain one live subtree; do not introduce rendered-content or dismissal snapshots, copied image/text content, duplicate render paths, or unpaired overlay tracks. Visibility-registry bookkeeping does not authorize duplicate-content hiding for live owners.
 
 ## Working Conventions
@@ -98,6 +99,7 @@ Current important exports include:
 - never call `syncHiddenElements()` eagerly when a session activates — hiding must remain driven by the overlay's `useLayoutEffect` and the native host's presentation ack; the one-second `waitForOverlayReady` safety net may only recover an already confirmed UI-thread presentation
 - `ChoreographyScreen` visibility must gate on BOTH `pendingTargetScreenId === screenId` and `(role === 'target' && phase === 'preparing')` — the new screen mounts ~150ms before the session activates, so role-only gating leaves a visible window
 - the static visibility gate must live on a plain outer `View` with inline `opacity`, not merged into an `Animated.View` style array; on Android Fabric, Reanimated's first style commit can lag one frame and a single `Animated.View` flashes
+- matched destination companion content must prepare its animation mappers behind the closed screen gate, including on Android; after native attachment, clear that gate in the activation commit so UI-thread motion does not depend on its later RN presentation acknowledgement
 - keep provider/session cleanup independent of the outgoing route's lifetime; navigation ownership and queued-request replay belong to `NavigationSessionController`
 - let Reanimated completion or explicit navigation interruption own animation settlement; JavaScript timers must not force completion
 - reject queued reveal callbacks after their observer unmounts or their session, reset key, or threshold changes; a fresh `useLatchedReveal` observer must still reveal when mounted beyond its threshold

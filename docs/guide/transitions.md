@@ -226,3 +226,19 @@ const labelStyle = useAnimatedStyle(() => ({
 Import the hook from the library and `useAnimatedStyle` / `interpolate` from Reanimated. Endpoint metrics are `null` before the first transition. Metadata is captured by reference at session start, so pass immutable values and narrow its `unknown` type before reading fields.
 
 For supported props and defaults, see the [transition reference](../api/transitions.md).
+
+## Coordinate destination content with a shared element
+
+Put destination-owned content inside `Element.Target` when its mask or layout needs the same captured endpoints as the shared element:
+
+```tsx
+<journal.Element.Target name="collection" groupId={groupId} style={{ flex: 1 }}>
+  <ObservationPage />
+</journal.Element.Target>
+```
+
+Inside `ObservationPage`, `useSharedElementPresentation()` exposes `collapsed`, `expanded`, `presentationProgress`, and `frame`. Read progress and `frame.value` in a worklet. While `frame.value` is non-null, calculate custom geometry from the captured endpoints; otherwise use the destination's current layout. The hook's default frame interpolates width and height linearly, so custom renderers and companion content should share their own geometry function when using a different path.
+
+The target children remain in the destination route and preserve its context and local state. The library keeps that route mounted until shared return motion finishes, including when Back interrupts opening. Cancelled dismissal preserves the same children. A missing pair or reduced motion falls back to the normal destination layout.
+
+Use `keepVisible` when the screen's default fade would interfere with your own reveal. Animate an inner clipping frame rather than the measured target wrapper. Keep the shared owner in the renderer exactly once; target children supply distinct destination content. The [Field journal example](https://github.com/DorianMazur/react-native-screen-choreography/tree/main/examples/react-navigation#field-journal-demo) demonstrates a collection stamp expanding into a masked, interactive observation page.

@@ -18,6 +18,11 @@ import type {
 } from '../types';
 
 export interface ChoreographyActionsType {
+  registerTargetContent: (
+    screenId: string,
+    groupId: string | undefined,
+    id: string
+  ) => () => void;
   registerElement: (element: RegisteredElement) => void;
   unregisterElement: (
     id: string,

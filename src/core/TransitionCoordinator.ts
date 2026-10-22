@@ -60,7 +60,9 @@ export class TransitionCoordinator {
       getScreenRef: (screenId: string) => NodeHandleRef | undefined;
       isScreenReady: (screenId: string) => boolean;
       /** Hold sessions in `preparing` until the native host reports attachment. */
-      waitsForAttachment?: boolean;
+      waitsForAttachment?:
+        | boolean
+        | ((pairs: readonly ElementTransitionPair[]) => boolean);
       screenGeometry?: ScreenGeometry;
     }
   ) {
@@ -573,7 +575,9 @@ export class TransitionCoordinator {
       // Attachment-gated hosts must mount empty before content can move into them.
       const gated =
         !config.reducedMotion &&
-        Boolean(this.nativeReadiness?.waitsForAttachment);
+        (typeof this.nativeReadiness?.waitsForAttachment === 'function'
+          ? this.nativeReadiness.waitsForAttachment(pairs)
+          : Boolean(this.nativeReadiness?.waitsForAttachment));
       const prepared: TransitionSessionData = {
         id: sessionId,
         groupId,
