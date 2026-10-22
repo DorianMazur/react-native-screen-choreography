@@ -46,12 +46,12 @@ The library also needs native peer dependencies and a native app rebuild. Follow
 
 - **Platforms:** iOS and Android, React Native ≥0.81 with the New Architecture / Fabric.
 - **Runtime:** React ≥18, Reanimated ≥4, Worklets ≥0.8, and Teleport ≥1.2. Choose mutually compatible peer versions; these lower bounds are not a full tested compatibility matrix.
-- **Navigation:** React Navigation native-stack ≥6 (validated on 7.x), or Expo Router ≥56.1.1.
+- **Navigation integrations (optional):** React Navigation native-stack ≥6 (validated on 7.x), or Expo Router ≥56.1.1.
 - **Expo:** a development build is required. Expo Go does not include the custom native host.
 
 The checked-in examples use React Native 0.83 and Expo SDK 57. Native-stack swipe progress is not connected automatically; use [interactive Back](https://screen-choreography.dev/guide/interactive-back.html) for custom gesture control.
 
-Build content-sized sheets with their own typed view stack using the optional [dynamic tray API](docs/guide/dynamic-trays.md) and Software Mansion bottom sheets.
+Build content-sized sheets with their own typed view stack using the optional [dynamic tray API](docs/guide/dynamic-trays.md) and Software Mansion bottom sheets. Trays work without a navigation library; follow the [tray installation](docs/guide/installation.md#dynamic-trays-without-a-router) for their dependencies.
 
 ## Documentation
 

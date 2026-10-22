@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install Screen Choreography for React Navigation or an Expo Router development build.
+description: Install Screen Choreography for React Navigation, Expo Router, or independent dynamic trays.
 ---
 
 # Installation
@@ -84,12 +84,31 @@ npx expo run:ios
 
 Continue to the [Expo Router guide](./expo-router.md).
 
-## Choose one integration entry
+## Dynamic trays without a router
+
+Trays manage their own screen stack. An app using only trays does not need React Navigation or Expo Router:
+
+```bash
+npm install react-native-screen-choreography
+npm install react-native-reanimated react-native-worklets react-native-teleport
+npm install @swmansion/react-native-bottom-sheet@0.16.2 react-native-keyboard-controller@^1.22.7
+```
+
+For a bare React Native app, add `react-native-worklets/plugin` last in your Babel plugins as shown above, install iOS pods, and rebuild. For Expo, preserve `babel-preset-expo`, use `npx expo install` for Reanimated and Worklets, and create a development build. Expo Go is not supported.
+
+Wrap your tray provider in `KeyboardProvider` from `react-native-keyboard-controller`. The [dynamic tray guide](./dynamic-trays.md) shows the complete setup. Its example also uses `react-native-safe-area-context` to supply insets; install that package if your app does not already use it. The tray manages its own bottom-sheet provider.
+
+The sheet and keyboard packages are optional peers required only by `/tray`. Apps using other entries without trays do not need them.
+
+## Choose an entry
 
 | Import path                                    | Use it for                                                          |
 | ---------------------------------------------- | ------------------------------------------------------------------- |
 | `react-native-screen-choreography`             | React Navigation screens and hooks                                  |
 | `react-native-screen-choreography/expo-router` | Expo Router screens and hooks                                       |
 | `react-native-screen-choreography/core`        | Shared, navigator-independent components and transition definitions |
+| `react-native-screen-choreography/tray`        | Independent dynamic trays and their typed screen stacks             |
 
 Both integration entries re-export the shared API. Keep `ChoreographyScreen` and navigation hooks on the entry matching your router. The `/core` entry does not include a screen wrapper or navigation adapter.
+
+Use `/tray` for tray components and hooks, and `/core` for shared elements inside trays. Neither entry requires a navigation library. Trays can also run alongside either navigation integration.

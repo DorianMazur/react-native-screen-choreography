@@ -705,7 +705,7 @@ beforeEach(() => {
   unmounted.length = 0;
 });
 
-function focusFixture(header = false) {
+function focusFixture(header = false, afterTransition = false) {
   const events: string[] = [];
   const mounted: string[] = [];
   const ValueContext = createContext('first');
@@ -717,7 +717,8 @@ function focusFixture(header = false) {
         return () => {
           events.push(`blur ${id} ${value}`);
         };
-      }, [id, value])
+      }, [id, value]),
+      { afterTransition }
     );
     return null;
   }
@@ -749,6 +750,45 @@ function focusFixture(header = false) {
   });
   return { renderer, events, mounted, render };
 }
+
+test('settled focus in screens and headers waits for native opening and Reanimated completion', () => {
+  const { renderer, events } = focusFixture(true, true);
+  act(() => navigation.present('form'));
+  const root = navigationState.route!.key;
+  act(() => sheet(renderer).props.onIndexChange(1));
+  expect(events).toEqual([]);
+  act(() => sheet(renderer).props.onSettle(1));
+  expect(events).toEqual(
+    expect.arrayContaining([
+      `focus ${root} first`,
+      `focus header:${root} first`,
+    ])
+  );
+  act(() => navigation.push('preview', { label: 'Next' }));
+  const target = navigationState.route!.key;
+  expect(events).not.toContain(`focus ${target} first`);
+  expect(events).not.toContain(`focus header:${target} first`);
+  const complete = mockCompletions.shift()!;
+  act(() => complete(false));
+  expect(events).not.toContain(`focus ${target} first`);
+  act(() => complete(true));
+  expect(events.slice(-2)).toEqual(
+    expect.arrayContaining([
+      `focus ${target} first`,
+      `focus header:${target} first`,
+    ])
+  );
+  act(() => navigation.back());
+  expect(events.at(-1)).toMatch(/^blur /);
+  act(() => mockCompletions.shift()!(true));
+  expect(events.slice(-2)).toEqual(
+    expect.arrayContaining([
+      `focus ${root} first`,
+      `focus header:${root} first`,
+    ])
+  );
+  act(() => renderer.unmount());
+});
 
 test('focus effects follow route instances through queued Back without remounting retained screens', () => {
   const { renderer, events, mounted } = focusFixture();
@@ -2145,8 +2185,12 @@ test('keyboard frames update shared geometry without rerendering React content',
   act(() => {
     renderer = TestRenderer.create(<KeyboardObserver />);
   });
-  const frames = renders.mock.calls.length;
   const event = { height: 150, progress: 0.5, duration: 250, target: 1 };
+  act(() => mockKeyboardHandlers.onStart!(event));
+  expect(keyboard.isVisible).toBe(true);
+  // The accessibility visibility boundary may render once; animation frames
+  // must continue on the UI thread without further React updates.
+  const frames = renders.mock.calls.length;
   act(() => mockKeyboardHandlers.onMove!(event));
   expect(keyboard.height.value).toBe(150);
   expect(keyboard.progress.value).toBe(0.5);

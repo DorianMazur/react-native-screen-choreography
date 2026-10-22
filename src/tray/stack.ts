@@ -26,6 +26,8 @@ export interface TrayStackState {
   phase: 'closed' | 'opening' | 'open' | 'closing';
   /** Whether this session has received its first native open settlement. */
   presented: boolean;
+  /** Whether native opening or reopening after an interrupted dismissal has settled. */
+  nativeSettled: boolean;
   entries: TrayEntry[];
   preparation?: {
     id: number;
@@ -50,6 +52,7 @@ export const initialTrayState: TrayStackState = {
   revision: 0,
   phase: 'closed',
   presented: false,
+  nativeSettled: false,
   entries: [],
   queue: [],
   dismissals: 0,
@@ -124,7 +127,13 @@ export function trayReducer(
       return state;
     if (action.type === 'snapped') {
       return action.index === 0
-        ? { ...state, phase: 'closing', preparation: undefined, queue: [] }
+        ? {
+            ...state,
+            phase: 'closing',
+            nativeSettled: false,
+            preparation: undefined,
+            queue: [],
+          }
         : drain({ ...state, phase: 'open' });
     }
     if (action.index === 0 && state.phase === 'closing') {
@@ -132,6 +141,7 @@ export function trayReducer(
       const closed: TrayStackState = {
         ...state,
         phase: 'closed',
+        nativeSettled: false,
         entries: [],
         transition: undefined,
         queue: [],
@@ -141,14 +151,25 @@ export function trayReducer(
     }
     return action.index === 1 &&
       (state.phase === 'opening' || state.phase === 'open') &&
-      !state.presented
-      ? drain({ ...state, phase: 'open', presented: true })
+      !state.nativeSettled
+      ? drain({
+          ...state,
+          phase: 'open',
+          presented: true,
+          nativeSettled: true,
+        })
       : state;
   }
   if (action.type === 'dismiss') {
     return state.phase === 'closed'
       ? state
-      : { ...state, phase: 'closing', preparation: undefined, queue: [] };
+      : {
+          ...state,
+          phase: 'closing',
+          nativeSettled: false,
+          preparation: undefined,
+          queue: [],
+        };
   }
   if (action.type === 'present' && state.phase === 'closed') {
     const revision = state.revision + 1;
@@ -158,6 +179,7 @@ export function trayReducer(
       revision,
       phase: 'opening',
       presented: false,
+      nativeSettled: false,
       entries: [
         { key: String(revision), name: action.name, params: action.params },
       ],

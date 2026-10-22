@@ -11,7 +11,7 @@ The optional `/tray` entry uses Software Mansion's native bottom sheet. It works
 
 ## Install
 
-Follow the [base installation](./installation.md), then add the tray dependencies:
+Follow the [tray installation](./installation.md#dynamic-trays-without-a-router), which includes these optional dependencies:
 
 ```sh
 npm install @swmansion/react-native-bottom-sheet@0.16.2 react-native-keyboard-controller@^1.22.7
@@ -193,7 +193,7 @@ function Balance({ accountId }: { accountId: string }) {
 
 Render `Balance` inside a tray screen. Back starts the subscription again without resetting the screen's state. Changing `accountId` while focused cleans up the old subscription and starts the new one. Keep the callback memoized with `useCallback` to avoid restarting it on unrelated renders.
 
-Focus changes with the active route, before its transition finishes. The current screen stays focused during dismissal until the sheet finishes closing; removing the provider cleans up immediately. This hook follows the tray's stack, independently of React Navigation focus and app foreground state. For whole-tray visibility, continue using `Tray.useTrayState((state) => state.isPresented)`.
+By default, focus changes with the active route, before its transition finishes. The current screen stays focused during dismissal until the sheet finishes closing; removing the provider cleans up immediately. Pass `{ afterTransition: true }` for work such as [focusing an input](#focus-an-input-after-the-transition) that should wait until navigation finishes. This hook follows the tray's stack, independently of React Navigation focus and app foreground state. For whole-tray visibility, continue using `Tray.useTrayState((state) => state.isPresented)`.
 
 ## Expand to full screen
 
@@ -302,11 +302,119 @@ The default is 240 ms with cubic ease-out. These settings control transitions be
 
 Use normal React Native inputs and scroll views. The tray moves with the keyboard. For scrolling forms, use `keyboardShouldPersistTaps="handled"` so buttons work while typing.
 
-Navigating between screens dismisses the keyboard. Back preserves the form values and scroll position, but doesn't automatically focus an input again. Call the input's `focus()` only when your flow needs it.
+Navigating between screens dismisses the keyboard. Back preserves the form values and scroll position. To focus an input when returning, use [an effect that waits for the transition](#focus-an-input-after-the-transition).
 
 A root `ScrollView` fits within the available height. For short, content-sized screens, avoid `flex: 1` on a non-scrollable root.
 
 Previous screens stay mounted for Back, so their effects and subscriptions remain active. Closing the tray resets its screens. Keep drafts outside the tray if they should survive reopening.
+
+### Center a form and keep its action above the keyboard
+
+For a form that fills the window, declare `presentation: 'fullScreen'`. Its content viewport resizes with every keyboard frame, including interactive dismissal. A flex layout can keep the fields centered and the action at the bottom:
+
+```tsx
+import { useState } from 'react';
+import { Button, ScrollView, TextInput, View } from 'react-native';
+
+function FullScreenNote({ tray }: TrayScreenProps<Routes, 'note'>) {
+  const [text, setText] = useState('');
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          padding: 24,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TextInput
+          accessibilityLabel="Note"
+          value={text}
+          onChangeText={setText}
+        />
+      </ScrollView>
+      <View style={{ padding: 24 }}>
+        <Button
+          title="Preview"
+          onPress={() => tray.push('preview', { text })}
+        />
+      </View>
+    </View>
+  );
+}
+
+<Tray.Screen
+  name="note"
+  component={FullScreenNote}
+  options={{ title: 'Write a note', presentation: 'fullScreen' }}
+/>;
+```
+
+The footer follows the keyboard through the tray's own resizing. The stack also handles the bottom safe-area inset. Keep keyboard-height padding, `KeyboardAvoidingView`, `KeyboardStickyView`, and automatic keyboard insets off this layout: adding a second keyboard offset would move the content twice. Normal design padding, such as the 24 points above, still applies.
+
+### Fade supporting content while typing
+
+Read `Tray.useKeyboard()` inside a tray screen or custom header to use the same keyboard signal that moves the tray. `progress` and `height` are Reanimated shared values; use them in worklets. `isVisible` is a React boolean for touches and accessibility:
+
+```tsx
+import { Text } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+
+function NoteHelp() {
+  const { progress, isVisible } = Tray.useKeyboard();
+  const fade = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
+
+  return (
+    <Animated.View
+      style={fade}
+      pointerEvents={isVisible ? 'none' : 'auto'}
+      accessibilityElementsHidden={isVisible}
+      importantForAccessibility={isVisible ? 'no-hide-descendants' : 'auto'}
+    >
+      <Text>Your draft stays here when you go back.</Text>
+    </Animated.View>
+  );
+}
+```
+
+Place `NoteHelp` below the input. Changing opacity preserves its layout space. `isVisible` becomes true when opening starts and stays true until the keyboard is fully hidden, so faded content is also unavailable to screen readers. Keyboard frames update the shared values without rerendering the component; React updates only when visibility changes.
+
+### Focus an input after the transition
+
+Use `Tray.useFocusEffect` with `{ afterTransition: true }` to focus after the screen has arrived. For example, replace `Note` with this component:
+
+```tsx
+import { useCallback, useRef, useState } from 'react';
+import { Button, TextInput, View } from 'react-native';
+
+function Note({ tray }: TrayScreenProps<Routes, 'note'>) {
+  const input = useRef<TextInput>(null);
+  const [text, setText] = useState('');
+
+  Tray.useFocusEffect(
+    useCallback(() => {
+      input.current?.focus();
+    }, []),
+    { afterTransition: true }
+  );
+
+  return (
+    <View style={{ padding: 24 }}>
+      <TextInput
+        ref={input}
+        accessibilityLabel="Note"
+        value={text}
+        onChangeText={setText}
+      />
+      <Button title="Preview" onPress={() => tray.push('preview', { text })} />
+    </View>
+  );
+}
+```
+
+This waits for the native sheet to settle open and for screen navigation to finish, including shared-element handoff. It works with timing animations, springs, Reduce Motion, and Back; no duration or timer is needed. Queued navigation runs before the effect, so an intermediate screen does not steal focus. Closing or leaving the screen skips a pending callback and cleans up an already-running effect. A cancelled dismissal can run the effect again after the tray settles open.
 
 ## Anchor content during resizing
 

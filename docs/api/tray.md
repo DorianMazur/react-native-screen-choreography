@@ -9,7 +9,7 @@ Import from `react-native-screen-choreography/tray`. See [Build a dynamic tray](
 
 ## `createTray`
 
-`createTray<Routes>()` returns `{ Provider, Stack, Screen, useTray, useTrayState, useFocusEffect }`. Call it outside render. Each provider owns an independent stack. `useTray` and `useTrayState` find the nearest provider from the same factory; `useFocusEffect` also requires one of that provider's screens or custom header components.
+`createTray<Routes>()` returns `{ Provider, Stack, Screen, useTray, useTrayState, useFocusEffect, useKeyboard }`. Call it outside render. Each provider owns an independent stack. `useTray` and `useTrayState` find the nearest provider from the same factory; `useFocusEffect` and `useKeyboard` also require one of that provider's screens or custom header components.
 
 Mount the provider in your root layout or around a feature, outside `ChoreographyScreen`. It requires an app-level `KeyboardProvider` from `react-native-keyboard-controller` and manages its own native sheet provider. Present one tray at a time.
 
@@ -108,7 +108,7 @@ Declare every destination you intend to open; navigating to an undeclared name t
 | `renderHeader`  | Stack renderer | Replace this screen's header; receives `TrayHeaderProps<Routes, Name>`. Return `null` for no header. |
 | `handleVisible` | Stack setting  | Show or hide the drag indicator for this screen.                                                     |
 
-Full-screen views fill the available window with no outside spacing or rounded corners. `topInset` and `bottomInset` become inside padding, and content fills the remaining height. Keyboard avoidance still applies.
+Full-screen views fill the available window with no outside spacing or rounded corners. `topInset` and `bottomInset` become inside padding, and content fills the remaining height. The content viewport resizes with each keyboard frame, so a flex layout can center fields and keep a footer above the keyboard. The bottom safe-area inset is replaced by the keyboard edge while typing. See [Center a form and keep its action above the keyboard](../guide/dynamic-trays.md#center-a-form-and-keep-its-action-above-the-keyboard).
 
 ## `TrayNavigation`
 
@@ -176,9 +176,57 @@ Call it inside a screen, a descendant component, or a component returned by `ren
 
 The callback runs after the focused component commits and again when Back returns to it. Its optional cleanup runs on blur, unmount, or before a changed callback runs while focused. Wrap the callback in React's `useCallback` with all of its dependencies; an inline callback restarts the effect on every focused render. Changes while blurred take effect on the next focus. Return a cleanup function or nothing, not a Promise; start asynchronous work inside the callback and cancel or ignore its results during cleanup.
 
-Focus follows `state.route.key`, independently of animation completion or app foreground state. A shared push keeps the source focused during source preparation, then focuses the destination when the route changes, even if its layout is still pending. Dismissal keeps the current route focused until native sheet settlement unmounts it. Unmounting the provider cleans up immediately. Separate tray providers have independent focus.
+By default, focus follows `state.route.key`, independently of animation completion or app foreground state. A shared push keeps the source focused during source preparation, then focuses the destination when the route changes, even if its layout is still pending. Dismissal keeps the current route focused until native sheet settlement unmounts it. Unmounting the provider cleans up immediately. Separate tray providers have independent focus.
+
+The optional second argument accepts `TrayFocusEffectOptions`. Use `{ afterTransition: true }` for autofocus or work that requires a settled screen:
+
+```tsx
+Tray.useFocusEffect(
+  useCallback(() => {
+    input.current?.focus();
+  }, []),
+  { afterTransition: true }
+);
+```
+
+With this option, the callback waits for the native sheet to settle open, screen preparation and animation to finish, shared-element handoff to finish, and queued navigation to run. It runs again after a settled return to the screen. Mounting an observer in an already settled screen also runs the callback. Keyboard movement and ordinary content resizing do not restart it.
+
+The cleanup runs when another navigation starts, the tray starts closing, the callback or option changes, or the observer unmounts. A cancelled dismissal can run the callback again after the sheet settles open. Pending callbacks are skipped when the screen is no longer eligible. This option follows actual completion signals, including with springs or Reduce Motion; it does not use a timer.
 
 See [Run work while a screen is focused](../guide/dynamic-trays.md#run-work-while-a-screen-is-focused).
+
+## `TrayFocusEffectOptions`
+
+The second argument to `Tray.useFocusEffect`:
+
+| Option            | Default | Meaning                                                                                      |
+| ----------------- | ------- | -------------------------------------------------------------------------------------------- |
+| `afterTransition` | `false` | Run only while the current screen and native sheet are settled and no navigation is pending. |
+
+Memoize the effect callback with `useCallback`; the options object may be inline.
+
+## `Tray.useKeyboard`
+
+`Tray.useKeyboard()` returns `TrayKeyboardState` from the keyboard driver that positions this tray. Call it inside one of the factory's screens, its descendants, or a custom header component. Calling it from app content outside the tray host throws, even if that content is under `Tray.Provider`.
+
+```tsx
+const { progress, isVisible } = Tray.useKeyboard();
+const style = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
+```
+
+Use the shared values in Reanimated worklets for opacity and other companion animation. Read `isVisible` during React rendering for touch and accessibility props. The shared-value references remain stable through keyboard movement; keyboard frames do not trigger React renders. A visibility change rerenders subscribers, including retained screens that use the hook.
+
+The tray already applies keyboard avoidance and safe-area handling. Adding the keyboard height to a full-screen page's padding or using a second keyboard-aware wrapper would apply that offset twice. Use ordinary flex layout for centered fields and a bottom footer. See [Forms and scrolling](../guide/dynamic-trays.md#forms-and-scrolling).
+
+## `TrayKeyboardState`
+
+| Member      | Type                  | Meaning                                                                         |
+| ----------- | --------------------- | ------------------------------------------------------------------------------- |
+| `height`    | `SharedValue<number>` | Nonnegative keyboard height in points; `0` when hidden.                         |
+| `progress`  | `SharedValue<number>` | Keyboard animation progress, clamped to `0`–`1`; supports interactive movement. |
+| `isVisible` | `boolean`             | True from the start of opening until the keyboard is fully hidden.              |
+
+Treat `height` and `progress` as read-only signals. `isVisible` is suitable for `pointerEvents`, `accessibilityElementsHidden`, and `importantForAccessibility` when content fades away while typing. It is separate from animation progress, so hiding content from screen readers does not require a React update on every frame.
 
 ## `TrayParamList`
 

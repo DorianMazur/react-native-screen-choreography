@@ -1,5 +1,15 @@
 import type { ComponentType, ReactNode } from 'react';
 import type { ColorValue } from 'react-native';
+import type { SharedValue } from 'react-native-reanimated';
+
+export interface TrayKeyboardState {
+  /** Positive keyboard height in points. Read on the UI thread; do not assign. */
+  height: SharedValue<number>;
+  /** Keyboard animation progress from 0 (hidden) to 1 (open). Do not assign. */
+  progress: SharedValue<number>;
+  /** True from opening until fully hidden, including interactive dismissal. */
+  isVisible: boolean;
+}
 
 export type TrayParamList = Record<string, unknown>;
 export type TrayRoute<P extends TrayParamList, N extends keyof P = keyof P> = {
@@ -42,6 +52,11 @@ export interface TrayState<P extends TrayParamList> {
   readonly route: TrayRoute<P> | undefined;
   readonly depth: number;
   readonly isPresented: boolean;
+}
+
+export interface TrayFocusEffectOptions {
+  /** Wait for native opening and screen transitions, including shared-element handoff. */
+  afterTransition?: boolean;
 }
 
 export interface TrayScreenProps<
