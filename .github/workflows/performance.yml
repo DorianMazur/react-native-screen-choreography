@@ -12,7 +12,8 @@ permissions:
   actions: read
 
 concurrency:
-  group: performance-${{ github.workflow }}-${{ github.ref }}
+  # Keep repeated manual diagnostic runs independent; supersede stale PR/push runs.
+  group: performance-${{ github.workflow }}-${{ github.event_name == 'workflow_dispatch' && github.run_id || github.ref }}
   cancel-in-progress: true
 
 jobs:
@@ -114,6 +115,7 @@ jobs:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-native-release
       PERFORMANCE_TIMING_CYCLES: '20'
       PERFORMANCE_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-2
+      PERFORMANCE_NATIVE_BREADCRUMBS: '1'
       RCT_USE_RN_DEP: '1'
       RCT_USE_PREBUILT_RNCORE: '1'
       # RN's pod installer enables its compiler wrappers when this is set.

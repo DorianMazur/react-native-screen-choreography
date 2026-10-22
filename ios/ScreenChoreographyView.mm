@@ -1,4 +1,5 @@
 #import "ScreenChoreographyView.h"
+#include "../cpp/HangDiagnostics.h"
 
 #import <React/RCTConversions.h>
 #import <React/RCTMountingTransactionObserving.h>
@@ -379,6 +380,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
                withSurfaceTelemetry:(const SurfaceTelemetry &)surfaceTelemetry
 {
   if (!_prepared || _presentationAcknowledged) return;
+  SC_HANG_SCOPE("host.didMount", _sessionId.c_str());
   // Portal transfers run inside this transaction. Revealing before Core Animation
   // commits it keeps the source from painting a frame without its content.
   [self acknowledgeAttachmentIfReady];
@@ -419,6 +421,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   if (sessionId.length == 0 || _sessionId != std::string(sessionId.UTF8String)) {
     return;
   }
+  SC_HANG_SCOPE("host.prepare", _sessionId.c_str());
   const BOOL replayPresentation = _presentationAcknowledged;
   const BOOL replayAttachment = _attachmentAcknowledged;
   if (!_prepared) {
@@ -494,6 +497,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 - (void)emitPresentationStage:(const std::string &)stage
 {
   if (_eventEmitter == nullptr) return;
+  SC_HANG_SCOPE(stage.c_str(), _sessionId.c_str());
   auto emitter = std::static_pointer_cast<const ScreenChoreographyViewEventEmitter>(_eventEmitter);
   emitter->onPresentationReady(ScreenChoreographyViewEventEmitter::OnPresentationReady{
       .timestamp = CACurrentMediaTime() * 1000.0,

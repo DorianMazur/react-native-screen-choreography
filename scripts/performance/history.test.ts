@@ -321,3 +321,28 @@ test('an absent or failed iOS lane is archived but cannot advance the baseline',
     assert.match(files()['runs/10/1.md'], /ios \/ native-release/);
   }
 });
+
+test('successful diagnostic iOS runs advance history without blocking Android baselines', async () => {
+  const { api } = github();
+  const diagnostic = {
+    ...reports[SUMMARY_ARTIFACTS[1]],
+    valid: false,
+    collectionPassed: true,
+    errors: [],
+    comparisonExclusions: ['Native breadcrumbs enabled'],
+  };
+  await archiveRun(api, run, reports, 'owner/repo');
+  await archiveRun(
+    api,
+    { ...run, id: 20 },
+    {
+      ...reports,
+      [SUMMARY_ARTIFACTS[1]]: diagnostic,
+    },
+    'owner/repo'
+  );
+  const latest = await readLatestHistory(api, 'owner/repo');
+  assert.equal(latest!.run.id, 20);
+  assert.equal(latest!.reports[SUMMARY_ARTIFACT].valid, true);
+  assert.equal(latest!.reports[SUMMARY_ARTIFACTS[1]].valid, false);
+});
