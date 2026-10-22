@@ -481,4 +481,4 @@ Back reverses the transition automatically. The stack's `animation` controls its
 
 Shared elements must belong to the same tray. If a matching element is unavailable, the screens use the normal crossfade. No extra choreography provider is needed.
 
-See the [wallet tray demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/TrayDemo.tsx) for a full-screen recipient list and retained forms, or the [API reference](../api/tray.md) for all options.
+See the [wallet tray demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/TrayDemo.tsx) for a full-screen recipient list and retained forms, or the [Gallery Plus demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/GalleryPlusTray.tsx) for a compact introduction that expands into plan selection with a shared photo composition. Both are available from the landing screen in either example app. The [API reference](../api/tray.md) covers all options.

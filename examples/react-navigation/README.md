@@ -76,6 +76,8 @@ The definitions coordinate endpoints and local section reveals. Internal layout 
 components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
 ordinary screen content, not to content hosted on another route.
 
-## Dynamic tray demo
+## Dynamic tray demos
 
-Open **Dynamic tray** on the landing screen to try a wallet flow with retained forms and a full-screen recipient list. See the [dynamic tray guide](../../docs/guide/dynamic-trays.md) for setup and usage.
+Open **Wallet dynamic tray** on the landing screen to try a wallet flow with retained forms and a full-screen recipient list. See the [dynamic tray guide](../../docs/guide/dynamic-trays.md) for setup and usage.
+
+Open **Gallery dynamic tray** for an upgrade flow that grows from a compact introduction into benefits and plan selection. The photo composition moves between the two screens as one live shared element. Choose a plan, open **Good to know**, and go Back to see the selection preserved; **Preview Plus** shows the chosen plan without making a purchase. Back reverses the shared transition, and closing the tray resets the flow.

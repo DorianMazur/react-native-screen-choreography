@@ -4,7 +4,7 @@ import { StatusBar } from 'expo-status-bar';
 import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
 import { theme as palette } from '../../../shared/theme';
 import { JSStressMenu } from '../../../shared/performance/JSStressMenu';
-import { TrayDemoProvider } from '../../../shared/tray/TrayDemo';
+import { DemoTraysProvider } from '../../../shared/tray/DemoTraysProvider';
 
 const theme = {
   dark: true,
@@ -28,7 +28,7 @@ export default function RootLayout() {
   return (
     <KeyboardProvider>
       <ChoreographyProvider>
-        <TrayDemoProvider>
+        <DemoTraysProvider>
           <ThemeProvider value={theme}>
             <StatusBar style="light" />
             <Stack
@@ -65,8 +65,8 @@ export default function RootLayout() {
               />
             </Stack>
           </ThemeProvider>
-        </TrayDemoProvider>
-        {__DEV__ && <JSStressMenu />}
+        </DemoTraysProvider>
+        {__DEV__ && false && <JSStressMenu />}
       </ChoreographyProvider>
     </KeyboardProvider>
   );

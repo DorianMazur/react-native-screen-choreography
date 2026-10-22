@@ -14,7 +14,7 @@ import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
 import { theme as palette } from '../../shared/theme';
 import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
 import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
-import { TrayDemoProvider } from '../../shared/tray/TrayDemo';
+import { DemoTraysProvider } from '../../shared/tray/DemoTraysProvider';
 import { JSStressMenu } from '../../shared/performance/JSStressMenu';
 
 import {
@@ -78,7 +78,7 @@ export default function App() {
     <KeyboardProvider>
       <SafeAreaProvider>
         <ChoreographyProvider debug={false}>
-          <TrayDemoProvider>
+          <DemoTraysProvider>
             <NavigationContainer theme={navTheme}>
               <Stack.Navigator
                 screenOptions={{
@@ -111,8 +111,8 @@ export default function App() {
                 />
               </Stack.Navigator>
             </NavigationContainer>
-          </TrayDemoProvider>
-          {__DEV__ && <JSStressMenu />}
+          </DemoTraysProvider>
+          {__DEV__ && false && <JSStressMenu />}
         </ChoreographyProvider>
       </SafeAreaProvider>
     </KeyboardProvider>
