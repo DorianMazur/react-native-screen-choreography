@@ -4927,6 +4927,22 @@ __metadata:
   languageName: node
   linkType: hard
 
+"@screen-choreography/example-shared@workspace:*, @screen-choreography/example-shared@workspace:examples/shared":
+  version: 0.0.0-use.local
+  resolution: "@screen-choreography/example-shared@workspace:examples/shared"
+  dependencies:
+    lucide-static: "npm:^1.41.0"
+    sharp: "npm:^0.35.4"
+  peerDependencies:
+    react: ">=19.2.0"
+    react-native: ">=0.83.0"
+    react-native-reanimated: ">=4.3.4"
+    react-native-safe-area-context: ^5.7.0
+    react-native-screen-choreography: "*"
+    react-native-worklets: ">=0.8.1"
+  languageName: unknown
+  linkType: soft
+
 "@shikijs/core@npm:2.5.0, @shikijs/core@npm:^2.1.0":
   version: 2.5.0
   resolution: "@shikijs/core@npm:2.5.0"
@@ -12926,6 +12942,7 @@ __metadata:
     "@react-native/typescript-config": "npm:0.83.0"
     "@react-navigation/native": "npm:^7.1.0"
     "@react-navigation/native-stack": "npm:^7.3.0"
+    "@screen-choreography/example-shared": "workspace:*"
     "@swmansion/react-native-bottom-sheet": "npm:0.16.2"
     "@types/react": "npm:^19.2.0"
     react: "npm:19.2.0"
@@ -12966,7 +12983,6 @@ __metadata:
     eslint-plugin-prettier: "npm:^5.5.5"
     expo-router: "npm:^57.0.18"
     jest: "npm:^29.7.0"
-    lucide-static: "npm:^1.41.0"
     prettier: "npm:^3.8.1"
     react: "npm:19.2.0"
     react-native: "npm:0.83.0"
@@ -12976,7 +12992,6 @@ __metadata:
     react-native-teleport: "npm:1.2.2"
     react-native-worklets: "npm:>=0.8.0"
     react-test-renderer: "npm:19.2.0"
-    sharp: "npm:^0.35.4"
     typescript: "npm:^6.0.2"
   peerDependencies:
     "@react-navigation/native": ">=6.0.0"
@@ -13823,6 +13838,7 @@ __metadata:
   resolution: "screen-choreography-expo-router-example@workspace:examples/expo-router"
   dependencies:
     "@babel/core": "npm:^7.25.2"
+    "@screen-choreography/example-shared": "workspace:*"
     "@swmansion/react-native-bottom-sheet": "npm:0.16.2"
     "@types/react": "npm:~19.2.2"
     babel-preset-expo: "npm:~57.0.10"

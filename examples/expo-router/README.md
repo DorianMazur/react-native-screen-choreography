@@ -5,7 +5,7 @@ This Expo SDK 57 development-build app demonstrates `react-native-screen-choreog
 - Expo Router's native `Stack`
 - the same [shared demos](../shared) as the React Navigation example; see the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and source links
 - retained content owned by the source screen and reparented into the detail target, with child layout driven by shared progress
-- shared screens, data, transition renderers, and styles from `examples/shared`
+- shared screens, data, transition renderers, and styles from the private `@screen-choreography/example-shared` workspace package in `examples/shared`
 - thin typed dynamic route adapters
 - explicit `ChoreographyScreen` identity
 - provider-owned reverse-transition lineage, without private URL parameters
@@ -18,6 +18,9 @@ Install dependencies once from the repository root:
 ```bash
 yarn install
 ```
+
+This also links the shared example package. Metro compiles its TypeScript source
+with the app; no separate package build is needed.
 
 Build and run the native app:
 

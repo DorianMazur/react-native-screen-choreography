@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { withExampleScreen } from '../../ExampleScreen';
-import { TripsDetailScreen } from '../../../../shared/trips/TripsScreens';
+import { TripsDetailScreen } from '@screen-choreography/example-shared/trips';
 
 function TripsDetailRoute() {
   const { tripId } = useLocalSearchParams<{ tripId: string }>();
