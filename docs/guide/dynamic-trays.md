@@ -479,6 +479,8 @@ tray.push('review', { person }, { groupId: `recipient:${person.id}` });
 
 Back reverses the transition automatically. The stack's `animation` controls its timing. Keep the source element mounted and use a distinct group for each item; the destination displays the same avatar, so it doesn't need another child.
 
-Shared elements must belong to the same tray. If a matching element is unavailable, the screens use the normal crossfade. No extra choreography provider is needed.
+To continue to a third screen, add another matching `Element.Target` there and pass the same group to the next `tray.push`. The live content moves from its current target to the next one. For changing button labels, provide each target's label and action through `metadata` and crossfade the `collapsed` and `expanded` labels inside the single owner using `useSharedElementPresentation().presentationProgress`.
+
+Shared elements must belong to the same tray. A ready destination can share only part of a group: matching elements move together, while unmatched content follows the screen fade. If no matching element is available, the screens use the normal crossfade. No extra choreography provider is needed.
 
 See the [wallet tray demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/TrayDemo.tsx) for a full-screen recipient list and retained forms, or the [Gallery Plus demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/GalleryPlusTray.tsx) for a compact introduction that expands into plan selection with a shared photo composition. Both are available from the landing screen in either example app. The [API reference](../api/tray.md) covers all options.

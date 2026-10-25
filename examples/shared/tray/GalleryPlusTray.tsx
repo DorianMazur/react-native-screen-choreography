@@ -1,4 +1,4 @@
-import { useState, type ReactNode } from 'react';
+import { useCallback, useRef, useState, type ReactNode } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
   createTray,
@@ -7,8 +7,13 @@ import {
 } from 'react-native-screen-choreography/tray';
 import { AppIcon } from '../AppChrome';
 import { useSafeAreaInsets } from '../runtime';
-import { DemoTrayButton, DemoTrayHeader, trayTheme } from './TrayChrome';
+import { DemoTrayHeader, trayTheme } from './TrayChrome';
 import { TrayLauncher } from './TrayLauncher';
+import {
+  GalleryPlusButton,
+  galleryPlusButtonStyle,
+  type GalleryPlusButtonAction,
+} from './GalleryPlusButton';
 import {
   GalleryPlusHero,
   galleryPlusGroup,
@@ -74,10 +79,6 @@ function Header({ title, canGoBack, tray, color }: TrayHeaderProps<Routes>) {
   );
 }
 
-function Button({ title, onPress }: { title: string; onPress: () => void }) {
-  return <DemoTrayButton title={title} onPress={onPress} arrow />;
-}
-
 function Intro({ tray }: TrayScreenProps<Routes, 'intro'>) {
   return (
     <ScrollView
@@ -95,21 +96,36 @@ function Intro({ tray }: TrayScreenProps<Routes, 'intro'>) {
         <View style={styles.dot} />
         <Text style={styles.secondary}>More space. More possibilities.</Text>
       </View>
-      <Button
-        title="Explore Plus"
-        onPress={() =>
-          tray.push('plans', undefined, { groupId: galleryPlusGroup })
-        }
-      />
-      <Text style={styles.footnote}>
-        A little upgrade for your field journal.
-      </Text>
+      <galleryPlusTransition.Element
+        name="button"
+        groupId={galleryPlusGroup}
+        style={galleryPlusButtonStyle}
+      >
+        <GalleryPlusButton
+          title="Explore Plus"
+          onPress={() =>
+            tray.push('plans', undefined, { groupId: galleryPlusGroup })
+          }
+        />
+      </galleryPlusTransition.Element>
     </ScrollView>
   );
 }
 
 function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
   const [selected, setSelected] = useState<Plan>('annual');
+  // Endpoint metadata is frozen at capture; the action must read the live choice.
+  const selectedRef = useRef(selected);
+  selectedRef.current = selected;
+  const preview = useCallback(
+    () =>
+      tray.push(
+        'preview',
+        { plan: selectedRef.current },
+        { groupId: galleryPlusGroup }
+      ),
+    [tray]
+  );
   return (
     <ScrollView
       contentContainerStyle={styles.body}
@@ -171,9 +187,16 @@ function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
           );
         })}
       </View>
-      <Button
-        title="Preview Plus"
-        onPress={() => tray.push('preview', { plan: selected })}
+      <galleryPlusTransition.Element.Target
+        name="button"
+        groupId={galleryPlusGroup}
+        style={galleryPlusButtonStyle}
+        metadata={
+          {
+            title: 'Preview Plus',
+            onPress: preview,
+          } satisfies GalleryPlusButtonAction
+        }
       />
       <Pressable
         accessibilityRole="button"
@@ -237,10 +260,17 @@ function Preview({ tray, route }: TrayScreenProps<Routes, 'preview'>) {
         </View>
         <Text style={styles.summaryPrice}>{plan.price}</Text>
       </View>
-      <Button title="Done exploring" onPress={tray.dismiss} />
-      <Text style={styles.footnote}>
-        Preview only. You haven't been charged.
-      </Text>
+      <galleryPlusTransition.Element.Target
+        name="button"
+        groupId={galleryPlusGroup}
+        style={galleryPlusButtonStyle}
+        metadata={
+          {
+            title: 'Done exploring',
+            onPress: tray.dismiss,
+          } satisfies GalleryPlusButtonAction
+        }
+      />
     </ScrollView>
   );
 }
@@ -320,13 +350,6 @@ const styles = StyleSheet.create({
     color: trayTheme.muted,
   },
   grow: { flex: 1, gap: 4 },
-  footnote: {
-    fontSize: 11,
-    lineHeight: 18,
-    textAlign: 'center',
-    color: trayTheme.muted,
-    marginTop: 14,
-  },
   benefits: { gap: 18, paddingTop: 12, paddingBottom: 24 },
   benefit: { flexDirection: 'row', gap: 12, alignItems: 'center' },
   benefitIcon: {

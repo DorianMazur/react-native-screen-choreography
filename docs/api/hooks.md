@@ -97,7 +97,7 @@ Use `presentationProgress` for animations inside shared content. It follows this
 | `presentationProgress`  | Read-only progress for this owner: `0` at the source, `1` at the destination; back moves from `1` to `0`                             |
 | `frame`                 | UI-thread width and height matching `TransitionFrame`, from preparation through motion; `null` when unpaired or using reduced motion |
 | `progress`              | Provider-wide expansion clock, which can also be driven by other elements or groups                                                  |
-| `collapsed`, `expanded` | Original source and expanded destination geometry, styles, and metadata, regardless of navigation direction                          |
+| `collapsed`, `expanded` | Collapsed and expanded geometry, styles, and metadata for the latest participating pair, regardless of navigation direction          |
 | `transitioning`         | `true` while this owner's content is in the transition overlay; `false` during preparation and at rest                               |
 | `direction`             | This owner's participating navigation direction; `null` during preparation or when it does not participate                           |
 | `settled`               | The endpoint where the content rests after motion                                                                                    |
@@ -106,7 +106,9 @@ Before the first transition, endpoint metrics are `null` and presentation data c
 
 Read `frame.value` in an animated style or derived value when hosted content needs explicit dimensions. It uses clamped, linear endpoint interpolation; a custom renderer's geometry may differ.
 
-Cancellation returns progress to the endpoint where the content settles. If the destination unmounts through a navigation reset or another removal without a completed return, the content returns to its source and progress holds at `0`.
+Cancellation returns progress to the endpoint where the content settles. In an A → B → C flow, the endpoints change from A/B to B/C when the second transition presents; returning to B settles at the collapsed endpoint of B/C. Read both endpoints when adapting labels or other content.
+
+If the current host unmounts without a completed return, the content moves to its previous surviving host, or the original owner if none remain. Both endpoints then describe that resting presentation and progress holds at `0`.
 
 The retained component keeps its original source context. Use this hook for its visual adaptation and transition direction. `direction` describes navigation intent, so changing drag direction does not change it. `transitioning` becomes true when content moves into the overlay, which can happen after preparation has started; use it when coordinating visibility with that transfer. With reduced motion, content moves directly to its endpoint and `transitioning` stays false.
 

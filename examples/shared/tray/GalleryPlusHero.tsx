@@ -9,7 +9,10 @@ import { trayTheme } from './TrayChrome';
 
 export const galleryPlusGroup = 'gallery-plus';
 export const galleryPlusTransition = defineTransition({
-  shared: { hero: { kind: 'bounds' } },
+  shared: {
+    hero: { kind: 'bounds' },
+    button: { kind: 'bounds', radius: [18, 18] },
+  },
 });
 
 const postcards = [

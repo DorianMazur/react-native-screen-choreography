@@ -159,7 +159,9 @@ An empty receiving host with measurable bounds. It does **not** accept children.
 
 `SharedElementTargetProps` is exported. It shares `id`, `groupId`, `transition`, `style`, and `metadata` with the owner. Its additional `hostStyle?: StyleProp<ViewStyle>` adjusts the receiving host independently of the measured wrapper. The host defaults to absolute fill.
 
-Give an empty target explicit dimensions or another nonzero layout constraint. Use one owner and one target for each pair; do not duplicate the content on the destination.
+Give an empty target explicit dimensions or another nonzero layout constraint. Keep one owner mounted and use empty targets on later screens; do not duplicate the content on the destination.
+
+A target can become the source of another shared transition. For an A → B → C flow, mount the owner on A and matching targets on B and C, using the same `id` and `groupId`. The same live subtree moves between all three screens, including Back. Each transition captures the two participating screens' metadata and bounds.
 
 ::: warning Keep presentation data immutable
 Endpoint metrics and presentation inputs are captured for a session. `metadata` is retained by reference, not deeply cloned. Avoid mutating a metadata object during an active transition.

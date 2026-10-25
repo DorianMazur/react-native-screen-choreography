@@ -2,6 +2,7 @@ import { SharedElementPresentationContext } from '../core/SharedElementPresentat
 import type { SharedElementEndpoint } from '../core/SharedElementPresentation';
 import {
   type ReactNode,
+  type RefObject,
   useRef,
   useEffect,
   useLayoutEffect,
@@ -159,6 +160,11 @@ function LiveSharedElement(props: SharedElementProps) {
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
   const screenId = useScreenId();
+  // A target can become the source of the next transition while this owner
+  // remains mounted on its original screen. Select before the memo boundary.
+  const settledTargetScreenIdRef = useRef<string | null>(null);
+  const participatingScreenId = settledTargetScreenIdRef.current ?? screenId;
+  const participatingSessionIdRef = useRef<string | null>(null);
   if (!choreography || !actions) {
     throw new Error(
       'SharedElement must be used within a <ChoreographyProvider>'
@@ -173,10 +179,13 @@ function LiveSharedElement(props: SharedElementProps) {
       ? (session.pairs.find(
           (candidate) =>
             candidate.id === props.id &&
-            (candidate.source.screenId === screenId ||
-              candidate.target.screenId === screenId)
+            (participatingSessionIdRef.current === session.id ||
+              candidate.source.screenId === participatingScreenId ||
+              candidate.target.screenId === participatingScreenId)
         ) ?? null)
       : null;
+
+  participatingSessionIdRef.current = pair ? session!.id : null;
 
   const reducedMotion = pair ? session!.reducedMotion : false;
   const direction = pair ? session!.direction : null;
@@ -192,6 +201,7 @@ function LiveSharedElement(props: SharedElementProps) {
       <LiveSharedElementContent
         {...props}
         screenId={screenId}
+        settledTargetScreenIdRef={settledTargetScreenIdRef}
         pair={pair}
         preparing={Boolean(pair && preparing)}
         reducedMotion={reducedMotion}
@@ -228,6 +238,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   portalStyle,
   metadata,
   screenId,
+  settledTargetScreenIdRef,
   pair,
   preparing,
   reducedMotion,
@@ -239,6 +250,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   subscribeToScreenRemoval,
 }: SharedElementProps & {
   screenId: string;
+  settledTargetScreenIdRef: RefObject<string | null>;
   pair: ElementTransitionPair | null;
   /** Paired while native attaches the overlay; content stays where it rests. */
   preparing: boolean;
@@ -259,7 +271,20 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     collapsed: SharedElementEndpoint;
     expanded: SharedElementEndpoint;
   } | null>(null);
-  const settledTargetScreenIdRef = useRef<string | null>(null);
+  const settledSide = useRef<'collapsed' | 'expanded'>('collapsed');
+  const homeMetrics = useRef<SharedElementEndpoint['metrics']>(null);
+  const destinations = useRef<
+    Array<{
+      screenId: string;
+      endpoint: SharedElementEndpoint;
+    }>
+  >([]);
+  const lastEndpoints = useRef<{
+    collapsed: SharedElementEndpoint;
+    expanded: SharedElementEndpoint;
+    collapsedScreenId: string;
+    expandedScreenId: string;
+  } | null>(null);
   const participates = pair !== null;
   const activeEndpoints = useMemo(() => {
     if (!pair) return null;
@@ -274,8 +299,18 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       style: pair.targetPresentation.style,
     };
     return direction === 'forward'
-      ? { collapsed: source, expanded: target }
-      : { collapsed: target, expanded: source };
+      ? {
+          collapsed: source,
+          expanded: target,
+          collapsedScreenId: pair.source.screenId,
+          expandedScreenId: pair.target.screenId,
+        }
+      : {
+          collapsed: target,
+          expanded: source,
+          collapsedScreenId: pair.target.screenId,
+          expandedScreenId: pair.source.screenId,
+        };
   }, [pair, direction]);
 
   // Retarget in the session-settlement render so content and presentation
@@ -291,6 +326,11 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       : undefined;
   if (participates) {
     wasParticipatingRef.current = true;
+    lastEndpoints.current = activeEndpoints;
+    if (pair.source.screenId === screenId)
+      homeMetrics.current = pair.sourceMetrics;
+    else if (pair.target.screenId === screenId)
+      homeMetrics.current = pair.targetMetrics;
     // Retain presentation data only, never a popped screen's registration/ref.
     if (!preparing) endpoints.current = activeEndpoints;
     hostName = preparing
@@ -308,36 +348,87 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   } else {
     if (wasParticipatingRef.current) {
       wasParticipatingRef.current = false;
-      const settledScreenId = getSettledScreenId();
+      const settledScreenId =
+        getSettledScreenId() ?? settledTargetScreenIdRef.current ?? screenId;
       settledTargetScreenIdRef.current =
         settledScreenId !== screenId ? settledScreenId : null;
+      const captured = lastEndpoints.current;
+      if (
+        captured &&
+        (settledScreenId === captured.collapsedScreenId ||
+          settledScreenId === captured.expandedScreenId)
+      ) {
+        endpoints.current = {
+          collapsed: captured.collapsed,
+          expanded: captured.expanded,
+        };
+        settledSide.current =
+          settledScreenId === captured.collapsedScreenId
+            ? 'collapsed'
+            : 'expanded';
+        const index = destinations.current.findIndex(
+          (destination) => destination.screenId === settledScreenId
+        );
+        destinations.current = settledTargetScreenIdRef.current
+          ? [
+              ...(index < 0
+                ? destinations.current
+                : destinations.current.slice(0, index)),
+              {
+                screenId: settledScreenId,
+                endpoint: captured[settledSide.current],
+              },
+            ]
+          : [];
+      }
+      lastEndpoints.current = null;
     }
     hostName = restingHostName();
   }
 
-  // The destination host unmounts with its screen, returning content to this portal.
-  const settledTargetScreenId = settledTargetScreenIdRef.current;
+  // If a host disappears without a shared Back session, return to the last
+  // surviving destination. Retain only frozen presentation data, never nodes.
+  const retainedDestinations = destinations.current;
   useLayoutEffect(() => {
-    if (!settledTargetScreenId) return;
-    return subscribeToScreenRemoval(settledTargetScreenId, () => {
-      if (settledTargetScreenIdRef.current !== settledTargetScreenId) return;
-      settledTargetScreenIdRef.current = null;
-      returnHome();
-    });
-  }, [settledTargetScreenId, subscribeToScreenRemoval]);
+    let subscribed = true;
+    const unsubscribe = retainedDestinations.map((destination) =>
+      subscribeToScreenRemoval(destination.screenId, () => {
+        if (!subscribed || !destinations.current.includes(destination)) return;
+        destinations.current = destinations.current.filter(
+          (entry) => entry !== destination
+        );
+        if (settledTargetScreenIdRef.current === destination.screenId) {
+          const previous = destinations.current.at(-1);
+          settledTargetScreenIdRef.current = previous?.screenId ?? null;
+          endpoints.current = previous
+            ? { collapsed: previous.endpoint, expanded: previous.endpoint }
+            : null;
+          settledSide.current = 'collapsed';
+        }
+        returnHome();
+      })
+    );
+    return () => {
+      subscribed = false;
+      unsubscribe.forEach((remove) => remove());
+    };
+  }, [
+    retainedDestinations,
+    settledTargetScreenIdRef,
+    subscribeToScreenRemoval,
+  ]);
 
   const ownerStyle = useMemo(() => StyleSheet.flatten(style), [style]);
   const initial = useMemo(
     () => ({ metrics: null, metadata, style: ownerStyle ?? undefined }),
     [metadata, ownerStyle]
   );
-  const settled = (
-    participates && reducedMotion
-      ? targetScreenId !== screenId
-      : settledTargetScreenIdRef.current
-  )
-    ? ('expanded' as const)
-    : ('collapsed' as const);
+  const settled =
+    participates && reducedMotion && !preparing
+      ? direction === 'forward'
+        ? 'expanded'
+        : 'collapsed'
+      : settledSide.current;
   const transitioning = participates && !reducedMotion && !preparing;
   const presentationProgress = useDerivedValue(() =>
     transitioning ? progress.value : settled === 'expanded' ? 1 : 0
@@ -384,9 +475,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       settled,
     ]
   );
-  const reservedMetrics = hostName
-    ? endpoints.current?.collapsed.metrics
-    : null;
+  const reservedMetrics = hostName ? homeMetrics.current : null;
   const flexibleHeight =
     (ownerStyle?.flex ?? 0) > 0 || (ownerStyle?.flexGrow ?? 0) > 0;
   return (

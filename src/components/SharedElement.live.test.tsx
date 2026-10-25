@@ -305,6 +305,217 @@ describe('SharedElement live endpoints', () => {
     }
   });
 
+  test.each([false, true])(
+    'carries one owner through three screens and repeated Back (reduced motion: %s)',
+    async (reducedMotion) => {
+      const state = makeContexts();
+      let tree!: ReactTestRenderer;
+      let presentation!: SharedElementPresentation;
+      const mounted = jest.fn();
+      function Content() {
+        useEffect(mounted, []);
+        presentation = useSharedElementPresentation();
+        return null;
+      }
+      const render = (activeSession: TransitionSessionData | null) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(activeSession)}>
+            <ScreenIdContext.Provider value="list">
+              <SharedElement id="player" groupId="media">
+                <Content />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const host = () => tree.root.findByType(Portal).props.hostName;
+      const update = async (active: TransitionSessionData | null) => {
+        await act(async () => tree.update(render(active)));
+      };
+      const sizes = { list: 100, detail: 200, preview: 300 };
+      type Screen = keyof typeof sizes;
+      const move = async (
+        source: Screen,
+        target: Screen,
+        direction: 'forward' | 'backward',
+        outcome: 'complete' | 'cancel' | 'cancel-preparing' = 'complete'
+      ) => {
+        const active = { ...session(source, target, direction), reducedMotion };
+        const pair = active.pairs[0]!;
+        pair.sourceMetrics = { ...pair.sourceMetrics, width: sizes[source] };
+        pair.targetMetrics = { ...pair.targetMetrics, width: sizes[target] };
+        pair.sourcePresentation = {
+          transition: noopTransition,
+          metadata: source,
+        };
+        pair.targetPresentation = {
+          transition: noopTransition,
+          metadata: target,
+        };
+        const restingHost = host();
+        const restingEndpoint = presentation[presentation.settled].metadata;
+        await update({ ...active, state: 'preparing' });
+        expect(host()).toBe(restingHost);
+        expect(presentation[presentation.settled].metadata).toBe(
+          restingEndpoint
+        );
+        if (outcome !== 'cancel-preparing') {
+          await update(active);
+          expect(host()).toBe(
+            reducedMotion
+              ? target === 'list'
+                ? undefined
+                : getLiveDestinationHostName(target, 'player', 'media')
+              : `screen-choreography:live:overlay:["${source}","${target}","media","player"]`
+          );
+          expect(presentation.collapsed.metadata).toBe(
+            direction === 'forward' ? source : target
+          );
+          expect(presentation.expanded.metadata).toBe(
+            direction === 'forward' ? target : source
+          );
+          if (!reducedMotion) {
+            active.progress.value = 0.5;
+            expect(presentation.frame.value?.width).toBe(
+              (sizes[source] + sizes[target]) / 2
+            );
+          }
+        }
+        const destination = outcome === 'complete' ? target : source;
+        state.settle(destination);
+        await update(null);
+        expect(host()).toBe(
+          destination === 'list'
+            ? undefined
+            : getLiveDestinationHostName(destination, 'player', 'media')
+        );
+        expect(presentation[presentation.settled].metadata).toBe(destination);
+        expect(presentation.presentationProgress.value).toBe(
+          presentation.settled === 'expanded' ? 1 : 0
+        );
+        if (destination !== 'list') {
+          // A later pair must not resize the reserved original owner to screen 2.
+          expect(
+            StyleSheet.flatten(tree.root.findByType(Portal).parent!.props.style)
+              .width
+          ).toBe(100);
+        }
+      };
+      try {
+        await act(async () => {
+          tree = create(render(null));
+        });
+        await move('list', 'detail', 'forward');
+        for (let index = 0; index < 3; index++) {
+          await move('detail', 'preview', 'forward', 'cancel-preparing');
+          await move('detail', 'preview', 'forward', 'cancel');
+          await move('detail', 'preview', 'forward');
+          await move('preview', 'detail', 'backward', 'cancel');
+          await move('preview', 'detail', 'backward');
+        }
+        await move('detail', 'list', 'backward');
+        expect(mounted).toHaveBeenCalledTimes(1);
+        expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+        expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => tree?.unmount());
+      }
+    }
+  );
+
+  test.each([false, true])(
+    'returns through surviving hosts and ignores stale removal callbacks (middle removed: %s)',
+    async (removeMiddle) => {
+      const state = makeContexts();
+      const listeners = new Map<string, () => void>();
+      jest
+        .mocked(state.actions.subscribeToScreenRemoval)
+        .mockImplementation((screen, listener) => {
+          listeners.set(screen, listener);
+          return () => {
+            if (listeners.get(screen) === listener) listeners.delete(screen);
+          };
+        });
+      let tree!: ReactTestRenderer;
+      let presentation!: SharedElementPresentation;
+      function Content() {
+        presentation = useSharedElementPresentation();
+        return null;
+      }
+      const render = (activeSession: TransitionSessionData | null) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(activeSession)}>
+            <ScreenIdContext.Provider value="list">
+              <SharedElement id="player" groupId="media">
+                <Content />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const host = () => tree.root.findByType(Portal).props.hostName;
+      const move = async (source: string, target: string) => {
+        const active = session(source, target);
+        active.pairs[0]!.targetPresentation = {
+          transition: noopTransition,
+          metadata: target,
+        };
+        await act(async () => tree.update(render(active)));
+        state.settle(target);
+        await act(async () => tree.update(render(null)));
+      };
+      try {
+        await act(async () => {
+          tree = create(render(null));
+        });
+        await move('list', 'detail');
+        const staleDetail = listeners.get('detail')!;
+        await move('detail', 'preview');
+        await act(async () => staleDetail());
+        expect(host()).toBe(
+          getLiveDestinationHostName('preview', 'player', 'media')
+        );
+        if (removeMiddle) await act(async () => listeners.get('detail')!());
+        const stalePreview = listeners.get('preview')!;
+        await act(async () => stalePreview());
+        expect(host()).toBe(
+          removeMiddle
+            ? undefined
+            : getLiveDestinationHostName('detail', 'player', 'media')
+        );
+        if (!removeMiddle)
+          expect(presentation[presentation.settled].metadata).toBe('detail');
+        // Reusing a removed screen ID must not revive its old listener.
+        await move(removeMiddle ? 'list' : 'detail', 'preview');
+        await act(async () => stalePreview());
+        expect(host()).toBe(
+          getLiveDestinationHostName('preview', 'player', 'media')
+        );
+        // Removing the previous host during motion must not detach this owner
+        // from its already selected session on the next context update.
+        const active = session('preview', 'final');
+        await act(async () => tree.update(render(active)));
+        await act(async () => listeners.get('preview')!());
+        await act(async () => tree.update(render({ ...active })));
+        expect(host()).toContain('overlay');
+        expect(presentation.transitioning).toBe(true);
+        state.settle('final');
+        await act(async () => tree.update(render(null)));
+        expect(host()).toBe(
+          getLiveDestinationHostName('final', 'player', 'media')
+        );
+        await act(async () => listeners.get('final')!());
+        expect(host()).toBe(
+          removeMiddle
+            ? undefined
+            : getLiveDestinationHostName('detail', 'player', 'media')
+        );
+      } finally {
+        await act(async () => tree?.unmount());
+      }
+    }
+  );
+
   test('retained presentation keeps animating after its departing screen companions suspend', async () => {
     const originalOS = Platform.OS;
     Platform.OS = 'android';

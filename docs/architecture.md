@@ -45,8 +45,11 @@ instances of the same logical screen label distinct. Latest-value refs provide
 current presentation metadata while registration remains stable. The provider separates lifecycle actions in
 `ChoreographyActionsContext` from active-session state in `ChoreographyContext`.
 
-Each owner selects its participating pair before a memoized presentation
-boundary. Unrelated elements, groups, and pending screens therefore do not
+Each owner selects its participating pair by its current resting screen before a
+memoized presentation boundary. A destination can therefore become the source
+of another transition while the original owner remains mounted. The selected
+session identity keeps the owner participating if that resting screen is removed
+during motion. Unrelated elements, groups, and pending screens therefore do not
 update that owner's retained presentation. Application prop changes and direct
 subscriptions to screen-wide progress still update normally. A participating
 pair can receive refreshed bounds. Settlement retargets its portal when the
@@ -78,7 +81,11 @@ protocol below.
 An owner remains settled at its destination only while that screen is mounted.
 A fallback Back completes its session on the returned screen. If the destination
 is removed through another route operation, its receiving host disappears and
-the owner returns home, collapsed.
+the owner returns to the previous surviving destination, or home if none remain.
+The destination history contains screen identities and frozen presentation data,
+never registrations or native refs; removal subscriptions discard departed
+hosts and reject stale callbacks. Collapsed/expanded state follows the latest
+participating pair rather than distance from the original owner.
 
 ## Pairing and frozen presentations
 
@@ -123,7 +130,9 @@ When no source capture is available, preparation reads source and target
 together from one mounted root.
 
 Both transition directions wait for screen readiness and matching
-registrations, freeze presentations, and issue one native request. That request
+registrations, freeze presentations, and issue one native request. A ready
+destination can share a subset of the source group without waiting for absent
+elements; when no target matches yet, registration has a bounded wait. That request
 binds weak node-family identities and gathers geometry from completed mounts.
 JavaScript consumes the batch immediately when ready, or after a coalesced mount
 notification, within a one-second deadline. Ready endpoints can publish a

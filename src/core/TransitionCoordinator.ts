@@ -341,7 +341,14 @@ export class TransitionCoordinator {
       if (readyCount > 0 && readyCount === requiredIds.length) {
         return true;
       }
-      return !requireAll && readyCount > 0;
+      // A ready screen may intentionally share only part of the source group.
+      // Its absent elements are not pending registrations. Keep the bounded
+      // wait when no matching target exists yet (or readiness is unknown).
+      return (
+        readyCount > 0 &&
+        (!requireAll ||
+          this.nativeReadiness?.isScreenReady(targetScreenId) === true)
+      );
     };
 
     if (isSatisfied()) {

@@ -304,6 +304,37 @@ test('waits for target registration without confusing another screen or group', 
   expect((await pending)?.pairs).toHaveLength(1);
 });
 
+test('a ready destination sharing only a button does not wait for an absent hero', async () => {
+  register('list', sourceMetrics, { id: 'hero' });
+  register('list', sourceMetrics, { id: 'button' });
+  register('detail', targetMetrics, { id: 'button' });
+  await coordinator.captureSourceGroup('group', 'list');
+  const startedAt = Date.now();
+  const pending = coordinator.startTransition(config);
+  await jest.advanceTimersByTimeAsync(0);
+  expect(coordinator.getActiveSession()?.state).toBe('active');
+  expect((await pending)?.pairs.map((pair) => pair.id)).toEqual(['button']);
+  expect(Date.now() - startedAt).toBe(0);
+  expect(jest.getTimerCount()).toBe(0);
+});
+
+test('partial targets on an unready screen still wait for registration and capture all pairs', async () => {
+  register('list', sourceMetrics, { id: 'hero' });
+  register('list', sourceMetrics, { id: 'button' });
+  register('detail', targetMetrics, { id: 'button' });
+  ready = false;
+  const pending = coordinator.startTransition(config);
+  await jest.advanceTimersByTimeAsync(0);
+  expect(coordinator.getActiveSession()?.state).toBe('measuring');
+  ready = true;
+  register('detail', targetMetrics, { id: 'hero' });
+  await jest.advanceTimersByTimeAsync(0);
+  expect((await pending)?.pairs.map((pair) => pair.id)).toEqual([
+    'hero',
+    'button',
+  ]);
+});
+
 test.each(['cancel', 'dispose'] as const)(
   '%s releases pending capture and cannot reactivate',
   async (action) => {

@@ -27,6 +27,12 @@ jest.mock(
   '../native/ScreenChoreographyViewNativeComponent',
   () => 'ScreenChoreographyView'
 );
+jest.mock('../native/attachmentCapability', () => ({
+  hostsReportAttachment: false,
+}));
+const attachment = jest.requireMock('../native/attachmentCapability') as {
+  hostsReportAttachment: boolean;
+};
 const { Portal, PortalHost } = jest.requireMock('react-native-teleport');
 const fabric = globalThis as typeof globalThis & {
   __screenChoreographyCaptureFabricLayout?: jest.Mock;
@@ -42,7 +48,13 @@ function Consumer() {
   ctx = useContext(ChoreographyContext)!;
   return null;
 }
-function App({ detail = true }: { detail?: boolean }) {
+function App({
+  detail = true,
+  preview = false,
+}: {
+  detail?: boolean;
+  preview?: boolean;
+}) {
   return (
     <ChoreographyProvider onTransitionEnd={onEnd}>
       <Consumer />
@@ -53,6 +65,15 @@ function App({ detail = true }: { detail?: boolean }) {
       </ChoreographyScreenBase>
       {detail && (
         <ChoreographyScreenBase screenId="detail">
+          <SharedElement.Target
+            id="card"
+            groupId="group"
+            transition={transition}
+          />
+        </ChoreographyScreenBase>
+      )}
+      {preview && (
+        <ChoreographyScreenBase screenId="preview">
           <SharedElement.Target
             id="card"
             groupId="group"
@@ -85,6 +106,7 @@ async function settle() {
 }
 beforeEach(async () => {
   Platform.OS = 'android';
+  attachment.hostsReportAttachment = false;
   jest.mocked(useReducedMotion).mockReturnValue(false);
   onEnd.mockReset();
   const tags = new WeakMap<object, number>();
@@ -253,3 +275,74 @@ test('provider disposal releases pending handoff and rejects its delayed callbac
   expect(controller.isNavigationLocked()).toBe(false);
   expect(controller.peekQueuedNavigation()).toBeNull();
 });
+
+test.each(['ios', 'android'] as const)(
+  '%s presents a chained target and releases navigation only after handoff',
+  async (platform) => {
+    jest.useFakeTimers();
+    Platform.OS = platform;
+    attachment.hostsReportAttachment = platform === 'ios';
+    try {
+      await act(async () => tree.update(<App key={platform} preview />));
+      await act(async () => {
+        for (const screen of ['list', 'detail', 'preview'])
+          ctx.setScreenReady(screen, true);
+      });
+      const payload = tree.root.findByType(Payload);
+      let previousId: string | undefined;
+      for (const [source, target, direction] of [
+        ['list', 'detail', 'forward'],
+        ['detail', 'preview', 'forward'],
+        ['preview', 'detail', 'backward'],
+        ['detail', 'preview', 'forward'],
+        ['preview', 'detail', 'backward'],
+        ['detail', 'list', 'backward'],
+      ] as const) {
+        const resting = destination();
+        let pending!: ReturnType<typeof ctx.startTransition>;
+        await act(async () => {
+          pending = ctx.startTransition({
+            groupId: 'group',
+            sourceScreenId: source,
+            targetScreenId: target,
+            direction,
+          });
+          await jest.advanceTimersByTimeAsync(0);
+        });
+        const id = ctx.activeSession!.id;
+        if (platform === 'ios') {
+          expect(destination()).toBe(resting);
+          if (previousId) await act(async () => host().onAttached(previousId));
+          expect(destination()).toBe(resting);
+          await act(async () => {
+            host().onAttached(id);
+            await pending;
+          });
+        } else {
+          await pending;
+        }
+        expect(destination()).toContain('overlay');
+        await act(async () => host().onPresentationReady(id));
+        expect(ctx.isOverlayPresented!(id)).toBe(true);
+        await act(async () => ctx.completeTransition(id));
+        expect(destination()).toBe(
+          target === 'list'
+            ? undefined
+            : `screen-choreography:live:destination:["${target}","group","card"]`
+        );
+        expect(tree.root.findByType(Payload)).toBe(payload);
+        if (platform === 'android') {
+          expect(ctx.overlayHandoffSessionId).toBe(id);
+          expect(ctx.navigationController.isNavigationLocked()).toBe(true);
+          if (previousId) await act(async () => host().onSettled(previousId));
+          expect(ctx.overlayHandoffSessionId).toBe(id);
+          await settle();
+        }
+        expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+        previousId = id;
+      }
+    } finally {
+      jest.useRealTimers();
+    }
+  }
+);
