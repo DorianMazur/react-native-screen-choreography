@@ -7,8 +7,6 @@ mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
 [[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
-breadcrumbs="${PERFORMANCE_NATIVE_BREADCRUMBS:-1}"
-[[ "$breadcrumbs" == 0 || "$breadcrumbs" == 1 ]] || { echo 'Use PERFORMANCE_NATIVE_BREADCRUMBS=0 or 1.' >&2; exit 2; }
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
 if [[ "${USE_CCACHE:-0}" == 1 ]]; then
@@ -42,7 +40,7 @@ xcrun simctl status_bar "$udid" override --time '9:41' --dataNetwork wifi --wifi
 export PERFORMANCE_DEVICE_MODEL="$device_type"
 export PERFORMANCE_OS_VERSION="$(xcrun simctl getenv "$udid" SIMULATOR_RUNTIME_VERSION)"
 export PERFORMANCE_XCODE_VERSION="$(xcodebuild -version | tr '\n' ' ')"
-node - "$output/metadata.json" "$(uname -m)" "$cycles" "$breadcrumbs" <<'NODE'
+node - "$output/metadata.json" "$(uname -m)" "$cycles" <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.argv[2], JSON.stringify({
   deviceModel: process.env.PERFORMANCE_DEVICE_MODEL,
@@ -53,7 +51,6 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
-  nativeBreadcrumbs: process.argv[5] === '1',
   lifecycleValidation: 1,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
@@ -72,7 +69,6 @@ xcodebuild build-for-testing \
   -destination "platform=iOS Simulator,id=$udid" \
   -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
   SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
-  SCREEN_CHOREOGRAPHY_TRACE_HANGS="$breadcrumbs" \
   > >(tee "$output/build.log") 2>&1 || status=$?
 if [[ "$status" -eq 0 ]]; then
   # Pass the cycle count explicitly to XCTest, rather than assuming shell env is forwarded.
@@ -97,25 +93,16 @@ with path.open('wb') as f: plistlib.dump(settings, f)
 print(path)
 PY
 )"
-  node --experimental-transform-types scripts/performance/ios-hang-diagnostics.mts "$udid" "$output" \
-    test-without-building -xctestrun "$test_run" \
+  xcodebuild test-without-building -xctestrun "$test_run" \
     -destination "platform=iOS Simulator,id=$udid" \
     -parallel-testing-enabled NO -maximum-concurrent-test-simulator-destinations 1 \
-    -resultBundlePath "$output/tests.xcresult" || status=$?
+    -resultBundlePath "$output/tests.xcresult" \
+    > >(tee "$output/tests.log") 2>&1 || status=$?
 fi
-if [[ "$breadcrumbs" == 1 ]]; then
-  mkdir -p "$output/diagnostics"
-  # Unified logs survive an unresponsive or terminated app; no app/UI-thread export.
-  xcrun simctl spawn "$udid" log show --style compact --last 1h \
-    --predicate 'subsystem == "dev.screenchoreography.hang"' \
-    > "$output/diagnostics/native-breadcrumbs.log" 2> "$output/diagnostics/breadcrumb-export.log" || true
-  node --experimental-transform-types scripts/performance/ios-hang-diagnostics.mts --check-breadcrumbs "$output" "$cycles"
-fi
-node - "$output/metadata.json" "$output/diagnostics/hang-trigger.json" "$status" <<'NODE'
+node - "$output/metadata.json" "$status" <<'NODE'
 const fs = require('node:fs');
 const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
-metadata.hangSamplingTriggered = fs.existsSync(process.argv[3]);
-metadata.runnerExitCode = Number(process.argv[4]);
+metadata.runnerExitCode = Number(process.argv[3]);
 fs.writeFileSync(process.argv[2], JSON.stringify(metadata, null, 2));
 NODE
 container="$(xcrun simctl get_app_container "$udid" screenchoreography.example data 2>/dev/null || true)"

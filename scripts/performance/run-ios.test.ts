@@ -2,7 +2,6 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
-  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -13,7 +12,7 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import test from 'node:test';
 
-test('iOS launcher defaults to breadcrumbs and preserves sampling provenance and XCTest exit status', () => {
+test('iOS launcher requires lifecycle checks and preserves native failures when reporting', () => {
   const root = mkdtempSync(path.join(tmpdir(), 'ios benchmark '));
   const write = (name: string, body: string, executable = false) => {
     const file = path.join(root, name);
@@ -28,7 +27,6 @@ test('iOS launcher defaults to breadcrumbs and preserves sampling provenance and
 case "$*" in
   'simctl create '*) echo owned-simulator ;;
   'simctl getenv '*) echo 26.2 ;;
-  'simctl spawn '*"log show"*) echo native-breadcrumb-export ;;
 esac
 `,
       true
@@ -39,16 +37,13 @@ esac
 if [[ "$1" == -version ]]; then echo 'Xcode fixture'; exit 0; fi
 printf '%s\\n' "$@" >> "$PERFORMANCE_OUTPUT/xcode-arguments"
 if [[ "$1" == build-for-testing ]]; then
+  if [[ "$BUILD_EXIT_STATUS" != 0 ]]; then exit "$BUILD_EXIT_STATUS"; fi
   while [[ "$1" != -derivedDataPath ]]; do shift; done
   python3 - "$2/Build/Products/ChoreographyPerformance_fixture.xctestrun" <<'PY'
 import plistlib,sys
 with open(sys.argv[1], 'wb') as f: plistlib.dump({'Tests': {'TestBundlePath': 'fixture'}}, f)
 PY
 else
-  if [[ "\${PERFORMANCE_NATIVE_BREADCRUMBS:-1}" == 1 ]]; then
-    mkdir -p "$PERFORMANCE_OUTPUT/diagnostics"
-    echo '{}' > "$PERFORMANCE_OUTPUT/diagnostics/hang-trigger.json"
-  fi
   echo 'XCTest fixture finished'
   exit "$TEST_EXIT_STATUS"
 fi
@@ -63,20 +58,22 @@ fi
     }
     write('examples/react-navigation/ios/Podfile.lock', 'matching');
     write('examples/react-navigation/ios/Pods/Manifest.lock', 'matching');
-    // Report validation is covered separately; exercise the real launcher/watcher here.
+    // Report validation is covered separately; exercise the real launcher here.
     write(
       'scripts/performance/report.mts',
       'process.exitCode = Number(process.env.REPORT_EXIT_STATUS ?? 0);'
     );
-    for (const file of ['run-ios.sh', 'ios-hang-diagnostics.mts']) {
-      copyFileSync(
-        new URL(file, import.meta.url),
-        path.join(root, 'scripts/performance', file)
-      );
-    }
-    for (const breadcrumbs of [undefined, '0', '1']) {
-      const enabled = breadcrumbs !== '0';
-      const output = path.join(root, `results-${breadcrumbs ?? 'default'}`);
+    copyFileSync(
+      new URL('./run-ios.sh', import.meta.url),
+      path.join(root, 'scripts/performance/run-ios.sh')
+    );
+    for (const [buildStatus, testStatus, reportStatus, expectedStatus] of [
+      [0, 0, 0, 0],
+      [0, 0, 1, 1],
+      [0, 65, 1, 65],
+      [66, 0, 1, 66],
+    ]) {
+      const output = path.join(root, `results-${expectedStatus}`);
       const result = spawnSync(
         'bash',
         [path.join(root, 'scripts/performance/run-ios.sh')],
@@ -89,38 +86,28 @@ fi
             USE_CCACHE: '0',
             PERFORMANCE_OUTPUT: output,
             PERFORMANCE_DERIVED_DATA: path.join(root, 'derived'),
-            PERFORMANCE_NATIVE_BREADCRUMBS: breadcrumbs,
-            TEST_EXIT_STATUS: enabled ? '65' : '0',
-            REPORT_EXIT_STATUS: enabled ? '1' : '0',
+            BUILD_EXIT_STATUS: String(buildStatus),
+            TEST_EXIT_STATUS: String(testStatus),
+            REPORT_EXIT_STATUS: String(reportStatus),
           },
         }
       );
-      assert.equal(result.status, enabled ? 65 : 0, result.stderr);
+      assert.equal(result.status, expectedStatus, result.stderr);
       const metadata = JSON.parse(
         readFileSync(path.join(output, 'metadata.json'), 'utf8')
       );
-      assert.equal(metadata.nativeBreadcrumbs, enabled);
-      assert.equal(metadata.hangSamplingTriggered, enabled);
       assert.equal(metadata.lifecycleValidation, 1);
-      assert.equal(metadata.runnerExitCode, enabled ? 65 : 0);
-      if (enabled)
-        assert.match(
-          metadata.diagnosticErrors.join(),
-          /Incomplete native breadcrumb coverage/
-        );
+      assert.equal(metadata.runnerExitCode, buildStatus || testStatus);
       assert.ok(
         readFileSync(path.join(output, 'xcode-arguments'), 'utf8').includes(
-          `SCREEN_CHOREOGRAPHY_TRACE_HANGS=${enabled ? '1' : '0'}`
+          'SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1'
         )
       );
-      assert.equal(
-        readFileSync(path.join(output, 'tests.log'), 'utf8'),
-        'XCTest fixture finished\n'
-      );
-      assert.equal(
-        existsSync(path.join(output, 'diagnostics/native-breadcrumbs.log')),
-        enabled
-      );
+      if (buildStatus === 0)
+        assert.equal(
+          readFileSync(path.join(output, 'tests.log'), 'utf8'),
+          'XCTest fixture finished\n'
+        );
     }
   } finally {
     rmSync(root, { recursive: true, force: true });

@@ -26,8 +26,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
   private val instrumentation = InstrumentationRegistry.getInstrumentation()
   private val arguments = InstrumentationRegistry.getArguments()
   private val device = UiDevice.getInstance(instrumentation)
-  private var currentRoundTrip = 0
-  private var currentAction = "launch"
   @Test
   fun repeatedNavigationTimingAndInput() {
     val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
@@ -45,23 +43,8 @@ class ChoreographyBenchmarks(private val scenario: String) {
       val startupTimeout = arguments.getString("performanceStartupTimeoutMs", "$TIMEOUT_MS").toLong()
       require(startupTimeout > 0) { "performanceStartupTimeoutMs must be positive" }
       await("benchmark-ready", startupTimeout)
-      repeat(cycles) { cycle ->
-        currentRoundTrip = cycle + 1
-        roundTrip()
-      }
-      exportRun()
+      repeat(cycles) { roundTrip() }
     } catch (failure: Throwable) {
-      // Persist test-side context before any query of the possibly blocked app.
-      try {
-        writeArtifact("$scenario-failure.json", JSONObject().apply {
-          put("scenario", scenario)
-          put("roundTrip", currentRoundTrip)
-          put("action", currentAction)
-          put("error", failure.toString())
-        }.toString())
-      } catch (diagnosticFailure: Throwable) {
-        failure.addSuppressed(diagnosticFailure)
-      }
       // Preserve the collector's rejection reason and the actual UI before
       // AGP uninstalls the app. Diagnostic failures must not mask the assertion.
       try {
@@ -76,6 +59,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
       }
       throw failure
     }
+    exportRun()
   }
 
   private fun roundTrip() {
@@ -140,12 +124,10 @@ class ChoreographyBenchmarks(private val scenario: String) {
   }
 
   private fun await(label: String, timeoutMs: Long = TIMEOUT_MS) {
-    currentAction = "wait:$label"
     assertTrue("Missing fixture marker: $label", device.wait(Until.hasObject(By.desc(label)), timeoutMs))
   }
 
   private fun click(label: String, leadingQuarter: Boolean = false) {
-    currentAction = "tap:$label"
     val deadline = SystemClock.uptimeMillis() + TIMEOUT_MS
     var bounds: Rect? = null
     while (bounds == null && SystemClock.uptimeMillis() < deadline) {

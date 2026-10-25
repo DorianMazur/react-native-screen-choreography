@@ -2,9 +2,6 @@ import XCTest
 
 /// Same release fixture and real touch/probe sequence as the Android collector.
 final class ChoreographyPerformanceTests: XCTestCase {
-  private var scenarioName = ""
-  private var roundTrip = 0
-
   func testGallery() throws { try run("gallery", open: "View Aurora", back: "Back to gallery") }
   func testTrips() throws { try run("trips", open: "Open SEILAND NORWAY trip", back: "Back to trips") }
   func testWallet() throws { try run("wallet", open: "Open Polygon", back: "Back to wallet") }
@@ -14,38 +11,22 @@ final class ChoreographyPerformanceTests: XCTestCase {
     let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_TIMING_CYCLES"] ?? "20") ?? 0
     XCTAssertTrue((1...99).contains(cycles), "Cycle count must be in 1...99")
     let app = XCUIApplication()
-    scenarioName = scenario
-    roundTrip = 0
     app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario
-    checkpoint("launch")
     app.launch()
     defer { app.terminate() }
     awaitMarker(app, "benchmark-ready", timeout: 60)
-    for cycle in 0..<cycles {
-      roundTrip = cycle + 1
-      XCTContext.runActivity(named: "\(scenario) round trip \(roundTrip)/\(cycles)") { _ in
-        tap(app, open, leadingQuarter: true)
-        awaitMarker(app, "benchmark-detail-settled")
-        tap(app, "benchmark-detail-probe")
-        awaitMarker(app, "benchmark-detail-probe-ack")
-        tap(app, back)
-        awaitMarker(app, "benchmark-list-settled")
-        tap(app, "benchmark-list-probe")
-        awaitMarker(app, "benchmark-list-probe-ack")
-      }
+    for _ in 0..<cycles {
+      tap(app, open, leadingQuarter: true)
+      awaitMarker(app, "benchmark-detail-settled")
+      tap(app, "benchmark-detail-probe")
+      awaitMarker(app, "benchmark-detail-probe-ack")
+      tap(app, back)
+      awaitMarker(app, "benchmark-list-settled")
+      tap(app, "benchmark-list-probe")
+      awaitMarker(app, "benchmark-list-probe-ack")
     }
     tap(app, "benchmark-end")
     awaitMarker(app, "benchmark-export-complete")
-    checkpoint("complete")
-  }
-
-  // Runs in the test process; survives a blocked or crashed app. No UI queries.
-  private func checkpoint(_ action: String) {
-    let data = try! JSONSerialization.data(withJSONObject: [
-      "scenario": scenarioName, "roundTrip": roundTrip, "action": action,
-    ], options: [.sortedKeys])
-    print("CHOREOGRAPHY_STEP \(String(decoding: data, as: UTF8.self))")
-    fflush(stdout)
   }
 
   private func element(_ app: XCUIApplication, _ label: String) -> XCUIElement {
@@ -53,12 +34,10 @@ final class ChoreographyPerformanceTests: XCTestCase {
   }
 
   private func awaitMarker(_ app: XCUIApplication, _ label: String, timeout: TimeInterval = 15) {
-    checkpoint("wait:\(label)")
     XCTAssertTrue(element(app, label).waitForExistence(timeout: timeout), "Missing fixture marker: \(label)")
   }
 
   private func tap(_ app: XCUIApplication, _ label: String, leadingQuarter: Bool = false) {
-    checkpoint("tap:\(label)")
     let target = element(app, label)
     XCTAssertTrue(target.waitForExistence(timeout: 15), "Missing fixture control: \(label)")
     XCTAssertTrue(target.isEnabled, "Disabled fixture control: \(label)")

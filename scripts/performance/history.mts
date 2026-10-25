@@ -165,17 +165,7 @@ export async function archiveRun(
       });
     if (
       run.conclusion === 'success' &&
-      // Diagnostic iOS collection must not freeze Android's baseline. Each
-      // consumer still requires valid:true before comparing that platform.
-      summaries.every(
-        (report) =>
-          report.valid === true ||
-          (report.collectionPassed === true &&
-            Array.isArray(report.comparisonExclusions) &&
-            report.comparisonExclusions.length > 0 &&
-            Array.isArray(report.errors) &&
-            report.errors.length === 0)
-      ) &&
+      summaries.every((report) => report.valid === true) &&
       newerRun(run, latest)
     )
       files.push({

@@ -30,15 +30,6 @@ const report = {
   },
 };
 
-test('successful diagnostic collection is labelled separately from a failed collection', () => {
-  const text = renderComment(run, {
-    [artifact]: { ...report, valid: false, collectionPassed: true, errors: [] },
-  });
-  assert.match(text, /passed \(diagnostic\)/);
-  assert.match(text, /timings excluded from comparisons/);
-  assert.doesNotMatch(text, /Collection failed/);
-});
-
 function comparableReport(): InputRecord {
   return {
     ...structuredClone(report),

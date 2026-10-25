@@ -8,6 +8,7 @@ import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
 import { distribution, summarize, markdown } from './report.mts';
 import { sameDefinition } from './metric-definitions.mts';
+import { BenchmarkCollector } from '../../examples/react-navigation/src/performance/collector.ts';
 import {
   SCENARIOS,
   SCENARIO_IDS,
@@ -73,49 +74,11 @@ const options = {
   metadata: {},
 };
 
-test('diagnostic instrumentation excludes comparisons without failing valid collection', () => {
-  assert.equal(summarize(documents(), options).valid, true);
-  for (const metadata of [
-    { nativeBreadcrumbs: true },
-    { hangSamplingTriggered: true },
-  ]) {
-    const report = summarize(documents(), { ...options, metadata });
-    assert.equal(report.valid, false);
-    assert.equal(report.collectionPassed, true);
-    assert.deepEqual(report.errors, []);
-    assert.ok(
-      report.comparisonExclusions.some((error) =>
-        error.startsWith('Diagnostic run:')
-      )
-    );
-    assert.match(markdown(report), /Diagnostic collection passed/);
-  }
-  const missingLogs = summarize(documents(), {
-    ...options,
-    metadata: {
-      nativeBreadcrumbs: true,
-      diagnosticErrors: ['Missing native logs'],
-    },
-  });
-  assert.equal(missingLogs.collectionPassed, false);
-  assert.match(missingLogs.errors.join(), /Missing native logs/);
-});
-
-test('current runners reject missing lifecycle instrumentation instead of skipping checks', () => {
-  const report = summarize(documents(), {
-    ...options,
-    metadata: { lifecycleValidation: 1 },
-  });
-  assert.equal(report.collectionPassed, false);
-  assert.match(report.errors.join(), /Required lifecycle telemetry missing/);
-});
-
 test('complete fixture exports cannot mask a native test failure', () => {
   const report = summarize(documents(), {
     ...options,
     metadata: { runnerExitCode: 65 },
   });
-  assert.equal(report.collectionPassed, false);
   assert.equal(report.valid, false);
   assert.match(report.errors.join(), /runner failed with exit code 65/);
 });
@@ -165,29 +128,6 @@ test('CLI prints collection failures and preserves diagnostic summaries', async 
       await readFile(path.join(output, 'summary.md'), 'utf8'),
       /Collection failed/
     );
-    // Diagnostic collection still fails for broken fixtures, but exclusion alone
-    // is not a failed test. Its summary remains ineligible as a timing baseline.
-    await writeFile(metadata, JSON.stringify({ nativeBreadcrumbs: true }));
-    const command = [
-      '--experimental-transform-types',
-      fileURLToPath(new URL('./report.mts', import.meta.url)),
-      '--platform=android',
-      '--mode=native-release',
-      `--input=${input}`,
-      `--output=${output}`,
-      `--metadata=${metadata}`,
-    ];
-    assert.equal(spawnSync(process.execPath, command).status, 1);
-    await writeFile(
-      path.join(input, 'gallery.json'),
-      JSON.stringify(fixture('gallery'))
-    );
-    assert.equal(spawnSync(process.execPath, command).status, 0);
-    const diagnostic = JSON.parse(
-      await readFile(path.join(output, 'summary.json'), 'utf8')
-    );
-    assert.equal(diagnostic.valid, false);
-    assert.equal(diagnostic.collectionPassed, true);
   } finally {
     await rm(directory, { recursive: true, force: true });
   }
@@ -1024,6 +964,86 @@ function withPresentationTiming(data: InputRecord) {
   });
   return data;
 }
+
+function withLifecycle(data: InputRecord) {
+  withPreparationTrace(data);
+  withPresentationTiming(data);
+  data.motionTracing.version = 2;
+  data.renderCounting = { version: 1, observed: ['list', 'detail', 'hero'] };
+  let now = 0;
+  const collector = new BenchmarkCollector(
+    data.runId,
+    data.scenario,
+    () => now,
+    {
+      renderCounting: true,
+    }
+  );
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    const offset = index * 1000;
+    now = offset + 100;
+    collector.request(journey.direction);
+    now = offset + 140;
+    collector.sessionActive(journey.sessionId, journey.direction, 1);
+    now = offset + 500;
+    collector.sessionEnd(journey.sessionId);
+    now = offset + 600;
+    collector.probe(journey.probe.screen);
+    // Keep the native/preparation evidence alongside the collector's real JS events.
+    journey.preparationTrace.startedAtMs += offset;
+    journey.preparationTrace.completedAtMs += offset;
+    journey.preparationTrace.stages = journey.preparationTrace.stages.map(
+      (stage: InputRecord) => ({
+        ...stage,
+        startedAtMs: stage.startedAtMs + offset,
+      })
+    );
+  });
+  const lifecycle = collector.report();
+  data.samples = lifecycle.samples;
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    Object.assign(journey, lifecycle.journeys[index]);
+  });
+  return data;
+}
+
+test('current runners require lifecycle and all metric families without disabling comparisons', () => {
+  const input = documents().map(({ file, data }) => ({
+    file,
+    data: withLifecycle(data),
+  }));
+  const current = {
+    ...options,
+    metadata: { lifecycleValidation: 1, timingCycles: 1, runnerExitCode: 0 },
+  };
+  const summary = summarize(input, current);
+  assert.equal(summary.valid, true, summary.errors.join());
+  for (const key of [
+    'preparationTracing',
+    'renderCounting',
+    'motionTracing',
+    'presentationTracing',
+  ]) {
+    const missing = structuredClone(input);
+    // Remove both definition and values: older collectors allowed this to skip validation.
+    delete missing[0].data[key];
+    for (const journey of missing[0].data.journeys) {
+      delete journey.preparationTrace;
+      delete journey.renderCounts;
+      delete journey.motion;
+      delete journey.presentationTiming;
+    }
+    const report = summarize(missing, current);
+    assert.equal(report.valid, false, key);
+    assert.match(report.errors.join(), /Required lifecycle telemetry missing/);
+  }
+  const stale = structuredClone(input);
+  stale[0].data.samples[2].sessionId = 'stale-session';
+  assert.match(
+    summarize(stale, current).errors.join(),
+    /mismatched session-end-proxy event/
+  );
+});
 
 test('presentation startup reports separate clock-safe intervals for every journey', () => {
   const data = withPresentationTiming(fixture('gallery'));
