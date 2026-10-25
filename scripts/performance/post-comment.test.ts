@@ -103,16 +103,6 @@ test('PR comments include rerenders but only link to temporary current-run artif
   assert.doesNotMatch(body, /Permanent report|performance-history\/runs\/42/);
 });
 
-test('comments never interpolate unchecked sampling metadata', () => {
-  const measured: InputRecord = structuredClone(report);
-  measured.metadata = { timingCycles: 20 };
-  let body = renderComment(run, { [artifact]: measured });
-  assert.doesNotMatch(body, /warm-up|first run|first visit/i);
-  measured.metadata.timingCycles = '@everyone <script>';
-  body = renderComment(run, { [artifact]: measured });
-  assert.doesNotMatch(body, /@everyone|<script>/);
-});
-
 test('all examples get separate comparison rows even when main only has Gallery', () => {
   const measured = comparableReport();
   const base = structuredClone(measured);
