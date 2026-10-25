@@ -51,6 +51,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  lifecycleValidation: 1,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
@@ -98,10 +99,18 @@ PY
     -resultBundlePath "$output/tests.xcresult" \
     > >(tee "$output/tests.log") 2>&1 || status=$?
 fi
+node - "$output/metadata.json" "$status" <<'NODE'
+const fs = require('node:fs');
+const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+metadata.runnerExitCode = Number(process.argv[3]);
+fs.writeFileSync(process.argv[2], JSON.stringify(metadata, null, 2));
+NODE
 container="$(xcrun simctl get_app_container "$udid" screenchoreography.example data 2>/dev/null || true)"
 if [[ -n "$container" && -d "$container/Documents/performance" ]]; then
   cp -R "$container/Documents/performance/." "$output/raw/"
 fi
-node --experimental-transform-types scripts/performance/report.mts --platform=ios "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || status=1
+node --experimental-transform-types scripts/performance/report.mts --platform=ios "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || {
+  if [[ "$status" -eq 0 ]]; then status=1; fi
+}
 printf 'Report: %s/report/summary.md\n' "$output"
 exit "$status"

@@ -1,6 +1,7 @@
 import { summaryTable, renderCountsTable } from './summary-table.mts';
 import { metricDefinition, presentationStages } from './metric-definitions.mts';
 import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
+import { validateLifecycle } from './validate-lifecycle.mts';
 import type {
   InputRecord,
   MetricSamples,
@@ -445,12 +446,21 @@ export function summarize(
   if (!MODES.includes(mode)) throw new Error('Unknown build mode');
   const metrics: MetricSamples = {};
   const errors = [];
+  if (metadata.runnerExitCode !== undefined && metadata.runnerExitCode !== 0)
+    errors.push(
+      `Native build/test runner failed with exit code ${metadata.runnerExitCode}; see test logs`
+    );
   const fixtures = new Set<string>();
   const sources = [];
   const runIds = new Set<string>();
   const instrumentation = new Map<string, string>();
   let expectedCycles;
   try {
+    if (
+      metadata.lifecycleValidation !== undefined &&
+      metadata.lifecycleValidation !== 1
+    )
+      throw new Error('Unknown lifecycle validation version');
     expectedCycles = expectedCount(
       metadata.timingCycles,
       'Expected timing cycles'
@@ -471,6 +481,7 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
+        if (metadata.lifecycleValidation === 1) validateLifecycle(data);
         readFixture(data, documentMetrics, platform);
         if (
           expectedCycles !== undefined &&
