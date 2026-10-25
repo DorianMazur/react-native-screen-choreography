@@ -2,9 +2,9 @@ import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ThemeProvider, Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
-import { theme as palette } from '../../../shared/theme';
-import { JSStressMenu } from '../../../shared/performance/JSStressMenu';
-import { DemoTraysProvider } from '../../../shared/tray/DemoTraysProvider';
+import { theme as palette } from '@screen-choreography/example-shared';
+import { JSStressMenu } from '@screen-choreography/example-shared/performance';
+import { DemoTraysProvider } from '@screen-choreography/example-shared/tray';
 
 const theme = {
   dark: true,

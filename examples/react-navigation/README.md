@@ -2,6 +2,10 @@
 
 This app runs the [shared demos](../shared) through React Navigation. See the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and source links.
 
+The demos are provided by the private `@screen-choreography/example-shared`
+workspace package. `yarn install` links it automatically; no separate build is
+needed.
+
 ## What It Demonstrates
 
 - retained content owned by the source screen and reparented into the detail target, with child layout driven by shared progress

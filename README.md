@@ -70,7 +70,7 @@ Both integrations use the same demo screens and shared `defineTransition` defini
 
 - [React Navigation example setup](examples/react-navigation/README.md)
 - [Expo Router example setup](examples/expo-router/README.md)
-- [Shared example source](examples/shared)
+- [Shared example workspace package](examples/shared)
 
 ## License
 
