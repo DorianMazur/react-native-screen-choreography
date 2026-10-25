@@ -5,7 +5,7 @@ This Expo SDK 57 development-build app demonstrates `react-native-screen-choreog
 - Expo Router's native `Stack`
 - the same [shared demos](../shared) as the React Navigation example; see the [demo gallery](https://screen-choreography.dev/examples.html) for recordings and source links
 - retained content owned by the source screen and reparented into the detail target, with child layout driven by shared progress
-- shared screens, data, transition renderers, and styles from `examples/shared`
+- shared screens, data, transition renderers, and styles from the private `@screen-choreography/example-shared` workspace package in `examples/shared`
 - thin typed dynamic route adapters
 - explicit `ChoreographyScreen` identity
 - provider-owned reverse-transition lineage, without private URL parameters
@@ -18,6 +18,9 @@ Install dependencies once from the repository root:
 ```bash
 yarn install
 ```
+
+This also links the shared example package. Metro compiles its TypeScript source
+with the app; no separate package build is needed.
 
 Build and run the native app:
 
@@ -47,6 +50,8 @@ The definitions coordinate endpoints and local section reveals. Internal layout 
 components using `useSharedElementPresentation`. Enter/Exit wrappers belong to
 ordinary screen content, not to content hosted on another route.
 
-## Dynamic tray demo
+## Dynamic tray demos
 
-Open **Dynamic tray** on the landing screen to try a wallet flow with retained forms and a full-screen recipient list. See the [dynamic tray guide](../../docs/guide/dynamic-trays.md) for setup and usage.
+Open **Wallet dynamic tray** on the landing screen to try a wallet flow with retained forms and a full-screen recipient list. See the [dynamic tray guide](../../docs/guide/dynamic-trays.md) for setup and usage.
+
+Open **Gallery dynamic tray** for an upgrade flow that grows from a compact introduction into benefits and plan selection. The photo composition moves between the two screens as one live shared element. Choose a plan, open **Good to know**, and go Back to see the selection preserved; **Preview Plus** shows the chosen plan without making a purchase. Back reverses the shared transition, and closing the tray resets the flow.

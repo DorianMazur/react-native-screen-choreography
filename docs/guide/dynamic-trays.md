@@ -11,7 +11,7 @@ The optional `/tray` entry uses Software Mansion's native bottom sheet. It works
 
 ## Install
 
-Follow the [base installation](./installation.md), then add the tray dependencies:
+Follow the [tray installation](./installation.md#dynamic-trays-without-a-router), which includes these optional dependencies:
 
 ```sh
 npm install @swmansion/react-native-bottom-sheet@0.16.2 react-native-keyboard-controller@^1.22.7
@@ -139,6 +139,62 @@ You can also select `state.route` or `state.depth`. Components update only when 
 
 Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
 
+Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. The library ignores duplicate pushes while opening or navigating and allows retry after cancellation. If you tap a destination on a returning screen while Back or `popToRoot()` is still animating, that first push runs automatically after the return finishes. No second tap, persistent `pushing` ref, or focus-reset effect is needed; cancellation can leave the source focused throughout.
+
+::: warning Migration from 0.8.1
+Duplicate pushes made while busy are ignored. `push(A); push(B)` accepts A and discards B, and `present(A); push(B)` does not queue B during opening. A returning screen's first push can wait for Back to finish. Remove application-owned duplicate-push guards and their reset effects.
+:::
+
+## Respond to opening and closing
+
+Use lifecycle callbacks on `Tray.Stack` for work tied to the whole tray:
+
+```tsx
+<Tray.Stack
+  onWillPresent={() => analytics.track('tray_opening')}
+  onPresent={() => analytics.track('tray_opened')}
+  onWillDismiss={() => analytics.track('tray_closing')}
+  onDismiss={() => analytics.track('tray_closed')}
+>
+  <Tray.Screen name="note" component={Note} />
+  <Tray.Screen name="preview" component={Preview} />
+</Tray.Stack>
+```
+
+Here, `analytics` is your app's analytics client. `onPresent` waits for the native opening animation to settle; `onDismiss` waits for closing to settle and the tray content to unmount. The `onWill…` callbacks report accepted opening or closing on the JavaScript thread and cannot block the animation.
+
+These callbacks cover buttons, backdrop taps, and gestures. `onWillDismiss` fires when a drag commits to closing, not when the finger first moves. If closing is interrupted by dragging back open, `onDismiss` does not fire. Dismissing before opening settles skips `onPresent`. Unmounting the provider does not fire dismissal callbacks.
+
+Navigating between tray screens does not start another presentation. Use `useFocusEffect` for individual screens. Use `useTrayState((state) => state.isPresented)` for UI that stays active throughout opening, open, and closing; it cannot distinguish those phases.
+
+## Run work while a screen is focused
+
+Retained screens stay mounted when another tray screen covers them. Use `Tray.useFocusEffect` for subscriptions or refreshes that should run only while a screen is current. It also works in child components and custom header components, without passing a route key.
+
+For a wallet screen, subscribe to balance updates on focus and unsubscribe on blur. In this example, `subscribeToBalance` is your app's data source and returns an unsubscribe function:
+
+```tsx
+import { useCallback, useState } from 'react';
+import { Text } from 'react-native';
+import { subscribeToBalance } from './wallet-store';
+
+function Balance({ accountId }: { accountId: string }) {
+  const [balance, setBalance] = useState<string>();
+
+  Tray.useFocusEffect(
+    useCallback(() => {
+      return subscribeToBalance(accountId, setBalance);
+    }, [accountId])
+  );
+
+  return <Text>{balance ?? 'Loading balance…'}</Text>;
+}
+```
+
+Render `Balance` inside a tray screen. Back starts the subscription again without resetting the screen's state. Changing `accountId` while focused cleans up the old subscription and starts the new one. Keep the callback memoized with `useCallback` to avoid restarting it on unrelated renders.
+
+By default, focus changes with the active route, before its transition finishes. The current screen stays focused during dismissal until the sheet finishes closing; removing the provider cleans up immediately. Pass `{ afterTransition: true }` for work such as [focusing an input](#focus-an-input-after-the-transition) that should wait until navigation finishes. This hook follows the tray's stack, independently of React Navigation focus and app foreground state. For whole-tray visibility, continue using `Tray.useTrayState((state) => state.isPresented)`.
+
 ## Expand to full screen
 
 Give a screen more room with `presentation: 'fullScreen'`:
@@ -155,36 +211,84 @@ The sheet expands to fill the available window, keeping the supplied safe-area i
 
 Full-screen sizing is chosen per screen. Dragging down still dismisses the tray.
 
-## Change the appearance and motion
+## Use a custom header
 
-Configure shared styling and icons once on `Tray.Stack`. Use `appearance="floating"` (the default) for an inset card or `appearance="sheet"` for a sheet attached to the bottom edge.
+Use `renderHeader` to replace the title and buttons together. Its props include the current route, title, Back availability, text color, and stable tray actions:
 
 ```tsx
-import { Image } from 'react-native';
+import { Pressable, Text, View } from 'react-native';
+import type { TrayHeaderProps } from 'react-native-screen-choreography/tray';
 
+function NoteHeader({
+  title,
+  canGoBack,
+  tray,
+  color,
+}: TrayHeaderProps<Routes>) {
+  return (
+    <View style={{ padding: 16, gap: 8 }}>
+      <Text accessibilityRole="header" style={{ color, fontSize: 24 }}>
+        {title}
+      </Text>
+      <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+        {canGoBack && (
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel="Back in tray"
+            onPress={tray.back}
+            style={{ minHeight: 44, justifyContent: 'center' }}
+          >
+            <Text style={{ color }}>Back</Text>
+          </Pressable>
+        )}
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel="Close tray"
+          onPress={tray.dismiss}
+          style={{ minHeight: 44, justifyContent: 'center' }}
+        >
+          <Text style={{ color }}>Close</Text>
+        </Pressable>
+      </View>
+    </View>
+  );
+}
+
+<Tray.Stack
+  renderHeader={(props) => <NoteHeader {...props} />}
+  handleVisible={false}
+>
+  <Tray.Screen
+    name="note"
+    component={Note}
+    options={{ title: 'Write a note' }}
+  />
+  <Tray.Screen
+    name="preview"
+    component={Preview}
+    options={{ renderHeader: () => null }}
+  />
+</Tray.Stack>;
+```
+
+The tray measures your header automatically, including changes in its height, and crossfades headers with the screen transition. This also works for shared transitions, Back, and transitions to or from a hidden header. The outgoing header keeps its state until the transition settles, then unmounts; returning mounts it again. Only the current header accepts touches and is exposed to accessibility. Your header owns its buttons and accessibility labels.
+
+Set `handleVisible={false}` on the stack to remove the drag indicator and its spacing. You can override either setting in a screen's `options`. Dragging to dismiss, tapping the backdrop, and Android Back continue to work. Returning `null` removes only the header; combine it with `handleVisible: false` for content without either element.
+
+## Change the appearance and motion
+
+Configure shared styling once on `Tray.Stack`. Use `appearance="floating"` (the default) for an inset card or `appearance="sheet"` for a sheet attached to the bottom edge.
+
+```tsx
 <Tray.Stack
   backgroundColor="#23252b"
   textColor="#f4f5f7"
-  renderBackIcon={({ color, size }) => (
-    <Image
-      source={require('./icons/arrow-left.png')}
-      style={{ width: size, height: size, tintColor: color }}
-    />
-  )}
-  renderCloseIcon={({ color, size }) => (
-    <Image
-      source={require('./icons/close.png')}
-      style={{ width: size, height: size, tintColor: color }}
-    />
-  )}
   animation={{ type: 'spring', stiffness: 300, damping: 30 }}
 >
   <Tray.Screen name="note" component={Note} />
   <Tray.Screen name="preview" component={Preview} />
-</Tray.Stack>;
+</Tray.Stack>
 ```
-
-Return just the icon; the stack supplies the button, accessibility label, and action. Omitting a renderer keeps the default icon.
 
 For a fixed duration:
 
@@ -198,11 +302,134 @@ The default is 240 ms with cubic ease-out. These settings control transitions be
 
 Use normal React Native inputs and scroll views. The tray moves with the keyboard. For scrolling forms, use `keyboardShouldPersistTaps="handled"` so buttons work while typing.
 
-Navigating between screens dismisses the keyboard. Back preserves the form values and scroll position, but doesn't automatically focus an input again. Call the input's `focus()` only when your flow needs it.
+Navigating between screens dismisses the keyboard. Back preserves the form values and scroll position. To focus an input when returning, use [an effect that waits for the transition](#focus-an-input-after-the-transition).
 
 A root `ScrollView` fits within the available height. For short, content-sized screens, avoid `flex: 1` on a non-scrollable root.
 
 Previous screens stay mounted for Back, so their effects and subscriptions remain active. Closing the tray resets its screens. Keep drafts outside the tray if they should survive reopening.
+
+### Center a form and keep its action above the keyboard
+
+For a form that fills the window, declare `presentation: 'fullScreen'`. Its content viewport resizes with every keyboard frame, including interactive dismissal. A flex layout can keep the fields centered and the action at the bottom:
+
+```tsx
+import { useState } from 'react';
+import { Button, ScrollView, TextInput, View } from 'react-native';
+
+function FullScreenNote({ tray }: TrayScreenProps<Routes, 'note'>) {
+  const [text, setText] = useState('');
+  return (
+    <View style={{ flex: 1 }}>
+      <ScrollView
+        style={{ flex: 1 }}
+        contentContainerStyle={{
+          flexGrow: 1,
+          justifyContent: 'center',
+          padding: 24,
+        }}
+        keyboardShouldPersistTaps="handled"
+      >
+        <TextInput
+          accessibilityLabel="Note"
+          value={text}
+          onChangeText={setText}
+        />
+      </ScrollView>
+      <View style={{ padding: 24 }}>
+        <Button
+          title="Preview"
+          onPress={() => tray.push('preview', { text })}
+        />
+      </View>
+    </View>
+  );
+}
+
+<Tray.Screen
+  name="note"
+  component={FullScreenNote}
+  options={{ title: 'Write a note', presentation: 'fullScreen' }}
+/>;
+```
+
+The footer follows the keyboard through the tray's own resizing. The stack also handles the bottom safe-area inset. Keep keyboard-height padding, `KeyboardAvoidingView`, `KeyboardStickyView`, and automatic keyboard insets off this layout: adding a second keyboard offset would move the content twice. Normal design padding, such as the 24 points above, still applies.
+
+### Fade supporting content while typing
+
+Read `Tray.useKeyboard()` inside a tray screen or custom header to use the same keyboard signal that moves the tray. `progress` and `height` are Reanimated shared values; use them in worklets. `isVisible` is a React boolean for touches and accessibility:
+
+```tsx
+import { Text } from 'react-native';
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+
+function NoteHelp() {
+  const { progress, isVisible } = Tray.useKeyboard();
+  const fade = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
+
+  return (
+    <Animated.View
+      style={fade}
+      pointerEvents={isVisible ? 'none' : 'auto'}
+      accessibilityElementsHidden={isVisible}
+      importantForAccessibility={isVisible ? 'no-hide-descendants' : 'auto'}
+    >
+      <Text>Your draft stays here when you go back.</Text>
+    </Animated.View>
+  );
+}
+```
+
+Place `NoteHelp` below the input. Changing opacity preserves its layout space. `isVisible` becomes true when opening starts and stays true until the keyboard is fully hidden, so faded content is also unavailable to screen readers. Keyboard frames update the shared values without rerendering the component; React updates only when visibility changes.
+
+### Focus an input after the transition
+
+Use `Tray.useFocusEffect` with `{ afterTransition: true }` to focus after the screen has arrived. For example, replace `Note` with this component:
+
+```tsx
+import { useCallback, useRef, useState } from 'react';
+import { Button, TextInput, View } from 'react-native';
+
+function Note({ tray }: TrayScreenProps<Routes, 'note'>) {
+  const input = useRef<TextInput>(null);
+  const [text, setText] = useState('');
+
+  Tray.useFocusEffect(
+    useCallback(() => {
+      input.current?.focus();
+    }, []),
+    { afterTransition: true }
+  );
+
+  return (
+    <View style={{ padding: 24 }}>
+      <TextInput
+        ref={input}
+        accessibilityLabel="Note"
+        value={text}
+        onChangeText={setText}
+      />
+      <Button title="Preview" onPress={() => tray.push('preview', { text })} />
+    </View>
+  );
+}
+```
+
+This waits for the native sheet to settle open and for screen navigation to finish, including shared-element handoff. It works with timing animations, springs, Reduce Motion, and Back; no duration or timer is needed. Queued navigation runs before the effect, so an intermediate screen does not steal focus. Closing or leaving the screen skips a pending callback and cleans up an already-running effect. A cancelled dismissal can run the effect again after the tray settles open.
+
+## Anchor content during resizing
+
+Content stays anchored to the bottom by default while the card grows or shrinks between screens. Set `anchor="top"` on the stack to keep content attached to the top instead:
+
+```tsx
+<Tray.Stack anchor="top">
+  <Tray.Screen name="note" component={Note} />
+  <Tray.Screen name="preview" component={Preview} />
+</Tray.Stack>
+```
+
+With the default `"bottom"` anchor, both incoming and outgoing content follow the bottom edge, including on Back and shared transitions. The header stays at the top. Content keeps its natural height and scroll position; taller content is revealed as the card expands.
+
+To override the stack for one screen, set `anchor` to `'top'` or `'bottom'` in its `Tray.Screen` options. Each screen keeps its own anchor while entering and leaving.
 
 ## Multiple trays
 
@@ -254,4 +481,4 @@ Back reverses the transition automatically. The stack's `animation` controls its
 
 Shared elements must belong to the same tray. If a matching element is unavailable, the screens use the normal crossfade. No extra choreography provider is needed.
 
-See the [wallet tray demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/TrayDemo.tsx) for a full-screen recipient list and retained forms, or the [API reference](../api/tray.md) for all options.
+See the [wallet tray demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/TrayDemo.tsx) for a full-screen recipient list and retained forms, or the [Gallery Plus demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/GalleryPlusTray.tsx) for a compact introduction that expands into plan selection with a shared photo composition. Both are available from the landing screen in either example app. The [API reference](../api/tray.md) covers all options.

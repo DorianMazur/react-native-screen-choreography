@@ -45,12 +45,17 @@ import {
 } from './TrayChoreography';
 import { readTrayDeclaration } from './declarations';
 import { useTrayKeyboard } from './useTrayKeyboard';
+import { useTrayFocusEffect } from './useTrayFocusEffect';
+import { TrayHeaderLayer } from './TrayHeaderLayer';
 import { animateTrayValue } from './animation';
 import type { ResolvedTrayAnimation } from './animation';
 import type { TrayScreenMap } from './declarations';
-import type { TrayAction, TrayStackState } from './stack';
+import type { TrayAction, TrayEntry, TrayStackState } from './stack';
 import { createTrayStateStore } from './state';
 import type {
+  TrayFocusEffectOptions,
+  TrayHeaderProps,
+  TrayKeyboardState,
   TrayNavigation,
   TrayNavigationOptions,
   TrayParamList,
@@ -63,7 +68,8 @@ import type {
 } from './types';
 
 const DETENTS = [0, 'content'] as const;
-const HEADER_HEIGHT = 70;
+const DEFAULT_HEADER_HEIGHT = 56;
+const HANDLE_HEIGHT = 14;
 const CONTENT_FADE_END = 0.75;
 
 /** Call outside render to preserve the provider and screen identities. */
@@ -72,6 +78,8 @@ export function createTray<P extends TrayParamList>() {
   const StateContext = createContext<ReturnType<
     typeof createTrayStateStore<P>
   > | null>(null);
+  const ScreenContext = createContext<string | undefined>(undefined);
+  const KeyboardContext = createContext<TrayKeyboardState | null>(null);
 
   function useTray(): TrayNavigation<P> {
     const tray = useContext(Context);
@@ -99,7 +107,30 @@ export function createTray<P extends TrayParamList>() {
     return useSyncExternalStore(store.subscribe, getSnapshot, getSnapshot);
   }
 
-  function Stack(_props: TrayStackProps): React.ReactElement | null {
+  /** Run an effect while this tray screen is current. Memoize it with useCallback. */
+  function useFocusEffect(
+    effect: React.EffectCallback,
+    options?: TrayFocusEffectOptions
+  ): void {
+    useTrayFocusEffect(
+      useContext(StateContext),
+      useContext(ScreenContext),
+      effect,
+      options
+    );
+  }
+
+  function useKeyboard(): TrayKeyboardState {
+    const keyboard = useContext(KeyboardContext);
+    const key = useContext(ScreenContext);
+    if (!keyboard || key === undefined)
+      throw new Error(
+        'useKeyboard must be used inside a screen or custom header of its Tray.Provider.'
+      );
+    return keyboard;
+  }
+
+  function Stack(_props: TrayStackProps<P>): React.ReactElement | null {
     throw new Error('Tray.Stack must be a direct child of its Tray.Provider.');
   }
 
@@ -119,7 +150,7 @@ export function createTray<P extends TrayParamList>() {
     );
     const { dispatch } = store;
     const screens = useRef(declaration.screens);
-    const onDismiss = useRef(declaration.options.onDismiss);
+    const lifecycleCallbacks = useRef(declaration.options);
     for (const entry of [
       ...state.entries,
       ...(state.transition?.retained ?? []),
@@ -139,27 +170,32 @@ export function createTray<P extends TrayParamList>() {
     }
     useLayoutEffect(() => {
       screens.current = declaration.screens;
-      onDismiss.current = declaration.options.onDismiss;
+      lifecycleCallbacks.current = declaration.options;
     });
-    const tray = useMemo<TrayNavigation<P>>(() => {
+    const { tray, bindNavigation } = useMemo(() => {
+      const validate = (name: string, options?: TrayNavigationOptions) => {
+        if (!Object.prototype.hasOwnProperty.call(screens.current, name))
+          throw new Error(`Unknown tray screen: ${name}`);
+        if (options && (!options.groupId || !options.groupId.trim()))
+          throw new Error(
+            'Tray shared transitions require a non-empty groupId.'
+          );
+      };
       const destination =
-        (type: 'present' | 'push' | 'replace') =>
+        (type: 'present' | 'push' | 'replace', sourceRouteKey?: string) =>
         (name: string, params?: unknown, options?: TrayNavigationOptions) => {
-          if (!Object.prototype.hasOwnProperty.call(screens.current, name))
-            throw new Error(`Unknown tray screen: ${name}`);
-          Keyboard.dismiss();
-          if (options && (!options.groupId || !options.groupId.trim()))
-            throw new Error(
-              'Tray shared transitions require a non-empty groupId.'
-            );
-          dispatch({
+          validate(name, options);
+          if (type !== 'push') Keyboard.dismiss();
+          const accepted = dispatch({
             type,
             name,
             params,
             ...(type === 'push' && options ? { groupId: options.groupId } : {}),
+            ...(sourceRouteKey !== undefined ? { sourceRouteKey } : {}),
           });
+          if (type === 'push' && accepted) Keyboard.dismiss();
         };
-      return {
+      const actions: TrayNavigation<P> = {
         present: destination('present'),
         push: destination('push'),
         replace: destination('replace'),
@@ -176,16 +212,23 @@ export function createTray<P extends TrayParamList>() {
           dispatch({ type: 'dismiss' });
         },
       };
+      return {
+        tray: actions,
+        bindNavigation: (key: string): TrayNavigation<P> => ({
+          ...actions,
+          push: destination('push', key),
+        }),
+      };
     }, [dispatch]);
     const isPresented = state.phase !== 'closed';
 
-    const notified = useRef(0);
     useEffect(() => {
-      if (state.dismissals > notified.current) {
-        notified.current = state.dismissals;
-        onDismiss.current?.();
-      }
-    }, [state.dismissals]);
+      // A child effect may have dispatched again before this effect runs.
+      // Wait for that state to commit before delivering its lifecycle events.
+      if (store.getStackSnapshot() !== state) return;
+      for (const event of store.takeLifecycleEvents())
+        lifecycleCallbacks.current[event]?.();
+    }, [store, state]);
 
     useEffect(() => {
       if (!isPresented) return;
@@ -200,63 +243,94 @@ export function createTray<P extends TrayParamList>() {
     return (
       <Context.Provider value={tray}>
         <StateContext.Provider value={store}>
-          <View
-            style={styles.app}
-            collapsable={false}
-            accessibilityElementsHidden={isPresented}
-            importantForAccessibility={
-              isPresented ? 'no-hide-descendants' : 'auto'
-            }
-          >
-            {declaration.content}
-          </View>
-          {isPresented && (
-            <ChoreographyOverlay>
-              <TrayChoreography key={state.session}>
-                <TrayHost
-                  key={state.session}
-                  {...declaration.options}
-                  screens={declaration.screens}
-                  state={state}
-                  dispatch={dispatch}
-                  tray={tray}
-                />
-              </TrayChoreography>
-            </ChoreographyOverlay>
-          )}
+          <ScreenContext.Provider value={undefined}>
+            <View
+              style={styles.app}
+              collapsable={false}
+              accessibilityElementsHidden={isPresented}
+              importantForAccessibility={
+                isPresented ? 'no-hide-descendants' : 'auto'
+              }
+            >
+              {declaration.content}
+            </View>
+            {isPresented && (
+              <ChoreographyOverlay>
+                <TrayChoreography key={state.session}>
+                  <TrayHost
+                    key={state.session}
+                    {...declaration.options}
+                    screens={declaration.screens}
+                    state={state}
+                    dispatch={dispatch}
+                    tray={tray}
+                    screenContext={ScreenContext}
+                    keyboardContext={KeyboardContext}
+                    navigationContext={Context}
+                    bindNavigation={bindNavigation}
+                  />
+                </TrayChoreography>
+              </ChoreographyOverlay>
+            )}
+          </ScreenContext.Provider>
         </StateContext.Provider>
       </Context.Provider>
     );
   }
 
-  return { Provider, Stack, Screen, useTray, useTrayState };
+  return {
+    Provider,
+    Stack,
+    Screen,
+    useTray,
+    useTrayState,
+    useFocusEffect,
+    useKeyboard,
+  };
 }
 
 function TrayHost<P extends TrayParamList>({
   state,
   dispatch,
   tray,
+  screenContext: ScreenContext,
+  keyboardContext: KeyboardContext,
+  navigationContext,
+  bindNavigation,
   screens,
   appearance = 'floating',
+  anchor = 'bottom',
   topInset = 0,
   bottomInset = 0,
   horizontalInset = 16,
   backgroundColor = '#ffffff',
   textColor = '#18181b',
-  renderBackIcon,
-  renderCloseIcon,
+  renderHeader: stackRenderHeader,
+  handleVisible: stackHandleVisible = true,
   animation,
-}: Omit<TrayStackProps, 'children' | 'animation'> & {
+}: Omit<TrayStackProps<P>, 'children' | 'animation'> & {
   animation: ResolvedTrayAnimation;
   screens: TrayScreenMap<P>;
   state: TrayStackState;
   dispatch: React.Dispatch<TrayAction>;
   tray: TrayNavigation<P>;
+  screenContext: React.Context<string | undefined>;
+  keyboardContext: React.Context<TrayKeyboardState | null>;
+  navigationContext: React.Context<TrayNavigation<P> | null>;
+  bindNavigation: (key: string) => TrayNavigation<P>;
 }) {
   const { height, width } = useWindowDimensions();
   const keyboard = useTrayKeyboard();
   const keyboardHeight = keyboard.height;
   const keyboardProgress = keyboard.progress;
+  const keyboardState = useMemo(
+    () => ({
+      height: keyboardHeight,
+      progress: keyboardProgress,
+      isVisible: keyboard.isVisible,
+    }),
+    [keyboardHeight, keyboardProgress, keyboard.isVisible]
+  );
   const initialReducedMotion = useReducedMotion();
   const [reducedMotion, setReducedMotion] = useState(initialReducedMotion);
   useEffect(() => {
@@ -275,6 +349,28 @@ function TrayHost<P extends TrayParamList>({
   }, []);
   const active = state.entries[state.entries.length - 1]!;
   const entries = [...state.entries, ...(state.transition?.retained ?? [])];
+  const renderHeader = screens[active.name]?.renderHeader ?? stackRenderHeader;
+  const headerHeights = useRef(new Map<string, number>());
+  const [headerLayout, setHeaderLayout] = useState<{
+    key: string;
+    custom: boolean;
+    height?: number;
+  }>({ key: active.key, custom: !!renderHeader });
+  // A returning header needs a fresh layout, including after a built-in header.
+  if (headerLayout.key !== active.key || headerLayout.custom !== !!renderHeader)
+    setHeaderLayout({ key: active.key, custom: !!renderHeader });
+  const headerHeightFor = (entry: TrayEntry) => {
+    const options = screens[entry.name];
+    const custom = options?.renderHeader ?? stackRenderHeader;
+    const handle = options?.handleVisible ?? stackHandleVisible;
+    return (
+      (handle ? HANDLE_HEIGHT : 0) +
+      (custom
+        ? (headerHeights.current.get(entry.key) ?? DEFAULT_HEADER_HEIGHT)
+        : DEFAULT_HEADER_HEIGHT)
+    );
+  };
+  const headerHeight = headerHeightFor(active);
   const title = screens[active.name]?.title ?? active.name;
   const previous = entries.find(
     (entry) => entry.key === state.transition?.from
@@ -282,7 +378,12 @@ function TrayHost<P extends TrayParamList>({
   const previousTitle = previous
     ? (screens[previous.name]?.title ?? previous.name)
     : title;
-  const changingTitle = previousTitle !== title;
+  const previousRenderHeader = previous
+    ? (screens[previous.name]?.renderHeader ?? stackRenderHeader)
+    : undefined;
+  const crossfadeHeaders =
+    !!previous && !!(renderHeader || previousRenderHeader);
+  const headerEntries = crossfadeHeaders ? [previous, active] : [active];
   const canGoBack = state.entries.length > 1;
   const previousDepth = state.transition
     ? entries.length - (state.transition.direction === 1 ? 1 : 0)
@@ -294,19 +395,18 @@ function TrayHost<P extends TrayParamList>({
   const margin = appearance === 'floating' ? horizontalInset : 0;
   const gap = appearance === 'floating' ? safeBottomInset + 12 : 0;
   const paddingBottom = fullScreen || appearance === 'sheet' ? bottomInset : 0;
-  const fullScreenMaxHeight = Math.max(
-    0,
-    availableHeight - topInset - safeBottomInset - HEADER_HEIGHT
-  );
-  const trayMaxHeight = Math.max(
-    80,
-    availableHeight -
-      topInset -
-      gap -
-      (appearance === 'sheet' ? safeBottomInset : 0) -
-      76
-  );
-  const maxHeight = fullScreen ? fullScreenMaxHeight : trayMaxHeight;
+  const maxHeightFor = (expanded: boolean, chromeHeight: number) =>
+    expanded
+      ? Math.max(0, availableHeight - topInset - safeBottomInset - chromeHeight)
+      : Math.max(
+          80,
+          availableHeight -
+            topInset -
+            gap -
+            (appearance === 'sheet' ? safeBottomInset : 0) -
+            chromeHeight -
+            6
+        );
   const { screenId, origins } = useTrayGeometry();
   const pageHeights = useRef(new Map<string, number>());
   const [layoutVersion, setLayoutVersion] = useState(0);
@@ -322,14 +422,18 @@ function TrayHost<P extends TrayParamList>({
   const measuredKeyboardHeight = useRef(keyboard.layoutHeight);
   const destinationHeight = fullScreen
     ? height
-    : (pageHeights.current.get(active.key) ?? -HEADER_HEIGHT - paddingBottom) +
-      HEADER_HEIGHT +
+    : (pageHeights.current.get(active.key) ?? -headerHeight - paddingBottom) +
+      headerHeight +
       paddingBottom;
+  const targetReady =
+    pageHeights.current.has(active.key) &&
+    (!renderHeader ||
+      (headerLayout.key === active.key && headerLayout.height !== undefined));
   const shared = useTraySharedTransition({
     state,
     dispatch,
     animation,
-    targetReady: pageHeights.current.has(active.key),
+    targetReady,
     onPrepare: () => {
       sharedFromHeight.value = measuredHeight.current;
       sharedFromExpansion.value = fullScreen ? 1 : 0;
@@ -380,6 +484,36 @@ function TrayHost<P extends TrayParamList>({
   useLayoutEffect(() => {
     if (destinationHeight > 0) sharedToHeight.value = destinationHeight;
   }, [destinationHeight, sharedToHeight, layoutVersion]);
+  useLayoutEffect(() => {
+    if (
+      !targetReady ||
+      !Number.isFinite(destinationHeight) ||
+      destinationHeight <= 0
+    )
+      return;
+    const resized =
+      measuredKeyboardHeight.current !== keyboard.layoutHeight &&
+      !state.transition;
+    measuredKeyboardHeight.current = keyboard.layoutHeight;
+    if (Math.abs(destinationHeight - measuredHeight.current) < 0.5) return;
+    const first = measuredHeight.current < 0;
+    measuredHeight.current = destinationHeight;
+    if (first) setHasMeasured(true);
+    if (!sharedEnabled)
+      contentHeight.value =
+        first || resized
+          ? destinationHeight
+          : animateTrayValue(destinationHeight, animation);
+  }, [
+    targetReady,
+    destinationHeight,
+    keyboard.layoutHeight,
+    state.transition,
+    animation,
+    contentHeight,
+    sharedEnabled,
+    layoutVersion,
+  ]);
   const wasFullScreen = useRef(fullScreen);
   useLayoutEffect(() => {
     if (sharedEnabled || wasFullScreen.current === fullScreen) return;
@@ -401,7 +535,12 @@ function TrayHost<P extends TrayParamList>({
   const sheetPosition = useAnimatedStyle(() => ({
     bottom: keyboardHeight.value,
   }));
-  const cardGeometry = useAnimatedStyle(() => {
+  const keyboardBackground = useAnimatedStyle(() => ({
+    height: keyboardHeight.value,
+    opacity: Math.max(0, Math.min(1, visualExpansion.value)),
+  }));
+  const cardHeight = useDerivedValue(() => {
+    if (!hasMeasured) return -1;
     const expanded = Math.max(0, Math.min(1, visualExpansion.value));
     const liveBottomInset = bottomInset * (1 - keyboardProgress.value);
     const liveGap = appearance === 'floating' ? liveBottomInset + 12 : 0;
@@ -410,18 +549,41 @@ function TrayHost<P extends TrayParamList>({
       -keyboardHeight.value * expanded -
       (appearance === 'sheet' ? bottomInset * keyboardProgress.value : 0) *
         (1 - expanded);
+    return Math.min(
+      Math.max(
+        headerHeight,
+        liveAvailableHeight - (topInset + liveGap + 6) * (1 - expanded)
+      ),
+      Math.max(headerHeight, visualHeight.value + keyboardCorrection)
+    );
+  });
+  const contentBottom = useDerivedValue(() => {
+    const expanded = Math.max(0, Math.min(1, visualExpansion.value));
+    return (
+      bottomInset *
+      (1 - keyboardProgress.value) *
+      (appearance === 'sheet' ? 1 : expanded)
+    );
+  });
+  const contentTop = useDerivedValue(
+    () =>
+      headerHeight + Math.max(0, Math.min(1, visualExpansion.value)) * topInset
+  );
+  // Full-screen endpoints keep their own size during tray navigation, but
+  // their viewport must follow keyboard frames alongside the outer card.
+  const fullScreenSpace = useDerivedValue(
+    () =>
+      height -
+      keyboardHeight.value -
+      topInset -
+      bottomInset * (1 - keyboardProgress.value)
+  );
+  const cardGeometry = useAnimatedStyle(() => {
+    const expanded = Math.max(0, Math.min(1, visualExpansion.value));
+    const liveBottomInset = bottomInset * (1 - keyboardProgress.value);
+    const liveGap = appearance === 'floating' ? liveBottomInset + 12 : 0;
     return {
-      ...(!hasMeasured
-        ? {}
-        : {
-            height: Math.min(
-              Math.max(
-                HEADER_HEIGHT,
-                liveAvailableHeight - (topInset + liveGap + 6) * (1 - expanded)
-              ),
-              Math.max(HEADER_HEIGHT, visualHeight.value + keyboardCorrection)
-            ),
-          }),
+      ...(cardHeight.value < 0 ? {} : { height: cardHeight.value }),
       marginHorizontal: margin * (1 - expanded),
       marginBottom: liveGap * (1 - expanded),
       borderRadius: 30 * (1 - expanded),
@@ -469,229 +631,311 @@ function TrayHost<P extends TrayParamList>({
         origins.delete(screenId(key));
       }
     }
+    for (const key of headerHeights.current.keys()) {
+      if (!retained.has(key)) headerHeights.current.delete(key);
+    }
   }, [state.entries, state.transition, origins, screenId]);
 
   return (
-    <View
-      style={styles.fill}
-      pointerEvents="box-none"
-      accessibilityViewIsModal
-      onAccessibilityEscape={tray.back}
-    >
-      <Pressable
+    <KeyboardContext.Provider value={keyboardState}>
+      <View
         style={styles.fill}
-        accessibilityRole="button"
-        accessibilityLabel="Dismiss tray"
-        onPress={tray.dismiss}
-      />
-      <BottomSheetProvider>
-        <ModalBottomSheet
-          detents={[...DETENTS]}
-          index={state.phase === 'closing' ? 0 : 1}
-          style={sheetPosition as ViewStyle}
-          wrapNativeView={Animated.createAnimatedComponent}
-          extendUnderStatusBar
-          animateIn={!reducedMotion}
-          animateContentHeight={false}
-          scrimColor="#000000"
-          scrimOpacities={[0, 0.35]}
-          onIndexChange={(index) => {
-            Keyboard.dismiss();
-            dispatch({ type: 'snapped', session: state.session, index });
-          }}
-          onSettle={(index) =>
-            dispatch({ type: 'settled', session: state.session, index })
-          }
-        >
-          <Animated.View
-            style={[styles.card, { backgroundColor }, cardGeometry]}
+        pointerEvents="box-none"
+        accessibilityViewIsModal
+        onAccessibilityEscape={tray.back}
+      >
+        <Pressable
+          style={styles.fill}
+          accessibilityRole="button"
+          accessibilityLabel="Dismiss tray"
+          onPress={tray.dismiss}
+        />
+        <BottomSheetProvider>
+          <ModalBottomSheet
+            detents={[...DETENTS]}
+            index={state.phase === 'closing' ? 0 : 1}
+            style={sheetPosition as ViewStyle}
+            wrapNativeView={Animated.createAnimatedComponent}
+            extendUnderStatusBar
+            animateIn={!reducedMotion}
+            animateContentHeight={false}
+            scrimColor="#000000"
+            scrimOpacities={[0, 0.35]}
+            onIndexChange={(index) => {
+              Keyboard.dismiss();
+              dispatch({ type: 'snapped', session: state.session, index });
+            }}
+            onSettle={(index) =>
+              dispatch({ type: 'settled', session: state.session, index })
+            }
           >
-            {/* A fixed viewport prevents ScrollView from feeding animated heights back into layout. */}
             <Animated.View
-              style={[
-                styles.centered,
-                {
-                  width: width - (fullScreen ? 0 : 2 * margin),
-                  height: hasMeasured
-                    ? maxHeight + HEADER_HEIGHT + paddingBottom
-                    : undefined,
-                },
-                contentPosition,
-              ]}
+              style={[styles.card, { backgroundColor }, cardGeometry]}
             >
-              <View
-                style={{ paddingBottom }}
-                onLayout={(event) => {
-                  const next = fullScreen
-                    ? height
-                    : event.nativeEvent.layout.height;
-                  if (!Number.isFinite(next) || next <= 0) return;
-                  const resized =
-                    measuredKeyboardHeight.current !== keyboard.layoutHeight &&
-                    !state.transition;
-                  measuredKeyboardHeight.current = keyboard.layoutHeight;
-                  if (Math.abs(next - measuredHeight.current) < 0.5) return;
-                  const first = measuredHeight.current < 0;
-                  measuredHeight.current = next;
-                  if (first) setHasMeasured(true);
-                  if (!sharedEnabled)
-                    contentHeight.value =
-                      first || resized
-                        ? next
-                        : animateTrayValue(next, animation);
-                }}
+              <Animated.View
+                style={[styles.headers, { backgroundColor }, contentPosition]}
               >
-                <View style={styles.handle} />
-                <Animated.View style={[styles.header, headerGeometry]}>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Back in tray"
-                    disabled={!canGoBack}
-                    accessibilityElementsHidden={!canGoBack}
-                    importantForAccessibility={
-                      canGoBack ? 'auto' : 'no-hide-descendants'
-                    }
-                    onPress={tray.back}
-                    style={styles.headerButton}
-                  >
-                    <Animated.View
-                      pointerEvents="none"
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                      style={backVisibility}
-                    >
-                      {renderBackIcon ? (
-                        renderBackIcon({ color: textColor, size: 24 })
-                      ) : (
-                        <Text style={[styles.back, { color: textColor }]}>
-                          ‹
-                        </Text>
-                      )}
-                    </Animated.View>
-                  </Pressable>
-                  <View style={styles.titles}>
-                    {changingTitle && previous && (
-                      <TrayTitle
-                        key={previous.key}
-                        active={false}
-                        color={textColor}
-                        progress={timeline}
-                        transitionId={transitionId}
-                        motionId={
-                          sharedEnabled ? sharedMotionId : progressTransitionId
-                        }
-                      >
-                        {previousTitle}
-                      </TrayTitle>
-                    )}
-                    <TrayTitle
-                      key={active.key}
-                      active
-                      color={textColor}
+                {headerEntries.map((entry) => {
+                  const isActive = entry.key === active.key;
+                  const entryRenderHeader =
+                    screens[entry.name]?.renderHeader ?? stackRenderHeader;
+                  const handleVisible =
+                    screens[entry.name]?.handleVisible ?? stackHandleVisible;
+                  const entryTitle = screens[entry.name]?.title ?? entry.name;
+                  const entryCanGoBack = isActive
+                    ? state.entries.length > 1
+                    : previousCanGoBack;
+                  const changingTitle =
+                    !crossfadeHeaders && previousTitle !== entryTitle;
+                  const expanded =
+                    screens[entry.name]?.presentation === 'fullScreen';
+                  return (
+                    <TrayHeaderLayer
+                      key={entryRenderHeader ? entry.key : 'default'}
+                      active={isActive}
+                      width={width - (expanded ? 0 : 2 * margin)}
                       progress={timeline}
-                      transitionId={changingTitle ? transitionId : undefined}
-                      motionId={
-                        sharedEnabled ? sharedMotionId : progressTransitionId
-                      }
+                      session={state.session}
+                      transitionId={crossfadeHeaders ? transitionId : undefined}
                     >
-                      {title}
-                    </TrayTitle>
-                  </View>
-                  <Pressable
-                    accessibilityRole="button"
-                    accessibilityLabel="Close tray"
-                    onPress={tray.dismiss}
-                    style={styles.headerButton}
-                  >
-                    <View
-                      pointerEvents="none"
-                      accessibilityElementsHidden
-                      importantForAccessibility="no-hide-descendants"
-                    >
-                      {renderCloseIcon ? (
-                        renderCloseIcon({ color: textColor, size: 24 })
+                      {handleVisible && <View style={styles.handle} />}
+                      {entryRenderHeader ? (
+                        <TrayCustomHeader
+                          active={isActive}
+                          key={entry.key}
+                          onHeight={(next) => {
+                            headerHeights.current.set(entry.key, next);
+                            setHeaderLayout((current) =>
+                              current.key === entry.key &&
+                              current.height === next
+                                ? current
+                                : {
+                                    key: entry.key,
+                                    custom: true,
+                                    height: next,
+                                  }
+                            );
+                          }}
+                        >
+                          <MemoTrayHeaderContent
+                            screenContext={ScreenContext}
+                            navigationContext={navigationContext}
+                            bindNavigation={bindNavigation}
+                            renderHeader={entryRenderHeader}
+                            route={entry as TrayRoute<P, keyof P & string>}
+                            title={entryTitle}
+                            canGoBack={entryCanGoBack}
+                            color={textColor}
+                          />
+                        </TrayCustomHeader>
                       ) : (
-                        <Text style={[styles.close, { color: textColor }]}>
-                          ×
-                        </Text>
+                        <Animated.View style={[styles.header, headerGeometry]}>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Back in tray"
+                            disabled={!entryCanGoBack}
+                            accessibilityElementsHidden={!entryCanGoBack}
+                            importantForAccessibility={
+                              entryCanGoBack ? 'auto' : 'no-hide-descendants'
+                            }
+                            onPress={tray.back}
+                            style={styles.headerButton}
+                          >
+                            <Animated.View
+                              pointerEvents="none"
+                              accessibilityElementsHidden
+                              importantForAccessibility="no-hide-descendants"
+                              style={
+                                crossfadeHeaders
+                                  ? { opacity: Number(entryCanGoBack) }
+                                  : backVisibility
+                              }
+                            >
+                              <Text style={[styles.back, { color: textColor }]}>
+                                ‹
+                              </Text>
+                            </Animated.View>
+                          </Pressable>
+                          <View style={styles.titles}>
+                            {changingTitle && previous && (
+                              <TrayTitle
+                                key={previous.key}
+                                active={false}
+                                color={textColor}
+                                progress={timeline}
+                                transitionId={transitionId}
+                                motionId={
+                                  sharedEnabled
+                                    ? sharedMotionId
+                                    : progressTransitionId
+                                }
+                              >
+                                {previousTitle}
+                              </TrayTitle>
+                            )}
+                            <TrayTitle
+                              key={entry.key}
+                              active
+                              color={textColor}
+                              progress={timeline}
+                              transitionId={
+                                changingTitle ? transitionId : undefined
+                              }
+                              motionId={
+                                sharedEnabled
+                                  ? sharedMotionId
+                                  : progressTransitionId
+                              }
+                            >
+                              {entryTitle}
+                            </TrayTitle>
+                          </View>
+                          <Pressable
+                            accessibilityRole="button"
+                            accessibilityLabel="Close tray"
+                            onPress={tray.dismiss}
+                            style={styles.headerButton}
+                          >
+                            <View
+                              pointerEvents="none"
+                              accessibilityElementsHidden
+                              importantForAccessibility="no-hide-descendants"
+                            >
+                              <Text
+                                style={[styles.close, { color: textColor }]}
+                              >
+                                ×
+                              </Text>
+                            </View>
+                          </Pressable>
+                        </Animated.View>
                       )}
-                    </View>
-                  </Pressable>
-                </Animated.View>
-                <View
-                  style={{
-                    maxHeight,
-                    height: fullScreen ? maxHeight : undefined,
-                  }}
-                >
-                  {entries.map((entry) => {
-                    const entryFullScreen =
-                      screens[entry.name]?.presentation === 'fullScreen';
-                    const Component = screens[entry.name]?.component as
-                      | React.ComponentType<TrayScreenProps<P>>
-                      | undefined;
-                    if (!Component) return null;
-                    return (
-                      <TrayPage
-                        key={entry.key}
-                        screenId={screenId(entry.key)}
-                        shared={sharedEnabled}
-                        sharedStarted={sharedStarted}
-                        sharedMotionId={sharedMotionId}
-                        direction={state.transition?.direction ?? 1}
-                        onPageLayout={(pageHeight) => {
-                          const entryPadding =
-                            entryFullScreen || appearance === 'sheet'
-                              ? safeBottomInset
-                              : 0;
-                          const cardHeight = entryFullScreen
-                            ? availableHeight
-                            : pageHeight + HEADER_HEIGHT + entryPadding;
-                          origins.set(screenId(entry.key), {
-                            x: entryFullScreen ? 0 : margin,
-                            y:
-                              availableHeight -
-                              cardHeight -
-                              (entryFullScreen ? 0 : gap) +
-                              (entryFullScreen ? topInset : 0) +
-                              HEADER_HEIGHT,
-                          });
-                          if (
-                            pageHeights.current.get(entry.key) !== pageHeight
-                          ) {
-                            pageHeights.current.set(entry.key, pageHeight);
-                            setLayoutVersion((version) => version + 1);
-                          }
-                        }}
-                        active={entry.key === active.key}
-                        from={state.transition?.from === entry.key}
-                        transitioning={!!state.transition}
-                        progress={sharedEnabled ? sharedProgress : progress}
-                        progressTransitionId={progressTransitionId}
-                        animation={animation}
-                        session={state.session}
-                        transitionId={state.transition?.id}
-                        onComplete={complete}
-                        maxHeight={
-                          entryFullScreen ? fullScreenMaxHeight : trayMaxHeight
-                        }
-                        fullScreen={entryFullScreen}
-                        width={width - (entryFullScreen ? 0 : 2 * margin)}
-                      >
-                        <MemoTrayContent
-                          component={Component}
-                          route={entry as TrayRoute<P>}
-                          tray={tray}
-                        />
-                      </TrayPage>
-                    );
-                  })}
-                </View>
-              </View>
+                    </TrayHeaderLayer>
+                  );
+                })}
+              </Animated.View>
+              {entries.map((entry) => {
+                const entryFullScreen =
+                  screens[entry.name]?.presentation === 'fullScreen';
+                const entryHeaderHeight = headerHeightFor(entry);
+                const Component = screens[entry.name]?.component as
+                  | React.ComponentType<TrayScreenProps<P>>
+                  | undefined;
+                if (!Component) return null;
+                return (
+                  <TrayPage
+                    key={entry.key}
+                    screenId={screenId(entry.key)}
+                    shared={sharedEnabled}
+                    sharedStarted={sharedStarted}
+                    sharedMotionId={sharedMotionId}
+                    direction={state.transition?.direction ?? 1}
+                    onPageLayout={(pageHeight) => {
+                      const entryPadding =
+                        entryFullScreen || appearance === 'sheet'
+                          ? safeBottomInset
+                          : 0;
+                      const entryCardHeight = entryFullScreen
+                        ? availableHeight
+                        : pageHeight + entryHeaderHeight + entryPadding;
+                      origins.set(screenId(entry.key), {
+                        x: entryFullScreen ? 0 : margin,
+                        y:
+                          availableHeight -
+                          entryCardHeight -
+                          (entryFullScreen ? 0 : gap) +
+                          (entryFullScreen ? topInset : 0) +
+                          entryHeaderHeight,
+                      });
+                      if (pageHeights.current.get(entry.key) !== pageHeight) {
+                        pageHeights.current.set(entry.key, pageHeight);
+                        setLayoutVersion((version) => version + 1);
+                      }
+                    }}
+                    active={entry.key === active.key}
+                    from={state.transition?.from === entry.key}
+                    transitioning={!!state.transition}
+                    progress={sharedEnabled ? sharedProgress : progress}
+                    progressTransitionId={progressTransitionId}
+                    animation={animation}
+                    session={state.session}
+                    transitionId={state.transition?.id}
+                    onComplete={complete}
+                    maxHeight={maxHeightFor(entryFullScreen, entryHeaderHeight)}
+                    fullScreen={entryFullScreen}
+                    fullScreenSpace={fullScreenSpace}
+                    headerHeight={entryHeaderHeight}
+                    anchor={screens[entry.name]?.anchor ?? anchor}
+                    contentTop={contentTop}
+                    contentBottom={contentBottom}
+                    width={width - (entryFullScreen ? 0 : 2 * margin)}
+                  >
+                    <MemoTrayContent
+                      screenContext={ScreenContext}
+                      navigationContext={navigationContext}
+                      bindNavigation={bindNavigation}
+                      component={Component}
+                      route={entry as TrayRoute<P>}
+                    />
+                  </TrayPage>
+                );
+              })}
             </Animated.View>
-          </Animated.View>
-        </ModalBottomSheet>
-      </BottomSheetProvider>
+          </ModalBottomSheet>
+        </BottomSheetProvider>
+        {/* Keep the full-screen surface behind translucent keyboards without
+          adding the covered area to the sheet's content detent. */}
+        <Animated.View
+          pointerEvents="none"
+          accessibilityElementsHidden
+          importantForAccessibility="no-hide-descendants"
+          style={[
+            styles.keyboardBackground,
+            { backgroundColor },
+            keyboardBackground,
+          ]}
+        />
+      </View>
+    </KeyboardContext.Provider>
+  );
+}
+
+function TrayCustomHeader({
+  children,
+  active,
+  onHeight,
+}: {
+  children: React.ReactNode;
+  active: boolean;
+  onHeight: (height: number) => void;
+}) {
+  const current = useRef({ active, onHeight });
+  const lastHeight = useRef<number | undefined>(undefined);
+  useLayoutEffect(() => {
+    current.current = { active, onHeight };
+    // A queued Back can reactivate this same header before it ever unmounts.
+    if (active && lastHeight.current !== undefined)
+      onHeight(lastHeight.current);
+  });
+  const mounted = useRef(true);
+  useLayoutEffect(() => {
+    mounted.current = true;
+    return () => {
+      mounted.current = false;
+    };
+  }, []);
+  return (
+    <View
+      onLayout={(event) => {
+        const next = event.nativeEvent.layout.height;
+        if (!mounted.current || !Number.isFinite(next) || next < 0) return;
+        if (current.current.active) {
+          lastHeight.current = next;
+          current.current.onHeight(next);
+        }
+      }}
+    >
+      {children}
     </View>
   );
 }
@@ -734,14 +978,58 @@ function TrayTitle({
   );
 }
 
+function TrayHeaderContent<P extends TrayParamList>({
+  screenContext: ScreenContext,
+  navigationContext: NavigationContext,
+  bindNavigation,
+  renderHeader,
+  ...props
+}: Omit<TrayHeaderProps<P>, 'tray'> & {
+  screenContext: React.Context<string | undefined>;
+  navigationContext: React.Context<TrayNavigation<P> | null>;
+  bindNavigation: (key: string) => TrayNavigation<P>;
+  renderHeader: (props: TrayHeaderProps<P>) => React.ReactNode;
+}) {
+  const tray = useMemo(
+    () => bindNavigation(props.route.key),
+    [bindNavigation, props.route.key]
+  );
+  return (
+    <ScreenContext.Provider value={props.route.key}>
+      <NavigationContext.Provider value={tray}>
+        {renderHeader({ ...props, tray })}
+      </NavigationContext.Provider>
+    </ScreenContext.Provider>
+  );
+}
+
+const MemoTrayHeaderContent = memo(
+  TrayHeaderContent
+) as typeof TrayHeaderContent;
+
 function TrayContent<P extends TrayParamList>({
   component: Component,
+  screenContext: ScreenContext,
+  navigationContext: NavigationContext,
+  bindNavigation,
   route,
-  tray,
-}: TrayScreenProps<P> & {
+}: Omit<TrayScreenProps<P>, 'tray'> & {
   component: React.ComponentType<TrayScreenProps<P>>;
+  screenContext: React.Context<string | undefined>;
+  navigationContext: React.Context<TrayNavigation<P> | null>;
+  bindNavigation: (key: string) => TrayNavigation<P>;
 }) {
-  return <Component route={route} tray={tray} />;
+  const tray = useMemo(
+    () => bindNavigation(route.key),
+    [bindNavigation, route.key]
+  );
+  return (
+    <ScreenContext.Provider value={route.key}>
+      <NavigationContext.Provider value={tray}>
+        <Component route={route} tray={tray} />
+      </NavigationContext.Provider>
+    </ScreenContext.Provider>
+  );
 }
 
 const MemoTrayContent = memo(TrayContent) as typeof TrayContent;
@@ -764,6 +1052,11 @@ function TrayPage({
   onComplete,
   maxHeight,
   fullScreen,
+  fullScreenSpace,
+  headerHeight,
+  anchor,
+  contentTop,
+  contentBottom,
   width,
   children,
 }: {
@@ -784,6 +1077,11 @@ function TrayPage({
   onComplete: (session: number, id: number) => void;
   maxHeight: number;
   fullScreen: boolean;
+  fullScreenSpace: SharedValue<number>;
+  headerHeight: number;
+  anchor: 'top' | 'bottom';
+  contentTop: SharedValue<number>;
+  contentBottom: SharedValue<number>;
   width: number;
   children: React.ReactNode;
 }) {
@@ -801,8 +1099,10 @@ function TrayPage({
     [actions, screenId]
   );
   useLayoutEffect(() => {
-    if (lastHeight.current !== undefined) onPageLayout(lastHeight.current);
-  }, [active, maxHeight, width, onPageLayout]);
+    if (lastHeight.current === undefined) return;
+    if (fullScreen) lastHeight.current = maxHeight;
+    onPageLayout(lastHeight.current);
+  }, [active, fullScreen, maxHeight, width, onPageLayout]);
   // Wait for the portal to commit the destination before starting its transition.
   const startedTransition = useRef<number | undefined>(undefined);
   useLayoutEffect(() => {
@@ -851,6 +1151,21 @@ function TrayPage({
       opacity: active ? opacity : from ? 1 - opacity : 0,
     };
   });
+  const viewportSize = useAnimatedStyle(() => ({
+    height: fullScreen
+      ? Math.max(0, fullScreenSpace.value - headerHeight)
+      : maxHeight,
+  }));
+  // Yoga sizes full-screen descendants from this viewport in the same commit
+  // as the keyboard-driven card resize, including bottom-anchored pages.
+  const anchorStyle = useAnimatedStyle(() => ({
+    transform: [
+      {
+        translateY:
+          anchor === 'bottom' ? -contentBottom.value : contentTop.value,
+      },
+    ],
+  }));
   const [visibleTransition, setVisibleTransition] = useState<number>();
   const visibilityRequest = useRef<{ session: number; id: number } | undefined>(
     undefined
@@ -883,42 +1198,55 @@ function TrayPage({
   const blocked = !active || preparing || (shared && !sharedStarted);
   const staticOpacity = active && preparing ? 0 : 1;
   return (
-    <View
-      ref={pageRef}
-      collapsable={false}
-      onLayout={(event) => {
-        const height = event.nativeEvent.layout.height;
-        lastHeight.current = height;
-        onPageLayout(height);
-        actions.setScreenReady(screenId, height > 0);
-      }}
+    <Animated.View
       style={[
         styles.centered,
-        active ? styles.activePage : styles.inactivePage,
-        {
-          maxHeight,
-          height: fullScreen ? maxHeight : undefined,
-          width,
-          opacity: staticOpacity,
-        },
+        styles.pageViewport,
+        anchor === 'bottom' ? styles.bottomPage : styles.topPage,
+        { width },
+        viewportSize,
+        anchorStyle,
       ]}
-      pointerEvents={blocked ? 'none' : 'auto'}
-      accessibilityElementsHidden={blocked}
-      importantForAccessibility={blocked ? 'no-hide-descendants' : 'auto'}
+      pointerEvents={blocked ? 'none' : 'box-none'}
     >
-      <Animated.View
+      <View
+        ref={pageRef}
+        collapsable={false}
+        onLayout={(event) => {
+          const height = event.nativeEvent.layout.height;
+          if (!Number.isFinite(height) || height < 0) return;
+          // Full-screen sizing is already known. Intermediate keyboard layouts
+          // must not feed per-frame heights back into the React stack state.
+          const pageHeight = fullScreen ? maxHeight : height;
+          lastHeight.current = pageHeight;
+          onPageLayout(pageHeight);
+          actions.setScreenReady(screenId, height > 0);
+        }}
         style={[
-          { maxHeight, height: fullScreen ? maxHeight : undefined },
-          pageStyle,
+          styles.centered,
+          styles.pageContent,
+          anchor === 'bottom' ? styles.bottomPage : styles.topPage,
+          {
+            ...(fullScreen ? { height: '100%' } : { maxHeight }),
+            width,
+            opacity: staticOpacity,
+          },
         ]}
+        pointerEvents={blocked ? 'none' : 'auto'}
+        accessibilityElementsHidden={blocked}
+        importantForAccessibility={blocked ? 'no-hide-descendants' : 'auto'}
       >
-        <ScreenIdContext.Provider value={screenId}>
-          <ChoreographyProgressProvider>
-            {children}
-          </ChoreographyProgressProvider>
-        </ScreenIdContext.Provider>
-      </Animated.View>
-    </View>
+        <Animated.View
+          style={[fullScreen ? styles.fillHeight : { maxHeight }, pageStyle]}
+        >
+          <ScreenIdContext.Provider value={screenId}>
+            <ChoreographyProgressProvider>
+              {children}
+            </ChoreographyProgressProvider>
+          </ScreenIdContext.Provider>
+        </Animated.View>
+      </View>
+    </Animated.View>
   );
 }
 
@@ -927,6 +1255,7 @@ const styles = StyleSheet.create({
   fill: { ...StyleSheet.absoluteFillObject },
   card: { overflow: 'hidden' },
   centered: { alignSelf: 'center' },
+  headers: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 },
   handle: {
     width: 32,
     height: 4,
@@ -941,7 +1270,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 12,
-    height: 56,
+    height: DEFAULT_HEADER_HEIGHT,
   },
   headerButton: {
     width: 44,
@@ -954,6 +1283,10 @@ const styles = StyleSheet.create({
   titles: { flex: 1, justifyContent: 'center' },
   previousTitle: { position: 'absolute', left: 0, right: 0 },
   title: { textAlign: 'center', fontSize: 16, fontWeight: '600' },
-  activePage: { position: 'relative' },
-  inactivePage: { position: 'absolute', top: 0 },
+  pageViewport: { position: 'absolute' },
+  pageContent: { position: 'absolute' },
+  fillHeight: { height: '100%' },
+  keyboardBackground: { position: 'absolute', left: 0, right: 0, bottom: 0 },
+  topPage: { top: 0 },
+  bottomPage: { bottom: 0 },
 });

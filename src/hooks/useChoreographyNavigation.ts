@@ -139,8 +139,7 @@ export function useChoreographyNavigator({
   const waitForReplayWindow = useCallback(async () => {
     const replayWaitStartedAt = nowMs();
     logNavigation(() => `replay window wait start screen=${currentScreenId}`);
-    // One frame is enough for the removal commit to reach the navigator; a
-    // second frame only delayed a queued follow-up tap by a full frame.
+    // Yield for the navigator's removal commit before replaying a queued tap.
     await waitForNextFrame();
     logNavigation(
       () =>

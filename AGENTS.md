@@ -35,6 +35,7 @@ Use these files as the source of truth:
 - `src/debug/`: logger
 - `examples/react-navigation/`: bare React Native example app
 - `examples/expo-router/`: Expo Router development-build example app
+- `examples/shared/`: private `@screen-choreography/example-shared` workspace package; both apps import its declared entry points. Keep runtime dependencies as peers so Metro uses each app's versions.
 - `docs/`: Markdown documentation and a VitePress site in a Yarn workspace; custom theme in `docs/.vitepress/`
 - `__tests__/`: Jest coverage for core utilities and infrastructure
 - `android/` and `ios/`: native transition host implementation

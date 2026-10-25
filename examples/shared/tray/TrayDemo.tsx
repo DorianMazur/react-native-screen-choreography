@@ -10,6 +10,7 @@ import {
 } from 'react-native';
 import {
   createTray,
+  type TrayHeaderProps,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
@@ -21,7 +22,8 @@ import {
   type TransitionRendererProps,
 } from 'react-native-screen-choreography/core';
 import { useSafeAreaInsets } from '../runtime';
-import { AppIcon } from '../AppChrome';
+import { TrayLauncher } from './TrayLauncher';
+import { DemoTrayButton, DemoTrayHeader, trayTheme } from './TrayChrome';
 
 type Routes = {
   actions: undefined;
@@ -32,9 +34,24 @@ type Routes = {
   settings: undefined;
 };
 const Tray = createTray<Routes>();
-const ink = '#f4f5f7';
-const muted = '#969aa5';
-const accent = '#c8f79d';
+const { text: ink, muted, accent } = trayTheme;
+
+function WalletHeader({
+  title,
+  canGoBack,
+  tray,
+  color,
+}: TrayHeaderProps<Routes>) {
+  return (
+    <DemoTrayHeader
+      eyebrow="WALLET"
+      title={title}
+      color={color}
+      onBack={canGoBack ? tray.back : undefined}
+      onClose={tray.dismiss}
+    />
+  );
+}
 
 function Action({
   title,
@@ -79,20 +96,15 @@ function Button({
   disabled?: boolean;
 }) {
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel={title}
-      disabled={disabled}
+    <DemoTrayButton
+      title={title}
       onPress={onPress}
-      style={({ pressed }) => [
-        styles.button,
-        (pressed || disabled) && styles.pressed,
-      ]}
-    >
-      <Text style={styles.buttonText}>{title}</Text>
-    </Pressable>
+      disabled={disabled}
+      style={styles.buttonSpacing}
+    />
   );
 }
+
 function Actions({ tray }: TrayScreenProps<Routes, 'actions'>) {
   return (
     <View style={styles.body}>
@@ -347,16 +359,13 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
     <Tray.Provider>
       {children}
       <Tray.Stack
+        anchor="bottom"
         topInset={insets.top + 12}
         bottomInset={insets.bottom}
-        backgroundColor="#23252b"
+        backgroundColor={trayTheme.background}
         textColor={ink}
-        renderBackIcon={({ size }) => (
-          <AppIcon name="back" color={ink} size={size} />
-        )}
-        renderCloseIcon={({ size }) => (
-          <AppIcon name="close" color={ink} size={size} />
-        )}
+        renderHeader={(props) => <WalletHeader {...props} />}
+        handleVisible={false}
         animation={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
         <Tray.Screen
@@ -382,7 +391,7 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
         <Tray.Screen
           name="success"
           component={Success}
-          options={{ title: 'Payment sent' }}
+          options={{ title: 'Payment sent', renderHeader: () => null }}
         />
         <Tray.Screen
           name="settings"
@@ -397,21 +406,12 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
 export function TrayDemoLauncher() {
   const tray = Tray.useTray();
   return (
-    <Pressable
-      accessibilityRole="button"
-      accessibilityLabel="Dynamic tray"
+    <TrayLauncher
+      title="Wallet dynamic tray"
+      subtitle="A wallet that moves with you"
+      icon="wallet"
       onPress={() => tray.present('actions')}
-      style={({ pressed }) => [styles.launcher, pressed && styles.pressed]}
-    >
-      <View style={styles.launcherIcon}>
-        <Text style={styles.symbolText}>↗</Text>
-      </View>
-      <View style={styles.grow}>
-        <Text style={styles.launcherTitle}>Dynamic tray</Text>
-        <Text style={styles.muted}>A wallet that moves with you</Text>
-      </View>
-      <Text style={styles.chevron}>›</Text>
-    </Pressable>
+    />
   );
 }
 
@@ -424,7 +424,7 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     gap: 14,
     borderBottomWidth: StyleSheet.hairlineWidth,
-    borderBottomColor: '#ffffff12',
+    borderBottomColor: trayTheme.border,
   },
   actionTitle: { color: ink, fontSize: 16, fontWeight: '500' },
   muted: { color: muted, fontSize: 12 },
@@ -434,12 +434,12 @@ const styles = StyleSheet.create({
     borderRadius: 15,
     alignItems: 'center',
     justifyContent: 'center',
-    backgroundColor: '#33373b',
+    backgroundColor: trayTheme.surfaceRaised,
   },
   avatar: {
     width: '100%',
     height: '100%',
-    backgroundColor: '#33373b',
+    backgroundColor: trayTheme.surfaceRaised,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -455,15 +455,7 @@ const styles = StyleSheet.create({
     textAlign: 'center',
     lineHeight: 21,
   },
-  button: {
-    backgroundColor: accent,
-    minHeight: 54,
-    borderRadius: 18,
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginTop: 16,
-  },
-  buttonText: { color: '#24331c', fontSize: 16, fontWeight: '600' },
+  buttonSpacing: { marginTop: 16 },
   pressed: { opacity: 0.55 },
   label: {
     color: muted,
@@ -483,7 +475,7 @@ const styles = StyleSheet.create({
   },
   input: {
     borderRadius: 14,
-    backgroundColor: '#30333b',
+    backgroundColor: trayTheme.surface,
     color: ink,
     fontSize: 16,
     padding: 16,
@@ -512,7 +504,7 @@ const styles = StyleSheet.create({
     width: 72,
     height: 72,
     borderRadius: 24,
-    backgroundColor: '#c8f79d18',
+    backgroundColor: trayTheme.accentSoft,
     alignItems: 'center',
     justifyContent: 'center',
     marginBottom: 6,
@@ -526,23 +518,4 @@ const styles = StyleSheet.create({
     paddingVertical: 18,
   },
   successTitle: { color: ink, fontSize: 32, fontWeight: '600' },
-  launcher: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: 14,
-    marginHorizontal: 24,
-    marginTop: 24,
-    padding: 18,
-    backgroundColor: '#23252b',
-    borderRadius: 24,
-  },
-  launcherIcon: {
-    width: 44,
-    height: 44,
-    alignItems: 'center',
-    justifyContent: 'center',
-    backgroundColor: '#c8f79d16',
-    borderRadius: 16,
-  },
-  launcherTitle: { color: ink, fontSize: 18, fontWeight: '600' },
 });

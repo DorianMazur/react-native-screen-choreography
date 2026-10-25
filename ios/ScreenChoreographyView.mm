@@ -479,7 +479,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
       NSUInteger dismissalId = ++_dismissalRequestId;
       __weak __typeof(self) weakSelf = self;
       // Keep the live container attached while pending portal commits settle.
-      // Preserve the existing queue delay; it does not guarantee display frames.
+      // Main-queue turns do not guarantee display frames.
       dispatch_async(dispatch_get_main_queue(), ^{
         dispatch_async(dispatch_get_main_queue(), ^{
           __strong __typeof(weakSelf) strongSelf = weakSelf;

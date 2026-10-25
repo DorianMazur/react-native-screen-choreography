@@ -12,6 +12,8 @@ export type TrayCommand =
         name: string;
         params: unknown;
         groupId?: string;
+        /** Bound internally for pushes originating in a tray screen/header. */
+        sourceRouteKey?: string;
       };
     }['present' | 'push' | 'replace']
   | { type: 'back' }
@@ -22,6 +24,10 @@ export interface TrayStackState {
   session: number;
   revision: number;
   phase: 'closed' | 'opening' | 'open' | 'closing';
+  /** Whether this session has received its first native open settlement. */
+  presented: boolean;
+  /** Whether native opening or reopening after an interrupted dismissal has settled. */
+  nativeSettled: boolean;
   entries: TrayEntry[];
   preparation?: {
     id: number;
@@ -45,6 +51,8 @@ export const initialTrayState: TrayStackState = {
   session: 0,
   revision: 0,
   phase: 'closed',
+  presented: false,
+  nativeSettled: false,
   entries: [],
   queue: [],
   dismissals: 0,
@@ -66,14 +74,36 @@ function drain(state: TrayStackState): TrayStackState {
   )
     return state;
   const [command, ...queue] = state.queue;
-  return command ? trayReducer({ ...state, queue }, command) : state;
+  return command
+    ? drain(trayReducer({ ...state, queue }, command, false, true))
+    : state;
 }
 
 export function trayReducer(
   state: TrayStackState,
   action: TrayAction,
-  prepared = false
+  prepared = false,
+  replaying = false
 ): TrayStackState {
+  if (action.type === 'push' && !prepared) {
+    if (
+      state.phase !== 'open' ||
+      state.preparation ||
+      (state.queue.length && !replaying) ||
+      (action.sourceRouteKey !== undefined &&
+        state.entries[state.entries.length - 1]?.key !== action.sourceRouteKey)
+    )
+      return state;
+    if (state.transition) {
+      // A returning screen can receive input before the spring or native
+      // handoff finishes. Keep its first push; stale outgoing callbacks and
+      // repeat taps must not add destinations behind it.
+      return state.transition.direction === -1 &&
+        action.sourceRouteKey === state.transition.to
+        ? { ...state, queue: [action] }
+        : state;
+    }
+  }
   if (action.type === 'prepared') {
     if (
       action.session !== state.session ||
@@ -97,7 +127,13 @@ export function trayReducer(
       return state;
     if (action.type === 'snapped') {
       return action.index === 0
-        ? { ...state, phase: 'closing', preparation: undefined, queue: [] }
+        ? {
+            ...state,
+            phase: 'closing',
+            nativeSettled: false,
+            preparation: undefined,
+            queue: [],
+          }
         : drain({ ...state, phase: 'open' });
     }
     if (action.index === 0 && state.phase === 'closing') {
@@ -105,6 +141,7 @@ export function trayReducer(
       const closed: TrayStackState = {
         ...state,
         phase: 'closed',
+        nativeSettled: false,
         entries: [],
         transition: undefined,
         queue: [],
@@ -112,14 +149,27 @@ export function trayReducer(
       };
       return next ? trayReducer(closed, next) : closed;
     }
-    return action.index === 1 && state.phase === 'opening'
-      ? drain({ ...state, phase: 'open' })
+    return action.index === 1 &&
+      (state.phase === 'opening' || state.phase === 'open') &&
+      !state.nativeSettled
+      ? drain({
+          ...state,
+          phase: 'open',
+          presented: true,
+          nativeSettled: true,
+        })
       : state;
   }
   if (action.type === 'dismiss') {
     return state.phase === 'closed'
       ? state
-      : { ...state, phase: 'closing', preparation: undefined, queue: [] };
+      : {
+          ...state,
+          phase: 'closing',
+          nativeSettled: false,
+          preparation: undefined,
+          queue: [],
+        };
   }
   if (action.type === 'present' && state.phase === 'closed') {
     const revision = state.revision + 1;
@@ -128,6 +178,8 @@ export function trayReducer(
       session: state.session + 1,
       revision,
       phase: 'opening',
+      presented: false,
+      nativeSettled: false,
       entries: [
         { key: String(revision), name: action.name, params: action.params },
       ],

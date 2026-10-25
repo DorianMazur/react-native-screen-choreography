@@ -169,8 +169,7 @@ function readPreparationTrace(
     if (stageStart < start || stageStart + duration > end + 0.001) {
       throw new Error('Preparation stage extends beyond its trace');
     }
-    // One sample per journey, even when a stage repeats (for example a target
-    // measurement poll). Nested parent/child stages remain separate metrics.
+    // Repeated stages contribute one sample per journey; nested stages stay separate.
     durations.set(stage.name, (durations.get(stage.name) ?? 0) + duration);
   }
   add(metrics, `${prefix}.overlayReadinessTimeout`, acknowledged ? 0 : 1);

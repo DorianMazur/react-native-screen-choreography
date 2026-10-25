@@ -1,7 +1,9 @@
 export { createTray } from '../tray/createTray';
 export type {
   TrayAnimationConfig,
-  TrayHeaderIconProps,
+  TrayFocusEffectOptions,
+  TrayHeaderProps,
+  TrayKeyboardState,
   TrayNavigation,
   TrayNavigationOptions,
   TrayParamList,

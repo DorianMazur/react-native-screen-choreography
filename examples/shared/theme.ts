@@ -21,7 +21,6 @@ export const theme = {
   warn: '#F1CA81',
   danger: '#F3A49D',
 
-  // Per-demo accent palettes
   wallet: {
     accent: '#D4F77D',
     glow: 'rgba(212, 247, 125, 0.12)',

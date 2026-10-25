@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { withExampleScreen } from '../../ExampleScreen';
-import { TokenDetailScreen } from '../../../../shared/wallet/TokenDetailScreen';
+import { TokenDetailScreen } from '@screen-choreography/example-shared/wallet';
 
 function TokenDetailRoute() {
   const { tokenId } = useLocalSearchParams<{ tokenId: string }>();

@@ -11,6 +11,7 @@ import { AppIcon } from './AppChrome';
 import { SafeAreaView, useExampleNavigation } from './runtime';
 import { theme } from './theme';
 import { TrayDemoLauncher } from './tray/TrayDemo';
+import { GalleryPlusTrayLauncher } from './tray/GalleryPlusTray';
 
 const demos = [
   {
@@ -85,7 +86,10 @@ export function LandingScreen() {
             <AppIcon name="arrow" size={18} color={theme.textSecondary} />
           </Pressable>
         ))}
-        <TrayDemoLauncher />
+        <View style={styles.trays}>
+          <TrayDemoLauncher />
+          <GalleryPlusTrayLauncher />
+        </View>
       </ScrollView>
     </SafeAreaView>
   );
@@ -94,6 +98,7 @@ export function LandingScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg },
   scroll: { paddingBottom: 32 },
+  trays: { marginTop: 24, gap: 14 },
   header: {
     paddingHorizontal: 24,
     paddingTop: 28,

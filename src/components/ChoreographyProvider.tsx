@@ -89,9 +89,8 @@ function TransitionHostPortal({
 interface ChoreographyProviderProps {
   children: React.ReactNode;
   /**
-   * Enable debug logging. `true` enables info/warn/error. Pass a structured
-   * object for level/category control (e.g. `{ level: 'trace' }` for
-   * per-frame measurement traces).
+   * Enable logging. `true` uses the info level; `{ level: 'trace' }` includes
+   * detailed readiness and lifecycle logs.
    */
   debug?: ChoreographyDebugConfig;
   /** Called when a transition session becomes active with pairs resolved */
@@ -358,10 +357,6 @@ export function ChoreographyProvider({
       ) {
         onTransitionStartRef.current?.(session);
       }
-
-      // Hiding is driven by handleOverlayReady / handleHostPresentationReady
-      // so reals are hidden the same frame the overlay first paints. Hiding
-      // here would cause a one-frame blank flash at transition start.
     });
   }, [
     navigationController,
@@ -793,7 +788,6 @@ export function ChoreographyProvider({
   const handleOverlayReady = useCallback(
     (sessionId: string) => {
       const session = activeSessionRef.current;
-      // Ignore stale acks from a previous session's layout effect.
       if (!session || session.id !== sessionId) return;
       if (session.state === 'active' && session.pairs.length > 0) {
         overlayContentReadySessionIdRef.current = sessionId;
