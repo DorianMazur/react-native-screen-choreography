@@ -32,6 +32,25 @@ function createOperation() {
 }
 
 describe('reverse settlement ordering', () => {
+  test('abandoning a prepared operation cannot release a later operation with the same session ID', async () => {
+    const controller = new ReverseTransitionController();
+    const first = createOperation();
+    const firstCompletion = controller.start(first.config);
+    controller.abandon('reverse', firstCompletion);
+    await firstCompletion;
+    expect(first.config.cancel).not.toHaveBeenCalled();
+    expect(first.config.handoff).not.toHaveBeenCalled();
+    const second = createOperation();
+    const secondCompletion = controller.start(second.config);
+    controller.abandon('reverse', firstCompletion);
+    expect(controller.owns('reverse')).toBe(true);
+    first.finishAnimation();
+    expect(first.config.commitNavigation).not.toHaveBeenCalled();
+    controller.abandon('reverse', secondCompletion);
+    await secondCompletion;
+    expect(second.config.cancel).not.toHaveBeenCalled();
+    expect(second.config.handoff).not.toHaveBeenCalled();
+  });
   test.each(['before', 'after'] as const)(
     'source unmount %s animation completion hands off without waiting for navigation acknowledgement',
     async (order) => {

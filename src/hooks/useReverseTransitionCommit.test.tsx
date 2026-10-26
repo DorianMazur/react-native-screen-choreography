@@ -18,6 +18,12 @@ import {
 import type { TransitionSessionData } from '../types';
 import { useReverseTransitionCommit } from './useReverseTransitionCommit';
 import type { ScreenAnimationLifetime } from './useScreenAnimationLifetime';
+import { NativeTransitionHost } from '../native/NativeTransitionHost';
+
+jest.mock(
+  '../native/ScreenChoreographyViewNativeComponent',
+  () => 'ScreenChoreographyView'
+);
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -63,16 +69,18 @@ async function mountHook({
   direction = 'backward',
   animationLifetime,
   trace = false,
+  queuePresentation = false,
 }: {
   registerSource?: boolean;
   direction?: 'forward' | 'backward';
   animationLifetime?: ScreenAnimationLifetime;
   trace?: boolean;
+  queuePresentation?: boolean;
 } = {}) {
   const visibility = new ElementVisibilityRegistry();
   const sourceHidden = visibility.get('source', false);
   const targetHidden = visibility.get('target', false);
-  const progress = makeMutable(0.7);
+  const progress = makeMutable(queuePresentation ? 1 : 0.7);
   const interactionOwner = makeMutable<string | null>(null);
   const progressOwnership = new ProgressOwnership(
     makeMutable(0),
@@ -83,7 +91,7 @@ async function mountHook({
   navigationController.acquireNavigationLock('article');
   const releaseLock = jest.spyOn(navigationController, 'releaseNavigationLock');
   const presentation = createNativePresentation([], () => true, trace);
-  presentation.phase.value = 2;
+  presentation.phase.value = queuePresentation ? 0 : 2;
   let session: TransitionSessionData = {
     id: 'reverse',
     groupId: 'group',
@@ -106,6 +114,8 @@ async function mountHook({
   };
   adoptSession();
   let api!: ReturnType<typeof useReverseTransitionCommit>;
+  const presented = jest.fn();
+  const presentationFailed = jest.fn();
   function Harness() {
     api = useReverseTransitionCommit({
       progress,
@@ -116,7 +126,17 @@ async function mountHook({
       completeTransition,
       cancelTransition,
     });
-    return null;
+    return queuePresentation ? (
+      <NativeTransitionHost
+        active
+        ownership={progressOwnership}
+        progress={progress}
+        sessionId={session.id}
+        presentation={presentation}
+        onPresentationReady={presented}
+        onPresentationFailed={presentationFailed}
+      />
+    ) : null;
   }
   let tree!: ReactTestRenderer;
   await act(async () => {
@@ -144,6 +164,8 @@ async function mountHook({
     targetHidden,
     progress,
     presentation,
+    presented,
+    presentationFailed,
     progressOwnership,
     interactionOwner,
     navigationController,
@@ -168,9 +190,24 @@ async function mountHook({
           token,
           navigateBack,
           options: duration ? { duration } : undefined,
+          presentation: queuePresentation ? presentation : undefined,
         });
       });
       return { completion, navigation, navigateBack };
+    },
+    reactToPresentation() {
+      const [read, react] = (useAnimatedReaction as jest.Mock).mock.calls.at(
+        -1
+      )!;
+      react(read(), null);
+    },
+    acknowledge(stage: 'attached' | 'presented' = 'presented') {
+      tree.root
+        .findByType('ScreenChoreographyView' as React.ElementType)
+        .props.onPresentationReady({
+          nativeEvent: { sessionId: session.id, stage },
+        });
+      this.reactToPresentation();
     },
     finishAnimation() {
       const onComplete = (withSpring as jest.Mock).mock.calls.at(-1)?.[2];
@@ -200,6 +237,71 @@ afterEach(async () => {
 });
 
 describe('provider reverse commit integration', () => {
+  test.each([
+    ['ios', 'animation'],
+    ['ios', 'presentation'],
+    ['android', 'animation'],
+    ['android', 'presentation'],
+  ] as const)(
+    '%s starts Back on UI with %s first while the RN acknowledgement is delayed',
+    async (platform, first) => {
+      Platform.OS = platform;
+      const harness = await mountHook({ queuePresentation: true, trace: true });
+      if (first === 'presentation')
+        await act(async () => harness.acknowledge());
+      const { completion, navigation, navigateBack } = await harness.start();
+      expect(withSpring).not.toHaveBeenCalled();
+      expect(navigateBack).not.toHaveBeenCalled();
+      await act(async () => {
+        if (first === 'animation') {
+          harness.acknowledge('attached');
+          expect(withSpring).not.toHaveBeenCalled();
+          harness.acknowledge();
+        } else harness.reactToPresentation();
+        harness.acknowledge();
+      });
+      expect(withSpring).toHaveBeenCalledTimes(1);
+      expect(harness.presented).not.toHaveBeenCalled();
+      expect(harness.presentation.timing!.value.animationStartedAtMs).toEqual(
+        expect.any(Number)
+      );
+      expect(harness.presentation.animation.value).toBeNull();
+      expect(navigateBack).not.toHaveBeenCalled();
+      await act(async () => harness.finishAnimation());
+      expect(harness.api.reverseHandoff.value?.animationFinished).toBe(true);
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+      expect(harness.interactionOwner.value).toBeNull();
+      await act(async () => flushRN());
+      expect(navigateBack).toHaveBeenCalledTimes(1);
+      await act(async () =>
+        navigation.resolve({ removed: true, presented: false })
+      );
+      await completion;
+      expect(harness.visibility.handoff.value.completed).toBe(true);
+      expect(harness.interactionOwner.value).toBe('home');
+      expect(harness.completeTransition).toHaveBeenCalledTimes(1);
+    }
+  );
+
+  test.each(['cancelled', 'replaced', 'recycled'] as const)(
+    'queued Back cannot start after its presentation is %s',
+    async (reason) => {
+      const harness = await mountHook({ queuePresentation: true });
+      const { navigateBack } = await harness.start();
+      await act(async () => {
+        harness.acknowledge('attached');
+        if (reason === 'cancelled') harness.presentation.valid.value = false;
+        if (reason === 'replaced') harness.progressOwnership.claim('reverse');
+        if (reason === 'recycled') harness.presentation.validate = () => false;
+        harness.acknowledge();
+        flushRN();
+      });
+      expect(withSpring).not.toHaveBeenCalled();
+      expect(navigateBack).not.toHaveBeenCalled();
+      expect(harness.visibility.handoff.value.completed).toBe(false);
+    }
+  );
+
   test.each(['android', 'ios'] as const)(
     '%s records reverse startup without changing navigation-owned handoff',
     async (platform) => {
