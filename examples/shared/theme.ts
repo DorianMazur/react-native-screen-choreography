@@ -11,7 +11,7 @@ export const theme = {
 
   text: '#F4F6F2',
   textSecondary: '#A2ADA5',
-  textMuted: '#76827A',
+  textMuted: '#909B93',
   font: Platform.select({ ios: 'Avenir Next', default: 'sans-serif-medium' }),
   numbers: Platform.select({ ios: 'Menlo', default: 'monospace' }),
   ink: '#17220E',
@@ -36,9 +36,9 @@ export const theme = {
 
   radius: {
     sm: 8,
-    md: 8,
-    lg: 8,
-    xl: 8,
+    md: 16,
+    lg: 20,
+    xl: 28,
     pill: 999,
   },
 

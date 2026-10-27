@@ -1,5 +1,6 @@
 import React from 'react';
 import {
+  Image,
   View,
   Text,
   StyleSheet,
@@ -18,22 +19,19 @@ const demos = [
     route: 'GalleryList',
     title: 'Gallery',
     subtitle: 'A field journal',
-    icon: 'camera',
-    color: theme.gallery.accent,
+    image: require('./assets/photos/aurora.jpg'),
   },
   {
     route: 'TripsList',
     title: 'Trips',
     subtitle: 'Your next adventure',
-    icon: 'cloud',
-    color: theme.trips.accent,
+    image: require('./trips/assets/cabin.jpg'),
   },
   {
     route: 'TokenList',
     title: 'Wallet',
     subtitle: 'Demo portfolio',
-    icon: 'wallet',
-    color: theme.wallet.accent,
+    image: null,
   },
 ] as const;
 
@@ -56,16 +54,19 @@ export function LandingScreen() {
           <Text accessible={false} style={styles.packagePrefix}>
             react-native
           </Text>
-          <Text
-            accessible={false}
-            style={styles.title}
-            numberOfLines={1}
-            adjustsFontSizeToFit
-          >
-            screen-choreography
+          <Text accessible={false} style={styles.title}>
+            Screen{'\n'}choreography
+          </Text>
+          <Text accessible={false} style={styles.intro}>
+            Explore shared motion.
           </Text>
         </View>
-        {demos.map((demo, index) => (
+        <View style={styles.sectionHeader}>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>
+            Explore the demos
+          </Text>
+        </View>
+        {demos.map((demo) => (
           <Pressable
             key={demo.route}
             accessibilityRole="button"
@@ -73,19 +74,33 @@ export function LandingScreen() {
             onPress={() => open(demo.route)}
             style={({ pressed }) => [styles.row, pressed && styles.pressed]}
           >
-            <View style={styles.icon}>
-              <AppIcon name={demo.icon} color={demo.color} size={28} />
-            </View>
+            {demo.image ? (
+              <Image
+                accessible={false}
+                source={demo.image}
+                style={styles.thumbnail}
+              />
+            ) : (
+              <View style={[styles.thumbnail, styles.walletPreview]}>
+                <AppIcon name="wallet" color={theme.accent} size={32} />
+                <Text accessible={false} style={styles.walletLabel}>
+                  USD
+                </Text>
+              </View>
+            )}
             <View style={styles.rowContent}>
               <Text style={styles.rowTitle}>{demo.title}</Text>
               <Text style={styles.secondary}>{demo.subtitle}</Text>
             </View>
-            <Text style={styles.index}>
-              {String(index + 1).padStart(2, '0')}
-            </Text>
             <AppIcon name="arrow" size={18} color={theme.textSecondary} />
           </Pressable>
         ))}
+        <View style={[styles.sectionHeader, styles.trayHeader]}>
+          <Text accessibilityRole="header" style={styles.sectionTitle}>
+            Dynamic trays
+          </Text>
+          <Text style={styles.sectionMeta}>Keep exploring, in a sheet.</Text>
+        </View>
         <View style={styles.trays}>
           <TrayDemoLauncher />
           <GalleryPlusTrayLauncher />
@@ -98,97 +113,75 @@ export function LandingScreen() {
 const styles = StyleSheet.create({
   screen: { flex: 1, backgroundColor: theme.bg },
   scroll: { paddingBottom: 32 },
-  trays: { marginTop: 24, gap: 14 },
-  header: {
-    paddingHorizontal: 24,
-    paddingTop: 28,
-    paddingBottom: 28,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  eyebrow: {
-    fontFamily: theme.font,
-    fontSize: 10,
-    fontWeight: '600',
-    color: theme.textSecondary,
-    letterSpacing: 0,
-  },
+  header: { paddingHorizontal: 24, paddingTop: 24, paddingBottom: 32 },
   packagePrefix: {
     fontFamily: theme.numbers,
-    fontSize: 13,
-    lineHeight: 20,
+    fontSize: 12,
     color: theme.textSecondary,
+    marginBottom: 12,
   },
   title: {
     fontFamily: theme.font,
-    fontSize: 28,
+    fontSize: 32,
     lineHeight: 36,
     fontWeight: '600',
+    letterSpacing: -1.2,
     color: theme.text,
-    marginTop: 6,
   },
-  summary: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginTop: 18,
-    gap: 12,
-    flexWrap: 'wrap',
+  intro: {
+    fontFamily: theme.font,
+    color: theme.textSecondary,
+    fontSize: 14,
+    lineHeight: 21,
+    marginTop: 14,
   },
-  secondary: {
+  sectionHeader: { paddingHorizontal: 24, gap: 5, marginBottom: 8 },
+  sectionTitle: {
+    fontFamily: theme.font,
+    fontSize: 17,
+    fontWeight: '600',
+    color: theme.text,
+  },
+  sectionMeta: {
     fontFamily: theme.font,
     fontSize: 12,
     color: theme.textSecondary,
   },
-  count: { fontFamily: theme.numbers, fontSize: 10, color: theme.accent },
-  spectrum: {
-    flexDirection: 'row',
-    gap: 3,
-    height: 5,
-    marginTop: 28,
-    borderRadius: 2,
-    overflow: 'hidden',
-  },
-  segment: { flex: 1 },
-  sectionHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingHorizontal: 24,
-    paddingTop: 24,
-    paddingBottom: 12,
-  },
-  sectionTitle: {
-    fontFamily: theme.font,
-    fontSize: 21,
-    fontWeight: '600',
-    color: theme.text,
-  },
   row: {
     flexDirection: 'row',
     alignItems: 'center',
-    minHeight: 104,
+    minHeight: 96,
     marginHorizontal: 24,
-    paddingVertical: 18,
-    gap: 14,
-    borderBottomWidth: 1,
+    paddingVertical: 12,
+    gap: 16,
+    borderBottomWidth: StyleSheet.hairlineWidth,
     borderBottomColor: theme.border,
   },
-  icon: {
-    width: 52,
-    height: 52,
-    borderRadius: 8,
-    alignItems: 'center',
-    justifyContent: 'center',
+  thumbnail: {
+    width: 64,
+    height: 72,
+    borderRadius: 14,
     backgroundColor: theme.surface,
   },
-  rowContent: { flex: 1, gap: 6 },
+  walletPreview: { alignItems: 'center', justifyContent: 'center', gap: 8 },
+  walletLabel: {
+    fontFamily: theme.numbers,
+    fontSize: 11,
+    color: theme.textSecondary,
+  },
+  rowContent: { flex: 1, gap: 4 },
   rowTitle: {
     fontFamily: theme.font,
-    fontSize: 18,
+    fontSize: 22,
     fontWeight: '600',
     color: theme.text,
   },
-  index: { fontFamily: theme.numbers, fontSize: 10, color: theme.textMuted },
-  pressed: { opacity: 0.55 },
+  secondary: {
+    fontFamily: theme.font,
+    fontSize: 13,
+    color: theme.textSecondary,
+  },
+  trayHeader: { marginTop: 28, marginBottom: 14 },
+  trays: { gap: 12 },
+  pressed: { opacity: 0.65 },
 });

@@ -42,13 +42,12 @@ export function GalleryListScreen({
         <StatusBar barStyle="light-content" />
         <ScreenHeader title="Gallery" onBack={() => goBack()} />
         <View style={styles.header}>
-          <Text style={styles.eyebrow}>THE FIELD JOURNAL</Text>
           <Text accessibilityRole="header" style={styles.title}>
             Field notes
           </Text>
           <View style={styles.summary}>
             <Text style={styles.subtitle}>Places worth keeping</Text>
-            <Text style={styles.count}>{PHOTOS.length} PHOTOS</Text>
+            <Text style={styles.count}>{PHOTOS.length} photographs</Text>
           </View>
         </View>
 
@@ -56,12 +55,17 @@ export function GalleryListScreen({
           contentContainerStyle={styles.grid}
           showsVerticalScrollIndicator={false}
         >
-          {PHOTOS.map((photo) => (
+          {PHOTOS.map((photo, index) => (
             <Tile
               key={photo.id}
               photo={photo}
               observation={observation}
-              width={tileWidth}
+              width={
+                index === 0 || index === PHOTOS.length - 1
+                  ? width - 48
+                  : tileWidth
+              }
+              featured={index === 0 || index === PHOTOS.length - 1}
               onPress={() =>
                 navigate(
                   {
@@ -85,11 +89,13 @@ export function GalleryListScreen({
 function Tile({
   photo,
   width,
+  featured,
   onPress,
   observation,
 }: {
   photo: Photo;
   width: number;
+  featured: boolean;
   onPress: () => void;
   observation?: ExampleObservation;
 }) {
@@ -99,8 +105,7 @@ function Tile({
       accessibilityLabel={`View ${photo.title}`}
       onPress={onPress}
       style={({ pressed }) => [
-        styles.tileWrapper,
-        { width },
+        { width, aspectRatio: featured ? 1.45 : 0.8 },
         pressed && { opacity: 0.7 },
       ]}
     >
@@ -112,7 +117,7 @@ function Tile({
         <GalleryHero
           photo={photo}
           width={width}
-          height={width / 0.72}
+          height={width / (featured ? 1.45 : 0.8)}
           observation={observation}
         />
       </galleryTransition.Element>
@@ -127,16 +132,8 @@ const styles = StyleSheet.create({
   },
   header: {
     paddingHorizontal: 24,
-    paddingTop: 12,
+    paddingTop: 20,
     paddingBottom: 24,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
-  },
-  eyebrow: {
-    fontFamily: theme.font,
-    fontSize: 10,
-    fontWeight: '600',
-    color: theme.textSecondary,
   },
   summary: {
     flexDirection: 'row',
@@ -146,32 +143,29 @@ const styles = StyleSheet.create({
     marginTop: 10,
   },
   count: {
-    fontFamily: theme.numbers,
-    fontSize: 10,
+    fontFamily: theme.font,
+    fontSize: 12,
     color: theme.gallery.accent,
   },
   title: {
     fontFamily: theme.font,
     color: theme.text,
-    fontSize: 30,
+    fontSize: 32,
     fontWeight: '600',
-    marginTop: 10,
+    letterSpacing: -1,
   },
   subtitle: {
     fontFamily: theme.font,
     color: theme.textSecondary,
-    fontSize: 12,
+    fontSize: 14,
   },
   grid: {
     paddingHorizontal: 24,
-    paddingTop: 24,
+    paddingTop: 0,
     paddingBottom: 32,
     flexDirection: 'row',
     flexWrap: 'wrap',
     gap: TILE_GAP,
-  },
-  tileWrapper: {
-    aspectRatio: 0.72,
   },
   tileFrame: {
     flex: 1,

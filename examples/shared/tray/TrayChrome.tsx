@@ -8,19 +8,20 @@ import {
   type ViewStyle,
 } from 'react-native';
 import { AppIcon } from '../AppChrome';
+import { theme } from '../theme';
 
 export const trayTheme = {
-  background: '#23252b',
-  surface: '#30333b',
-  surfaceRaised: '#33373b',
+  background: theme.bgElevated,
+  surface: theme.surface,
+  surfaceRaised: theme.surfaceElevated,
   control: '#ffffff08',
   border: '#ffffff12',
   borderStrong: '#ffffff30',
-  text: '#f4f5f7',
-  muted: '#969aa5',
-  accent: '#c8f79d',
+  text: theme.text,
+  muted: theme.textSecondary,
+  accent: theme.accent,
   accentSoft: '#c8f79d18',
-  onAccent: '#24331c',
+  onAccent: theme.ink,
   radius: 14,
 };
 
@@ -106,7 +107,7 @@ const styles = StyleSheet.create({
   header: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingHorizontal: 16,
+    paddingHorizontal: 22,
     paddingTop: 20,
     paddingBottom: 16,
     gap: 10,
@@ -121,12 +122,18 @@ const styles = StyleSheet.create({
   },
   heading: { flex: 1, gap: 5 },
   eyebrow: {
-    color: trayTheme.accent,
-    fontSize: 10,
+    color: trayTheme.muted,
+    fontFamily: theme.font,
+    fontSize: 11,
     fontWeight: '600',
-    letterSpacing: 2,
+    letterSpacing: 1,
   },
-  title: { fontSize: 22, fontWeight: '600', letterSpacing: -0.5 },
+  title: {
+    fontFamily: theme.font,
+    fontSize: 24,
+    fontWeight: '600',
+    letterSpacing: -0.5,
+  },
   button: {
     minHeight: 54,
     paddingVertical: 14,
@@ -138,6 +145,11 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     gap: 10,
   },
-  buttonText: { color: trayTheme.onAccent, fontSize: 16, fontWeight: '600' },
+  buttonText: {
+    fontFamily: theme.font,
+    color: trayTheme.onAccent,
+    fontSize: 16,
+    fontWeight: '600',
+  },
   pressed: { opacity: 0.55 },
 });

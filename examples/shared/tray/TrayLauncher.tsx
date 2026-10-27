@@ -21,7 +21,11 @@ export function TrayLauncher({
       style={({ pressed }) => [styles.launcher, pressed && styles.pressed]}
     >
       <View style={styles.icon}>
-        <AppIcon name={icon} color={theme.accent} size={24} />
+        <AppIcon
+          name={icon}
+          color={icon === 'camera' ? theme.gallery.accent : theme.wallet.accent}
+          size={24}
+        />
       </View>
       <View style={styles.content}>
         <Text style={styles.title}>{title}</Text>
@@ -35,19 +39,17 @@ export function TrayLauncher({
 const styles = StyleSheet.create({
   launcher: {
     marginHorizontal: 24,
-    padding: 18,
+    paddingVertical: 16,
+    paddingHorizontal: 18,
     flexDirection: 'row',
     alignItems: 'center',
     gap: 14,
     backgroundColor: theme.surface,
-    borderWidth: 1,
-    borderColor: theme.border,
     borderRadius: theme.radius.md,
   },
   icon: {
     width: 44,
     height: 44,
-    backgroundColor: theme.wallet.glow,
     borderRadius: theme.radius.sm,
     justifyContent: 'center',
     alignItems: 'center',
@@ -56,7 +58,7 @@ const styles = StyleSheet.create({
   title: {
     fontFamily: theme.font,
     color: theme.text,
-    fontSize: 17,
+    fontSize: 16,
     fontWeight: '600',
   },
   subtitle: {

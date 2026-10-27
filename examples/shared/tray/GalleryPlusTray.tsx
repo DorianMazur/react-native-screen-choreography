@@ -355,8 +355,6 @@ const styles = StyleSheet.create({
   benefitIcon: {
     width: 36,
     height: 36,
-    backgroundColor: trayTheme.surfaceRaised,
-    borderRadius: trayTheme.radius,
     justifyContent: 'center',
     alignItems: 'center',
   },
@@ -415,8 +413,8 @@ const styles = StyleSheet.create({
   },
   planNote: {
     color: trayTheme.muted,
-    fontSize: 8,
-    letterSpacing: 0.5,
+    fontSize: 11,
+    letterSpacing: 0,
     marginTop: 14,
   },
   saving: { color: trayTheme.accent },
