@@ -10,3 +10,14 @@ diff --git a/sdks/hermes-engine/hermes-engine.podspec b/sdks/hermes-engine/herme
        }
      end
  
+diff --git a/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp b/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp
+--- a/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp
++++ b/ReactCommon/react/renderer/mounting/MountingCoordinator.cpp
+@@ -41,0 +42,7 @@
++
++    // ShadowTree releases its commit lock before pushing. Another thread may
++    // already have diffed a newer revision, even when lastRevision_ is empty.
++    // Never recreate removed views by diffing backwards from that newer base.
++    if (revision.number < baseRevision_.number) {
++      return;
++    }

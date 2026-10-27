@@ -41,6 +41,9 @@ android {
   compileSdkVersion getExtOrDefault("compileSdkVersion")
 
   defaultConfig {
+    if (project.hasProperty("reactNativeArchitectures")) {
+      ndk { abiFilters(*project.property("reactNativeArchitectures").split(",")) }
+    }
     minSdkVersion getExtOrDefault("minSdkVersion")
     targetSdkVersion getExtOrDefault("targetSdkVersion")
     buildConfigField "boolean", "TRACE_PRESENTATION",
