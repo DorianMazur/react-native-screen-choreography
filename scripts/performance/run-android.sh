@@ -73,7 +73,7 @@ adb shell rm -rf /sdcard/Android/data/screenchoreography.example/files/performan
 adb shell rm -rf /sdcard/Android/data/screenchoreography.example.macrobenchmark/files/performance
 native_outputs=examples/react-navigation/android/macrobenchmark/build/outputs/connected_android_test_additional_output
 native_results=examples/react-navigation/android/macrobenchmark/build/outputs/androidTest-results/connected/benchmark
-rm -rf "$native_outputs"
+rm -rf "$native_outputs" "$native_results"
 status=0
 (cd examples/react-navigation/android && ./gradlew "${arguments[@]}") > >(tee "$output/gradle.log") 2>&1 || status=$?
 
@@ -90,7 +90,7 @@ const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
 metadata.runnerExitCode = Number(process.argv[3]);
 fs.writeFileSync(process.argv[2], JSON.stringify(metadata, null, 2));
 NODE
-node --experimental-transform-types scripts/performance/report.mts --platform=android "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || {
+node --experimental-transform-types scripts/performance/report.mts --platform=android "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" "--android-test-results=$output/test-results" || {
   if [[ "$status" -eq 0 ]]; then status=1; fi
 }
 printf 'Report: %s/report/summary.md\n' "$output"

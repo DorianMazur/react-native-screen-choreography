@@ -654,6 +654,58 @@ async function readDocuments(
   return documents;
 }
 
+// AGP saves logcat for the entire test, including failures that Android treats
+// as nonfatal. A successful probe must not turn a corrupted view tree green.
+export function androidMountErrors(log: string, pids: Set<number>): string[] {
+  const failures = new Map<number, string>();
+  for (const line of log.split('\n')) {
+    const match = line.match(
+      /^\S+\s+\S+\s+(\d+)\s+\d+\s+E\s+(?:unknown:)?(?:SurfaceMountingManager(?::[^\s]+)?|MountItemDispatcher|FabricUIManager):\s+(.*)$/
+    );
+    if (!match || !pids.has(Number(match[1]))) continue;
+    const pid = Number(match[1]);
+    const message = match[2]!.trim();
+    if (message.startsWith('at ') || message.startsWith('...')) continue;
+    if (!failures.has(pid) || failures.get(pid) === 'Unhandled SoftException')
+      failures.set(pid, message);
+  }
+  return [...failures].map(
+    ([pid, message]) =>
+      `Android native mounting failure (pid ${pid}): ${message}`
+  );
+}
+
+async function readAndroidMountErrors(
+  directory: string,
+  documents: MeasurementDocument[]
+): Promise<string[]> {
+  const fixtures = documents.filter(
+    ({ data }) => data.fixtureVersion !== undefined
+  );
+  if (
+    fixtures.some(
+      ({ data }) => !Number.isInteger(data.native?.pid) || data.native.pid <= 0
+    )
+  )
+    throw new Error('Missing Android app PID for native log validation');
+  const pids = new Set<number>(fixtures.map(({ data }) => data.native.pid));
+  const seenPids = new Set<number>();
+  const errors = new Set<string>();
+  const entries = await readdir(directory, { recursive: true });
+  for (const entry of entries) {
+    if (!path.basename(entry).startsWith('logcat-') || !entry.endsWith('.txt'))
+      continue;
+    const log = await readFile(path.join(directory, entry), 'utf8');
+    for (const match of log.matchAll(/^\S+\s+\S+\s+(\d+)\s+\d+\s+[VDIWEF]\s/gm))
+      seenPids.add(Number(match[1]));
+    for (const error of androidMountErrors(log, pids)) errors.add(error);
+  }
+  for (const pid of pids)
+    if (!seenPids.has(pid))
+      errors.add(`Missing Android test logcat for app pid ${pid}`);
+  return [...errors];
+}
+
 async function main() {
   const args = Object.fromEntries(
     process.argv.slice(2).map((arg) => {
@@ -695,6 +747,21 @@ async function main() {
         : {}),
     },
   });
+  if (args.platform === 'android' && args['android-test-results']) {
+    try {
+      summary.errors.push(
+        ...(await readAndroidMountErrors(
+          args['android-test-results'],
+          documents
+        ))
+      );
+    } catch (error) {
+      summary.errors.push(
+        `Cannot check Android native mounting logs: ${String(error)}`
+      );
+    }
+    summary.valid = summary.valid && summary.errors.length === 0;
+  }
   await mkdir(args.output, { recursive: true });
   await writeFile(
     path.join(args.output, 'summary.json'),

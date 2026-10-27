@@ -6,7 +6,12 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { distribution, summarize, markdown } from './report.mts';
+import {
+  androidMountErrors,
+  distribution,
+  summarize,
+  markdown,
+} from './report.mts';
 import { sameDefinition } from './metric-definitions.mts';
 import { BenchmarkCollector } from '../../examples/react-navigation/src/performance/collector.ts';
 import {
@@ -83,55 +88,76 @@ test('complete fixture exports cannot mask a native test failure', () => {
   assert.match(report.errors.join(), /runner failed with exit code 65/);
 });
 
-test('CLI prints collection failures and preserves diagnostic summaries', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'choreography-report-'));
-  try {
-    const input = path.join(directory, 'raw');
-    const output = path.join(directory, 'report');
-    const metadata = path.join(directory, 'metadata.json');
-    await mkdir(input);
-    await writeFile(metadata, JSON.stringify(options.metadata));
-    const invalid = fixture('gallery');
-    invalid.valid = false;
-    invalid.errors = ['missing-motion-observation'];
-    await Promise.all(
-      documents([invalid]).map(({ file, data }) =>
-        writeFile(path.join(input, file), JSON.stringify(data))
-      )
+for (const failure of ['fixture', 'native-mount', 'missing-log'] as const)
+  test(`CLI fails ${failure} collection and preserves diagnostic summaries`, async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), 'choreography-report-')
     );
+    try {
+      const input = path.join(directory, 'raw');
+      const output = path.join(directory, 'report');
+      const metadata = path.join(directory, 'metadata.json');
+      await mkdir(input);
+      await writeFile(metadata, JSON.stringify(options.metadata));
+      const invalid = fixture('gallery');
+      if (failure === 'fixture') {
+        invalid.valid = false;
+        invalid.errors = ['missing-motion-observation'];
+      }
+      const logs = path.join(directory, 'test-results');
+      await mkdir(logs);
+      if (failure === 'native-mount')
+        await writeFile(
+          path.join(logs, 'logcat-gallery.txt'),
+          '10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: View already has a parent'
+        );
+      await Promise.all(
+        documents([invalid]).map(({ file, data }) => {
+          data.native.pid = 4524;
+          return writeFile(path.join(input, file), JSON.stringify(data));
+        })
+      );
 
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--experimental-transform-types',
-        fileURLToPath(new URL('./report.mts', import.meta.url)),
-        '--platform=android',
-        '--mode=native-release',
-        `--input=${input}`,
-        `--output=${output}`,
-        `--metadata=${metadata}`,
-      ],
-      { encoding: 'utf8' }
-    );
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--experimental-transform-types',
+          fileURLToPath(new URL('./report.mts', import.meta.url)),
+          '--platform=android',
+          '--mode=native-release',
+          `--input=${input}`,
+          `--output=${output}`,
+          `--metadata=${metadata}`,
+          ...(failure === 'fixture' ? [] : [`--android-test-results=${logs}`]),
+        ],
+        { encoding: 'utf8' }
+      );
 
-    assert.equal(result.error, undefined);
-    assert.equal(result.status, 1);
-    const summary = JSON.parse(
-      await readFile(path.join(output, 'summary.json'), 'utf8')
-    );
-    assert.equal(summary.valid, false);
-    assert.match(result.stderr, /Performance collection failed:/);
-    assert.match(result.stderr, /gallery\.json:.*missing-motion-observation/);
-    for (const error of summary.errors)
-      assert.ok(result.stderr.includes(error));
-    assert.match(
-      await readFile(path.join(output, 'summary.md'), 'utf8'),
-      /Collection failed/
-    );
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
-});
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, 1);
+      const summary = JSON.parse(
+        await readFile(path.join(output, 'summary.json'), 'utf8')
+      );
+      assert.equal(summary.valid, false);
+      assert.match(result.stderr, /Performance collection failed:/);
+      assert.match(
+        result.stderr,
+        failure === 'fixture'
+          ? /gallery\.json:.*missing-motion-observation/
+          : failure === 'native-mount'
+            ? /Android native mounting failure.*View already has a parent/
+            : /Missing Android test logcat/
+      );
+      for (const error of summary.errors)
+        assert.ok(result.stderr.includes(error));
+      assert.match(
+        await readFile(path.join(output, 'summary.md'), 'utf8'),
+        /Collection failed/
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 
 test('preserves sample readings and self-describing render counts without changing timing units', () => {
   const data = fixture('gallery');
@@ -1069,4 +1095,21 @@ test('incomplete or misordered startup timing invalidates collection instead of 
       undefined
     );
   }
+});
+
+test('Android mounting errors retain the first cause and ignore unrelated processes and warnings', () => {
+  const first =
+    'java.lang.IllegalStateException: addViewAt: cannot insert view [1028] into parent [276]: View already has a parent';
+  const log = [
+    '10-25 19:01:18.075 9999 9999 E unknown:SurfaceMountingManager: unrelated app',
+    '10-25 19:01:18.075 4524 4524 W unknown:SurfaceMountingManager: warning',
+    '10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: Unhandled SoftException',
+    `10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: ${first}`,
+    '10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: \tat native.frame(Source.java:400)',
+    '10-25 19:01:18.146 4524 4524 E unknown:SurfaceMountingManager:MissingViewState: java.lang.IllegalStateException: missing view',
+  ].join('\n');
+  assert.deepEqual(androidMountErrors(log, new Set([4524])), [
+    `Android native mounting failure (pid 4524): ${first}`,
+  ]);
+  assert.deepEqual(androidMountErrors(log, new Set([7777])), []);
 });
