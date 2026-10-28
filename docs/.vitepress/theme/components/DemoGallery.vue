@@ -41,6 +41,8 @@ const demos = [
         <img
           :src="demo.src"
           :alt="`${demo.name} native app recording, showing forward and return shared element transitions`"
+          loading="lazy"
+          decoding="async"
         />
       </div>
       <h2 :id="demo.id">{{ demo.name }}</h2>

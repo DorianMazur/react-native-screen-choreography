@@ -30,19 +30,10 @@ onUnmounted(() => clearTimeout(copyTimer));
   <div class="ch-home">
     <section class="ch-hero" aria-labelledby="hero-title">
       <div class="ch-hero-copy">
-        <a
-          class="ch-eyebrow"
-          :href="withBase('/guide/introduction.html#where-it-fits')"
-        >
-          <span class="ch-status-dot" /> BUILT FOR REACT NATIVE
-          <span aria-hidden="true">↗</span>
-        </a>
-        <h1 id="hero-title">
-          Good motion<br />connects<br /><em>everything.</em>
-        </h1>
+        <h1 id="hero-title">Connected by<br />motion.</h1>
         <p class="ch-hero-description">
-          Turn separate screens into one continuous experience. Shared elements,
-          reveals, and gestures. All moving together.
+          Shared element transitions for React Native. Keep real content alive
+          as photos, cards, and entire scenes move between screens.
         </p>
         <div class="ch-hero-actions">
           <a
@@ -98,7 +89,6 @@ onUnmounted(() => clearTimeout(copyTimer));
     <section class="ch-principles" aria-label="Transition capabilities">
       <div class="ch-feature-grid">
         <article>
-          <span class="ch-feature-number">01 / CONTINUITY</span>
           <h2>One element. Still alive.</h2>
           <p>
             Your content moves between screens as one retained native subtree.
@@ -112,7 +102,6 @@ onUnmounted(() => clearTimeout(copyTimer));
           >
         </article>
         <article>
-          <span class="ch-feature-number">02 / COORDINATION</span>
           <h2>Many parts. One rhythm.</h2>
           <p>
             Pair shared elements with local reveals and exits. Define how they
@@ -123,7 +112,6 @@ onUnmounted(() => clearTimeout(copyTimer));
           >
         </article>
         <article>
-          <span class="ch-feature-number">03 / CONTROL</span>
           <h2>Forward. Back. Your call.</h2>
           <p>
             Drive a return with gesture progress. Finish it, cancel it, or let
@@ -136,12 +124,27 @@ onUnmounted(() => clearTimeout(copyTimer));
       </div>
     </section>
 
+    <section class="ch-demo-index" aria-labelledby="demo-index-title">
+      <h2 id="demo-index-title">Five ways to explore.</h2>
+      <div class="ch-demo-links">
+        <a
+          v-for="demo in [
+            ['gallery', 'Gallery'],
+            ['trips', 'Trips'],
+            ['wallet', 'Wallet'],
+            ['wallet-dynamic-tray', 'Wallet dynamic tray'],
+            ['gallery-dynamic-tray', 'Gallery dynamic tray'],
+          ]"
+          :key="demo[0]"
+          :href="withBase(`/examples.html#${demo[0]}`)"
+          >{{ demo[1] }} <span aria-hidden="true">↗</span></a
+        >
+      </div>
+    </section>
+
     <section class="ch-recipe" aria-labelledby="recipe-title">
       <div class="ch-recipe-copy">
-        <p class="ch-kicker">SMALL API. EXPRESSIVE MOTION.</p>
-        <h2 id="recipe-title">
-          Name the parts.<br /><em>Set them in motion.</em>
-        </h2>
+        <h2 id="recipe-title">Define the motion.<br />Keep the connection.</h2>
         <p>
           A module-scoped recipe connects your shared roles, timing, and
           companion content. The same definition works in both navigation

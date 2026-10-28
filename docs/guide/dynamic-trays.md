@@ -9,6 +9,15 @@ A tray holds several views inside one bottom sheet. Moving between them resizes 
 
 The optional `/tray` entry uses Software Mansion's native bottom sheet. It works alongside your app's navigation without adding another navigation library.
 
+## Try the example flows
+
+Both example apps include two trays under **Dynamic trays** on the home screen:
+
+- **Wallet dynamic tray:** enter a demo payment, choose a recipient in a full-screen view, then review it. Back restores the form so you can keep editing.
+- **Gallery dynamic tray:** open **Explore Plus** to move a shared photo composition into benefits and plan selection. Visit **Good to know** and return to keep your selected plan. **Preview Plus** shows that plan without making a purchase.
+
+These flows use the same dark surfaces, photo treatments, and typography as the screen demos. Closing a tray resets its local flow. See [example apps](../examples.md) for setup and source links.
+
 ## Install
 
 Follow the [tray installation](./installation.md#dynamic-trays-without-a-router), which includes these optional dependencies:

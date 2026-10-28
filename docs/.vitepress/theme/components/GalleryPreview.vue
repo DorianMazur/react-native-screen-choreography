@@ -23,21 +23,10 @@ const photos = [
   <div class="ch-preview">
     <div
       class="ch-motion-stage gallery-stage"
+      data-ui
       :class="{ 'is-expanded': expanded }"
       aria-hidden="true"
     >
-      <div class="ch-stage-grid" />
-      <div class="ch-orbit">
-        <svg viewBox="0 0 520 440">
-          <path
-            d="M120 210C235 40 275 335 375 174"
-            fill="none"
-            stroke="currentColor"
-            stroke-width="1.3"
-            stroke-dasharray="4 7"
-          />
-        </svg>
-      </div>
       <svg class="gallery-symbols" xmlns="http://www.w3.org/2000/svg">
         <defs>
           <symbol id="gallery-preview-camera" viewBox="0 0 24 24">
@@ -51,10 +40,9 @@ const photos = [
       <div class="gallery-screen gallery-source">
         <div class="gallery-nav"><span>←</span> Gallery</div>
         <div class="gallery-heading">
-          <div class="gallery-eyebrow">THE FIELD JOURNAL</div>
           <h3>Field notes</h3>
           <div class="gallery-summary">
-            <span>Places worth keeping</span><span>6 PHOTOS</span>
+            <span>Places worth keeping</span><span>6 photographs</span>
           </div>
         </div>
         <div class="gallery-grid">
@@ -173,7 +161,7 @@ const photos = [
   --gallery-source-h: 80%;
   --gallery-owner-x: 6.475%;
   --gallery-owner-y: 35.3%;
-  --gallery-owner-w: 14.675cqw;
+  --gallery-owner-w: 30.45cqw;
   --gallery-target-x: 53.5%;
   --gallery-target-y: 4.6%;
   --gallery-target-w: 40cqw;
@@ -232,7 +220,6 @@ const photos = [
   left: 6.5%;
   right: 6.5%;
   padding-bottom: 1.6cqw;
-  border-bottom: 1px solid var(--gallery-border);
 }
 .gallery-eyebrow {
   font-size: 0.95cqw;
@@ -273,7 +260,7 @@ const photos = [
 }
 .gallery-tile {
   position: relative;
-  aspect-ratio: 0.72;
+  aspect-ratio: 0.8;
   border-radius: 0.75cqw;
   overflow: hidden;
   background: #191c1a;
@@ -293,6 +280,11 @@ const photos = [
   inset: 45% 0 0;
   background: linear-gradient(transparent, #000a);
   pointer-events: none;
+}
+.gallery-tile:first-child,
+.gallery-tile:last-child {
+  grid-column: 1 / -1;
+  aspect-ratio: 1.45;
 }
 .gallery-owner-slot {
   outline: 1px dashed var(--gallery-border);
@@ -348,7 +340,7 @@ const photos = [
   left: var(--gallery-owner-x);
   top: var(--gallery-owner-y);
   width: var(--gallery-owner-w);
-  height: calc(var(--gallery-owner-w) / 0.72);
+  height: calc(var(--gallery-owner-w) / 1.45);
   border-radius: 0.75cqw;
   overflow: hidden;
   font-family: 'Avenir Next', var(--vp-font-family-base);
