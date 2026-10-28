@@ -624,6 +624,97 @@ test('capture rejection and missing endpoints fall back, settle, and allow navig
   }
 });
 
+test('queues Choose recipient tapped during Send money arrival exactly once', () => {
+  type WalletRoutes = {
+    wallet: undefined;
+    send: undefined;
+    recipient: { amount: string };
+  };
+  const Wallet = createTray<WalletRoutes>();
+  let actions!: TrayNavigation<WalletRoutes>;
+  let state!: TrayState<WalletRoutes>;
+  function Observe() {
+    actions = Wallet.useTray();
+    state = Wallet.useTrayState((value) => value);
+    return null;
+  }
+  function Home({ tray }: TrayScreenProps<WalletRoutes, 'wallet'>) {
+    return <Pressable testID="send" onPress={() => tray.push('send')} />;
+  }
+  function Send({ tray }: TrayScreenProps<WalletRoutes, 'send'>) {
+    const [amount, setAmount] = useState('25');
+    return (
+      <View>
+        <TextInput testID="amount" value={amount} onChangeText={setAmount} />
+        <Pressable
+          testID="choose"
+          onPress={() => tray.push('recipient', { amount })}
+        />
+      </View>
+    );
+  }
+  function Recipient() {
+    return <View testID="recipients" />;
+  }
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Wallet.Provider>
+        <Observe />
+        <Wallet.Stack animation={{ type: 'spring' }}>
+          <Wallet.Screen name="wallet" component={Home} />
+          <Wallet.Screen name="send" component={Send} />
+          <Wallet.Screen
+            name="recipient"
+            component={Recipient}
+            options={{ presentation: 'fullScreen' }}
+          />
+        </Wallet.Stack>
+      </Wallet.Provider>
+    );
+  });
+  try {
+    act(() => actions.present('wallet'));
+    act(() => sheet(renderer).props.onSettle(1));
+    const send = renderer.root.findByProps({ testID: 'send' }).props.onPress;
+    act(() => {
+      send();
+      send();
+    });
+    const arrivalComplete = mockCompletions.shift()!;
+    const input = renderer.root.findByType(TextInput);
+    act(() => input.props.onChangeText('42'));
+    const choose = renderer.root.findByProps({ testID: 'choose' }).props
+      .onPress;
+    act(() => {
+      choose();
+      choose();
+      send();
+    });
+    expect(state.route?.name).toBe('send');
+    expect(state.depth).toBe(2);
+    expect(renderer.root.findAllByType(Recipient)).toHaveLength(0);
+    act(() => arrivalComplete(true));
+    expect(state.route).toMatchObject({
+      name: 'recipient',
+      params: { amount: '42' },
+    });
+    expect(state.depth).toBe(3);
+    act(() => arrivalComplete(true)); // Stale completion cannot replay it.
+    expect(mockCompletions).toHaveLength(1);
+    act(() => actions.back());
+    act(() => mockCompletions.shift()!(true));
+    expect(state.route?.name).toBe('send');
+    act(() => mockCompletions.shift()!(true));
+    expect(state.depth).toBe(2);
+    expect(renderer.root.findByType(TextInput)).toBe(input);
+    expect(input.props.value).toBe('42');
+    expect(renderer.root.findAllByType(Recipient)).toHaveLength(0);
+  } finally {
+    act(() => renderer.unmount());
+  }
+});
+
 test.each([
   'screen prop',
   'screen hook',
@@ -1961,21 +2052,122 @@ test('ignores invalid page measurements and keeps a stable viewport while resizi
   act(() => navigation.present('form'));
   layoutPage(renderer, Form, -1);
   layoutPage(renderer, Form, NaN);
-  expect(cardStyle(renderer).height).toBeUndefined();
-  layoutPage(renderer, Form, 130);
+  expect(cardStyle(renderer).height).toBe('auto');
   const viewportHeight = viewportStyle(renderer, Form).height;
   expect(viewportHeight).toBeGreaterThan(200);
-  expect(cardStyle(renderer).height).toBe(200);
+  layoutPage(renderer, Form, 130);
+  expectIntrinsicLayout(renderer, Form, 70);
   act(() => sheet(renderer).props.onSettle(1));
   act(() => navigation.push('preview', { label: 'tall page' }));
   layoutPage(renderer, Preview, 430);
   layoutPage(renderer, Preview, 430.2);
   expect(viewportStyle(renderer, Preview).height).toBe(viewportHeight);
   act(() => mockCompletions.shift()!(true));
-  expect(cardStyle(renderer).height).toBe(500);
-  expect(viewportStyle(renderer, Preview).height).toBe(viewportHeight);
+  expectIntrinsicLayout(renderer, Preview, 70);
   act(() => renderer.unmount());
 });
+
+test.each([
+  ['floating', 'top'],
+  ['floating', 'bottom'],
+  ['sheet', 'top'],
+  ['sheet', 'bottom'],
+] as const)(
+  'keeps the %s/%s card sized between React commits and UI layout updates',
+  (appearance, anchor) => {
+    // Native animated styles can still contain the previous frame when React
+    // commits navigation. Flush them separately to expose a zero-height card
+    // caused by switching the last in-flow child to absolute in React.
+    type PendingStyle = {
+      update: () => object;
+      applied: Record<string, unknown>;
+    };
+    const pending = new Set<PendingStyle>();
+    const animatedStyle = jest
+      .spyOn(Reanimated, 'useAnimatedStyle')
+      .mockImplementation((update) => {
+        const ref = useRef<PendingStyle | undefined>(undefined);
+        if (!ref.current) {
+          ref.current = { update, applied: { ...update() } };
+          pending.add(ref.current);
+        }
+        ref.current.update = update;
+        return ref.current.applied as unknown as ReturnType<
+          typeof Reanimated.useAnimatedStyle
+        >;
+      });
+    const flushUI = () => {
+      for (const style of pending) Object.assign(style.applied, style.update());
+    };
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      act(() => {
+        renderer = TestRenderer.create(
+          <Tray.Provider>
+            <Observer />
+            <Tray.Stack appearance={appearance} anchor={anchor}>
+              <Tray.Screen name="form" component={Form} />
+              <Tray.Screen name="preview" component={Preview} />
+            </Tray.Stack>
+          </Tray.Provider>
+        );
+      });
+      act(() => navigation.present('form'));
+      layoutPage(renderer, Form, 200);
+      act(() => sheet(renderer).props.onSettle(1));
+      flushUI();
+      const input = renderer.root.findByType(TextInput);
+      act(() => input.props.onChangeText('retained through layout handoff'));
+      const expectInFlow = (component: React.ElementType) => {
+        expect(cardStyle(renderer).height).toBe('auto');
+        expect(viewportStyle(renderer, component)).toMatchObject({
+          position: 'relative',
+          height: 'auto',
+        });
+        expect(
+          StyleSheet.flatten(pageFor(renderer, component).props.style).position
+        ).toBe('relative');
+      };
+      const expectFixed = () => {
+        expect(cardStyle(renderer).height).toBeGreaterThanOrEqual(270);
+        expect(viewportStyle(renderer, Form).position).toBe('absolute');
+      };
+      for (let visit = 0; visit < 2; visit++) {
+        expectInFlow(Form);
+        act(() => navigation.push('preview', { label: 'next' }));
+        // The source must still size an intrinsic card until the UI frame
+        // switches both the card and its viewports into transition layout.
+        expectInFlow(Form);
+        layoutPage(renderer, Preview, 300);
+        expectInFlow(Form);
+        flushUI();
+        expectFixed();
+        expect(viewportStyle(renderer, Preview).position).toBe('absolute');
+        act(() => mockCompletions.shift()!(true));
+        expectFixed();
+        flushUI();
+        expectInFlow(Preview);
+
+        act(() => navigation.back());
+        expectInFlow(Preview);
+        flushUI();
+        expectFixed();
+        act(() => mockCompletions.shift()!(true));
+        // Removing the outgoing page must also leave a sized card while the
+        // returning page's UI style still contains its absolute positioning.
+        expectFixed();
+        expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
+        flushUI();
+        expectInFlow(Form);
+        expect(renderer.root.findByType(TextInput)).toBe(input);
+        expect(input.props.value).toBe('retained through layout handoff');
+      }
+    } finally {
+      if (renderer) act(() => renderer.unmount());
+      animatedStyle.mockRestore();
+    }
+  }
+);
 
 test.each([
   [undefined, undefined],
@@ -2037,15 +2229,14 @@ test.each([
       const card = () => cardStyle(renderer);
       const bottom = (component: React.ElementType, measuredHeight: number) => {
         const viewport = viewportStyle(renderer, component);
-        const page = StyleSheet.flatten(
-          pageFor(renderer, component).props.style
-        );
         const viewportTop =
           viewport.bottom === 0
             ? card().height - viewport.height
             : viewport.top;
         const pageTop =
-          page.bottom === 0 ? viewport.height - measuredHeight : page.top;
+          viewport.justifyContent === 'flex-end'
+            ? viewport.height - measuredHeight
+            : 0;
         return (
           viewportTop +
           viewport.transform[0].translateY +
@@ -2055,9 +2246,9 @@ test.each([
       };
       act(() => navigation.present('form'));
       expect(viewportStyle(renderer, Form)[stackAnchor]).toBe(0);
+      const viewportHeight = viewportStyle(renderer, Form).height;
       layout(pageFor(renderer, Form), 200);
       const animatedHeight = [...heights][0]!;
-      const viewportHeight = viewportStyle(renderer, Form).height;
       const input = renderer.root.findByType(TextInput);
       act(() => input.props.onChangeText('retained draft'));
       act(() => sheet(renderer).props.onSettle(1));
@@ -2079,8 +2270,11 @@ test.each([
         layout(pageFor(renderer, Preview), 500);
         // Include a spring overshoot beyond the available window.
         checkFrames([270, 420, 570, Dimensions.get('window').height + 100]);
-        animatedHeight.value = 570;
+        // The page fade may settle before a large height spring finishes.
+        // Its last frame must not become the starting height of a rapid Back.
+        animatedHeight.value = 550;
         act(() => mockCompletions.shift()!(true));
+        expect(animatedHeight.value).toBe(570);
         act(() => navigation.back());
         checkFrames([570, 420, 270]);
         act(() => mockCompletions.shift()!(true));
@@ -2088,20 +2282,16 @@ test.each([
         expect(input.props.value).toBe('retained draft');
         expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
       }
-      // A live content resize changes its anchor offset without remounting.
+      // Settled content sizes the card in native layout, without waiting for
+      // an animated height or remounting the retained input.
       layout(pageFor(renderer, Form), 320);
       animatedHeight.value = 300;
-      expect(bottom(Form, 320)).toBeCloseTo(
-        stackAnchor === 'bottom' ? 300 : 390
-      );
+      expectIntrinsicLayout(renderer, Form, 70);
       layout(pageFor(renderer, Form), NaN);
-      expect(bottom(Form, 320)).toBeCloseTo(
-        stackAnchor === 'bottom' ? 300 : 390
-      );
+      expectIntrinsicLayout(renderer, Form, 70);
       // Empty content still leaves a correctly sized header.
       layout(pageFor(renderer, Form), 0);
-      expect(card().height).toBe(70);
-      expect(bottom(Form, 0)).toBe(70);
+      expectIntrinsicLayout(renderer, Form, 70);
     } finally {
       if (renderer) act(() => renderer.unmount());
       sharedValues.mockRestore();
@@ -2139,15 +2329,16 @@ test('bottom alignment is independent of delayed or changed custom-header measur
     const page = StyleSheet.flatten(pageFor(renderer, component).props.style);
     expect(viewport).toMatchObject({ position: 'absolute', bottom: 0 });
     expect(viewport.transform[0].translateY).toBeCloseTo(0);
-    expect(page).toMatchObject({ position: 'absolute', bottom: 0 });
+    expect(viewport.justifyContent).toBe('flex-end');
+    expect(page).toMatchObject({ position: 'relative' });
     expect(viewport.top).toBeUndefined();
     expect(page.top).toBeUndefined();
   };
   act(() => navigation.present('form'));
   layoutPage(renderer, Form, 320);
-  expect(cardStyle(renderer).height).toBeUndefined();
+  expect(cardStyle(renderer).height).toBe('auto');
   measureHeader('form', 80);
-  expect(cardStyle(renderer).height).toBe(400);
+  expectIntrinsicLayout(renderer, Form, 80);
   act(() => sheet(renderer).props.onSettle(1));
   act(() => navigation.push('preview', { label: 'short' }));
   layoutPage(renderer, Preview, 200);
@@ -2158,20 +2349,171 @@ test('bottom alignment is independent of delayed or changed custom-header measur
   expectBottomLayout(Preview);
   measureHeader('preview', 110);
   act(() => mockCompletions.shift()!(true));
-  expect(cardStyle(renderer).height).toBe(310);
+  expectIntrinsicLayout(renderer, Preview, 110);
   expectBottomLayout(Form);
-  expectBottomLayout(Preview);
   // Runtime header changes and Back keep the same native bottom constraints.
   measureHeader('preview', 150);
-  expectBottomLayout(Preview);
+  expectIntrinsicLayout(renderer, Preview, 150);
   act(() => navigation.back());
   expectBottomLayout(Form);
   measureHeader('form', 100);
   act(() => mockCompletions.shift()!(true));
-  expect(cardStyle(renderer).height).toBe(420);
-  expectBottomLayout(Form);
+  expectIntrinsicLayout(renderer, Form, 100);
   act(() => renderer.unmount());
 });
+
+test.each([
+  ['floating', 'top'],
+  ['floating', 'bottom'],
+  ['sheet', 'top'],
+  ['sheet', 'bottom'],
+] as const)(
+  'sizes a settled %s/%s composer natively while keyboard layout callbacks lag',
+  (appearance, anchor) => {
+    const animatedStyle = jest
+      .spyOn(Reanimated, 'useAnimatedStyle')
+      .mockImplementation((updater) =>
+        Object.defineProperties(
+          {} as ReturnType<typeof Reanimated.useAnimatedStyle>,
+          Object.fromEntries(
+            Object.keys(updater()).map((key) => [
+              key,
+              {
+                enumerable: true,
+                get: () => (updater() as Record<string, unknown>)[key],
+              },
+            ])
+          )
+        )
+      );
+    const spring = jest.spyOn(Reanimated, 'withSpring');
+    const renders = jest.fn();
+    function Composer() {
+      renders();
+      return <Form />;
+    }
+    let renderer!: TestRenderer.ReactTestRenderer;
+    try {
+      act(() => {
+        renderer = TestRenderer.create(
+          <Tray.Provider>
+            <Observer />
+            <Tray.Stack
+              appearance={appearance}
+              anchor={anchor}
+              topInset={50}
+              bottomInset={20}
+              animation={{ type: 'spring' }}
+            >
+              <Tray.Screen name="form" component={Composer} />
+              <Tray.Screen name="preview" component={Preview} />
+            </Tray.Stack>
+          </Tray.Provider>
+        );
+      });
+      act(() => navigation.present('form'));
+      layoutPage(renderer, Composer, 400);
+      act(() => sheet(renderer).props.onSettle(1));
+      const input = renderer.root.findByType(TextInput);
+      act(() => input.props.onChangeText('retained composer draft'));
+      const renderCount = renders.mock.calls.length;
+      spring.mockClear();
+      const event = { height: 300, progress: 1, duration: 250, target: 1 };
+      const checkFrame = (height: number) => {
+        const bottom = 20 * (1 - height / 300);
+        expectIntrinsicLayout(
+          renderer,
+          Composer,
+          70,
+          appearance === 'sheet' ? bottom : 0
+        );
+        const content = pageFor(renderer, Composer).findByType(
+          Reanimated.default.View
+        );
+        expect(StyleSheet.flatten(content.props.style).maxHeight).toBeCloseTo(
+          Dimensions.get('window').height -
+            height -
+            50 -
+            (appearance === 'floating' ? bottom + 12 : bottom) -
+            6 -
+            70
+        );
+        expect(sheet(renderer).props.style.bottom).toBe(height);
+      };
+      act(() => mockKeyboardHandlers.onStart!(event));
+      // No JS onLayout is delivered during these frames. The content and its
+      // clipping card must still share one native layout, including reversal.
+      for (const height of [60, 180, 300]) {
+        act(() =>
+          mockKeyboardHandlers.onMove!({
+            ...event,
+            height,
+            progress: height / 300,
+          })
+        );
+        checkFrame(height);
+      }
+      act(() => mockKeyboardHandlers.onEnd!(event));
+      layoutPage(renderer, Composer, 240);
+      for (const height of [180, 60, 180, 300]) {
+        act(() =>
+          mockKeyboardHandlers.onInteractive!({
+            ...event,
+            height,
+            progress: height / 300,
+          })
+        );
+        checkFrame(height);
+      }
+      act(() =>
+        mockKeyboardHandlers.onStart!({ ...event, height: 0, progress: 0 })
+      );
+      for (const height of [180, 60, 0]) {
+        act(() =>
+          mockKeyboardHandlers.onMove!({
+            ...event,
+            height,
+            progress: height / 300,
+          })
+        );
+        checkFrame(height);
+      }
+      act(() =>
+        mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 })
+      );
+      // Even a delayed final content measurement must not restart a spring.
+      layoutPage(renderer, Composer, 390);
+      layoutPage(renderer, Composer, 400);
+      checkFrame(0);
+      expect(spring).not.toHaveBeenCalled();
+      expect(renders).toHaveBeenCalledTimes(renderCount);
+      expect(renderer.root.findByType(TextInput)).toBe(input);
+      expect(input.props.value).toBe('retained composer draft');
+
+      // Navigation still owns an animated height; only the active settled page
+      // contributes intrinsic size, so retained pages cannot enlarge the card.
+      act(() => navigation.push('preview', { label: 'next' }));
+      layoutPage(renderer, Preview, 200);
+      expect(spring).toHaveBeenCalled();
+      expect(cardStyle(renderer).height).toBe(
+        270 + (appearance === 'sheet' ? 20 : 0)
+      );
+      expect(viewportStyle(renderer, Composer).position).toBe('absolute');
+      act(() => mockCompletions.shift()!(true));
+      expectIntrinsicLayout(
+        renderer,
+        Preview,
+        70,
+        appearance === 'sheet' ? 20 : 0
+      );
+      expect(viewportStyle(renderer, Composer).position).toBe('absolute');
+    } finally {
+      if (renderer) act(() => renderer.unmount());
+      spring.mockRestore();
+      animatedStyle.mockRestore();
+    }
+  }
+);
 
 test('keyboard frames update shared geometry without rerendering React content', () => {
   let keyboard!: ReturnType<typeof useTrayKeyboard>;
@@ -2451,16 +2793,17 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
       act(() => mockKeyboardHandlers.onEnd!(event));
       expect(card().marginBottom).toBe(mode === 'floating' ? 12 : 0);
       expect(sheet(renderer).props.style.bottom).toBe(300);
-      expect(card().height).toBe(
-        mode === 'fullScreen' ? 500 : mode === 'sheet' ? 180 : 200
-      );
+      expect(card().height).toBe(mode === 'fullScreen' ? 500 : 'auto');
       if (mode === 'fullScreen')
         expect(viewportStyle(renderer, Form).height).toBe(380);
+      else expectIntrinsicLayout(renderer, Form, 70);
       act(() =>
         mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 })
       );
       expect(card().marginBottom).toBe(mode === 'floating' ? 32 : 0);
-      expect(card().height).toBe(mode === 'fullScreen' ? 800 : 200);
+      expect(card().height).toBe(mode === 'fullScreen' ? 800 : 'auto');
+      if (mode !== 'fullScreen')
+        expectIntrinsicLayout(renderer, Form, 70, mode === 'sheet' ? 20 : 0);
       expect(sheet(renderer).props.style.bottom).toBe(0);
       expect(renderer.root.findByProps({ testID: 'draft' }).props.value).toBe(
         'draft'
@@ -2534,13 +2877,11 @@ test.each([
     layoutPage(renderer, Form, appearance === 'sheet' ? 110 : 130);
     expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
-    expect(viewport().transform[0].translateY).toBeCloseTo(
-      appearance === 'sheet' ? -20 : 0
-    );
+    expectIntrinsicLayout(renderer, Form, 70, appearance === 'sheet' ? 20 : 0);
     expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
     expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
     expect(card()).toMatchObject({
-      height: 200,
+      height: 'auto',
       marginHorizontal: appearance === 'floating' ? 16 : 0,
       marginBottom: appearance === 'floating' ? 32 : 0,
       borderRadius: 30,
@@ -2663,7 +3004,7 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
   );
   act(() => mockCompletions.shift()!(true));
   expect(cardStyle(renderer)).toMatchObject({
-    height: 200,
+    height: 'auto',
     marginHorizontal: 16,
     marginBottom: 32,
   });
@@ -2995,6 +3336,27 @@ function viewportStyle(
   while (node.type !== Reanimated.default.View) node = node.parent!;
   return StyleSheet.flatten(node.props.style);
 }
+
+function expectIntrinsicLayout(
+  renderer: TestRenderer.ReactTestRenderer,
+  component: React.ElementType,
+  headerHeight: number,
+  bottomInset = 0
+) {
+  expect(cardStyle(renderer).height).toBe('auto');
+  expect(viewportStyle(renderer, component)).toMatchObject({
+    position: 'relative',
+    height: 'auto',
+    paddingTop: headerHeight,
+    paddingBottom: bottomInset,
+    transform: [{ translateY: 0 }],
+  });
+  const page = StyleSheet.flatten(pageFor(renderer, component).props.style);
+  expect(page.position).toBe('relative');
+  expect(page.height).toBeUndefined();
+  expect(page.maxHeight).toBeUndefined();
+}
+
 function layoutPage(
   renderer: TestRenderer.ReactTestRenderer,
   component: React.ElementType,

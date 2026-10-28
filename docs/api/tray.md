@@ -71,7 +71,7 @@ See [Use a custom header](../guide/dynamic-trays.md#use-a-custom-header).
 
 ## `TrayAnimationConfig`
 
-Choose one animation for resizing, full-screen expansion, header transitions, and page crossfades:
+Choose one animation for resizing, full-screen expansion, header transitions, and page crossfades between screens:
 
 ```tsx
 animation={{ type: 'timing', duration: 300 }}
@@ -127,7 +127,7 @@ Parameters are optional only when the route type includes `undefined`. Methods r
 
 `push` normally accepts requests only while open, with no preparation, transition, or pending navigation; additional pushes are ignored. Inside a screen or custom header, pushes from `useTray()` or the `tray` prop also require that owning route to be current. Actions obtained outside screens apply to the current route.
 
-During Back or `popToRoot()`, the returning screen can receive taps before the animation finishes. Its first `push` waits for completion, including any shared-element handoff, then runs automatically. Further pushes are ignored while that request is pending. This applies to actions bound to the returning screen or its header; outgoing screens and actions obtained outside screens cannot queue a push during the return.
+An incoming screen can receive taps before its transition finishes, including forward navigation, Back, and `popToRoot()`. Its first `push` waits for completion, including any shared-element handoff, then runs automatically. Further pushes are ignored while that request is pending. This applies to actions bound to the incoming screen or its header; outgoing screens and actions obtained outside screens cannot queue a push during a transition.
 
 Other navigation requests can wait for an in-progress transition. Dismissal clears pending navigation. A `present()` during closing waits until the sheet closes; the latest request wins. Other commands do nothing while closed or closing.
 

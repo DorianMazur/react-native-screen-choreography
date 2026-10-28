@@ -371,12 +371,14 @@ declarations during render; screens mount only when opened. Definitions must
 remain available while used by a live view or queued command.
 
 Software Mansion handles dragging, scrolling, the backdrop, and native sheet
-settlement. Reanimated handles page crossfades and card resizing. Content measures
-in a fixed destination viewport so intermediate animated heights cannot feed back
-into layout. Each page's viewport and content anchor to the card's bottom through
-native layout by default; top anchoring places them below the header. Bottom
-alignment does not depend on estimated header heights or delayed page measurements.
-The card resizes from the active page and header's measured heights. Each viewport
+settlement. Reanimated handles page crossfades and card resizing during navigation.
+A settled compact page sizes the card directly through native layout. Transitioning
+and retained pages measure in fixed destination viewports so intermediate animated
+heights cannot feed back into layout. Each page's viewport and content anchor to
+the card's bottom through native layout by default; top anchoring places them
+below the header. Bottom alignment does not depend on estimated header heights or
+delayed page measurements. During navigation, the card resizes from the active
+page and header's measured heights. Each viewport
 wraps its page's Fabric capture root, preserving page-relative shared-element
 coordinates. The header stays above the moving content. Full-screen views use the
 available window and keep safe-area padding
@@ -402,7 +404,7 @@ owning overlay while unrelated foreground overlays retain their ordering.
 Each entry has one live React instance. Previous entries stay mounted for Back;
 popped or replaced entries remain until their transition finishes. Native sheet
 settlement releases the whole stack. Pushes normally require an open, idle stack.
-During a return, the current screen's first bound push waits for transition
+During a transition, the incoming screen's first bound push waits for transition
 completion and any shared host handoff; later pushes are rejected. Other
 navigation requests can also wait for a transition. Dismissal clears pending requests,
 and reopening waits for closure. Session and transition IDs reject callbacks from
@@ -426,7 +428,7 @@ changing their effect lifecycle.
 Each factory also supplies a stable route-key context around screen content and
 custom header components. Their navigation actions bind pushes to that key; the
 reducer atomically rejects pushes from an inactive source and duplicate requests.
-The bound key distinguishes a returning screen's next action from stale callbacks
+The bound key distinguishes an incoming screen's next action from stale callbacks
 in the outgoing screen. A deferred push is checked again when replayed.
 `useFocusEffect` selects whether that key matches the store's current route and
 uses a React effect to balance setup and cleanup.

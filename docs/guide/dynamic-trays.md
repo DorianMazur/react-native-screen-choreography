@@ -148,10 +148,10 @@ You can also select `state.route` or `state.depth`. Components update only when 
 
 Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
 
-Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. The library ignores duplicate pushes while opening or navigating and allows retry after cancellation. If you tap a destination on a returning screen while Back or `popToRoot()` is still animating, that first push runs automatically after the return finishes. No second tap, persistent `pushing` ref, or focus-reset effect is needed; cancellation can leave the source focused throughout.
+Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. The library ignores duplicate pushes while opening or navigating and allows retry after cancellation. If you tap a destination on the incoming screen while its transition is still animating, that first push runs automatically after the transition finishes. No second tap, persistent `pushing` ref, or focus-reset effect is needed; cancellation can leave the source focused throughout.
 
 ::: warning Migration from 0.8.1
-Duplicate pushes made while busy are ignored. `push(A); push(B)` accepts A and discards B, and `present(A); push(B)` does not queue B during opening. A returning screen's first push can wait for Back to finish. Remove application-owned duplicate-push guards and their reset effects.
+Duplicate pushes made while busy are ignored. `push(A); push(B)` from the same screen accepts A and discards B, and `present(A); push(B)` does not queue B during opening. The incoming screen's first push can wait for its transition to finish. Remove application-owned duplicate-push guards and their reset effects.
 :::
 
 ## Respond to opening and closing

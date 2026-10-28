@@ -419,7 +419,7 @@ function TrayHost<P extends TrayParamList>({
   const contentHeight = useSharedValue(-1);
   const [hasMeasured, setHasMeasured] = useState(false);
   const measuredHeight = useRef(-1);
-  const measuredKeyboardHeight = useRef(keyboard.layoutHeight);
+  const intrinsic = hasMeasured && !state.transition && !fullScreen;
   const destinationHeight = fullScreen
     ? height
     : (pageHeights.current.get(active.key) ?? -headerHeight - paddingBottom) +
@@ -491,26 +491,29 @@ function TrayHost<P extends TrayParamList>({
       destinationHeight <= 0
     )
       return;
-    const resized =
-      measuredKeyboardHeight.current !== keyboard.layoutHeight &&
-      !state.transition;
-    measuredKeyboardHeight.current = keyboard.layoutHeight;
+    // Settlement can precede the height spring's last frame. Keep the next
+    // navigation's starting geometry aligned with the intrinsic card.
+    if (!state.transition && !sharedEnabled) {
+      contentHeight.value = destinationHeight;
+      expansion.value = fullScreen ? 1 : 0;
+    }
     if (Math.abs(destinationHeight - measuredHeight.current) < 0.5) return;
     const first = measuredHeight.current < 0;
     measuredHeight.current = destinationHeight;
     if (first) setHasMeasured(true);
     if (!sharedEnabled)
       contentHeight.value =
-        first || resized
+        first || !state.transition
           ? destinationHeight
           : animateTrayValue(destinationHeight, animation);
   }, [
     targetReady,
     destinationHeight,
-    keyboard.layoutHeight,
     state.transition,
     animation,
     contentHeight,
+    expansion,
+    fullScreen,
     sharedEnabled,
     layoutVersion,
   ]);
@@ -578,12 +581,27 @@ function TrayHost<P extends TrayParamList>({
       topInset -
       bottomInset * (1 - keyboardProgress.value)
   );
+  const compactSpace = useDerivedValue(() => {
+    const liveBottomInset = bottomInset * (1 - keyboardProgress.value);
+    const liveGap = appearance === 'floating' ? liveBottomInset + 12 : 0;
+    return (
+      height -
+      keyboardHeight.value -
+      topInset -
+      liveGap -
+      (appearance === 'sheet' ? liveBottomInset : 0) -
+      6
+    );
+  });
   const cardGeometry = useAnimatedStyle(() => {
     const expanded = Math.max(0, Math.min(1, visualExpansion.value));
     const liveBottomInset = bottomInset * (1 - keyboardProgress.value);
     const liveGap = appearance === 'floating' ? liveBottomInset + 12 : 0;
     return {
-      ...(cardHeight.value < 0 ? {} : { height: cardHeight.value }),
+      // A settled compact page owns its height through Yoga. Reflecting its
+      // animated layout through onLayout and another spring clips the growing
+      // content while the card trails behind (especially on keyboard close).
+      height: intrinsic || cardHeight.value < 0 ? 'auto' : cardHeight.value,
       marginHorizontal: margin * (1 - expanded),
       marginBottom: liveGap * (1 - expanded),
       borderRadius: 30 * (1 - expanded),
@@ -863,6 +881,8 @@ function TrayHost<P extends TrayParamList>({
                     onComplete={complete}
                     maxHeight={maxHeightFor(entryFullScreen, entryHeaderHeight)}
                     fullScreen={entryFullScreen}
+                    intrinsic={intrinsic && entry.key === active.key}
+                    compactSpace={compactSpace}
                     fullScreenSpace={fullScreenSpace}
                     headerHeight={entryHeaderHeight}
                     anchor={screens[entry.name]?.anchor ?? anchor}
@@ -1052,6 +1072,8 @@ function TrayPage({
   onComplete,
   maxHeight,
   fullScreen,
+  intrinsic,
+  compactSpace,
   fullScreenSpace,
   headerHeight,
   anchor,
@@ -1077,6 +1099,8 @@ function TrayPage({
   onComplete: (session: number, id: number) => void;
   maxHeight: number;
   fullScreen: boolean;
+  intrinsic: boolean;
+  compactSpace: SharedValue<number>;
   fullScreenSpace: SharedValue<number>;
   headerHeight: number;
   anchor: 'top' | 'bottom';
@@ -1151,18 +1175,48 @@ function TrayPage({
       opacity: active ? opacity : from ? 1 - opacity : 0,
     };
   });
-  const viewportSize = useAnimatedStyle(() => ({
-    height: fullScreen
-      ? Math.max(0, fullScreenSpace.value - headerHeight)
-      : maxHeight,
-  }));
+  const viewportSize = useAnimatedStyle(() =>
+    intrinsic
+      ? {
+          position: 'relative',
+          justifyContent: anchor === 'bottom' ? 'flex-end' : 'flex-start',
+          top: undefined,
+          bottom: undefined,
+          height: 'auto',
+          paddingTop: contentTop.value,
+          paddingBottom: contentBottom.value,
+        }
+      : {
+          position: 'absolute',
+          justifyContent: anchor === 'bottom' ? 'flex-end' : 'flex-start',
+          top: anchor === 'top' ? 0 : undefined,
+          bottom: anchor === 'bottom' ? 0 : undefined,
+          height: fullScreen
+            ? Math.max(0, fullScreenSpace.value - headerHeight)
+            : maxHeight,
+          paddingTop: 0,
+          paddingBottom: 0,
+        }
+  );
+  const contentSize = useAnimatedStyle(() =>
+    fullScreen
+      ? { height: '100%' }
+      : {
+          maxHeight: intrinsic
+            ? Math.max(80, compactSpace.value - headerHeight)
+            : maxHeight,
+        }
+  );
   // Yoga sizes full-screen descendants from this viewport in the same commit
   // as the keyboard-driven card resize, including bottom-anchored pages.
   const anchorStyle = useAnimatedStyle(() => ({
     transform: [
       {
-        translateY:
-          anchor === 'bottom' ? -contentBottom.value : contentTop.value,
+        translateY: intrinsic
+          ? 0
+          : anchor === 'bottom'
+            ? -contentBottom.value
+            : contentTop.value,
       },
     ],
   }));
@@ -1201,8 +1255,9 @@ function TrayPage({
     <Animated.View
       style={[
         styles.centered,
-        styles.pageViewport,
-        anchor === 'bottom' ? styles.bottomPage : styles.topPage,
+        // Layout-mode changes must travel with the animated card height. A
+        // React commit that makes this absolute while the UI still has an
+        // intrinsic card height would collapse the entire sheet for a frame.
         { width },
         viewportSize,
         anchorStyle,
@@ -1225,9 +1280,8 @@ function TrayPage({
         style={[
           styles.centered,
           styles.pageContent,
-          anchor === 'bottom' ? styles.bottomPage : styles.topPage,
           {
-            ...(fullScreen ? { height: '100%' } : { maxHeight }),
+            ...(fullScreen ? { height: '100%' } : {}),
             width,
             opacity: staticOpacity,
           },
@@ -1236,9 +1290,7 @@ function TrayPage({
         accessibilityElementsHidden={blocked}
         importantForAccessibility={blocked ? 'no-hide-descendants' : 'auto'}
       >
-        <Animated.View
-          style={[fullScreen ? styles.fillHeight : { maxHeight }, pageStyle]}
-        >
+        <Animated.View style={[contentSize, pageStyle]}>
           <ScreenIdContext.Provider value={screenId}>
             <ChoreographyProgressProvider>
               {children}
@@ -1283,10 +1335,6 @@ const styles = StyleSheet.create({
   titles: { flex: 1, justifyContent: 'center' },
   previousTitle: { position: 'absolute', left: 0, right: 0 },
   title: { textAlign: 'center', fontSize: 16, fontWeight: '600' },
-  pageViewport: { position: 'absolute' },
-  pageContent: { position: 'absolute' },
-  fillHeight: { height: '100%' },
+  pageContent: { position: 'relative' },
   keyboardBackground: { position: 'absolute', left: 0, right: 0, bottom: 0 },
-  topPage: { top: 0 },
-  bottomPage: { bottom: 0 },
 });

@@ -37,9 +37,9 @@ export interface TrayNavigation<P extends TrayParamList> {
   /** Open a new root. While closing, wait for native dismissal first. */
   present(...destination: Destination<P>): void;
   /**
-   * Push when the tray is open and idle. Calls during preparation, transitions,
-   * or queued navigation are ignored. Cancellation allows another attempt.
-   * Inside a screen/header, pushes also require that owning route to be current.
+   * Push when the tray is open and idle. From the incoming screen/header, the
+   * first push during a transition waits for completion. Further pushes,
+   * preparation-time requests, and requests from inactive owners are ignored.
    */
   push(...destination: PushDestination<P>): void;
   replace(...destination: Destination<P>): void;
@@ -138,7 +138,7 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   renderHeader?: (props: TrayHeaderProps<P>) => ReactNode;
   /** Show the drag indicator above the header. Defaults to true; dragging stays enabled. */
   handleVisible?: boolean;
-  /** Card resizing, header transitions, and page crossfades. Native dragging/dismissal is separate. */
+  /** Card resizing between screens, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
   /** Called when a new tray presentation begins. */
   onWillPresent?: () => void;

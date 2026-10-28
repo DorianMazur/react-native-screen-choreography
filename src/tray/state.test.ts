@@ -72,33 +72,42 @@ test('cancelled preparation leaves the public snapshot unchanged and rejects sta
   expect(f.push()).toBe(false); // The source is no longer current.
 });
 
-test.each([undefined, 'chart'])(
-  'retains one push from the returning screen until the %s transition ends',
-  (groupId) => {
+test.each([
+  ['forward', undefined],
+  ['forward', 'chart'],
+  ['back', undefined],
+  ['back', 'chart'],
+] as const)(
+  'retains one push from the incoming screen until the %s/%s transition ends',
+  (direction, groupId) => {
     const f = fixture();
     f.settle(1);
     expect(f.push('Add', f.root, groupId)).toBe(true);
     if (groupId) f.prepare();
-    f.finish();
     const editor = f.getSnapshot().route!.key;
-    f.dispatch({ type: 'back' });
-    if (groupId) {
-      expect(f.push()).toBe(false); // Source capture still owns the old route.
-      f.prepare();
+    if (direction === 'back') {
+      f.finish();
+      f.dispatch({ type: 'back' });
+      if (groupId) {
+        expect(f.push()).toBe(false); // Source capture still owns the old route.
+        f.prepare();
+      }
     }
+    const incoming = direction === 'back' ? f.root : editor;
+    const outgoing = direction === 'back' ? editor : f.root;
     const returning = f.state();
     const snapshot = f.getSnapshot();
-    expect(snapshot.route?.key).toBe(f.root);
-    expect(f.push('CashOut', editor)).toBe(false);
+    expect(snapshot.route?.key).toBe(incoming);
+    expect(f.push('CashOut', outgoing)).toBe(false);
     expect(
       f.dispatch({ type: 'push', name: 'Unbound', params: undefined })
     ).toBe(false);
-    expect(f.push('CashOut', f.root, groupId)).toBe(true);
+    expect(f.push('CashOut', incoming, groupId)).toBe(true);
     expect(f.getSnapshot()).toBe(snapshot);
     expect(f.state().transition).toBe(returning.transition);
     expect(f.state().queue).toHaveLength(1);
-    expect(f.push()).toBe(false);
-    expect(f.push('CashOut')).toBe(false);
+    expect(f.push('Add', incoming)).toBe(false);
+    expect(f.push('CashOut', incoming)).toBe(false);
     expect(
       f.dispatch({
         type: 'transitionEnd',
@@ -112,7 +121,7 @@ test.each([undefined, 'chart'])(
       f.prepare();
     }
     expect(f.getSnapshot().route?.name).toBe('CashOut');
-    expect(f.getSnapshot().depth).toBe(2);
+    expect(f.getSnapshot().depth).toBe(direction === 'back' ? 2 : 3);
     expect(f.state().queue).toEqual([]);
     const next = f.state();
     expect(
@@ -124,7 +133,7 @@ test.each([undefined, 'chart'])(
     ).toBe(false);
     expect(f.state()).toBe(next);
     f.finish();
-    expect(f.getSnapshot().depth).toBe(2);
+    expect(f.getSnapshot().depth).toBe(direction === 'back' ? 2 : 3);
   }
 );
 
@@ -164,16 +173,23 @@ test('a returning-screen push replays before later navigation without stalling t
   expect(f.state().queue).toEqual([]);
 });
 
-test.each(['dismiss', 'drag'])(
-  '%s clears a pending reopen and stale completions cannot replay it',
-  (closing) => {
+test.each([
+  ['forward', 'dismiss'],
+  ['forward', 'drag'],
+  ['back', 'dismiss'],
+  ['back', 'drag'],
+])(
+  '%s/%s clears a pending push and stale completions cannot replay it',
+  (direction, closing) => {
     const f = fixture();
     f.settle(1);
     f.push();
-    f.finish();
-    f.dispatch({ type: 'back' });
+    if (direction === 'back') {
+      f.finish();
+      f.dispatch({ type: 'back' });
+    }
     const returning = f.state();
-    expect(f.push('CashOut')).toBe(true);
+    expect(f.push('CashOut', f.getSnapshot().route!.key)).toBe(true);
     if (closing === 'drag') f.snap(0);
     else f.dispatch({ type: 'dismiss' });
     expect(f.state().queue).toEqual([]);

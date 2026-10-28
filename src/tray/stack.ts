@@ -95,11 +95,10 @@ export function trayReducer(
     )
       return state;
     if (state.transition) {
-      // A returning screen can receive input before the spring or native
+      // An incoming screen can receive input before the spring or native
       // handoff finishes. Keep its first push; stale outgoing callbacks and
       // repeat taps must not add destinations behind it.
-      return state.transition.direction === -1 &&
-        action.sourceRouteKey === state.transition.to
+      return action.sourceRouteKey === state.transition.to
         ? { ...state, queue: [action] }
         : state;
     }

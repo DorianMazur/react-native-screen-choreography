@@ -149,6 +149,8 @@ When debugging or extending behavior, start here:
 
 ## Documentation Expectations
 
+- update docs only when a change affects the public API, developer-visible behavior, setup, or makes an existing architectural explanation inaccurate. A bug fix that restores documented behavior does not automatically need a docs change.
+- make the smallest correction in the relevant existing section, using plain language. Avoid unnecessary new sections, repeated explanations across guides/API/architecture, and implementation or debugging narratives; keep those details in code comments, tests, or the PR description unless readers need them to understand the library.
 - write guides and API reference for application developers: use task-oriented headings, concrete examples, and observable behavior
 - keep source-file maps, repository change constraints, and regression checklists in `AGENTS.md`; `docs/architecture.md` is a human contributor reference that explains current runtime design, purpose, and extension points
 - avoid narrating current APIs as "now", "legacy", or "removed" outside an explicit migration section
