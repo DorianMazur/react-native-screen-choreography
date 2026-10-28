@@ -1,3 +1,22 @@
+diff --git a/packages/react-native/ReactAndroid/hermes-engine/build.gradle.kts b/packages/react-native/ReactAndroid/hermes-engine/build.gradle.kts
+--- a/packages/react-native/ReactAndroid/hermes-engine/build.gradle.kts
++++ b/packages/react-native/ReactAndroid/hermes-engine/build.gradle.kts
+@@ -125,12 +125,10 @@ val unzipHermes by
+       dependsOn(downloadHermes)
+       from(tarTree(downloadHermesDest)) {
+         eachFile {
+-          // We flatten the unzip as the tarball contains a `facebook-hermes-<SHA>`
+-          // folder at the top level.
+-          if (this.path.startsWith("facebook-hermes-")) {
+-            this.path = this.path.substringAfter("/")
+-          }
++          // Strip the archive root independently of the GitHub repository owner.
++          this.path = this.path.substringAfter("/")
+         }
+       }
++      includeEmptyDirs = false
+       into(hermesDir)
+     }
 diff --git a/packages/react-native/ReactCommon/jsinspector-modern/Base64.h b/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
 --- a/packages/react-native/ReactCommon/jsinspector-modern/Base64.h
 +++ b/packages/react-native/ReactCommon/jsinspector-modern/Base64.h

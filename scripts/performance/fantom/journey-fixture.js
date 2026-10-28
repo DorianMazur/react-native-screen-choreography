@@ -2,7 +2,7 @@
 import * as Fantom from '@react-native/fantom';
 import { createRef, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { SCENARIOS } from '../../../examples/react-navigation/src/performance/scenarios';
+import { SCREEN_SCENARIOS } from '../../../examples/react-navigation/src/performance/scenarios';
 import { ElementRegistry } from '../../../src/core/ElementRegistry';
 import { ScreenReadinessRegistry } from '../../../src/core/ScreenReadinessRegistry';
 import { NavigationSessionController } from '../../../src/core/NavigationSessionController';
@@ -65,10 +65,12 @@ const layouts = {
   },
 };
 
-export const JOURNEYS = Object.entries(SCENARIOS).map(([id, scenario]) => ({
-  id,
-  ...scenario,
-}));
+export const JOURNEYS = Object.entries(SCREEN_SCENARIOS).map(
+  ([id, scenario]) => ({
+    id,
+    ...scenario,
+  })
+);
 
 function Endpoint({ record, registry, frame, children }) {
   useEffect(() => {
