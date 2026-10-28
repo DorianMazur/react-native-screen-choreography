@@ -17,6 +17,7 @@ import {
 import TestRenderer, { act } from 'react-test-renderer';
 import * as Reanimated from 'react-native-reanimated';
 import { createTray } from './createTray';
+import { TrayDiagnosticsContext, type TrayDiagnostics } from './diagnostics';
 import { useTrayKeyboard } from './useTrayKeyboard';
 import { useTrayGeometry } from './TrayChoreography';
 import { TrayHeaderLayer } from './TrayHeaderLayer';
@@ -235,6 +236,61 @@ function lifecycleFixture() {
   });
   return { renderer, render, events, callbacks };
 }
+
+test('diagnostics install only while enabled and never recreate the tray or its content', () => {
+  const dispatch = jest.fn();
+  const observeRender = jest.fn();
+  const unmountObserver = jest.fn();
+  function DiagnosticObserver() {
+    observeRender();
+    useEffect(() => unmountObserver, []);
+    return null;
+  }
+  const diagnostics: TrayDiagnostics = {
+    dispatch,
+    choreography: {},
+    Observer: DiagnosticObserver,
+  };
+  const render = (value: TrayDiagnostics | null) => (
+    <TrayDiagnosticsContext.Provider value={value}>
+      <Tray.Provider>
+        {stack()}
+        <Observer />
+      </Tray.Provider>
+    </TrayDiagnosticsContext.Provider>
+  );
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(render(null));
+  });
+  try {
+    act(() => navigation.present('form'));
+    act(() => sheet(renderer).props.onSettle(1));
+    const route = navigationState.route;
+    act(() =>
+      renderer.root.findByProps({ testID: 'draft' }).props.onChangeText('kept')
+    );
+    expect(dispatch).not.toHaveBeenCalled();
+    expect(observeRender).not.toHaveBeenCalled();
+    act(() => renderer.update(render(diagnostics)));
+    expect(observeRender).toHaveBeenCalled();
+    expect(dispatch).not.toHaveBeenCalled(); // Enabling must not replay earlier actions.
+    act(() => sheet(renderer).props.onSettle(1));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    act(() => renderer.update(render(null)));
+    expect(unmountObserver).toHaveBeenCalledTimes(1);
+    observeRender.mockClear();
+    act(() => sheet(renderer).props.onSettle(1));
+    expect(dispatch).toHaveBeenCalledTimes(1);
+    expect(observeRender).not.toHaveBeenCalled();
+    expect(navigationState.route).toBe(route);
+    expect(renderer.root.findByProps({ testID: 'draft' }).props.value).toBe(
+      'kept'
+    );
+  } finally {
+    act(() => renderer.unmount());
+  }
+});
 
 test('tray lifecycle distinguishes opening from native settlement and ignores layout settlements', () => {
   const f = lifecycleFixture();

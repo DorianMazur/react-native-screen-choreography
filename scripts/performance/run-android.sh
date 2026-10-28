@@ -54,8 +54,9 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   runnerImage: process.env.ImageVersion ?? 'local',
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
+  workletsVersion: require('./examples/react-navigation/node_modules/react-native-worklets/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
-  lifecycleValidation: 1,
+  lifecycleValidation: 2,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE

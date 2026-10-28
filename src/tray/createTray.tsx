@@ -52,6 +52,7 @@ import type { ResolvedTrayAnimation } from './animation';
 import type { TrayScreenMap } from './declarations';
 import type { TrayAction, TrayEntry, TrayStackState } from './stack';
 import { createTrayStateStore } from './state';
+import { TrayDiagnosticsContext } from './diagnostics';
 import type {
   TrayFocusEffectOptions,
   TrayHeaderProps,
@@ -142,7 +143,14 @@ export function createTray<P extends TrayParamList>() {
 
   function Provider({ children }: TrayProviderProps) {
     const declaration = readTrayDeclaration<P>(children, Stack, Screen);
-    const [store] = useState(() => createTrayStateStore<P>());
+    const diagnostics = useContext(TrayDiagnosticsContext);
+    const [store] = useState(() =>
+      createTrayStateStore<P>(diagnostics?.dispatch)
+    );
+    useLayoutEffect(() => {
+      store.setObserver(diagnostics?.dispatch);
+      return () => store.setObserver(undefined);
+    }, [store, diagnostics?.dispatch]);
     const state = useSyncExternalStore(
       store.subscribe,
       store.getStackSnapshot,
@@ -320,6 +328,7 @@ function TrayHost<P extends TrayParamList>({
   bindNavigation: (key: string) => TrayNavigation<P>;
 }) {
   const { height, width } = useWindowDimensions();
+  const DiagnosticObserver = useContext(TrayDiagnosticsContext)?.Observer;
   const keyboard = useTrayKeyboard();
   const keyboardHeight = keyboard.height;
   const keyboardProgress = keyboard.progress;
@@ -690,6 +699,9 @@ function TrayHost<P extends TrayParamList>({
             <Animated.View
               style={[styles.card, { backgroundColor }, cardGeometry]}
             >
+              {DiagnosticObserver && (
+                <DiagnosticObserver state={state} progress={timeline} />
+              )}
               <Animated.View
                 style={[styles.headers, { backgroundColor }, contentPosition]}
               >

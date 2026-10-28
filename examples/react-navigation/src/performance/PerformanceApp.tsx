@@ -47,7 +47,10 @@ import {
 } from '@screen-choreography/example-shared';
 import type { ExampleStackParams } from '../ExampleScreen';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { SCENARIOS } from './scenarios';
+import {
+  SCREEN_SCENARIOS as SCENARIOS,
+  type ScreenPerformanceScenario,
+} from './scenarios';
 import { useSharedValue } from 'react-native-reanimated';
 import { MotionObserver } from './MotionObserver';
 import type { MotionRequest } from './motion';
@@ -56,7 +59,6 @@ import { ChoreographyContext } from '../../../../src/core/ChoreographyContext';
 import {
   BenchmarkCollector,
   type JourneyDirection,
-  type PerformanceScenario,
   type ProbeScreen,
 } from './collector';
 
@@ -64,7 +66,7 @@ import {
 declare const performance: { now: () => number };
 
 export interface PerformanceLaunchProps {
-  performanceScenario: PerformanceScenario;
+  performanceScenario: ScreenPerformanceScenario;
 }
 
 const Stack = createNativeStackNavigator<ExampleStackParams>();
@@ -84,7 +86,7 @@ function nativeBenchmark(): BenchmarkNativeModule | undefined {
 }
 
 interface FixtureActions {
-  collector: BenchmarkCollector;
+  collector: BenchmarkCollector<ScreenPerformanceScenario>;
   ready: () => void;
   request: (direction: JourneyDirection) => boolean;
   probe: (screen: ProbeScreen) => void;

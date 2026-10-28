@@ -1,5 +1,5 @@
 import { initialTrayState, trayReducer } from './stack';
-import type { TrayAction } from './stack';
+import type { TrayAction, TrayStackState } from './stack';
 import type { TrayParamList, TrayRoute, TrayState } from './types';
 
 type TrayLifecycleEvent =
@@ -8,7 +8,15 @@ type TrayLifecycleEvent =
   | 'onWillDismiss'
   | 'onDismiss';
 
-export function createTrayStateStore<P extends TrayParamList>() {
+type TrayDispatchObserver = (
+  action: TrayAction,
+  previous: TrayStackState,
+  next: TrayStackState
+) => void;
+
+export function createTrayStateStore<P extends TrayParamList>(
+  observe?: TrayDispatchObserver
+) {
   let stack = initialTrayState;
   let lifecycleEvents: TrayLifecycleEvent[] = [];
   let snapshot: TrayState<P> = {
@@ -17,9 +25,19 @@ export function createTrayStateStore<P extends TrayParamList>() {
     isPresented: false,
   };
   const listeners = new Set<() => void>();
+  function notifyObserver(action: TrayAction, previous: TrayStackState) {
+    try {
+      observe?.(action, previous, stack);
+    } catch {
+      // Diagnostic failures must not interrupt navigation or its subscribers.
+    }
+  }
   return {
     getSnapshot: () => snapshot,
     getStackSnapshot: () => stack,
+    setObserver(observer?: TrayDispatchObserver) {
+      observe = observer;
+    },
     takeLifecycleEvents() {
       const events = lifecycleEvents;
       lifecycleEvents = [];
@@ -32,8 +50,12 @@ export function createTrayStateStore<P extends TrayParamList>() {
       };
     },
     dispatch(action: TrayAction) {
+      const previous = stack;
       const next = trayReducer(stack, action);
-      if (next === stack) return false;
+      if (next === stack) {
+        if (observe) notifyObserver(action, previous);
+        return false;
+      }
       // Preserve every accepted event across React batching. A native close
       // can also start a queued presentation in this same state update.
       if (next.dismissals !== stack.dismissals)
@@ -56,6 +78,7 @@ export function createTrayStateStore<P extends TrayParamList>() {
         isPresented !== snapshot.isPresented
       )
         snapshot = { route, depth, isPresented };
+      if (observe) notifyObserver(action, previous);
       listeners.forEach((listener) => listener());
       return true;
     },

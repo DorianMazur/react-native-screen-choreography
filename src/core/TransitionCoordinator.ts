@@ -19,16 +19,23 @@ import type {
   NodeHandleRef,
 } from '../types';
 import type { ElementRegistry } from './ElementRegistry';
-import { debugLog, debugTrace, debugWarn } from '../debug/logger';
+import {
+  debugLog,
+  debugTrace,
+  debugWarn,
+  isDebugEnabled,
+} from '../debug/logger';
 
 let sessionCounter = 0;
 
-function nowMs(): number {
-  return Date.now();
+function nowMs(): number | undefined {
+  return isDebugEnabled() ? Date.now() : undefined;
 }
 
-function elapsedMs(startedAt: number): string {
-  return `${Date.now() - startedAt}ms`;
+function elapsedMs(startedAt: number | undefined): string {
+  return startedAt !== undefined && isDebugEnabled()
+    ? `${Date.now() - startedAt}ms`
+    : 'unmeasured';
 }
 
 type SourceCapture = {

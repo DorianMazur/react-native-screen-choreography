@@ -60,7 +60,11 @@ exit 127
       '#!/usr/bin/env bash\nprintf "gradle\\n" >> "$ANDROID_HOME/../launch-sequence"\nprintf "%s\\n" "$@" > "$PERFORMANCE_OUTPUT/gradle-arguments"\n',
       true
     );
-    for (const name of ['react-native', 'react-native-reanimated'])
+    for (const name of [
+      'react-native',
+      'react-native-reanimated',
+      'react-native-worklets',
+    ])
       write(
         `examples/react-navigation/node_modules/${name}/package.json`,
         '{"version":"test"}'
@@ -90,8 +94,9 @@ exit 127
     assert.equal(metadata.emulatorVersion, '37.2.12 (16428233)');
     assert.equal(metadata.graphicsRenderer, 'Mesa llvmpipe');
     assert.equal(metadata.timingCycles, 20);
-    assert.equal(metadata.lifecycleValidation, 1);
+    assert.equal(metadata.lifecycleValidation, 2);
     assert.equal(metadata.runnerExitCode, 0);
+    assert.equal(metadata.workletsVersion, 'test');
     const sequence = readFileSync(path.join(root, 'launch-sequence'), 'utf8')
       .trim()
       .split('\n');
@@ -101,6 +106,10 @@ exit 127
     );
     assert.ok(sequence.indexOf('adb get-state') < sequence.indexOf('sleep 10'));
     assert.ok(sequence.indexOf('sleep 10') < sequence.indexOf('gradle'));
+    assert.deepEqual(
+      sequence.filter((line) => line === 'gradle'),
+      ['gradle']
+    );
     assert.match(
       readFileSync(path.join(output, 'gradle-arguments'), 'utf8'),
       /performanceTimingCycles=20/

@@ -1,7 +1,12 @@
 import { summaryTable, renderCountsTable } from './summary-table.mts';
 import { metricDefinition, presentationStages } from './metric-definitions.mts';
-import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
+import {
+  SCENARIO_IDS,
+  PERFORMANCE_SCENARIO_IDS,
+  TRAY_SCENARIOS,
+} from '../../examples/react-navigation/src/performance/scenarios.ts';
 import { validateLifecycle } from './validate-lifecycle.mts';
+import { validateTrayLifecycle } from './validate-tray-lifecycle.mts';
 import type {
   InputRecord,
   MetricSamples,
@@ -188,7 +193,7 @@ function readFixture(
   if (report.schemaVersion !== 1 || ![5, 6].includes(report.fixtureVersion)) {
     throw new Error('Unsupported fixture schema/version');
   }
-  if (!SCENARIO_IDS.includes(report.scenario))
+  if (!PERFORMANCE_SCENARIO_IDS.includes(report.scenario))
     throw new Error('Unknown fixture scenario');
   if (report.clock !== 'js-performance-now')
     throw new Error('Unknown JS clock domain');
@@ -339,13 +344,23 @@ function readFixture(
     throw new Error('Missing forward or backward journey');
   finite(report.payloadMounts, 'payloadMounts');
   finite(report.payloadUnmounts, 'payloadUnmounts');
-  if (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
+  const tray = report.scenario in TRAY_SCENARIOS;
+  const expectedMounts = tray ? report.journeys.length / 2 : 1;
+  if (
+    report.payloadMounts !== expectedMounts ||
+    report.payloadUnmounts !== (tray ? expectedMounts : 0)
+  )
     throw new Error('Live payload owner must stay mounted');
   readNativeInput(report, platform);
 }
 
 function readNativeInput(report: InputRecord, platform: string) {
   const native = report.native;
+  const probes = report.trayTracing
+    ? report.trayTracing.steps.map(
+        (step: InputRecord) => `tray-${step.id}-${step.route}`
+      )
+    : report.journeys.map((journey: InputRecord) => journey.probe.screen);
   if (
     !native ||
     native.platform !== platform ||
@@ -359,7 +374,7 @@ function readNativeInput(report: InputRecord, platform: string) {
     throw new Error('Native recorder lost telemetry samples');
   if (
     !Array.isArray(native.inputAcknowledgements) ||
-    native.inputAcknowledgements.length !== report.journeys.length
+    native.inputAcknowledgements.length !== probes.length
   ) {
     throw new Error(
       'Native input acknowledgement count must match journey count'
@@ -374,7 +389,7 @@ function readNativeInput(report: InputRecord, platform: string) {
   const usedTouches = new Set<number>();
   let previousAck = -1;
   for (const [index, ack] of native.inputAcknowledgements.entries()) {
-    if (ack.probe !== report.journeys[index].probe.screen) {
+    if (ack.probe !== probes[index]) {
       throw new Error(
         'Native input probe order must match journey destinations'
       );
@@ -458,7 +473,7 @@ export function summarize(
   try {
     if (
       metadata.lifecycleValidation !== undefined &&
-      metadata.lifecycleValidation !== 1
+      ![1, 2].includes(metadata.lifecycleValidation as number)
     )
       throw new Error('Unknown lifecycle validation version');
     expectedCycles = expectedCount(
@@ -481,7 +496,11 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
-        if (metadata.lifecycleValidation === 1) validateLifecycle(data);
+        const tray = data.scenario in TRAY_SCENARIOS;
+        if (metadata.lifecycleValidation || tray) validateLifecycle(data);
+        if (tray) Object.assign(documentMetrics, validateTrayLifecycle(data));
+        else if (data.trayTracing)
+          throw new Error('Tray telemetry on a screen scenario');
         readFixture(data, documentMetrics, platform);
         if (
           expectedCycles !== undefined &&
@@ -507,7 +526,8 @@ export function summarize(
             (data.motionTracing
               ? `+ui-motion-v${data.motionTracing.version}`
               : '') +
-            (data.presentationTracing ? '+presentation-startup' : '')
+            (data.presentationTracing ? '+presentation-startup' : '') +
+            (tray ? '+tray-lifecycle-v1' : '')
         );
         fixtures.add(data.scenario);
         sources.push(file);
@@ -521,7 +541,9 @@ export function summarize(
       );
     }
   }
-  for (const scenario of SCENARIO_IDS) {
+  for (const scenario of metadata.lifecycleValidation === 2
+    ? PERFORMANCE_SCENARIO_IDS
+    : SCENARIO_IDS) {
     if (!fixtures.has(scenario))
       errors.push(`Missing valid ${scenario} fixture run`);
   }
@@ -593,7 +615,7 @@ export function markdown(
   const presentationRows = Object.entries(summary.metrics ?? {}).flatMap(
     ([key, value]) => {
       const match = key.match(
-        /^(gallery|trips|wallet)\.(forward|backward)\.presentation\.([a-z-]+)Ms$/
+        /^([a-z-]+)\.(forward|backward)\.presentation\.([a-z-]+)Ms$/
       );
       if (!match) return [];
       const metric = value as InputRecord;

@@ -50,7 +50,11 @@ fi
 `,
       true
     );
-    for (const name of ['react-native', 'react-native-reanimated']) {
+    for (const name of [
+      'react-native',
+      'react-native-reanimated',
+      'react-native-worklets',
+    ]) {
       write(
         `examples/react-navigation/node_modules/${name}/package.json`,
         '{"version":"test"}'
@@ -96,12 +100,23 @@ fi
       const metadata = JSON.parse(
         readFileSync(path.join(output, 'metadata.json'), 'utf8')
       );
-      assert.equal(metadata.lifecycleValidation, 1);
+      assert.equal(metadata.lifecycleValidation, 2);
       assert.equal(metadata.runnerExitCode, buildStatus || testStatus);
+      assert.equal(metadata.workletsVersion, 'test');
+      const argumentsList = readFileSync(
+        path.join(output, 'xcode-arguments'),
+        'utf8'
+      ).split('\n');
       assert.ok(
-        readFileSync(path.join(output, 'xcode-arguments'), 'utf8').includes(
-          'SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1'
-        )
+        argumentsList.includes('SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1')
+      );
+      assert.equal(
+        argumentsList.filter((arg) => arg === 'build-for-testing').length,
+        1
+      );
+      assert.equal(
+        argumentsList.filter((arg) => arg === 'test-without-building').length,
+        buildStatus === 0 ? 1 : 0
       );
       if (buildStatus === 0)
         assert.equal(

@@ -14,6 +14,7 @@ import {
 } from './report.mts';
 import { sameDefinition } from './metric-definitions.mts';
 import { BenchmarkCollector } from '../../examples/react-navigation/src/performance/collector.ts';
+import { trayFixture } from './tray-fixture.mts';
 import {
   SCENARIOS,
   SCENARIO_IDS,
@@ -968,7 +969,7 @@ function withLifecycle(data: InputRecord) {
   return data;
 }
 
-test('current runners require lifecycle and all metric families without disabling comparisons', () => {
+test('screen lifecycle version 1 requires all metric families without disabling comparisons', () => {
   const input = documents().map(({ file, data }) => ({
     file,
     data: withLifecycle(data),
@@ -991,6 +992,41 @@ test('current runners require lifecycle and all metric families without disablin
     const report = summarize(missing, current);
     assert.equal(report.valid, false, key);
     assert.match(report.errors.join(), /Required lifecycle telemetry missing/);
+  }
+});
+
+test('current runners require both complete tray runs as well as all screen scenarios', () => {
+  const screens = documents().map(({ file, data }) => ({
+    file,
+    data: withLifecycle(data),
+  }));
+  const trays = (['tray-wallet', 'tray-gallery'] as const).map((scenario) => ({
+    file: `${scenario}.json`,
+    data: trayFixture(scenario),
+  }));
+  const current = {
+    ...options,
+    metadata: { lifecycleValidation: 2, timingCycles: 1 },
+  };
+  const complete = summarize([...screens, ...trays], current);
+  assert.equal(complete.valid, true, complete.errors.join());
+  assert.match(markdown(complete), /Wallet tray/);
+  assert.match(markdown(complete), /Gallery tray/);
+  for (const omitted of trays) {
+    const report = summarize(
+      [...screens, ...trays.filter((tray) => tray !== omitted)],
+      current
+    );
+    assert.equal(report.valid, false);
+    assert.match(
+      report.errors.join(),
+      new RegExp(`Missing valid ${omitted.data.scenario}`)
+    );
+  }
+  for (const key of ['trayTracing', 'motionTracing', 'presentationTracing']) {
+    const missing = structuredClone([...screens, ...trays]);
+    delete missing[3].data[key];
+    assert.equal(summarize(missing, current).valid, false, key);
   }
 });
 

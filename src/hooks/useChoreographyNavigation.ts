@@ -18,12 +18,14 @@ import { debugLog, isDebugEnabled } from '../debug/logger';
 import type { PendingNavigationRequest } from '../core/NavigationSessionController';
 import { reverseActiveSession } from '../core/runReverseTransition';
 
-function nowMs(): number {
-  return Date.now();
+function nowMs(): number | undefined {
+  return isDebugEnabled() ? Date.now() : undefined;
 }
 
-function elapsedMs(startedAt: number): string {
-  return `${Date.now() - startedAt}ms`;
+function elapsedMs(startedAt: number | undefined): string {
+  return startedAt !== undefined && isDebugEnabled()
+    ? `${Date.now() - startedAt}ms`
+    : 'unmeasured';
 }
 
 function describeSession(

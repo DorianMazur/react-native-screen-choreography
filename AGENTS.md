@@ -119,6 +119,9 @@ Run these from the repository root unless noted otherwise:
 
 When changing preparation, presentation, navigation, or retained-content ownership, cover rapid forward interruption, repeated Back/return, interactive cancellation, queued navigation after confirmed removal, missing endpoints, and layout changes. Check both iOS attachment gating and Android content presentation. Include removed/recycled endpoints and stale callbacks where the change affects asynchronous ownership.
 
+- Add tests only for a concrete regression or observable contract. Check existing coverage first and prefer extending a relevant test. Avoid tests that mirror implementation details, trivial checks, and duplicate coverage across layers unless they catch distinct failures.
+- Keep fixtures and validation proportional to the change. Run focused checks; rerun native benchmarks only when a change can affect native behavior or benchmark execution.
+
 ## Performance Benchmarks
 
 - Native presentation timing is compiled out by default. The performance runners opt in with Android's `-PscreenChoreographyTracePresentation=true` and iOS's `SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1` build setting. Keep this independent of React prop delivery so startup timestamps cannot be missed.
@@ -126,8 +129,9 @@ When changing preparation, presentation, navigation, or retained-content ownersh
 - Wait 10 seconds after simulator/emulator boot before starting the suite. Each scenario runs 20 measured round trips. Include every journey in the same measured set, without warm-up cycles or a separate first visit. Validate input and presentation for every journey; keep all raw samples.
 - Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, and system image before showing baseline deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
 - PR performance comments hide timing and render-count rows with an absolute change below 1%, using unrounded values and compatible baselines. Keep changes of 1% or more and measurements without comparable baselines visible; full reports retain all measurements.
-- Current runners set `lifecycleValidation: 1`. `scripts/performance/validate-lifecycle.mts` requires preparation, render, UI motion, and native presentation telemetry and cross-checks each request → activation → session end → real destination probe against the raw event sequence. Missing telemetry, duplicate/stale sessions, overlapping journeys, empty pairs, or inconsistent timestamps fail collection. Keep timing thresholds informational; these checks do not establish pixel-perfect rendering or smoothness.
+- Current runners set `lifecycleValidation: 2` and require all three screen scenarios plus both tray scenarios. `scripts/performance/validate-lifecycle.mts` checks shared transition telemetry; `validate-tray-lifecycle.mts` also checks native sheet settlement, route order, plain transitions, retained content, and real input after each step. Missing telemetry, duplicate/stale sessions, overlapping journeys, empty pairs, or inconsistent timestamps fail collection. Keep timing thresholds informational; these checks do not establish pixel-perfect rendering or smoothness.
 - Record the native build/test exit status in runner metadata. A complete fixture export must not mask a later native test failure; report validation must preserve the original native failure status.
+- Keep tracing opt-in and collectors in the benchmark fixture. Run screens and trays together with one app build per platform.
 
 ### Headless performance checks
 
@@ -149,6 +153,7 @@ When debugging or extending behavior, start here:
 
 ## Documentation Expectations
 
+- Keep documentation edits small and limited to changed behavior. Avoid speculative detail, unnecessary abstractions, and lengthy change descriptions.
 - update docs only when a change affects the public API, developer-visible behavior, setup, or makes an existing architectural explanation inaccurate. A bug fix that restores documented behavior does not automatically need a docs change.
 - make the smallest correction in the relevant existing section, using plain language. Avoid unnecessary new sections, repeated explanations across guides/API/architecture, and implementation or debugging narratives; keep those details in code comments, tests, or the PR description unless readers need them to understand the library.
 - write guides and API reference for application developers: use task-oriented headings, concrete examples, and observable behavior

@@ -45,6 +45,7 @@ import {
 } from '../core/ChoreographyContext';
 import {
   debugTrace,
+  isTraceEnabled,
   setDebugCoalesce,
   setDebugEnabled,
   setDebugLevel,
@@ -560,7 +561,7 @@ export function ChoreographyProvider({
       return true;
     }
 
-    const waitStartedAt = Date.now();
+    const waitStartedAt = isTraceEnabled() ? Date.now() : undefined;
 
     debugTrace(
       () => `[Provider] waitForScreenReady start screen="${screenId}"`
@@ -569,7 +570,7 @@ export function ChoreographyProvider({
     const ready = await screenReadinessRef.current.waitForReady(screenId, 700);
     debugTrace(
       () =>
-        `[Provider] waitForScreenReady ${ready ? 'resolved' : 'timeout'} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)} duration=${Date.now() - waitStartedAt}ms`
+        `[Provider] waitForScreenReady ${ready ? 'resolved' : 'timeout'} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)} duration=${waitStartedAt === undefined ? 'unmeasured' : `${Date.now() - waitStartedAt}ms`}`
     );
     return ready;
   }, []);

@@ -2,7 +2,8 @@ import type { InputRecord } from './types.ts';
 import { sameDefinition } from './metric-definitions.mts';
 import {
   SCENARIOS,
-  SCENARIO_IDS,
+  PERFORMANCE_SCENARIO_IDS,
+  TRAY_SCENARIOS,
 } from '../../examples/react-navigation/src/performance/scenarios.ts';
 
 const comparableMetadata = [
@@ -80,6 +81,7 @@ export function environmentChanges(current: InputRecord, base?: InputRecord) {
   const changes = [
     'reactNativeVersion',
     'reanimatedVersion',
+    'workletsVersion',
     'nodeVersion',
   ].filter((key) => current.metadata?.[key] !== base?.metadata?.[key]);
   return changes.length
@@ -88,23 +90,33 @@ export function environmentChanges(current: InputRecord, base?: InputRecord) {
 }
 
 export function headlineMetrics() {
-  return SCENARIO_IDS.flatMap((scenario) =>
-    [
-      ['forward.requestToSessionActiveMs', 'open preparation'],
-      ['forward.tapToMotion', 'tap to motion'],
-      ['forward.transitionDuration', 'open transition duration'],
-      ['forward.handoffDuration', 'open handoff duration'],
-      ['backward.requestToSessionActiveMs', 'return preparation'],
-      ['backward.tapToMotion', 'back tap to motion'],
-      ['backward.transitionDuration', 'return transition duration'],
-      ['backward.handoffDuration', 'return handoff duration'],
-    ].map(([key, label]) => ({
-      key: `${scenario}.${key}`,
-      label: `${SCENARIOS[scenario].label} · ${label} (ms)`,
-      scale: 1,
-      unit: 'ms',
-    }))
-  );
+  return [
+    ...PERFORMANCE_SCENARIO_IDS.flatMap((scenario) =>
+      [
+        ['forward.requestToSessionActiveMs', 'open preparation'],
+        ['forward.tapToMotion', 'tap to motion'],
+        ['forward.transitionDuration', 'open transition duration'],
+        ['forward.handoffDuration', 'open handoff duration'],
+        ['backward.requestToSessionActiveMs', 'return preparation'],
+        ['backward.tapToMotion', 'back tap to motion'],
+        ['backward.transitionDuration', 'return transition duration'],
+        ['backward.handoffDuration', 'return handoff duration'],
+      ].map(([key, label]) => ({
+        key: `${scenario}.${key}`,
+        label: `${SCENARIOS[scenario].label} · ${label} (ms)`,
+        scale: 1,
+        unit: 'ms',
+      }))
+    ),
+    ...Object.entries(TRAY_SCENARIOS).flatMap(([scenario, config]) =>
+      config.routes.map((route, index) => ({
+        key: `${scenario}.step-${index + 1}.requestToSettledMs`,
+        label: `${config.label} · ${index + 1}. ${route} settlement (ms)`,
+        scale: 1,
+        unit: 'ms',
+      }))
+    ),
+  ];
 }
 
 function value(report: InputRecord | undefined, key: string, scale: number) {
@@ -152,6 +164,7 @@ export function summaryTable(
         ? value(base, key, scale)
         : null;
     if (
+      (key.startsWith('tray-') && current === null && previous === null) ||
       (minChangePercent > 0 && current === null) ||
       belowChangeThreshold(current, previous, minChangePercent)
     )
@@ -177,7 +190,7 @@ export function renderCountsTable(
   minChangePercent = 0
 ) {
   const rows: string[] = [];
-  for (const scenario of SCENARIO_IDS) {
+  for (const scenario of PERFORMANCE_SCENARIO_IDS) {
     for (const direction of ['forward', 'backward']) {
       for (const component of ['list', 'detail', 'hero']) {
         for (const phase of ['mount', 'update']) {

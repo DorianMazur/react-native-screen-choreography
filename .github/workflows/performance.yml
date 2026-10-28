@@ -68,7 +68,7 @@ jobs:
           done
           xdpyinfo -display "$DISPLAY" >/dev/null
           glxinfo -B
-      - name: Collect native measurements and fixture reports
+      - name: Build once and measure screens and trays
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -165,7 +165,7 @@ jobs:
         run: bundle exec pod install --repo-update --project-directory=ios
       - name: Reset compiler cache statistics
         run: ccache --zero-stats
-      - name: Collect iOS release measurements
+      - name: Build once and measure screens and trays
         run: bash scripts/performance/run-ios.sh native-release
       - name: Report compiler cache statistics
         if: always() && steps.ccache-setup.outcome == 'success'

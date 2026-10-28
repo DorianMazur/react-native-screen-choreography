@@ -1,6 +1,10 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compatible, summaryTable } from './summary-table.mts';
+import {
+  compatible,
+  environmentChanges,
+  summaryTable,
+} from './summary-table.mts';
 import type { InputRecord } from './types.ts';
 import { selectBaselineRun } from './post-comment.mts';
 import { metricDefinition } from './metric-definitions.mts';
@@ -193,7 +197,9 @@ test('explicit definitions survive implementation changes and compare each metri
   current.metadata.reactNativeVersion = 'next';
   current.metadata.nodeVersion = 'next';
   current.metadata.reanimatedVersion = 'next';
+  current.metadata.workletsVersion = 'next';
   assert.equal(compatible(current, base), true);
+  assert.match(environmentChanges(current, base), /workletsVersion/);
   assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
   current.metricDefinitions['gallery.forward.tapToMotion'].version++;
   assert.match(summaryTable(current, base), /— \| 40 \| —/);

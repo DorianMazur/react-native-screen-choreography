@@ -22,7 +22,7 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeFactory = factory
 
     let scenario = ProcessInfo.processInfo.environment["PERFORMANCE_SCENARIO"]
-    let benchmarking = ["gallery", "trips", "wallet"].contains(scenario ?? "")
+    let benchmarking = ["gallery", "trips", "wallet", "tray-wallet", "tray-gallery"].contains(scenario ?? "")
     window = benchmarking
       ? BenchmarkWindow(frame: UIScreen.main.bounds)
       : UIWindow(frame: UIScreen.main.bounds)

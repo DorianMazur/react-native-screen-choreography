@@ -24,6 +24,7 @@ import {
 import { useSafeAreaInsets } from '../runtime';
 import { TrayLauncher } from './TrayLauncher';
 import { DemoTrayButton, DemoTrayHeader, trayTheme } from './TrayChrome';
+import { useTrayExampleObservation } from './observation';
 
 type Routes = {
   actions: undefined;
@@ -106,6 +107,7 @@ function Button({
 }
 
 function Actions({ tray }: TrayScreenProps<Routes, 'actions'>) {
+  useTrayExampleObservation('actions');
   return (
     <View style={styles.body}>
       <View style={styles.balance}>
@@ -131,6 +133,7 @@ function Actions({ tray }: TrayScreenProps<Routes, 'actions'>) {
   );
 }
 function Send({ tray }: TrayScreenProps<Routes, 'send'>) {
+  useTrayExampleObservation('send');
   const [amount, setAmount] = useState('25');
   const [note, setNote] = useState('Coffee on me');
   return (
@@ -218,6 +221,7 @@ const avatarTransition = makeTransition({ renderer: AvatarTransition });
 const recipientGroup = (person: string) => `recipient:${person}`;
 
 function RecipientAvatar({ person }: { person: string }) {
+  useTrayExampleObservation(`avatar:${person}`);
   const { presentationProgress } = useSharedElementPresentation();
   const frame = useAnimatedStyle(() => ({
     borderRadius: 15 + 13 * presentationProgress.value,
@@ -238,6 +242,7 @@ function RecipientAvatar({ person }: { person: string }) {
 }
 
 function Recipient({ tray, route }: TrayScreenProps<Routes, 'recipient'>) {
+  useTrayExampleObservation('recipient');
   return (
     <ScrollView
       contentContainerStyle={styles.body}
@@ -276,6 +281,7 @@ function Recipient({ tray, route }: TrayScreenProps<Routes, 'recipient'>) {
   );
 }
 function Review({ tray, route }: TrayScreenProps<Routes, 'review'>) {
+  useTrayExampleObservation('review');
   return (
     <View style={styles.body}>
       <View style={styles.balance}>

@@ -68,7 +68,7 @@ class MainActivity : ReactActivity() {
         override fun getLaunchOptions(): Bundle? {
           if (!BuildConfig.PERFORMANCE_BENCHMARK) return null
           val scenario = intent.getStringExtra("performanceScenario")
-          if (scenario !in listOf("gallery", "trips", "wallet")) return null
+          if (scenario !in listOf("gallery", "trips", "wallet", "tray-wallet", "tray-gallery")) return null
           return Bundle().apply {
             putString("performanceScenario", scenario)
           }

@@ -1,6 +1,7 @@
 import { findNodeHandle } from 'react-native';
 import { TransitionCoordinator } from './TransitionCoordinator';
 import { ElementRegistry } from './ElementRegistry';
+import { setDebugEnabled } from '../debug/logger';
 import type {
   ElementMetrics,
   ElementPresentation,
@@ -121,6 +122,20 @@ test('publishes a ready capture in the same turn as measuring, without an empty 
   const pending = coordinator.startTransition(config);
   expect(states).toEqual(['measuring', 'active']);
   expect((await pending)?.pairs).toHaveLength(1);
+});
+
+test('normal transitions do not collect timestamps or allocate presentation telemetry', async () => {
+  setDebugEnabled(false);
+  register('list', sourceMetrics);
+  register('detail', targetMetrics);
+  const clock = jest.spyOn(Date, 'now');
+  const presentationClock = jest.spyOn(globalThis.performance, 'now');
+  const session = await coordinator.startTransition(config);
+  expect(session?.state).toBe('active');
+  expect(session).not.toHaveProperty('presentationTiming');
+  expect(session?.presentation).not.toHaveProperty('timing');
+  expect(clock).not.toHaveBeenCalled();
+  expect(presentationClock).not.toHaveBeenCalled();
 });
 
 test('keeps waiting when the native mounted batch is not ready', async () => {

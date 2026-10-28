@@ -43,7 +43,9 @@ class ChoreographyBenchmarks(private val scenario: String) {
       val startupTimeout = arguments.getString("performanceStartupTimeoutMs", "$TIMEOUT_MS").toLong()
       require(startupTimeout > 0) { "performanceStartupTimeoutMs must be positive" }
       await("benchmark-ready", startupTimeout)
-      repeat(cycles) { roundTrip() }
+      repeat(cycles) { cycle ->
+        if (scenario.startsWith("tray-")) trayCycle(cycle) else roundTrip()
+      }
     } catch (failure: Throwable) {
       // Preserve the collector's rejection reason and the actual UI before
       // AGP uninstalls the app. Diagnostic failures must not mask the assertion.
@@ -79,6 +81,34 @@ class ChoreographyBenchmarks(private val scenario: String) {
     await("benchmark-list-probe-ack")
   }
 
+  private fun trayCycle(cycle: Int) {
+    val controls = when (scenario) {
+      "tray-wallet" -> listOf("Wallet dynamic tray", "Send money", "Choose recipient", "Alex Morgan", "Back in tray", "Back in tray", "Back in tray", "Close tray")
+      "tray-gallery" -> listOf("Gallery dynamic tray", "Explore Plus", "Good to know", "Back in tray", "Back in tray", "Close tray")
+      else -> error("Unknown tray scenario: $scenario")
+    }
+    controls.forEachIndexed { index, control ->
+      val step = cycle * controls.size + index + 1
+      click(control)
+      await("benchmark-tray-step-$step-settled")
+      click("benchmark-tray-probe")
+      await("benchmark-tray-step-$step-probe-ack")
+      if (scenario == "tray-wallet" && index == 1) {
+        click("Amount")
+        await("4")
+        // Focus-time selection can arrive after the keyboard. Clear explicitly
+        // before tapping a real key so the edit is independent of caret position.
+        device.findObject(By.desc("Amount")).text = ""
+        assertTrue("Draft clear failed", device.wait(Until.hasObject(By.desc("Amount").text("")), TIMEOUT_MS))
+        click("4")
+        assertTrue("Draft edit failed", device.wait(Until.hasObject(By.desc("Amount").text("4")), TIMEOUT_MS))
+      }
+      if (scenario == "tray-wallet" && index == 5) {
+        assertTrue("Back lost the retained draft", device.hasObject(By.desc("Amount").text("4")))
+      }
+    }
+  }
+
   private fun exportRun(diagnostic: Boolean = false) {
     val previousFiles = fixtureFiles()
     if (diagnostic) {
@@ -99,7 +129,14 @@ class ChoreographyBenchmarks(private val scenario: String) {
       click("benchmark-end")
     }
     await("benchmark-export-complete")
-    val exportedFiles = fixtureFiles() - previousFiles
+    // A failed fixture may already display its first export marker. Wait for
+    // this export's file as well, so diagnostic re-exports cannot lose evidence.
+    val exportDeadline = SystemClock.uptimeMillis() + TIMEOUT_MS
+    var exportedFiles = fixtureFiles() - previousFiles
+    while (exportedFiles.isEmpty() && SystemClock.uptimeMillis() < exportDeadline) {
+      SystemClock.sleep(50)
+      exportedFiles = fixtureFiles() - previousFiles
+    }
     check(exportedFiles.size == 1) { "Expected one new fixture export, found $exportedFiles" }
     val filename = exportedFiles.single()
     // executeShellCommand tokenizes arguments; it does not parse shell quotes.
@@ -184,6 +221,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
 
     @JvmStatic
     @Parameterized.Parameters(name = "{0}")
-    fun scenarios(): List<Array<String>> = listOf("gallery", "trips", "wallet").map { arrayOf(it) }
+    fun scenarios(): List<Array<String>> = listOf("tray-gallery", "tray-wallet", "gallery", "trips", "wallet").map { arrayOf(it) }
   }
 }

@@ -33,6 +33,54 @@ function fixture() {
   return { ...store, state, root, snap, settle, finish, prepare, push };
 }
 
+test('diagnostics observe committed dispatches before subscribers, including rejected stale callbacks', () => {
+  const events: string[] = [];
+  const observe = jest.fn((action, previous, next) => {
+    expect(store.getStackSnapshot()).toBe(next);
+    events.push(`${action.type}:${previous !== next}`);
+  });
+  const store = createTrayStateStore(observe);
+  store.subscribe(() => events.push('subscriber'));
+  store.dispatch({ type: 'present', name: 'Home', params: undefined });
+  const session = store.getStackSnapshot().session;
+  store.dispatch({ type: 'settled', session, index: 1 });
+  store.dispatch({
+    type: 'push',
+    name: 'Detail',
+    groupId: 'hero',
+    params: undefined,
+  });
+  const preparation = store.getStackSnapshot().preparation!;
+  store.dispatch({ type: 'prepared', session, id: preparation.id - 1 });
+  expect(store.getStackSnapshot().preparation).toBe(preparation);
+  store.dispatch({ type: 'prepared', session, id: preparation.id });
+  expect(events).toEqual([
+    'present:true',
+    'subscriber',
+    'settled:true',
+    'subscriber',
+    'push:true',
+    'subscriber',
+    'prepared:false',
+    'prepared:true',
+    'subscriber',
+  ]);
+  expect(observe).toHaveBeenCalledTimes(5);
+});
+
+test('a failing diagnostic observer cannot suppress navigation or subscriber updates', () => {
+  const store = createTrayStateStore(() => {
+    throw new Error('observer failed');
+  });
+  const subscriber = jest.fn();
+  store.subscribe(subscriber);
+  expect(
+    store.dispatch({ type: 'present', name: 'Home', params: undefined })
+  ).toBe(true);
+  expect(subscriber).toHaveBeenCalledTimes(1);
+  expect(store.getSnapshot().route?.name).toBe('Home');
+});
+
 test('push acceptance commits before subscribers and before any React render', () => {
   const f = fixture();
   expect(f.push()).toBe(false); // Opening.

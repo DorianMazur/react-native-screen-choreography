@@ -9,6 +9,7 @@ import { AppIcon } from '../AppChrome';
 import { useSafeAreaInsets } from '../runtime';
 import { DemoTrayHeader, trayTheme } from './TrayChrome';
 import { TrayLauncher } from './TrayLauncher';
+import { useTrayExampleObservation } from './observation';
 import {
   GalleryPlusButton,
   galleryPlusButtonStyle,
@@ -80,6 +81,7 @@ function Header({ title, canGoBack, tray, color }: TrayHeaderProps<Routes>) {
 }
 
 function Intro({ tray }: TrayScreenProps<Routes, 'intro'>) {
+  useTrayExampleObservation('intro');
   return (
     <ScrollView
       contentContainerStyle={styles.body}
@@ -113,6 +115,7 @@ function Intro({ tray }: TrayScreenProps<Routes, 'intro'>) {
 }
 
 function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
+  useTrayExampleObservation('plans');
   const [selected, setSelected] = useState<Plan>('annual');
   // Endpoint metadata is frozen at capture; the action must read the live choice.
   const selectedRef = useRef(selected);
@@ -200,6 +203,7 @@ function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
       />
       <Pressable
         accessibilityRole="button"
+        accessibilityLabel="Good to know"
         onPress={() => tray.push('details')}
         style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
       >
@@ -211,6 +215,7 @@ function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
 }
 
 function Details() {
+  useTrayExampleObservation('details');
   return (
     <ScrollView
       contentContainerStyle={styles.body}

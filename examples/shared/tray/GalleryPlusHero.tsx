@@ -6,6 +6,7 @@ import {
 } from 'react-native-screen-choreography/core';
 import { AppIcon } from '../AppChrome';
 import { trayTheme } from './TrayChrome';
+import { useTrayExampleObservation } from './observation';
 
 export const galleryPlusGroup = 'gallery-plus';
 export const galleryPlusTransition = defineTransition({
@@ -45,6 +46,7 @@ function Postcard({ card }: { card: (typeof postcards)[number] }) {
 
 /** One live composition travels into the plans screen and back. */
 export function GalleryPlusHero() {
+  useTrayExampleObservation('gallery-hero');
   const { presentationProgress } = useSharedElementPresentation();
   const artwork = useAnimatedStyle(() => ({
     height: 184 - 72 * Math.max(0, Math.min(1, presentationProgress.value)),
