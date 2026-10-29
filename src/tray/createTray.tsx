@@ -375,7 +375,9 @@ function TrayHost<P extends TrayParamList>({
     return (
       (handle ? HANDLE_HEIGHT : 0) +
       (custom
-        ? (headerHeights.current.get(entry.key) ?? DEFAULT_HEADER_HEIGHT)
+        ? (headerHeights.current.get(entry.key) ??
+          options?.headerHeight ??
+          DEFAULT_HEADER_HEIGHT)
         : DEFAULT_HEADER_HEIGHT)
     );
   };

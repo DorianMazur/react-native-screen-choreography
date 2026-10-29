@@ -91,6 +91,8 @@ export interface TrayScreenOptions<
   renderHeader?: (props: TrayHeaderProps<P, N>) => ReactNode;
   /** Show the drag indicator above the header. Inherits the stack setting. */
   handleVisible?: boolean;
+  /** The custom header's height until it first lays out. Defaults to 56; a header that renders nothing passes 0. */
+  headerHeight?: number;
 }
 
 export interface TrayScreenDeclarationProps<

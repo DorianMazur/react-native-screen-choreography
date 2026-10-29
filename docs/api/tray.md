@@ -63,6 +63,8 @@ The default `anchor="bottom"` keeps incoming and outgoing screens' bottom edges 
 
 Return your header element from `renderHeader`, or return `null` to omit the header. The handle is controlled separately. The tray measures the header's natural height and includes it in card sizing, full-screen content space, and shared-transition geometry. Use padding or an explicit height for your design; avoid `flex: 1` on the header root.
 
+Set the screen's `headerHeight` option to reserve a custom header's height before its first layout. Use `0` when the header renders nothing. The measured height replaces this hint; the handle's spacing is added separately.
+
 Headers crossfade automatically on the same progress as the screen transition, including shared transitions and Back. The outgoing header keeps its React instance until the transition settles, with touch and accessibility disabled. It then unmounts; returning to that route mounts its header again. Custom headers own their buttons and accessibility labels. Render a component such as `(props) => <MyHeader {...props} />` to use hooks inside your header.
 
 Layout and transition updates do not rerender custom header content when its renderer and props are unchanged. Local state, context, and `useTrayState` subscriptions still update normally. If the parent renders frequently, define `renderHeader` outside render or memoize it with `useCallback` and its dependencies.
@@ -107,6 +109,7 @@ Declare every destination you intend to open; navigating to an undeclared name t
 | `anchor`        | Stack setting  | Keep this screen's content aligned to the `'top'` or `'bottom'` while resizing.                      |
 | `renderHeader`  | Stack renderer | Replace this screen's header; receives `TrayHeaderProps<Routes, Name>`. Return `null` for no header. |
 | `handleVisible` | Stack setting  | Show or hide the drag indicator for this screen.                                                     |
+| `headerHeight`  | `56`           | Initial custom header height, excluding the handle, until layout measures it. Use `0` for no header. |
 
 Full-screen views fill the available window with no outside spacing or rounded corners. `topInset` and `bottomInset` become inside padding, and content fills the remaining height. The content viewport resizes with each keyboard frame, so a flex layout can center fields and keep a footer above the keyboard. The bottom safe-area inset is replaced by the keyboard edge while typing. See [Center a form and keep its action above the keyboard](../guide/dynamic-trays.md#center-a-form-and-keep-its-action-above-the-keyboard).
 

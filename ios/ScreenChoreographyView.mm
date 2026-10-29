@@ -1,5 +1,4 @@
 #import "ScreenChoreographyView.h"
-#import "ScreenChoreographyPresentationWindow.h"
 
 #import <React/RCTConversions.h>
 #import <React/RCTMountingTransactionObserving.h>
@@ -49,11 +48,69 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 } // namespace
 
+// UIKit presents menus from the controller owning a view's nearest ancestor, and
+// React Native presents Modal from the first controller on the responder chain.
+// A modal layer sits directly in the window, outside every controller's view, so
+// it gets a controller of its own. The controller never joins the hierarchy: it
+// hands each presentation to the topmost controller above the anchor, so status
+// bar, orientation and window order stay with the app.
+@interface ScreenChoreographyWindowController : UIViewController
+@property (nonatomic, weak) UIView *anchor;
+- (UIViewController *)topmostPresenter;
+@end
+
+@implementation ScreenChoreographyWindowController {
+  __weak UIViewController *_forwarded;
+}
+
+- (UIViewController *)topmostPresenter
+{
+  UIResponder *responder = self.anchor.nextResponder;
+  while (responder != nil && ![responder isKindOfClass:UIViewController.class]) responder = responder.nextResponder;
+  UIViewController *presenter = (UIViewController *)responder ?: self.viewIfLoaded.window.rootViewController;
+  // A layer may open above a native modal, which the anchor's controller presents.
+  while (presenter.presentedViewController != nil && !presenter.presentedViewController.isBeingDismissed) {
+    presenter = presenter.presentedViewController;
+  }
+  return presenter == self ? nil : presenter;
+}
+
+- (UIResponder *)nextResponder
+{
+  return self.anchor ?: [super nextResponder];
+}
+
+- (void)presentViewController:(UIViewController *)viewController
+                     animated:(BOOL)animated
+                   completion:(void (^)(void))completion
+{
+  UIViewController *presenter = [self topmostPresenter];
+  if (presenter == nil) {
+    [super presentViewController:viewController animated:animated completion:completion];
+    return;
+  }
+  _forwarded = viewController;
+  [presenter presentViewController:viewController animated:animated completion:completion];
+}
+
+- (void)dismissViewControllerAnimated:(BOOL)animated completion:(void (^)(void))completion
+{
+  UIViewController *presenting = _forwarded.presentingViewController;
+  if (presenting == nil) {
+    [super dismissViewControllerAnimated:animated completion:completion];
+    return;
+  }
+  _forwarded = nil;
+  [presenting dismissViewControllerAnimated:animated completion:completion];
+}
+
+@end
+
 @interface ScreenChoreographyWindowContainer : UIView
 @property (nonatomic, assign) BOOL foreground;
 @property (nonatomic, weak) UIView *anchor;
+@property (nonatomic, weak) ScreenChoreographyWindowController *controller;
 @property (nonatomic, copy) NSString *inputTarget;
-@property (nonatomic, assign) BOOL ownsPresentation;
 @end
 
 @implementation ScreenChoreographyWindowContainer
@@ -73,9 +130,9 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 - (UIResponder *)nextResponder
 {
-  // Modal foreground content uses its root controller; ordinary overlays keep
-  // the original responder chain for React Native Modal presentation.
-  return self.ownsPresentation ? [super nextResponder] : (self.anchor ?: [super nextResponder]);
+  // Portaled Modal children still present through their original controller;
+  // a modal layer's controller forwards to it and continues to the anchor.
+  return self.controller ?: self.anchor ?: [super nextResponder];
 }
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
@@ -103,7 +160,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 @implementation ScreenChoreographyView {
   ScreenChoreographyWindowContainer *_windowContainer;
-  ScreenChoreographyPresentationWindow *_presentationWindow;
+  ScreenChoreographyWindowController *_windowController;
   __weak UIWindow *_lastWindow;
   RCTSurfaceTouchHandler *_foregroundTouchHandler;
   BOOL _foreground;
@@ -154,7 +211,6 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 {
   [_presentationDisplayLink invalidate];
   [_foregroundTouchHandler detachFromView:_windowContainer];
-  [_presentationWindow dismiss];
   [_windowContainer removeFromSuperview];
 }
 
@@ -217,35 +273,14 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   if (!_active || self.superview == nil) {
     return;
   }
-  // Native modals can detach ancestors; retain only this anchor's owning window.
-  UIWindow *window = self.window ?: _lastWindow;
+  // A full-screen modal can detach the anchor before its tray first mounts.
+  // Resolve only through this anchor's presenter, never another scene's window.
+  UIWindow *window = self.window ?: _lastWindow ?: _windowController.topmostPresenter.viewIfLoaded.window;
   if (window == nil) {
     return;
   }
-  if (self.window != nil) {
-    _lastWindow = self.window;
-  }
-  if (_foreground && _modal) {
-    if (_presentationWindow != nil && _presentationWindow.sourceWindow != window) {
-      [_presentationWindow dismiss];
-      _presentationWindow = nil;
-    }
-    if (_presentationWindow == nil) {
-      _windowContainer.ownsPresentation = YES;
-      _windowContainer.accessibilityViewIsModal = YES;
-      _presentationWindow = [[ScreenChoreographyPresentationWindow alloc] initWithSourceWindow:window
-                                                                                contentView:_windowContainer];
-      [_presentationWindow present];
-    }
-    if (_foregroundTouchHandler == nil) {
-      _foregroundTouchHandler = [RCTSurfaceTouchHandler new];
-      [_foregroundTouchHandler attachToView:_windowContainer];
-    }
-    return;
-  }
-  UIView *parent = [window isKindOfClass:ScreenChoreographyPresentationWindow.class]
-      ? window.rootViewController.view : window;
-  if (_windowContainer.superview != parent) {
+  _lastWindow = window;
+  if (_windowContainer.superview != window) {
     [_windowContainer removeFromSuperview];
     _windowContainer.frame = window.bounds;
   }
@@ -261,23 +296,6 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 - (void)insertWindowContainerInWindow:(UIWindow *)window
 {
-  if ([window isKindOfClass:ScreenChoreographyPresentationWindow.class]) {
-    // Keep local transitions and controls within the tray controller's view,
-    // below any UIKit presentation made by its content.
-    UIView *root = window.rootViewController.view;
-    if (_windowContainer.superview == root) return;
-    if (!_foreground) {
-      for (UIView *view in root.subviews) {
-        if ([view isKindOfClass:ScreenChoreographyWindowContainer.class] &&
-            ((ScreenChoreographyWindowContainer *)view).foreground) {
-          [root insertSubview:_windowContainer belowSubview:view];
-          return;
-        }
-      }
-    }
-    [root addSubview:_windowContainer];
-    return;
-  }
   // Reordering this foreground container can cover a Modal presented by its children.
   if (_foreground && _windowContainer.superview == window) return;
   // Insert above controller content, below independent window overlays.
@@ -312,14 +330,28 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   }
 }
 
+- (void)applyModal:(BOOL)modal
+{
+  if (_modal == modal) return;
+  [self detachWindowContainer];
+  _modal = modal;
+  _windowContainer.accessibilityViewIsModal = modal;
+  if (modal) {
+    if (_windowController == nil) {
+      _windowController = [ScreenChoreographyWindowController new];
+      _windowController.anchor = self;
+    }
+    // One controller per view: UIKit rejects a view owned by two controllers.
+    _windowController.view = _windowContainer;
+    _windowContainer.controller = _windowController;
+  } else {
+    _windowContainer.controller = nil;
+    _windowController.view = nil;
+  }
+}
+
 - (void)detachWindowContainer
 {
-  if (_presentationWindow != nil) {
-    [_presentationWindow dismiss];
-    _presentationWindow = nil;
-    _windowContainer.ownsPresentation = NO;
-    _windowContainer.accessibilityViewIsModal = NO;
-  }
   // Keep counters monotonic across recycling to invalidate stale callbacks.
   _presentationRequestId += 1;
   _presentationCheckPending = NO;
@@ -341,7 +373,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   [self detachWindowContainer];
   _active = NO;
   _foreground = NO;
-  _modal = NO;
+  [self applyModal:NO];
   _windowContainer.foreground = NO;
   _windowContainer.inputTarget = nil;
   _prepared = NO;
@@ -363,8 +395,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   _windowContainer.inputTarget = newViewProps.active && !newViewProps.sessionId.empty()
       ? [NSString stringWithUTF8String:newViewProps.inputTarget.c_str()] : nil;
   _foreground = newViewProps.foreground;
-  if (_modal != newViewProps.modal) [self detachWindowContainer];
-  _modal = newViewProps.modal;
+  [self applyModal:newViewProps.modal && newViewProps.foreground];
   _windowContainer.foreground = _foreground;
   if (!_foreground && _foregroundTouchHandler != nil) {
     [_foregroundTouchHandler detachFromView:_windowContainer];

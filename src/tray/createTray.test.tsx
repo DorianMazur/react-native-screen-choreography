@@ -2050,6 +2050,35 @@ test('a null header and hidden handle leave no reserved header space', () => {
   act(() => renderer.unmount());
 });
 
+test('a custom header height hint applies until its first layout', () => {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack handleVisible={false} renderHeader={() => null}>
+          <Tray.Screen
+            name="form"
+            component={Form}
+            options={{ presentation: 'fullScreen', headerHeight: 0 }}
+          />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  const pageHeight = () => viewportStyle(renderer, Form).height;
+  const windowHeight = Dimensions.get('window').height;
+  expect(pageHeight()).toBe(windowHeight);
+  const header = renderer.root
+    .findByType(TrayHeaderLayer)
+    .findAllByType(View)
+    .find((view) => view.props.onLayout)!;
+  act(() => header.props.onLayout({ nativeEvent: { layout: { height: 40 } } }));
+  expect(pageHeight()).toBe(windowHeight - 40);
+  act(() => renderer.unmount());
+});
+
 test('keeps the outgoing title until settlement while exposing only the current heading', () => {
   let renderer!: TestRenderer.ReactTestRenderer;
   act(() => {

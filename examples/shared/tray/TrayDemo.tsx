@@ -397,7 +397,11 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
         <Tray.Screen
           name="success"
           component={Success}
-          options={{ title: 'Payment sent', renderHeader: () => null }}
+          options={{
+            title: 'Payment sent',
+            renderHeader: () => null,
+            headerHeight: 0,
+          }}
         />
         <Tray.Screen
           name="settings"
