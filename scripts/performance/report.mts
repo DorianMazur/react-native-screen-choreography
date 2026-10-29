@@ -536,9 +536,16 @@ export function summarize(
         (metrics[name] ??= []).push(...values);
       }
     } catch (error) {
-      errors.push(
-        `${file}: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      // Structural validation can fail before readFixture reaches the original
+      // rejection. Keep that cause visible alongside the incomplete telemetry.
+      const fixtureErrors =
+        Array.isArray(data.errors) &&
+        data.errors.length &&
+        !message.startsWith('Fixture did not complete:')
+          ? `; fixture errors: ${JSON.stringify(data.errors)}`
+          : '';
+      errors.push(`${file}: ${message}${fixtureErrors}`);
     }
   }
   for (const scenario of metadata.lifecycleValidation === 2

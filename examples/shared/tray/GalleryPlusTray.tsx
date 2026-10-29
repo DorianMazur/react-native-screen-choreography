@@ -115,7 +115,7 @@ function Intro({ tray }: TrayScreenProps<Routes, 'intro'>) {
 }
 
 function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
-  useTrayExampleObservation('plans');
+  const observation = useTrayExampleObservation('plans');
   const [selected, setSelected] = useState<Plan>('annual');
   // Endpoint metadata is frozen at capture; the action must read the live choice.
   const selectedRef = useRef(selected);
@@ -133,6 +133,11 @@ function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
     <ScrollView
       contentContainerStyle={styles.body}
       showsVerticalScrollIndicator={false}
+      onMomentumScrollEnd={
+        observation?.scrollEnd
+          ? () => observation.scrollEnd?.('plans')
+          : undefined
+      }
     >
       <galleryPlusTransition.Element.Target
         name="hero"

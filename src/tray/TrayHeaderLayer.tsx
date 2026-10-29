@@ -71,6 +71,9 @@ export function TrayHeaderLayer({
   const staticOpacity = preparing ? 0 : 1;
   return (
     <View
+      // Keep the visibility/input owner native as opacity and pointer events
+      // change. Flattening it between Reanimated commits can drop its children.
+      collapsable={false}
       style={[
         styles.layer,
         !active && styles.outgoing,

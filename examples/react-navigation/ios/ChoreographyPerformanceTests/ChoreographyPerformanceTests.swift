@@ -20,6 +20,9 @@ final class ChoreographyPerformanceTests: XCTestCase {
     for cycle in 0..<cycles {
       for (index, control) in controls.enumerated() {
         let step = cycle * controls.count + index + 1
+        if scenario == "tray-gallery" && index == 2 {
+          scrollTo(app, control)
+        }
         tap(app, control)
         awaitMarker(app, "benchmark-tray-step-\(step)-settled")
         tap(app, "benchmark-tray-probe")
@@ -76,5 +79,16 @@ final class ChoreographyPerformanceTests: XCTestCase {
     XCTAssertTrue(target.isEnabled, "Disabled fixture control: \(label)")
     // Coordinates inject a real touch, including for cards behind the toolbar.
     target.coordinate(withNormalizedOffset: CGVector(dx: leadingQuarter ? 0.25 : 0.5, dy: 0.5)).tap()
+  }
+
+  private func scrollTo(_ app: XCUIApplication, _ label: String) {
+    for _ in 0..<5 {
+      let target = element(app, label)
+      if target.exists && target.isHittable { return }
+      let scroll = app.scrollViews.firstMatch
+      XCTAssertTrue(scroll.exists, "No scroll container for fixture control: \(label)")
+      scroll.swipeUp()
+    }
+    XCTAssertTrue(element(app, label).isHittable, "Fixture control not found after scrolling: \(label)")
   }
 }

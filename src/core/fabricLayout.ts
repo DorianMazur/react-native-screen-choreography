@@ -7,6 +7,7 @@ interface NativeCaptureReader {
   (): ElementMetrics[] | null;
   (validate: true): boolean;
   (cancel: false): void;
+  (diagnostics: 'diagnostics'): Record<string, string | number | boolean>;
 }
 type FabricGlobal = typeof globalThis & {
   __screenChoreographyCaptureFabricLayout?: FabricCapture;
@@ -124,6 +125,7 @@ interface FabricLayoutRequest {
   isCurrent: () => boolean;
   cancellers: Set<() => void>;
   timeoutMs?: number;
+  onFailure?: (details: Record<string, string | number | boolean>) => void;
 }
 
 export function requestFabricLayout(
@@ -138,6 +140,7 @@ export function prepareFabricLayout({
   isCurrent,
   cancellers,
   timeoutMs = 1000,
+  onFailure,
 }: FabricLayoutRequest):
   | NativeLayoutSnapshot
   | null
@@ -169,13 +172,23 @@ export function prepareFabricLayout({
       reader = null;
       cancellers.delete(cancel);
     };
-    const finish = (snapshot: NativeLayoutSnapshot | null) => {
+    const finish = (
+      snapshot: NativeLayoutSnapshot | null,
+      reason = 'invalid'
+    ) => {
       if (settled) return;
+      if (snapshot === null && onFailure) {
+        try {
+          onFailure({ ...reader?.('diagnostics'), reason });
+        } catch {
+          // Diagnostic observers must not interfere with cancellation.
+        }
+      }
       cleanup(snapshot === null);
       immediate = snapshot;
       resolve(snapshot);
     };
-    const cancel = () => finish(null);
+    const cancel = () => finish(null, 'cancelled');
     try {
       const nodes = entries.map((entry) => nodeFor(entry.ref));
       const screens = entries.map((entry) => nodeFor(entry.screenRef));
@@ -187,7 +200,7 @@ export function prepareFabricLayout({
         ) ||
         new Set(entries.map((entry) => entry.id)).size !== entries.length
       ) {
-        finish(null);
+        finish(null, 'invalid-endpoint-tags');
         return;
       }
       // Subscribe before requesting so a mount racing setup cannot be missed.
@@ -202,8 +215,16 @@ export function prepareFabricLayout({
       const attempt = () => {
         if (settled || !reader) return;
         try {
-          if (!isCurrent() || !currentRefs() || !reader(true)) {
-            finish(null);
+          if (!isCurrent()) {
+            finish(null, 'stale-operation');
+            return;
+          }
+          if (!currentRefs()) {
+            finish(null, 'endpoint-ref-changed');
+            return;
+          }
+          if (!reader(true)) {
+            finish(null, 'native-identity-invalid');
             return;
           }
           const batch = reader();
@@ -221,7 +242,7 @@ export function prepareFabricLayout({
             !isCurrent() ||
             !currentRefs()
           ) {
-            finish(null);
+            finish(null, 'invalid-or-stale-native-batch');
             return;
           }
           const nativeReader = reader;
@@ -235,20 +256,26 @@ export function prepareFabricLayout({
             isCurrent: currentRefs,
           });
         } catch {
-          finish(null);
+          finish(null, 'native-read-failed');
         }
       };
       cancellers.add(cancel);
       unsubscribe = subscribe(attempt);
       reader = prepare(screenTags as number[], tags as number[]);
       if (!reader) {
-        finish(null);
+        finish(null, 'native-request-unavailable');
         return;
       }
-      deadline = setTimeout(cancel, timeoutMs);
+      deadline = setTimeout(() => {
+        // Native may have completed the batch before its coalesced mount
+        // notification reaches JS. Check once before declaring it unavailable;
+        // this uses the same ownership, identity and mounted-root validation.
+        attempt();
+        finish(null, 'timeout');
+      }, timeoutMs);
       attempt();
     } catch {
-      finish(null);
+      finish(null, 'native-request-failed');
     }
   });
   return immediate === undefined ? pending : immediate;

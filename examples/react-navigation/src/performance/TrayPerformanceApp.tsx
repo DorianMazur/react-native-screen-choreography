@@ -52,6 +52,7 @@ const FixtureContext = createContext<{
   ack: number | null;
   exported: boolean;
   failed: boolean;
+  scrollEnds: number;
 } | null>(null);
 
 function Marker({ id }: { id: string }) {
@@ -101,6 +102,7 @@ function Probe({
       )}
       {fixture.failed && <Marker id="benchmark-failed" />}
       {fixture.exported && <Marker id="benchmark-export-complete" />}
+      <Marker id={`benchmark-tray-scroll-${fixture.scrollEnds}-settled`} />
     </View>
   );
 }
@@ -162,6 +164,7 @@ export default function TrayPerformanceApp({
   const [ack, setAck] = useState<number | null>(null);
   const [exported, setExported] = useState(false);
   const [presented, setPresented] = useState(false);
+  const [scrollEnds, setScrollEnds] = useState(0);
   const request = useSharedValue<MotionRequest | null>(null);
   const timer = useRef<ReturnType<typeof setTimeout> | undefined>(undefined);
   const clearTimer = useCallback(() => {
@@ -261,6 +264,7 @@ export default function TrayPerformanceApp({
       render: (name: string, phase: 'mount' | 'update') =>
         trace.render(name, phase),
       mount: (name: string) => trace.mount(name),
+      scrollEnd: () => setScrollEnds((count) => count + 1),
     }),
     [trace]
   );
@@ -271,6 +275,7 @@ export default function TrayPerformanceApp({
       ack,
       exported,
       failed,
+      scrollEnds,
       finish,
       probe: (state: TrayStackState | null) => {
         const id = trace.probe(state);
@@ -281,7 +286,7 @@ export default function TrayPerformanceApp({
         }
       },
     }),
-    [trace, request, ack, exported, failed, finish, clearTimer]
+    [trace, request, ack, exported, failed, scrollEnds, finish, clearTimer]
   );
   const Provider =
     performanceScenario === 'tray-wallet'
