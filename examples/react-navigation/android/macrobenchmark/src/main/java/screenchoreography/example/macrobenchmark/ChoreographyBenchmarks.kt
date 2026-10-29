@@ -12,6 +12,7 @@ import androidx.test.uiautomator.By
 import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.io.ByteArrayOutputStream
 import java.io.File
@@ -178,7 +179,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
   private fun scrollTo(label: String) {
     repeat(5) {
       val target = device.findObject(By.desc(label))
-      if (target != null && !target.visibleBounds.isEmpty) return
+      if (target != null && !touchBounds(target).isEmpty) return
       val scroll = checkNotNull(device.findObject(By.scrollable(true))) {
         "No scroll container for fixture control: $label"
       }
@@ -190,7 +191,20 @@ class ChoreographyBenchmarks(private val scenario: String) {
       // intercepts taps to stop its fling. Wait for RN's momentum-end event.
       await("benchmark-tray-scroll-${++scrollEnds}-settled")
     }
-    check(device.hasObject(By.desc(label))) { "Fixture control not found after scrolling: $label" }
+    val target = device.findObject(By.desc(label))
+    check(target != null && !touchBounds(target).isEmpty) { "Fixture control not visible after scrolling: $label" }
+  }
+
+  private fun touchBounds(target: UiObject2): Rect {
+    val bounds = Rect(target.visibleBounds)
+    var ancestor = target.parent
+    while (ancestor != null) {
+      // UiAutomator 2.3 leaves visibleBounds unchanged when Rect.intersect
+      // finds no overlap. Offscreen scroll children can therefore look visible.
+      if (ancestor.isScrollable && !bounds.intersect(ancestor.visibleBounds)) return Rect()
+      ancestor = ancestor.parent
+    }
+    return bounds
   }
 
   private fun click(label: String, leadingQuarter: Boolean = false) {
@@ -200,7 +214,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
       try {
         val target = device.findObject(By.desc(label))
         if (target != null && target.isEnabled) {
-          val candidate = Rect(target.visibleBounds)
+          val candidate = touchBounds(target)
           if (!candidate.isEmpty) bounds = candidate
         }
       } catch (_: StaleObjectException) {
