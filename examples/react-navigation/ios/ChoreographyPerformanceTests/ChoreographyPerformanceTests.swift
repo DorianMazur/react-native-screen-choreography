@@ -22,9 +22,8 @@ final class ChoreographyPerformanceTests: XCTestCase {
 
   private func runTray(_ scenario: String, controls: [String]) throws {
     continueAfterFailure = false
-    let requestedCycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_TIMING_CYCLES"] ?? "20") ?? 0
-    XCTAssertTrue((1...99).contains(requestedCycles), "Cycle count must be in 1...99")
-    let cycles = min(requestedCycles, 5)
+    let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_TRAY_TIMING_CYCLES"] ?? "5") ?? 0
+    XCTAssertTrue((1...5).contains(cycles), "PERFORMANCE_TRAY_TIMING_CYCLES must be in 1...5")
     let app = XCUIApplication()
     activeApp = app
     app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario
@@ -56,8 +55,8 @@ final class ChoreographyPerformanceTests: XCTestCase {
 
   private func run(_ scenario: String, open: String, back: String) throws {
     continueAfterFailure = false
-    let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_TIMING_CYCLES"] ?? "20") ?? 0
-    XCTAssertTrue((1...99).contains(cycles), "Cycle count must be in 1...99")
+    let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_SCREEN_TIMING_CYCLES"] ?? "20") ?? 0
+    XCTAssertTrue((1...99).contains(cycles), "PERFORMANCE_SCREEN_TIMING_CYCLES must be in 1...99")
     let app = XCUIApplication()
     activeApp = app
     app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario

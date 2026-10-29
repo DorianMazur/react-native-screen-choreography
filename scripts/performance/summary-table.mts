@@ -23,10 +23,13 @@ export function metricCompatible(
   key: string
 ): boolean {
   const trayMetric = key.split('.')[0]! in TRAY_SCENARIOS;
-  const cycles = (report: InputRecord | undefined) =>
-    trayMetric
-      ? (report?.metadata?.trayTimingCycles ?? report?.metadata?.timingCycles)
-      : report?.metadata?.timingCycles;
+  const cycles = (report: InputRecord | undefined) => {
+    const metadata = report?.metadata;
+    const screenCycles = metadata?.screenTimingCycles ?? metadata?.timingCycles;
+    return trayMetric
+      ? (metadata?.trayTimingCycles ?? screenCycles)
+      : screenCycles;
+  };
   const definition = current.metricDefinitions?.[key];
   const previous = base?.metricDefinitions?.[key];
   const explicit = definition != null && previous != null;

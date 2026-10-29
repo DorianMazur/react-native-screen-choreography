@@ -478,8 +478,10 @@ export function summarize(
     )
       throw new Error('Unknown lifecycle validation version');
     expectedScreenCycles = expectedCount(
-      metadata.timingCycles,
-      'Expected timing cycles'
+      metadata.screenTimingCycles === undefined
+        ? metadata.timingCycles
+        : metadata.screenTimingCycles,
+      'Expected screen cycles'
     );
     // Older exports used one count for both screen and tray scenarios.
     expectedTrayCycles =

@@ -257,6 +257,8 @@ test('screen and tray comparisons use their own cycle counts, including older ba
     base.metrics[screen].count = 20;
     base.metrics[tray] = { count: 20, median: 40 };
     const current = structuredClone(base);
+    current.metadata.screenTimingCycles = 20;
+    delete current.metadata.timingCycles;
     current.metadata.trayTimingCycles = 5;
     current.metrics[tray].count = 5;
 

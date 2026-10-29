@@ -5,9 +5,11 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
-cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
-printf 'Per scenario: %s screen cycles; %s tray cycles.\n' "$cycles" "$((cycles < 5 ? cycles : 5))"
+screen_cycles="${PERFORMANCE_SCREEN_TIMING_CYCLES:-20}"
+tray_cycles="${PERFORMANCE_TRAY_TIMING_CYCLES:-5}"
+[[ "$screen_cycles" =~ ^[1-9][0-9]*$ && "$screen_cycles" -le 99 ]] || { echo 'PERFORMANCE_SCREEN_TIMING_CYCLES must be in 1..99.' >&2; exit 2; }
+[[ "$tray_cycles" =~ ^[1-9]$ && "$tray_cycles" -le 5 ]] || { echo 'PERFORMANCE_TRAY_TIMING_CYCLES must be in 1..5.' >&2; exit 2; }
+printf 'Per scenario: %s screen cycles; %s tray cycles.\n' "$screen_cycles" "$tray_cycles"
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
 if [[ "${USE_CCACHE:-0}" == 1 ]]; then
@@ -41,7 +43,7 @@ xcrun simctl status_bar "$udid" override --time '9:41' --dataNetwork wifi --wifi
 export PERFORMANCE_DEVICE_MODEL="$device_type"
 export PERFORMANCE_OS_VERSION="$(xcrun simctl getenv "$udid" SIMULATOR_RUNTIME_VERSION)"
 export PERFORMANCE_XCODE_VERSION="$(xcodebuild -version | tr '\n' ' ')"
-node - "$output/metadata.json" "$(uname -m)" "$cycles" <<'NODE'
+node - "$output/metadata.json" "$(uname -m)" "$screen_cycles" "$tray_cycles" <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.argv[2], JSON.stringify({
   deviceModel: process.env.PERFORMANCE_DEVICE_MODEL,
@@ -52,8 +54,8 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   workletsVersion: require('./examples/react-navigation/node_modules/react-native-worklets/package.json').version,
-  abi: process.argv[3], timingCycles: Number(process.argv[4]),
-  trayTimingCycles: Math.min(Number(process.argv[4]), 5),
+  abi: process.argv[3], screenTimingCycles: Number(process.argv[4]),
+  trayTimingCycles: Number(process.argv[5]),
   lifecycleValidation: 2,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
@@ -74,8 +76,8 @@ xcodebuild build-for-testing \
   SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
   > >(tee "$output/build.log") 2>&1 || status=$?
 if [[ "$status" -eq 0 ]]; then
-  # Pass the cycle count explicitly to XCTest, rather than assuming shell env is forwarded.
-  test_run="$(python3 - "$derived_data/Build/Products" "$cycles" <<'PY'
+  # Pass both cycle counts explicitly to XCTest; shell env is not forwarded.
+  test_run="$(python3 - "$derived_data/Build/Products" "$screen_cycles" "$tray_cycles" <<'PY'
 import pathlib, plistlib, sys
 files = list(pathlib.Path(sys.argv[1]).glob('ChoreographyPerformance_*.xctestrun'))
 if len(files) != 1: raise SystemExit('Expected exactly one xctestrun')
@@ -85,7 +87,10 @@ def visit(value):
     count = 0
     if isinstance(value, dict):
         if 'TestBundlePath' in value:
-            value.setdefault('EnvironmentVariables', {})['PERFORMANCE_TIMING_CYCLES'] = sys.argv[2]
+            value.setdefault('EnvironmentVariables', {}).update({
+                'PERFORMANCE_SCREEN_TIMING_CYCLES': sys.argv[2],
+                'PERFORMANCE_TRAY_TIMING_CYCLES': sys.argv[3],
+            })
             count += 1
         for child in value.values(): count += visit(child)
     elif isinstance(value, list):

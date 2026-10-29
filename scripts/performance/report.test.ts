@@ -685,7 +685,7 @@ test('validates 20 screen cycles and 5 cycles per tray without dropping samples'
   }));
   const mixedOptions = {
     ...options,
-    metadata: { timingCycles: 20, trayTimingCycles: 5 },
+    metadata: { screenTimingCycles: 20, trayTimingCycles: 5 },
   };
   const summary = summarize([...screens, ...trays], mixedOptions);
   assert.equal(summary.valid, true, summary.errors.join());
@@ -719,7 +719,7 @@ test('rejects tray cycle metadata outside the 1..5 limit', () => {
   for (const trayTimingCycles of [0, 6, 20, 2.5, '5']) {
     const summary = summarize([], {
       ...options,
-      metadata: { timingCycles: 20, trayTimingCycles },
+      metadata: { screenTimingCycles: 20, trayTimingCycles },
     });
     assert.equal(summary.valid, false);
     assert.match(
@@ -1058,7 +1058,11 @@ test('current runners require both complete tray runs as well as all screen scen
   }));
   const current = {
     ...options,
-    metadata: { lifecycleValidation: 2, timingCycles: 1, trayTimingCycles: 1 },
+    metadata: {
+      lifecycleValidation: 2,
+      screenTimingCycles: 1,
+      trayTimingCycles: 1,
+    },
   };
   const complete = summarize([...screens, ...trays], current);
   assert.equal(complete.valid, true, complete.errors.join());
