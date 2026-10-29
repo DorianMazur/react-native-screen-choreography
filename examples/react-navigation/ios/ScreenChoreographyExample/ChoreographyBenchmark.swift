@@ -6,7 +6,7 @@ import UIKit
 /// windows as well as the app window. Event and ack times share iOS uptime.
 final class BenchmarkApplication: UIApplication {
   override func sendEvent(_ event: UIEvent) {
-    for touch in event.allTouches ?? [] where touch.phase == .ended {
+    for touch in event.allTouches ?? [] where touch.phase == .began || touch.phase == .ended || touch.phase == .cancelled {
       if let window = touch.window { BenchmarkRecorder.record(touch, in: window) }
     }
     super.sendEvent(event)
@@ -15,17 +15,38 @@ final class BenchmarkApplication: UIApplication {
 
 private enum BenchmarkRecorder {
   static var touches: [[String: Any]] = []
+  static var touchEvents: [[String: Any]] = []
   static var acknowledgements: [[String: Any]] = []
   static var droppedSamples = 0
   static var now: Double { ProcessInfo.processInfo.systemUptime * 1000 }
 
   static func record(_ touch: UITouch, in window: UIWindow) {
-    guard touches.count < 20000 else { droppedSamples += 1; return }
+    guard touchEvents.count < 20000 else { droppedSamples += 1; return }
     let point = touch.location(in: window)
-    touches.append([
-      "kind": "window-touch-ended", "eventUptimeMs": touch.timestamp * 1000,
+    let sample: [String: Any] = [
+      "eventUptimeMs": touch.timestamp * 1000,
       "dispatchUptimeMs": now, "x": point.x, "y": point.y,
-    ])
+    ]
+    if touch.phase == .ended {
+      // Preserve the ended-touch stream used to validate probe timing.
+      touches.append(sample.merging(["kind": "window-touch-ended"]) { _, value in value })
+    }
+    var path: [[String: Any]] = []
+    var view = touch.view
+    while let current = view {
+      path.append([
+        "class": NSStringFromClass(type(of: current)), "tag": current.tag,
+        "identifier": current.accessibilityIdentifier ?? "",
+        "alpha": current.alpha, "interactive": current.isUserInteractionEnabled,
+      ])
+      view = current.superview
+    }
+    touchEvents.append(sample.merging([
+      "phase": touch.phase == .began ? "began" : touch.phase == .ended ? "ended" : "cancelled",
+      "windowClass": NSStringFromClass(type(of: window)),
+      "windowLevel": window.windowLevel.rawValue,
+      "targetPath": path,
+    ]) { _, value in value })
   }
 }
 
@@ -68,6 +89,7 @@ final class ChoreographyBenchmark: NSObject {
         "exportedAtUptimeMs": BenchmarkRecorder.now,
         "droppedSamples": BenchmarkRecorder.droppedSamples,
         "touches": BenchmarkRecorder.touches,
+        "touchEvents": BenchmarkRecorder.touchEvents,
         "inputAcknowledgements": BenchmarkRecorder.acknowledgements,
       ]
       let file = directory.appendingPathComponent("\(exportID).json")
