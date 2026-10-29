@@ -7,6 +7,7 @@ mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
 cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
 [[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
+printf 'Per scenario: %s screen cycles; %s tray cycles.\n' "$cycles" "$((cycles < 5 ? cycles : 5))"
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
 if [[ "${USE_CCACHE:-0}" == 1 ]]; then
@@ -52,6 +53,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   workletsVersion: require('./examples/react-navigation/node_modules/react-native-worklets/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  trayTimingCycles: Math.min(Number(process.argv[4]), 5),
   lifecycleValidation: 2,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));

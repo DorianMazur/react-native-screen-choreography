@@ -33,9 +33,10 @@ class ChoreographyBenchmarks(private val scenario: String) {
   private var scrollEnds = 0
   @Test
   fun repeatedNavigationTimingAndInput() {
-    val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
+    val requestedCycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
       require(it in 1..99) { "performanceTimingCycles must be between 1 and 99" }
     }
+    val cycles = if (scenario.startsWith("tray-")) minOf(requestedCycles, 5) else requestedCycles
     device.wakeUp()
     device.executeShellCommand("wm dismiss-keyguard")
     check(!instrumentation.context.getSystemService(KeyguardManager::class.java).isDeviceLocked) {

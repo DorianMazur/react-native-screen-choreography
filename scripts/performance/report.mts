@@ -435,15 +435,15 @@ function readNativeInput(report: InputRecord, platform: string) {
   }
 }
 
-function expectedCount(value: unknown, label: string) {
+function expectedCount(value: unknown, label: string, maximum = 99) {
   if (value === undefined) return undefined;
   if (
     typeof value !== 'number' ||
     !Number.isInteger(value) ||
     value < 1 ||
-    value > 99
+    value > maximum
   ) {
-    throw new Error(`${label} must be an integer between 1 and 99`);
+    throw new Error(`${label} must be an integer between 1 and ${maximum}`);
   }
   return value;
 }
@@ -469,17 +469,23 @@ export function summarize(
   const sources = [];
   const runIds = new Set<string>();
   const instrumentation = new Map<string, string>();
-  let expectedCycles;
+  let expectedScreenCycles;
+  let expectedTrayCycles;
   try {
     if (
       metadata.lifecycleValidation !== undefined &&
       ![1, 2].includes(metadata.lifecycleValidation as number)
     )
       throw new Error('Unknown lifecycle validation version');
-    expectedCycles = expectedCount(
+    expectedScreenCycles = expectedCount(
       metadata.timingCycles,
       'Expected timing cycles'
     );
+    // Older exports used one count for both screen and tray scenarios.
+    expectedTrayCycles =
+      metadata.trayTimingCycles === undefined
+        ? expectedScreenCycles
+        : expectedCount(metadata.trayTimingCycles, 'Expected tray cycles', 5);
   } catch (error) {
     errors.push(
       `metadata: ${error instanceof Error ? error.message : String(error)}`
@@ -497,6 +503,7 @@ export function summarize(
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
         const tray = data.scenario in TRAY_SCENARIOS;
+        const expectedCycles = tray ? expectedTrayCycles : expectedScreenCycles;
         if (metadata.lifecycleValidation || tray) validateLifecycle(data);
         if (tray) Object.assign(documentMetrics, validateTrayLifecycle(data));
         else if (data.trayTracing)

@@ -94,6 +94,7 @@ exit 127
     assert.equal(metadata.emulatorVersion, '37.2.12 (16428233)');
     assert.equal(metadata.graphicsRenderer, 'Mesa llvmpipe');
     assert.equal(metadata.timingCycles, 20);
+    assert.equal(metadata.trayTimingCycles, 5);
     assert.equal(metadata.lifecycleValidation, 2);
     assert.equal(metadata.runnerExitCode, 0);
     assert.equal(metadata.workletsVersion, 'test');

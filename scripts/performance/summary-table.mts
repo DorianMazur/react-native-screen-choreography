@@ -12,7 +12,6 @@ const comparableMetadata = [
   'apiLevel',
   'emulator',
   'abi',
-  'timingCycles',
   'reactNativeVersion',
   'reanimatedVersion',
   'nodeVersion',
@@ -23,6 +22,11 @@ export function metricCompatible(
   base: InputRecord | undefined,
   key: string
 ): boolean {
+  const trayMetric = key.split('.')[0]! in TRAY_SCENARIOS;
+  const cycles = (report: InputRecord | undefined) =>
+    trayMetric
+      ? (report?.metadata?.trayTimingCycles ?? report?.metadata?.timingCycles)
+      : report?.metadata?.timingCycles;
   const definition = current.metricDefinitions?.[key];
   const previous = base?.metricDefinitions?.[key];
   const explicit = definition != null && previous != null;
@@ -44,6 +48,9 @@ export function metricCompatible(
     base.valid === true &&
     current.schemaVersion === 1 &&
     base.schemaVersion === 1 &&
+    cycles(current) != null &&
+    cycles(current) !== '' &&
+    cycles(current) === cycles(base) &&
     ['platform', 'mode'].every(
       (name) => current[name] != null && current[name] === base[name]
     ) &&

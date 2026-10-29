@@ -89,6 +89,7 @@ fi
             PATH: `${root}/bin:${process.env.PATH}`,
             USE_CCACHE: '0',
             PERFORMANCE_OUTPUT: output,
+            PERFORMANCE_TIMING_CYCLES: '20',
             PERFORMANCE_DERIVED_DATA: path.join(root, 'derived'),
             BUILD_EXIT_STATUS: String(buildStatus),
             TEST_EXIT_STATUS: String(testStatus),
@@ -101,6 +102,8 @@ fi
         readFileSync(path.join(output, 'metadata.json'), 'utf8')
       );
       assert.equal(metadata.lifecycleValidation, 2);
+      assert.equal(metadata.timingCycles, 20);
+      assert.equal(metadata.trayTimingCycles, 5);
       assert.equal(metadata.runnerExitCode, buildStatus || testStatus);
       assert.equal(metadata.workletsVersion, 'test');
       const argumentsList = readFileSync(

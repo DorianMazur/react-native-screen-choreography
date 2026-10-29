@@ -3,6 +3,7 @@ import { test } from 'node:test';
 import {
   compatible,
   environmentChanges,
+  metricCompatible,
   summaryTable,
 } from './summary-table.mts';
 import type { InputRecord } from './types.ts';
@@ -243,6 +244,39 @@ test('does not compare rows collected with different sample counts', () => {
     summaryTable(report(), base),
     /tap to motion \(ms\) \| — \| 40 \| —/
   );
+});
+
+test('screen and tray comparisons use their own cycle counts, including older baselines', () => {
+  const screen = 'gallery.forward.tapToMotion';
+  for (const tray of [
+    'tray-wallet.forward.tapToMotion',
+    'tray-gallery.step-3.requestToSettledMs',
+  ]) {
+    const base: InputRecord = report();
+    base.metadata.timingCycles = 20;
+    base.metrics[screen].count = 20;
+    base.metrics[tray] = { count: 20, median: 40 };
+    const current = structuredClone(base);
+    current.metadata.trayTimingCycles = 5;
+    current.metrics[tray].count = 5;
+
+    assert.equal(metricCompatible(current, base, screen), true);
+    assert.equal(metricCompatible(current, base, tray), false);
+    assert.match(summaryTable(current, base), /tray · .* \| — \| 40 \| —/);
+
+    base.metadata.trayTimingCycles = 5;
+    base.metrics[tray].count = 5;
+    assert.equal(metricCompatible(current, base, tray), true);
+    assert.match(summaryTable(current, base), /tray · .* \| 40 \| 40 \| 0 ms/);
+
+    base.metadata.timingCycles = 10;
+    assert.equal(metricCompatible(current, base, screen), false);
+    assert.equal(metricCompatible(current, base, tray), true);
+
+    delete base.metadata.trayTimingCycles;
+    base.metadata.timingCycles = 5;
+    assert.equal(metricCompatible(current, base, tray), true);
+  }
 });
 
 test('iOS toolchains and platforms must match for comparisons', () => {

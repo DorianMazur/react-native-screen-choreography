@@ -677,6 +677,58 @@ const sampledOptions = {
   metadata: { timingCycles: 20 },
 };
 
+test('validates 20 screen cycles and 5 cycles per tray without dropping samples', () => {
+  const screens = sampledDocuments();
+  const trays = (['tray-wallet', 'tray-gallery'] as const).map((scenario) => ({
+    file: `${scenario}.json`,
+    data: trayFixture(scenario, 5),
+  }));
+  const mixedOptions = {
+    ...options,
+    metadata: { timingCycles: 20, trayTimingCycles: 5 },
+  };
+  const summary = summarize([...screens, ...trays], mixedOptions);
+  assert.equal(summary.valid, true, summary.errors.join());
+  for (const { data } of [...screens, ...trays]) {
+    const expected = data.scenario.startsWith('tray-') ? 5 : 20;
+    for (const direction of ['forward', 'backward']) {
+      const key = `${data.scenario}.${direction}.tapToMotion`;
+      assert.equal(summary.metrics[key]?.count, expected, key);
+      assert.equal(summary.samples[key]?.length, expected, key);
+    }
+  }
+  for (const cycles of [4, 6]) {
+    const mismatched = [
+      trays[0]!,
+      { ...trays[1]!, data: trayFixture('tray-gallery', cycles) },
+    ];
+    const invalid = summarize([...screens, ...mismatched], mixedOptions);
+    assert.equal(invalid.valid, false);
+    assert.match(
+      invalid.errors.join(),
+      /journey count must match measured cycles/
+    );
+    assert.equal(
+      invalid.metrics['tray-gallery.forward.tapToMotion'],
+      undefined
+    );
+  }
+});
+
+test('rejects tray cycle metadata outside the 1..5 limit', () => {
+  for (const trayTimingCycles of [0, 6, 20, 2.5, '5']) {
+    const summary = summarize([], {
+      ...options,
+      metadata: { timingCycles: 20, trayTimingCycles },
+    });
+    assert.equal(summary.valid, false);
+    assert.match(
+      summary.errors.join(),
+      /Expected tray cycles must be an integer between 1 and 5/
+    );
+  }
+});
+
 test('includes all 20 round trips in one measured set', () => {
   const summary = summarize(sampledDocuments(), sampledOptions);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
@@ -1006,7 +1058,7 @@ test('current runners require both complete tray runs as well as all screen scen
   }));
   const current = {
     ...options,
-    metadata: { lifecycleValidation: 2, timingCycles: 1 },
+    metadata: { lifecycleValidation: 2, timingCycles: 1, trayTimingCycles: 1 },
   };
   const complete = summarize([...screens, ...trays], current);
   assert.equal(complete.valid, true, complete.errors.join());

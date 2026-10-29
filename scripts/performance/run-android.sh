@@ -20,7 +20,7 @@ output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(d
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Per scenario: %s measured timing/input round trips.\n' "$cycles"
+printf 'Per scenario: %s screen cycles; %s tray cycles.\n' "$cycles" "$((cycles < 5 ? cycles : 5))"
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
@@ -56,6 +56,7 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   workletsVersion: require('./examples/react-navigation/node_modules/react-native-worklets/package.json').version,
   abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  trayTimingCycles: Math.min(Number(process.argv[4]), 5),
   lifecycleValidation: 2,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
