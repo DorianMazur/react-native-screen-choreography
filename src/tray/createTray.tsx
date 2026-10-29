@@ -34,7 +34,7 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { SharedValue } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
-import { ChoreographyOverlay } from '../components/ChoreographyOverlay';
+import { NativeOverlay } from '../native/NativeOverlay';
 import { ChoreographyActionsContext } from '../core/ChoreographyContext';
 import { ScreenIdContext } from '../core/screenIdContext';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
@@ -263,7 +263,7 @@ export function createTray<P extends TrayParamList>() {
               {declaration.content}
             </View>
             {isPresented && (
-              <ChoreographyOverlay>
+              <NativeOverlay modal>
                 <TrayChoreography key={state.session}>
                   <TrayHost
                     key={state.session}
@@ -278,7 +278,7 @@ export function createTray<P extends TrayParamList>() {
                     bindNavigation={bindNavigation}
                   />
                 </TrayChoreography>
-              </ChoreographyOverlay>
+              </NativeOverlay>
             )}
           </ScreenContext.Provider>
         </StateContext.Provider>
@@ -1316,7 +1316,7 @@ function TrayPage({
 
 const styles = StyleSheet.create({
   app: { flex: 1 },
-  fill: { ...StyleSheet.absoluteFillObject },
+  fill: { ...StyleSheet.absoluteFill },
   card: { overflow: 'hidden' },
   centered: { alignSelf: 'center' },
   headers: { position: 'absolute', top: 0, left: 0, right: 0, zIndex: 1 },

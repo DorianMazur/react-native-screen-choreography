@@ -2,11 +2,12 @@ import Foundation
 import React
 import UIKit
 
-/// Only benchmark launches install this window. Event and ack times share iOS uptime.
-final class BenchmarkWindow: UIWindow {
+/// Only benchmark launches use this application. Include touches in tray and modal
+/// windows as well as the app window. Event and ack times share iOS uptime.
+final class BenchmarkApplication: UIApplication {
   override func sendEvent(_ event: UIEvent) {
     for touch in event.allTouches ?? [] where touch.phase == .ended {
-      BenchmarkRecorder.record(touch, in: self)
+      if let window = touch.window { BenchmarkRecorder.record(touch, in: window) }
     }
     super.sendEvent(event)
   }

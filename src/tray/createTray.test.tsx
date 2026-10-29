@@ -79,8 +79,8 @@ jest.mock('@swmansion/react-native-bottom-sheet', () => ({
     children,
   ModalBottomSheet: 'BottomSheet',
 }));
-jest.mock('../components/ChoreographyOverlay', () => ({
-  ChoreographyOverlay: 'Overlay',
+jest.mock('../native/NativeOverlay', () => ({
+  NativeOverlay: 'Overlay',
 }));
 
 type Routes = { form: undefined; preview: { label: string } };

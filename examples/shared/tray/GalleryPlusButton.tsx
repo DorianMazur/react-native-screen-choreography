@@ -68,7 +68,7 @@ const styles = StyleSheet.create({
   },
   labels: { width: 124, height: 22 },
   label: {
-    ...StyleSheet.absoluteFillObject,
+    ...StyleSheet.absoluteFill,
     color: trayTheme.onAccent,
     fontSize: 16,
     lineHeight: 22,

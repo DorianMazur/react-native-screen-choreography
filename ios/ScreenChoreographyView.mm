@@ -1,4 +1,5 @@
 #import "ScreenChoreographyView.h"
+#import "ScreenChoreographyPresentationWindow.h"
 
 #import <React/RCTConversions.h>
 #import <React/RCTMountingTransactionObserving.h>
@@ -52,6 +53,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 @property (nonatomic, assign) BOOL foreground;
 @property (nonatomic, weak) UIView *anchor;
 @property (nonatomic, copy) NSString *inputTarget;
+@property (nonatomic, assign) BOOL ownsPresentation;
 @end
 
 @implementation ScreenChoreographyWindowContainer
@@ -71,8 +73,9 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 - (UIResponder *)nextResponder
 {
-  // Portaled Modal children still present through their original controller.
-  return self.anchor ?: [super nextResponder];
+  // Modal foreground content uses its root controller; ordinary overlays keep
+  // the original responder chain for React Native Modal presentation.
+  return self.ownsPresentation ? [super nextResponder] : (self.anchor ?: [super nextResponder]);
 }
 
 - (UIView *)hitTest:(CGPoint)point withEvent:(UIEvent *)event
@@ -100,9 +103,11 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 @implementation ScreenChoreographyView {
   ScreenChoreographyWindowContainer *_windowContainer;
+  ScreenChoreographyPresentationWindow *_presentationWindow;
   __weak UIWindow *_lastWindow;
   RCTSurfaceTouchHandler *_foregroundTouchHandler;
   BOOL _foreground;
+  BOOL _modal;
   double _preparedAtMs;
   double _attachedAtMs;
   double _contentReadyAtMs;
@@ -149,6 +154,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 {
   [_presentationDisplayLink invalidate];
   [_foregroundTouchHandler detachFromView:_windowContainer];
+  [_presentationWindow dismiss];
   [_windowContainer removeFromSuperview];
 }
 
@@ -219,7 +225,27 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   if (self.window != nil) {
     _lastWindow = self.window;
   }
-  if (_windowContainer.superview != window) {
+  if (_foreground && _modal) {
+    if (_presentationWindow != nil && _presentationWindow.sourceWindow != window) {
+      [_presentationWindow dismiss];
+      _presentationWindow = nil;
+    }
+    if (_presentationWindow == nil) {
+      _windowContainer.ownsPresentation = YES;
+      _windowContainer.accessibilityViewIsModal = YES;
+      _presentationWindow = [[ScreenChoreographyPresentationWindow alloc] initWithSourceWindow:window
+                                                                                contentView:_windowContainer];
+      [_presentationWindow present];
+    }
+    if (_foregroundTouchHandler == nil) {
+      _foregroundTouchHandler = [RCTSurfaceTouchHandler new];
+      [_foregroundTouchHandler attachToView:_windowContainer];
+    }
+    return;
+  }
+  UIView *parent = [window isKindOfClass:ScreenChoreographyPresentationWindow.class]
+      ? window.rootViewController.view : window;
+  if (_windowContainer.superview != parent) {
     [_windowContainer removeFromSuperview];
     _windowContainer.frame = window.bounds;
   }
@@ -235,6 +261,23 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 - (void)insertWindowContainerInWindow:(UIWindow *)window
 {
+  if ([window isKindOfClass:ScreenChoreographyPresentationWindow.class]) {
+    // Keep local transitions and controls within the tray controller's view,
+    // below any UIKit presentation made by its content.
+    UIView *root = window.rootViewController.view;
+    if (_windowContainer.superview == root) return;
+    if (!_foreground) {
+      for (UIView *view in root.subviews) {
+        if ([view isKindOfClass:ScreenChoreographyWindowContainer.class] &&
+            ((ScreenChoreographyWindowContainer *)view).foreground) {
+          [root insertSubview:_windowContainer belowSubview:view];
+          return;
+        }
+      }
+    }
+    [root addSubview:_windowContainer];
+    return;
+  }
   // Reordering this foreground container can cover a Modal presented by its children.
   if (_foreground && _windowContainer.superview == window) return;
   // Insert above controller content, below independent window overlays.
@@ -271,6 +314,12 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
 
 - (void)detachWindowContainer
 {
+  if (_presentationWindow != nil) {
+    [_presentationWindow dismiss];
+    _presentationWindow = nil;
+    _windowContainer.ownsPresentation = NO;
+    _windowContainer.accessibilityViewIsModal = NO;
+  }
   // Keep counters monotonic across recycling to invalidate stale callbacks.
   _presentationRequestId += 1;
   _presentationCheckPending = NO;
@@ -292,6 +341,7 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   [self detachWindowContainer];
   _active = NO;
   _foreground = NO;
+  _modal = NO;
   _windowContainer.foreground = NO;
   _windowContainer.inputTarget = nil;
   _prepared = NO;
@@ -313,6 +363,8 @@ UIView *SCFindInputTarget(UIView *view, NSString *nativeId)
   _windowContainer.inputTarget = newViewProps.active && !newViewProps.sessionId.empty()
       ? [NSString stringWithUTF8String:newViewProps.inputTarget.c_str()] : nil;
   _foreground = newViewProps.foreground;
+  if (_modal != newViewProps.modal) [self detachWindowContainer];
+  _modal = newViewProps.modal;
   _windowContainer.foreground = _foreground;
   if (!_foreground && _foregroundTouchHandler != nil) {
     [_foregroundTouchHandler detachFromView:_windowContainer];
