@@ -1,6 +1,10 @@
 import React, { useContext, useEffect } from 'react';
 import { StyleSheet, View } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { ChoreographyProvider } from '../components/ChoreographyProvider';
 import { SharedElement } from '../components/SharedElement';
 import {
@@ -51,33 +55,35 @@ const { RouteContext } = jest.requireMock('@react-navigation/native');
 
 test('live owners and destinations are namespaced by route instance', async () => {
   const { Portal, PortalHost } = jest.requireMock('react-native-teleport');
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   try {
-    await act(async () => {
-      tree = create(
-        <ChoreographyProvider>
-          {['first', 'second'].map((instance) => (
-            <React.Fragment key={instance}>
-              <ScreenIdContext.Provider value={`owner-${instance}`}>
-                <SharedElement id="player" groupId="group">
-                  {null}
-                </SharedElement>
-              </ScreenIdContext.Provider>
-              <ScreenIdContext.Provider value={`detail-${instance}`}>
-                <SharedElement.Target id="player" groupId="group" />
-              </ScreenIdContext.Provider>
-            </React.Fragment>
-          ))}
-        </ChoreographyProvider>
-      );
-    });
+    tree = renderComponent(
+      <ChoreographyProvider>
+        {['first', 'second'].map((instance) => (
+          <React.Fragment key={instance}>
+            <ScreenIdContext.Provider value={`owner-${instance}`}>
+              <SharedElement id="player" groupId="group">
+                {null}
+              </SharedElement>
+            </ScreenIdContext.Provider>
+            <ScreenIdContext.Provider value={`detail-${instance}`}>
+              <SharedElement.Target id="player" groupId="group" />
+            </ScreenIdContext.Provider>
+          </React.Fragment>
+        ))}
+      </ChoreographyProvider>
+    );
+
     expect(
-      new Set(tree.root.findAllByType(Portal).map((node) => node.props.name))
-        .size
+      new Set(
+        tree.UNSAFE_root.findAllByType(Portal).map((node) => node.props.name)
+      ).size
     ).toBe(2);
     expect(
       new Set(
-        tree.root.findAllByType(PortalHost).map((node) => node.props.name)
+        tree.UNSAFE_root.findAllByType(PortalHost).map(
+          (node) => node.props.name
+        )
       ).size
     ).toBe(2);
   } finally {
@@ -119,7 +125,7 @@ test.each([
         }))
     );
 
-    let tree: ReactTestRenderer | undefined;
+    let tree: RenderResult | undefined;
     let context!: ChoreographyContextType;
     const registeredIds = new Set<string>();
     function Element({ pageX }: { pageX: number }) {
@@ -168,11 +174,10 @@ test.each([
       );
     }
     try {
-      await act(async () => {
-        tree = create(render(), {
-          createNodeMock: () => ({ tag: 1000 }),
-        });
+      tree = renderComponent(render(), {
+        createNodeMock: () => ({ tag: 1000 }),
       });
+
       expect([...registeredIds]).toEqual(['detail-first', 'detail-second']);
       expect(context.resolveScreenId('Detail')).toBeNull();
       expect(context.resolveScreenId('Detail', 'detail-first')).toBe(
@@ -208,9 +213,9 @@ test.each([
       await act(async () =>
         context.setPendingTargetScreen('Detail', 'detail-first')
       );
-      const screens = tree!.root
-        .findAllByType(View)
-        .filter((node) => node.props.onLayout);
+      const screens = tree!.UNSAFE_root.findAllByType(View).filter(
+        (node) => node.props.onLayout
+      );
       expect(
         screens.map((node) => StyleSheet.flatten(node.props.style).opacity)
       ).toEqual([1, 0]);
@@ -234,7 +239,7 @@ test.each([
       expect(pair?.sourceMetrics.pageX).toBe(10);
       expect(pair?.targetMetrics.pageX).toBe(200);
       await act(async () => context.completeTransition());
-      await act(async () => tree!.update(render(false)));
+      await act(async () => tree!.rerender(render(false)));
       expect(context.resolveScreenId('Detail')).toBe('detail-first');
       expect(context.getNavigationLineage('detail-second')).toBeNull();
       expect(context.getNavigationLineage('detail-first')?.sourceScreenId).toBe(

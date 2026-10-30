@@ -1,5 +1,9 @@
 import { Suspense, useLayoutEffect } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
@@ -13,7 +17,7 @@ jest.mock('react-native-reanimated', () => ({
   __esModule: true,
 }));
 
-const trees: ReactTestRenderer[] = [];
+const trees: RenderResult[] = [];
 let frames: ((time: number) => void)[];
 
 beforeEach(() => {
@@ -59,9 +63,9 @@ async function mountScreen({
     progress: { value: 0 },
     interactionOwner: { value: null },
   } as unknown as ChoreographyContextType;
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   const outer = () =>
-    tree.root.findAll((node) => Boolean(node.props?.onLayout))[0]!;
+    tree.UNSAFE_root.findAll((node) => Boolean(node.props?.onLayout))[0]!;
   const deliverLayout = () => outer().props.onLayout();
   const render = (isReady: boolean, screenId = 'detail', frozen = false) => (
     <Suspense fallback={null}>
@@ -78,9 +82,11 @@ async function mountScreen({
       </ChoreographyContext.Provider>
     </Suspense>
   );
-  await act(async () => {
-    tree = create(render(ready));
-  });
+
+  // Keep a stable root available to the layout effect during the commit.
+  tree = renderComponent(<></>, { wrapper: ({ children }) => children });
+  await act(async () => tree.rerender(render(ready)));
+
   trees.push(tree);
   return {
     tree,
@@ -89,9 +95,9 @@ async function mountScreen({
     unregisterPresentation,
     layout: () => act(async () => deliverLayout()),
     update: (isReady: boolean, screenId?: string) =>
-      act(async () => tree.update(render(isReady, screenId))),
+      act(async () => tree.rerender(render(isReady, screenId))),
     freeze: (frozen: boolean, isReady = ready) =>
-      act(async () => tree.update(render(isReady, 'detail', frozen))),
+      act(async () => tree.rerender(render(isReady, 'detail', frozen))),
   };
 }
 

@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { TransitionOverlay } from './TransitionOverlay';
 import { makeTransition } from '../transitions/makeTransition';
 import type {
@@ -32,16 +36,16 @@ test('overlay renders frozen endpoint data without copying children or hiding re
     ],
   } as unknown as TransitionSessionData;
   const onReady = jest.fn();
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(
-      <TransitionOverlay
-        session={session}
-        progress={{ value: 0 } as TransitionSessionData['progress']}
-        onReady={onReady}
-      />
-    );
-  });
+  let tree!: RenderResult;
+
+  tree = renderComponent(
+    <TransitionOverlay
+      session={session}
+      progress={{ value: 0 } as TransitionSessionData['progress']}
+      onReady={onReady}
+    />
+  );
+
   expect(onReady).toHaveBeenCalledWith('s');
   expect(renderer.mock.calls[0]![0].source.metadata).toBe('captured');
   expect(renderer.mock.calls[0]![0].source).not.toHaveProperty('content');
@@ -92,13 +96,12 @@ test.each(['forward', 'backward'] as const)(
       pairs: [pair('hero'), pair('__proto__')],
     } as unknown as TransitionSessionData;
     const progress = { value: 0.5 } as TransitionSessionData['progress'];
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <TransitionOverlay session={session} progress={progress} />
-        );
-      });
+      tree = renderComponent(
+        <TransitionOverlay session={session} progress={progress} />
+      );
+
       const anchors = received.get('hero')!.anchors!;
       expect(Object.keys(anchors)).toEqual(['hero', '__proto__']);
       expect(anchors.hero).toEqual({ collapsed, expanded });
@@ -116,7 +119,7 @@ test.each(['forward', 'backward'] as const)(
         pairs: session.pairs.map((p) => ({ ...p, targetMetrics: refreshed })),
       };
       await act(async () => {
-        tree.update(
+        tree.rerender(
           <TransitionOverlay session={session} progress={progress} />
         );
       });
@@ -132,7 +135,7 @@ test.each(['forward', 'backward'] as const)(
 
       session = { ...session, id: 'second', pairs: [pair('other')] };
       await act(async () => {
-        tree.update(
+        tree.rerender(
           <TransitionOverlay session={session} progress={progress} />
         );
       });

@@ -1,7 +1,11 @@
 import { PortalHost } from 'react-native-teleport';
 import { StyleSheet } from 'react-native';
 import type { SharedValue } from 'react-native-reanimated';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import type {
   Transition,
   SharedElementTransitionRendererProps,
@@ -42,7 +46,7 @@ jest.mock('react-native-reanimated', () => ({
     output[0],
 }));
 
-const trees: ReactTestRenderer[] = [];
+const trees: RenderResult[] = [];
 function withProviders(element: React.ReactElement) {
   return (
     <ChoreographyControlsContext.Provider
@@ -65,10 +69,10 @@ function withProviders(element: React.ReactElement) {
   );
 }
 async function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(withProviders(element));
-  });
+  let tree!: RenderResult;
+
+  tree = renderComponent(withProviders(element));
+
   trees.push(tree);
   return tree;
 }
@@ -99,8 +103,8 @@ test('owner and empty target bind the same named transition', async () => {
       />
     </>
   );
-  const owner = tree.root.findByType('Owner' as React.ElementType);
-  const target = tree.root.findByType('Target' as React.ElementType);
+  const owner = tree.UNSAFE_root.findByType('Owner' as React.ElementType);
+  const target = tree.UNSAFE_root.findByType('Target' as React.ElementType);
   expect(owner.props.id).toBe('hero');
   expect(owner.props.groupId).toBe('photo');
   expect(owner.props.transition).toBe(target.props.transition);
@@ -108,7 +112,7 @@ test('owner and empty target bind the same named transition', async () => {
   expect(target.props.children).toBeUndefined();
   const transition = owner.props.transition;
   await act(async () =>
-    tree.update(
+    tree.rerender(
       withProviders(
         <definition.Element name="hero" groupId="photo">
           Updated
@@ -117,7 +121,7 @@ test('owner and empty target bind the same named transition', async () => {
     )
   );
   expect(
-    tree.root.findByType('Owner' as React.ElementType).props.transition
+    tree.UNSAFE_root.findByType('Owner' as React.ElementType).props.transition
   ).toBe(transition);
 });
 
@@ -132,7 +136,7 @@ test.each(['bounds', 'surface'] as const)(
         Content
       </definition.Element>
     );
-    const transition: Transition = owner.root.findByType(
+    const transition: Transition = owner.UNSAFE_root.findByType(
       'Owner' as React.ElementType
     ).props.transition;
     const small = {
@@ -157,12 +161,12 @@ test.each(['bounds', 'surface'] as const)(
       return <Renderer {...props} />;
     };
     const tree = await mount(render('forward'));
-    const host = tree.root.findByType(PortalHost);
+    const host = tree.UNSAFE_root.findByType(PortalHost);
     for (const direction of ['forward', 'backward'] as const) {
-      await act(async () => tree.update(withProviders(render(direction))));
-      expect(tree.root.findAllByType(PortalHost)).toHaveLength(1);
-      expect(tree.root.findByType(PortalHost)).toBe(host);
-      const primitive = tree.root.findByType(
+      await act(async () => tree.rerender(withProviders(render(direction))));
+      expect(tree.UNSAFE_root.findAllByType(PortalHost)).toHaveLength(1);
+      expect(tree.UNSAFE_root.findByType(PortalHost)).toBe(host);
+      const primitive = tree.UNSAFE_root.findByType(
         kind === 'bounds' ? TransitionFrame : TransitionSurface
       );
       expect(primitive.props.progress).toBe(mockProgress);
@@ -206,7 +210,7 @@ test('configuration is captured and custom live renderers remain usable', async 
     <definition.Element name="custom">Content</definition.Element>
   );
   expect(
-    tree.root.findByType('Owner' as React.ElementType).props.transition
+    tree.UNSAFE_root.findByType('Owner' as React.ElementType).props.transition
   ).toBe(custom);
 });
 
@@ -272,9 +276,9 @@ test.each(['forward', 'backward'] as const)(
         <definition.Exit name="heading">Heading</definition.Exit>
       </>
     );
-    const [enter, exit] = tree.root
-      .findAllByType('Animated.View' as React.ElementType)
-      .map((node) => StyleSheet.flatten(node.props.style));
+    const [enter, exit] = tree.UNSAFE_root.findAllByType(
+      'Animated.View' as React.ElementType
+    ).map((node) => StyleSheet.flatten(node.props.style));
     expect(enter.opacity).toBe(direction === 'forward' ? 0 : 1);
     expect(exit.opacity).toBe(direction === 'forward' ? 1 : 0);
   }
@@ -299,8 +303,10 @@ test('separate groups reuse role motion without losing endpoint metadata', async
       />
     </>
   );
-  const [one, two] = tree.root.findAllByType('Owner' as React.ElementType);
-  const target = tree.root.findByType('Target' as React.ElementType);
+  const [one, two] = tree.UNSAFE_root.findAllByType(
+    'Owner' as React.ElementType
+  );
+  const target = tree.UNSAFE_root.findByType('Target' as React.ElementType);
   expect(one!.props.groupId).toBe('token.one');
   expect(two!.props.groupId).toBe('token.two');
   expect(one!.props.transition).toBe(two!.props.transition);

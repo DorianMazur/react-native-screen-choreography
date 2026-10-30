@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
@@ -38,18 +42,17 @@ test('retained core commands use the current source, preparation callback and ba
     });
     return null;
   }
-  let tree: ReactTestRenderer | undefined;
+  let tree: RenderResult | undefined;
   try {
-    await act(async () => {
-      tree = create(
-        <ChoreographyContext.Provider value={context}>
-          <Caller screenId="source-first" back={backFirst} />
-        </ChoreographyContext.Provider>
-      );
-    });
+    tree = renderComponent(
+      <ChoreographyContext.Provider value={context}>
+        <Caller screenId="source-first" back={backFirst} />
+      </ChoreographyContext.Provider>
+    );
+
     const retained = commands;
     await act(async () => {
-      tree!.update(
+      tree!.rerender(
         <ChoreographyContext.Provider
           value={{ ...context, captureSourceGroup: captureCurrent }}
         >
@@ -123,15 +126,14 @@ test.each(['focus', 'pending target', 'active session'] as const)(
       });
       return null;
     }
-    let tree: ReactTestRenderer | undefined;
+    let tree: RenderResult | undefined;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={context}>
-            <Caller focused />
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContext.Provider value={context}>
+          <Caller focused />
+        </ChoreographyContext.Provider>
+      );
+
       const retained = commands.navigate;
       const session: TransitionSessionData = {
         id: 'other-session',
@@ -150,7 +152,7 @@ test.each(['focus', 'pending target', 'active session'] as const)(
       };
       context.navigationController.setActiveSession(next.activeSession);
       await act(async () =>
-        tree!.update(
+        tree!.rerender(
           <ChoreographyContext.Provider value={next}>
             <Caller focused={gate !== 'focus'} />
           </ChoreographyContext.Provider>
@@ -207,15 +209,14 @@ test('a retained Back reverses the current opening and uses plain Back after set
       callback(0);
       return 1;
     });
-  let tree: ReactTestRenderer | undefined;
+  let tree: RenderResult | undefined;
   try {
-    await act(async () => {
-      tree = create(
-        <ChoreographyContext.Provider value={context}>
-          <Caller />
-        </ChoreographyContext.Provider>
-      );
-    });
+    tree = renderComponent(
+      <ChoreographyContext.Provider value={context}>
+        <Caller />
+      </ChoreographyContext.Provider>
+    );
+
     const retained = commands.goBack;
     const session: TransitionSessionData = {
       id: 'opening',
@@ -230,7 +231,7 @@ test('a retained Back reverses the current opening and uses plain Back after set
     ownership.setSession(session.id);
     context.navigationController.setActiveSession(session);
     await act(async () =>
-      tree!.update(
+      tree!.rerender(
         <ChoreographyContext.Provider
           value={{ ...context, activeSession: session }}
         >
@@ -251,7 +252,7 @@ test('a retained Back reverses the current opening and uses plain Back after set
     ownership.setSession(null);
     context.navigationController.setActiveSession(null);
     await act(async () =>
-      tree!.update(
+      tree!.rerender(
         <ChoreographyContext.Provider value={context}>
           <Caller />
         </ChoreographyContext.Provider>

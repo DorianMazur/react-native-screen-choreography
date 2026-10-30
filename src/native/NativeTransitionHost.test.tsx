@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
 import {
   dispatchCommand,
@@ -38,7 +42,7 @@ jest.mock('react-native-worklets', () => ({
   scheduleOnRN: (fn: (...args: unknown[]) => void, ...args: unknown[]) =>
     fn(...args),
 }));
-let tree: ReactTestRenderer;
+let tree: RenderResult;
 let ownership: ProgressOwnership;
 beforeEach(() => jest.clearAllMocks());
 afterEach(async () => {
@@ -72,20 +76,20 @@ async function setup(
       presentation,
     });
   if (armed) arm();
-  await act(async () => {
-    tree = create(
-      <NativeTransitionHost
-        active
-        ownership={ownership}
-        progress={progress}
-        sessionId="A"
-        presentation={presentation}
-        onPresentationReady={ready}
-        onPresentationFailed={failed}
-        {...input}
-      />
-    );
-  });
+
+  tree = renderComponent(
+    <NativeTransitionHost
+      active
+      ownership={ownership}
+      progress={progress}
+      sessionId="A"
+      presentation={presentation}
+      onPresentationReady={ready}
+      onPresentationFailed={failed}
+      {...input}
+    />
+  );
+
   const frame = (useFrameCallback as jest.Mock).mock.results.at(-1)!.value;
   const react = () => {
     const [read, apply] = (useAnimatedReaction as jest.Mock).mock.calls.at(-1)!;
@@ -93,19 +97,19 @@ async function setup(
   };
   const ack = async (sessionId = 'A', stage = 'presented') =>
     act(async () => {
-      tree.root
-        .findByType('ScreenChoreographyView' as React.ElementType)
-        .props.onPresentationReady({
-          nativeEvent: {
-            sessionId,
-            stage,
-            timestamp: 1,
-            preparedAtMs: 10000,
-            attachedAtMs: 10004,
-            contentReadyAtMs: 10016,
-            presentedAtMs: 10021,
-          },
-        });
+      tree.UNSAFE_root.findByType(
+        'ScreenChoreographyView' as React.ElementType
+      ).props.onPresentationReady({
+        nativeEvent: {
+          sessionId,
+          stage,
+          timestamp: 1,
+          preparedAtMs: 10000,
+          attachedAtMs: 10004,
+          contentReadyAtMs: 10016,
+          presentedAtMs: 10021,
+        },
+      });
       react();
     });
   const tick = async (timestamp: number) =>
@@ -164,8 +168,9 @@ test.each(['ios', 'android'] as const)(
     try {
       const r = await setup();
       expect(
-        tree.root.findByType('ScreenChoreographyView' as React.ElementType)
-          .props.active
+        tree.UNSAFE_root.findByType(
+          'ScreenChoreographyView' as React.ElementType
+        ).props.active
       ).toBe(true);
       await r.ack('old', 'attached');
       expect(r.presentation.phase.value).toBe(0);
@@ -400,8 +405,8 @@ test('keeps a settling native host active without retaining its presentation val
     onSettled: settled,
   });
   expect(
-    tree.root.findByType('ScreenChoreographyView' as React.ElementType).props
-      .active
+    tree.UNSAFE_root.findByType('ScreenChoreographyView' as React.ElementType)
+      .props.active
   ).toBe(true);
   await r.tick(1);
   await r.ack('old', 'settled');

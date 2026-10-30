@@ -112,3 +112,35 @@ The sheet and keyboard packages are optional peers required only by `/tray`. App
 Both integration entries re-export the shared API. Keep `ChoreographyScreen` and navigation hooks on the entry matching your router. The `/core` entry does not include a screen wrapper or navigation adapter.
 
 Use `/tray` for tray components and hooks, and `/core` for shared elements inside trays. Neither entry requires a navigation library. Trays can also run alongside either navigation integration.
+
+## Jest setup
+
+Use the packaged mocks for component tests that do not need native transitions. Add the matching entries to your Jest setup file:
+
+```js
+// jest.setup.js
+jest.mock('react-native-screen-choreography', () =>
+  require('react-native-screen-choreography/mock')
+);
+
+// Include these when your app imports the corresponding subpaths.
+jest.mock('react-native-screen-choreography/core', () =>
+  require('react-native-screen-choreography/mock/core')
+);
+jest.mock('react-native-screen-choreography/expo-router', () =>
+  require('react-native-screen-choreography/mock/expo-router')
+);
+```
+
+Register that file in your existing Jest configuration:
+
+```js
+module.exports = {
+  preset: 'react-native',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+};
+```
+
+The mocks render shared owners in place, leave targets empty, and show companion content immediately. Progress reports an idle session; `useSharedElementPresentation` reports a collapsed owner with null metrics. Navigation commands forward to the navigator or router you pass in, without transition options. Interactive `beginBack()` resolves to `null`, and gesture lifecycle callbacks are inactive.
+
+These CommonJS entries load only React and React Native. Keep any mocks required by your application's own Reanimated, router, or other native imports. The separate `/tray` entry is not mocked here. Use device tests to verify layout capture, portal handoff, gestures, and animation timing.

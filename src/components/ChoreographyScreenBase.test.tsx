@@ -1,6 +1,10 @@
 import { useContext } from 'react';
 import { Platform } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyActionsContext,
   ChoreographyContext,
@@ -25,7 +29,7 @@ jest.mock('react-native-reanimated', () => ({
   }),
 }));
 
-const trees: ReactTestRenderer[] = [];
+const trees: RenderResult[] = [];
 const originalOS = Platform.OS;
 
 afterEach(async () => {
@@ -75,7 +79,7 @@ async function mountScreen(
   keepVisible = false,
   screenFade?: ChoreographyScreenProps['screenFade']
 ) {
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   const render = (ready = true) => (
     <ChoreographyContext.Provider value={context}>
       <ChoreographyActionsContext.Provider value={actions}>
@@ -91,23 +95,24 @@ async function mountScreen(
       </ChoreographyActionsContext.Provider>
     </ChoreographyContext.Provider>
   );
-  await act(async () => {
-    tree = create(render());
-  });
+
+  tree = renderComponent(render());
+
   trees.push(tree);
   return {
     tree,
-    outer: () => tree.root.findAll((node) => Boolean(node.props.onLayout))[0]!,
+    outer: () =>
+      tree.UNSAFE_root.findAll((node) => Boolean(node.props.onLayout))[0]!,
     inner: () =>
-      tree.root.findAll((node) => Boolean(node.props.animatedProps))[0]!,
+      tree.UNSAFE_root.findAll((node) => Boolean(node.props.animatedProps))[0]!,
     opacity: () => {
-      const style = tree.root.findAll((node) =>
+      const style = tree.UNSAFE_root.findAll((node) =>
         Boolean(node.props.animatedProps)
       )[0]!.props.style;
       return (Array.isArray(style) ? Object.assign({}, ...style) : style)
         .opacity as number;
     },
-    update: (ready: boolean) => tree.update(render(ready)),
+    update: (ready: boolean) => tree.rerender(render(ready)),
   };
 }
 
@@ -300,7 +305,7 @@ test('suspension freezes public companion progress and pointer events while reta
     providerProgress = useContext(ChoreographyControlsContext)!.progress;
     return null;
   }
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   const frames: ((time: number) => void)[] = [];
   const frameMock = jest
     .spyOn(global, 'requestAnimationFrame')
@@ -309,24 +314,23 @@ test('suspension freezes public companion progress and pointer events while reta
       return frames.length;
     });
   try {
-    await act(async () => {
-      tree = create(
-        <ChoreographyControlsContext.Provider value={controls}>
-          <ChoreographyContext.Provider value={context}>
-            <ChoreographyActionsContext.Provider value={actions}>
-              <ProviderConsumer />
-              <ChoreographyScreenBase screenId="detail">
-                <Companion />
-              </ChoreographyScreenBase>
-            </ChoreographyActionsContext.Provider>
-          </ChoreographyContext.Provider>
-        </ChoreographyControlsContext.Provider>
-      );
-    });
+    tree = renderComponent(
+      <ChoreographyControlsContext.Provider value={controls}>
+        <ChoreographyContext.Provider value={context}>
+          <ChoreographyActionsContext.Provider value={actions}>
+            <ProviderConsumer />
+            <ChoreographyScreenBase screenId="detail">
+              <Companion />
+            </ChoreographyScreenBase>
+          </ChoreographyActionsContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyControlsContext.Provider>
+    );
+
     trees.push(tree);
     const pointerEvents = () =>
-      tree.root.findAll((node) => Boolean(node.props?.animatedProps))[0]!.props
-        .animatedProps.pointerEvents;
+      tree.UNSAFE_root.findAll((node) => Boolean(node.props?.animatedProps))[0]!
+        .props.animatedProps.pointerEvents;
     expect(companion.progress).not.toBe(context.progress);
     expect(companion.progress.value).toBe(0.25);
     expect(retainedProgress).toBe(context.progress);
@@ -360,19 +364,19 @@ test('iOS screens preserve the provider controls and progress identity', async (
     observedProgress = useChoreographyProgress();
     return null;
   }
-  await act(async () => {
-    trees.push(
-      create(
-        <ChoreographyControlsContext.Provider value={controls}>
-          <ChoreographyContext.Provider value={context}>
-            <ChoreographyScreenBase screenId="detail">
-              <Consumer />
-            </ChoreographyScreenBase>
-          </ChoreographyContext.Provider>
-        </ChoreographyControlsContext.Provider>
-      )
-    );
-  });
+
+  trees.push(
+    renderComponent(
+      <ChoreographyControlsContext.Provider value={controls}>
+        <ChoreographyContext.Provider value={context}>
+          <ChoreographyScreenBase screenId="detail">
+            <Consumer />
+          </ChoreographyScreenBase>
+        </ChoreographyContext.Provider>
+      </ChoreographyControlsContext.Provider>
+    )
+  );
+
   expect(observedControls).toBe(controls);
   expect(observedProgress.progress).toBe(context.progress);
   context.progress.value = 0.15;
@@ -385,7 +389,7 @@ test('return input remains enabled while the decorative fade is transparent', as
   const destination = await mountScreen(context, 'home');
   const optedOut = await mountScreen(context, 'home', null, false);
   const input = (screen: typeof destination) =>
-    screen.tree.root.findAll(
+    screen.tree.UNSAFE_root.findAll(
       (node) => node.props.nativeID === 'choreography-input:home'
     )[0]!;
   expect(destination.opacity()).toBe(0);

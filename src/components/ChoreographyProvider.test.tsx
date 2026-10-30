@@ -5,7 +5,11 @@ import React, {
   useEffect,
   useLayoutEffect,
 } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
@@ -117,7 +121,7 @@ describe('ChoreographyProvider lifecycle', () => {
       Platform.OS = platform;
       let context!: ChoreographyContextType;
       let actions!: ChoreographyActionsType;
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       const removed = jest.fn();
       const layoutCleanup = jest.fn();
       const ended = jest.fn();
@@ -158,13 +162,12 @@ describe('ChoreographyProvider lifecycle', () => {
         );
       };
       try {
-        await act(async () => {
-          tree = create(render(false), {
-            createNodeMock: () => ({ tag: 100 }),
-          });
+        tree = renderComponent(render(false), {
+          createNodeMock: () => ({ tag: 100 }),
         });
+
         await act(async () => {
-          for (const screen of tree.root.findAllByType(
+          for (const screen of tree.UNSAFE_root.findAllByType(
             ChoreographyScreenBase
           )) {
             screen
@@ -202,7 +205,7 @@ describe('ChoreographyProvider lifecycle', () => {
           const token = context.progressOwnership.claim(session.id)!;
           context.navigationController.acquireNavigationLock('list');
           layoutCleanup.mockClear();
-          await act(async () => tree.update(render(true)));
+          await act(async () => tree.rerender(render(true)));
           expect(layoutCleanup).toHaveBeenCalledTimes(1);
           expect(removed).not.toHaveBeenCalled();
           expect(context.progressOwnership.isSession(session.id)).toBe(true);
@@ -214,7 +217,7 @@ describe('ChoreographyProvider lifecycle', () => {
             'list'
           );
           expect(ended).toHaveBeenCalledTimes(cycle);
-          await act(async () => tree.update(render(false)));
+          await act(async () => tree.rerender(render(false)));
           // Native screens did not lay out again during reveal.
           expect(context.resolveScreenId('Detail')).toBe('detail');
           expect(await context.waitForScreenReady('detail')).toBe(true);
@@ -222,15 +225,15 @@ describe('ChoreographyProvider lifecycle', () => {
           await act(async () => context.completeTransition(session.id));
           if (platform === 'android') {
             await act(async () =>
-              tree.root
-                .findByType(NativeTransitionHost)
-                .props.onSettled(session.id)
+              tree.UNSAFE_root.findByType(NativeTransitionHost).props.onSettled(
+                session.id
+              )
             );
           }
           expect(context.activeSession).toBeNull();
           expect(context.navigationController.isNavigationLocked()).toBe(false);
         }
-        await act(async () => tree.update(render(true)));
+        await act(async () => tree.rerender(render(true)));
         await act(async () => tree.unmount());
         expect(removed).toHaveBeenCalledTimes(1);
         expect(context.getNavigationLineage('detail')).toBeNull();
@@ -243,7 +246,7 @@ describe('ChoreographyProvider lifecycle', () => {
 
   test('observes a synchronous transition started in a descendant mount effect', async () => {
     let context!: ChoreographyContextType;
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     const started = jest.fn();
     function Starter() {
       context = useContext(ChoreographyContext)!;
@@ -270,14 +273,13 @@ describe('ChoreographyProvider lifecycle', () => {
       return null;
     }
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyProvider onTransitionStart={started}>
-            <FabricScreens />
-            <Starter />
-          </ChoreographyProvider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyProvider onTransitionStart={started}>
+          <FabricScreens />
+          <Starter />
+        </ChoreographyProvider>
+      );
+
       expect(context.activeSession?.pairs).toHaveLength(1);
       expect(started).toHaveBeenCalledTimes(1);
     } finally {
@@ -300,18 +302,17 @@ describe('ChoreographyProvider lifecycle', () => {
       );
       return null;
     }
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyProvider>
-            <Screen />
-          </ChoreographyProvider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyProvider>
+          <Screen />
+        </ChoreographyProvider>
+      );
+
       expect(observedBindings).toEqual([true]);
       await act(async () => {
-        tree.update(
+        tree.rerender(
           <ChoreographyProvider>
             <Screen />
           </ChoreographyProvider>
@@ -331,7 +332,7 @@ describe('ChoreographyProvider lifecycle', () => {
       jest.mocked(useReducedMotion).mockReturnValue(true);
       jest.useFakeTimers();
       let context!: ChoreographyContextType;
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       const renderer = jest.fn(() => null);
       const onTransitionEnd = jest.fn();
       const navigateBack = jest.fn(async () => ({
@@ -343,14 +344,13 @@ describe('ChoreographyProvider lifecycle', () => {
         return null;
       }
       try {
-        await act(async () => {
-          tree = create(
-            <ChoreographyProvider onTransitionEnd={onTransitionEnd}>
-              <FabricScreens />
-              <Consumer />
-            </ChoreographyProvider>
-          );
-        });
+        tree = renderComponent(
+          <ChoreographyProvider onTransitionEnd={onTransitionEnd}>
+            <FabricScreens />
+            <Consumer />
+          </ChoreographyProvider>
+        );
+
         for (const screenId of ['list', 'detail']) {
           context.registerElement({
             id: 'card',
@@ -375,9 +375,9 @@ describe('ChoreographyProvider lifecycle', () => {
         const sessionId = context.activeSession!.id;
         expect(context.activeSession!.reducedMotion).toBe(true);
         expect(context.progress.value).toBe(direction === 'forward' ? 1 : 0);
-        expect(tree.root.findByType(NativeTransitionHost).props.active).toBe(
-          false
-        );
+        expect(
+          tree.UNSAFE_root.findByType(NativeTransitionHost).props.active
+        ).toBe(false);
         expect(renderer).not.toHaveBeenCalled();
         // No host acknowledgement or timeout is needed for a direct transfer.
         expect(await context.waitForOverlayReady(sessionId)).toBe(true);
@@ -426,20 +426,19 @@ describe('ChoreographyProvider lifecycle', () => {
         controls[screenId] = useChoreographyControls().settleTransition;
         return null;
       }
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       try {
-        await act(async () => {
-          tree = create(
-            <ChoreographyProvider>
-              <FabricScreens />
-              {['list', 'detail'].map((screenId) => (
-                <ScreenIdContext.Provider key={screenId} value={screenId}>
-                  <Controls screenId={screenId} />
-                </ScreenIdContext.Provider>
-              ))}
-            </ChoreographyProvider>
-          );
-        });
+        tree = renderComponent(
+          <ChoreographyProvider>
+            <FabricScreens />
+            {['list', 'detail'].map((screenId) => (
+              <ScreenIdContext.Provider key={screenId} value={screenId}>
+                <Controls screenId={screenId} />
+              </ScreenIdContext.Provider>
+            ))}
+          </ChoreographyProvider>
+        );
+
         for (const screenId of ['list', 'detail']) {
           context.registerElement({
             id: 'card',
@@ -510,21 +509,20 @@ describe('ChoreographyProvider lifecycle', () => {
     async (hostAlreadyAcknowledged) => {
       jest.useFakeTimers();
       let context!: ChoreographyContextType;
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       const onTransitionEnd = jest.fn();
       function Consumer() {
         context = useContext(ChoreographyContext)!;
         return null;
       }
       try {
-        await act(async () => {
-          tree = create(
-            <ChoreographyProvider onTransitionEnd={onTransitionEnd}>
-              <FabricScreens />
-              <Consumer />
-            </ChoreographyProvider>
-          );
-        });
+        tree = renderComponent(
+          <ChoreographyProvider onTransitionEnd={onTransitionEnd}>
+            <FabricScreens />
+            <Consumer />
+          </ChoreographyProvider>
+        );
+
         for (const screenId of ['list', 'detail']) {
           context.registerElement({
             id: 'card',
@@ -546,7 +544,7 @@ describe('ChoreographyProvider lifecycle', () => {
           await preparing;
         });
         const sessionId = context.activeSession!.id;
-        const host = tree.root.findByType(NativeTransitionHost);
+        const host = tree.UNSAFE_root.findByType(NativeTransitionHost);
         if (hostAlreadyAcknowledged) {
           await act(async () => host.props.onPresentationReady(sessionId));
         }
@@ -593,20 +591,19 @@ describe('ChoreographyProvider lifecycle', () => {
     async (outcome) => {
       jest.useFakeTimers();
       let context!: ChoreographyContextType;
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       function Consumer() {
         context = useContext(ChoreographyContext)!;
         return null;
       }
       try {
-        await act(async () => {
-          tree = create(
-            <ChoreographyProvider>
-              <FabricScreens />
-              <Consumer />
-            </ChoreographyProvider>
-          );
-        });
+        tree = renderComponent(
+          <ChoreographyProvider>
+            <FabricScreens />
+            <Consumer />
+          </ChoreographyProvider>
+        );
+
         for (const screenId of ['list', 'detail']) {
           context.registerElement({
             id: 'card',
@@ -629,7 +626,7 @@ describe('ChoreographyProvider lifecycle', () => {
         });
         const session = context.activeSession!;
         const presentation = session.presentation!;
-        const host = tree.root.findByType(NativeTransitionHost).props;
+        const host = tree.UNSAFE_root.findByType(NativeTransitionHost).props;
         const ready = jest.fn();
         const unavailable = jest.fn();
         const waiting = context
@@ -703,7 +700,7 @@ describe('ChoreographyProvider lifecycle', () => {
       jest.useFakeTimers({ doNotFake: ['queueMicrotask'] });
       let context!: ChoreographyContextType;
       let navigation!: ReturnType<typeof useChoreographyNavigator>;
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       let pending: Promise<void> | undefined;
       const listener = jest.fn();
       function Caller() {
@@ -716,14 +713,13 @@ describe('ChoreographyProvider lifecycle', () => {
         return null;
       }
       try {
-        await act(async () => {
-          tree = create(
-            <ChoreographyProvider>
-              <FabricScreens />
-              <Caller />
-            </ChoreographyProvider>
-          );
-        });
+        tree = renderComponent(
+          <ChoreographyProvider>
+            <FabricScreens />
+            <Caller />
+          </ChoreographyProvider>
+        );
+
         for (const screenId of outcome === 'missing-endpoint'
           ? ['list']
           : ['list', 'detail']) {
@@ -751,7 +747,7 @@ describe('ChoreographyProvider lifecycle', () => {
           );
         });
         const sessionId = context.activeSession?.id;
-        const host = tree.root.findByType(NativeTransitionHost).props;
+        const host = tree.UNSAFE_root.findByType(NativeTransitionHost).props;
         if (outcome === 'completed') {
           expect(sessionId).toBeDefined();
           await act(async () => {
@@ -816,7 +812,7 @@ describe('ChoreographyProvider lifecycle', () => {
   test('unregistering the preparation source invalidates its dispatch and queue', async () => {
     let context!: ChoreographyContextType;
     let navigation!: ReturnType<typeof useChoreographyNavigator>;
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     function Caller() {
       context = useContext(ChoreographyContext)!;
       navigation = useChoreographyNavigator({
@@ -828,14 +824,13 @@ describe('ChoreographyProvider lifecycle', () => {
     }
     const dispatchNavigation = jest.fn();
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyProvider>
-            <FabricScreens />
-            <Caller />
-          </ChoreographyProvider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyProvider>
+          <FabricScreens />
+          <Caller />
+        </ChoreographyProvider>
+      );
+
       context.registerElement({
         id: 'card',
         groupId: 'group',
@@ -891,7 +886,7 @@ describe('ChoreographyProvider lifecycle', () => {
     async (strict, readiness, outcome) => {
       jest.useFakeTimers();
       let context!: ChoreographyContextType;
-      let tree: ReactTestRenderer | undefined;
+      let tree: RenderResult | undefined;
       const onTransitionStart = jest.fn();
       const onTransitionEnd = jest.fn();
       const controlRenders = jest.fn();
@@ -908,26 +903,25 @@ describe('ChoreographyProvider lifecycle', () => {
       }
 
       try {
-        await act(async () => {
-          const provider = (
-            <ChoreographyProvider
-              onTransitionStart={onTransitionStart}
-              onTransitionEnd={onTransitionEnd}
-            >
-              <FabricScreens />
-              <Consumer />
-              <ScreenIdContext.Provider value="detail">
-                <Controls />
-              </ScreenIdContext.Provider>
-            </ChoreographyProvider>
-          );
-          tree = create(
-            strict ? <StrictMode>{provider}</StrictMode> : provider
-          );
-        });
+        const provider = (
+          <ChoreographyProvider
+            onTransitionStart={onTransitionStart}
+            onTransitionEnd={onTransitionEnd}
+          >
+            <FabricScreens />
+            <Consumer />
+            <ScreenIdContext.Provider value="detail">
+              <Controls />
+            </ScreenIdContext.Provider>
+          </ChoreographyProvider>
+        );
+        tree = renderComponent(
+          strict ? <StrictMode>{provider}</StrictMode> : provider
+        );
 
-        const persistentHost = tree!.root.findByType(NativeTransitionHost);
-        const persistentNativeView = tree!.root.findByType(
+        const persistentHost =
+          tree!.UNSAFE_root.findByType(NativeTransitionHost);
+        const persistentNativeView = tree!.UNSAFE_root.findByType(
           'ScreenChoreographyView' as React.ElementType
         );
         expect(persistentHost.props.active).toBe(false);
@@ -975,12 +969,14 @@ describe('ChoreographyProvider lifecycle', () => {
 
         expect(session).not.toBeNull();
         expect(context.activeSession).toBe(session);
-        expect(tree!.root.findByType(NativeTransitionHost)).toBe(
+        expect(tree!.UNSAFE_root.findByType(NativeTransitionHost)).toBe(
           persistentHost
         );
         expect(persistentHost.props.active).toBe(true);
         expect(
-          tree!.root.findByType('ScreenChoreographyView' as React.ElementType)
+          tree!.UNSAFE_root.findByType(
+            'ScreenChoreographyView' as React.ElementType
+          )
         ).toBe(persistentNativeView);
         const sessionId = context.activeSession!.id;
         expect(context.progressOwnership.isSession(sessionId)).toBe(true);
@@ -995,7 +991,7 @@ describe('ChoreographyProvider lifecycle', () => {
         const waiting = context.waitForOverlayReady(sessionId).then(ready);
         if (readiness === 'native') {
           await act(async () => {
-            const host = tree!.root.findByType(NativeTransitionHost);
+            const host = tree!.UNSAFE_root.findByType(NativeTransitionHost);
             host.props.onPresentationReady(sessionId);
             host.props.onPresentationReady(sessionId);
             await waiting;
@@ -1032,12 +1028,14 @@ describe('ChoreographyProvider lifecycle', () => {
         });
 
         expect(context.activeSession).toBeNull();
-        expect(tree!.root.findByType(NativeTransitionHost)).toBe(
+        expect(tree!.UNSAFE_root.findByType(NativeTransitionHost)).toBe(
           persistentHost
         );
         expect(persistentHost.props.active).toBe(false);
         expect(
-          tree!.root.findByType('ScreenChoreographyView' as React.ElementType)
+          tree!.UNSAFE_root.findByType(
+            'ScreenChoreographyView' as React.ElementType
+          )
         ).toBe(persistentNativeView);
         expect(context.progressOwnership.hasSession).toBe(false);
         expect(onTransitionEnd).toHaveBeenCalledTimes(1);

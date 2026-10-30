@@ -1,5 +1,9 @@
 import React, { useContext, useLayoutEffect } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
@@ -88,20 +92,19 @@ describe('ChoreographyProvider native attachment', () => {
 
   test('mounts hidden hosts first and activates only after native attachment', async () => {
     let context!: ChoreographyContextType;
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     function Consumer() {
       context = useContext(ChoreographyContext)!;
       return null;
     }
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyProvider>
-            <FabricScreens />
-            <Consumer />
-          </ChoreographyProvider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyProvider>
+          <FabricScreens />
+          <Consumer />
+        </ChoreographyProvider>
+      );
+
       for (const screenId of ['list', 'detail']) {
         context.registerElement({
           id: 'card',
@@ -122,7 +125,8 @@ describe('ChoreographyProvider native attachment', () => {
         });
         await jest.advanceTimersByTimeAsync(0);
       });
-      const host = () => tree.root.findByType(NativeTransitionHost).props;
+      const host = () =>
+        tree.UNSAFE_root.findByType(NativeTransitionHost).props;
       const measuring = context.activeSession!;
       // Only the overlay renders for preparation; app consumers stay put.
       expect(measuring.state).toBe('measuring');

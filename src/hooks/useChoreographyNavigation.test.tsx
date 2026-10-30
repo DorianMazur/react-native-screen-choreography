@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
 import {
   ChoreographyContext,
@@ -93,15 +97,14 @@ test.each([
       });
       return null;
     }
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={ctx}>
-            <Caller />
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContext.Provider value={ctx}>
+          <Caller />
+        </ChoreographyContext.Provider>
+      );
+
       let pending!: Promise<void>;
       const dispatchNavigation = jest.fn();
       const spring = { duration: 800, dampingRatio: 1 };
@@ -180,17 +183,16 @@ test('navigation callers share one provider preparation lock', async () => {
     });
     return null;
   }
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   const pending: Promise<void>[] = [];
   try {
-    await act(async () => {
-      tree = create(
-        <ChoreographyContext.Provider value={ctx}>
-          <Caller index={0} />
-          <Caller index={1} />
-        </ChoreographyContext.Provider>
-      );
-    });
+    tree = renderComponent(
+      <ChoreographyContext.Provider value={ctx}>
+        <Caller index={0} />
+        <Caller index={1} />
+      </ChoreographyContext.Provider>
+    );
+
     await act(async () => {
       for (const caller of callers) {
         pending.push(
@@ -266,13 +268,12 @@ test('queued replay survives focus changes and only its source instance dispatch
       </ChoreographyContext.Provider>
     );
   }
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   try {
-    await act(async () => {
-      tree = create(render());
-    });
-    await act(async () => tree.update(render(false)));
-    await act(async () => tree.update(render()));
+    tree = renderComponent(render());
+
+    await act(async () => tree.rerender(render(false)));
+    await act(async () => tree.rerender(render()));
     while (frames.length) {
       const frameBatch = frames.splice(0);
       await act(async () => {
@@ -330,7 +331,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
           controller.beginOverlayHandoff('return');
           ctx.activeSession = null;
           ctx.overlayHandoffSessionId = 'return';
-          tree.update(render());
+          tree.rerender(render());
         }
       },
       isCurrent: () => ownership.isSession('return'),
@@ -370,11 +371,10 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
         <Caller />
       </ChoreographyContext.Provider>
     );
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(render());
-      });
+      tree = renderComponent(render());
+
       await act(async () =>
         navigation.navigate({
           targetScreenId: 'detail',
@@ -390,7 +390,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
       expect(controller.isNavigationLocked()).toBe(true);
       await act(async () => {
         ctx.interruptibleReturnSessionId = 'return';
-        tree.update(render());
+        tree.rerender(render());
       });
       const acknowledge = async () => {
         expect(dispatchNavigation).not.toHaveBeenCalled();
@@ -398,7 +398,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
         await act(async () => {
           controller.completeOverlayHandoff('return');
           ctx.overlayHandoffSessionId = null;
-          tree.update(render());
+          tree.rerender(render());
         });
       };
       if (acknowledgment === 'before-frame') await acknowledge();
@@ -468,15 +468,14 @@ describe('Back preparation ownership', () => {
       });
       return null;
     }
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={ctx}>
-            <Caller />
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContext.Provider value={ctx}>
+          <Caller />
+        </ChoreographyContext.Provider>
+      );
+
       await act(async () => navigation.goBack());
       expect(goBack).toHaveBeenCalledTimes(1);
       expect(progressOwnership.version).toBe(version);
@@ -535,14 +534,14 @@ describe('Back preparation ownership', () => {
         });
         return null;
       }
-      let tree!: ReactTestRenderer;
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={ctx}>
-            <Harness />
-          </ChoreographyContext.Provider>
-        );
-      });
+      let tree!: RenderResult;
+
+      tree = renderComponent(
+        <ChoreographyContext.Provider value={ctx}>
+          <Harness />
+        </ChoreographyContext.Provider>
+      );
+
       let pending!: Promise<void>;
       await act(async () => {
         pending = navigation.goBack();

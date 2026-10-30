@@ -14,7 +14,11 @@ import {
   TextInput,
   View,
 } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import * as Reanimated from 'react-native-reanimated';
 import { createTray } from './createTray';
 import { TrayDiagnosticsContext, type TrayDiagnostics } from './diagnostics';
@@ -212,8 +216,8 @@ function stack(Definition = Tray, onDismiss?: () => void) {
     </Definition.Stack>
   );
 }
-function sheet(renderer: TestRenderer.ReactTestRenderer) {
-  return renderer.root.findByType('BottomSheet' as React.ElementType);
+function sheet(renderer: RenderResult) {
+  return renderer.UNSAFE_root.findByType('BottomSheet' as React.ElementType);
 }
 
 function lifecycleFixture() {
@@ -230,10 +234,10 @@ function lifecycleFixture() {
       {React.cloneElement(stack(), options)}
     </Tray.Provider>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render());
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render());
+
   return { renderer, render, events, callbacks };
 }
 
@@ -259,34 +263,36 @@ test('diagnostics install only while enabled and never recreate the tray or its 
       </Tray.Provider>
     </TrayDiagnosticsContext.Provider>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render(null));
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render(null));
+
   try {
     act(() => navigation.present('form'));
     act(() => sheet(renderer).props.onSettle(1));
     const route = navigationState.route;
     act(() =>
-      renderer.root.findByProps({ testID: 'draft' }).props.onChangeText('kept')
+      renderer.UNSAFE_root.findByProps({ testID: 'draft' }).props.onChangeText(
+        'kept'
+      )
     );
     expect(dispatch).not.toHaveBeenCalled();
     expect(observeRender).not.toHaveBeenCalled();
-    act(() => renderer.update(render(diagnostics)));
+    act(() => renderer.rerender(render(diagnostics)));
     expect(observeRender).toHaveBeenCalled();
     expect(dispatch).not.toHaveBeenCalled(); // Enabling must not replay earlier actions.
     act(() => sheet(renderer).props.onSettle(1));
     expect(dispatch).toHaveBeenCalledTimes(1);
-    act(() => renderer.update(render(null)));
+    act(() => renderer.rerender(render(null)));
     expect(unmountObserver).toHaveBeenCalledTimes(1);
     observeRender.mockClear();
     act(() => sheet(renderer).props.onSettle(1));
     expect(dispatch).toHaveBeenCalledTimes(1);
     expect(observeRender).not.toHaveBeenCalled();
     expect(navigationState.route).toBe(route);
-    expect(renderer.root.findByProps({ testID: 'draft' }).props.value).toBe(
-      'kept'
-    );
+    expect(
+      renderer.UNSAFE_root.findByProps({ testID: 'draft' }).props.value
+    ).toBe('kept');
   } finally {
     act(() => renderer.unmount());
   }
@@ -400,11 +406,11 @@ test('batched native events retain their order and callback updates do not repla
     ...f.callbacks,
     onPresent: jest.fn(() => f.events.push('updatedPresent')),
     onDismiss: jest.fn(() => {
-      expect(f.renderer.root.findAllByType(Form)).toHaveLength(0);
+      expect(f.renderer.UNSAFE_root.findAllByType(Form)).toHaveLength(0);
       f.events.push('dismiss');
     }),
   };
-  act(() => f.renderer.update(f.render(updated)));
+  act(() => f.renderer.rerender(f.render(updated)));
   expect(f.events).toEqual(['willPresent']);
   const native = sheet(f.renderer).props;
   act(() => {
@@ -428,7 +434,7 @@ test('batched native events retain their order and callback updates do not repla
 test('lifecycle callbacks can navigate and unmounting does not synthesize dismissal events', () => {
   const f = lifecycleFixture();
   act(() =>
-    f.renderer.update(
+    f.renderer.rerender(
       f.render({
         ...f.callbacks,
         onPresent: () => {
@@ -522,19 +528,19 @@ function pendingPushFixture(
     state = Trade.useTrayState((s) => s);
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Trade.Provider>
-        <Observe />
-        <Trade.Stack onDismiss={dismissed}>
-          <Trade.Screen name="Position" component={Position} />
-          <Trade.Screen name="Add" component={Editor} />
-          <Trade.Screen name="CashOut" component={Editor} />
-        </Trade.Stack>
-      </Trade.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Trade.Provider>
+      <Observe />
+      <Trade.Stack onDismiss={dismissed}>
+        <Trade.Screen name="Position" component={Position} />
+        <Trade.Screen name="Add" component={Editor} />
+        <Trade.Screen name="CashOut" component={Editor} />
+      </Trade.Stack>
+    </Trade.Provider>
+  );
+
   act(() => tray.present('Position'));
   act(() => sheet(renderer).props.onSettle(1));
   return {
@@ -565,9 +571,9 @@ test('a consumer focus-reset ref stays locked when preparation is cancelled with
     expect(f.focuses).toHaveBeenCalledTimes(1);
     expect(f.dismissed).not.toHaveBeenCalled();
     expect(
-      f.renderer.root
-        .findAllByType(Text)
-        .some((t) => t.props.children === 'Add')
+      f.renderer.UNSAFE_root.findAllByType(Text).some(
+        (t) => t.props.children === 'Add'
+      )
     ).toBe(false);
     act(() => expect(f.push('CashOut')).toBe(false));
     expect(f.captures).toHaveLength(1);
@@ -712,35 +718,36 @@ test('queues Choose recipient tapped during Send money arrival exactly once', ()
   function Recipient() {
     return <View testID="recipients" />;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Wallet.Provider>
-        <Observe />
-        <Wallet.Stack animation={{ type: 'spring' }}>
-          <Wallet.Screen name="wallet" component={Home} />
-          <Wallet.Screen name="send" component={Send} />
-          <Wallet.Screen
-            name="recipient"
-            component={Recipient}
-            options={{ presentation: 'fullScreen' }}
-          />
-        </Wallet.Stack>
-      </Wallet.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Wallet.Provider>
+      <Observe />
+      <Wallet.Stack animation={{ type: 'spring' }}>
+        <Wallet.Screen name="wallet" component={Home} />
+        <Wallet.Screen name="send" component={Send} />
+        <Wallet.Screen
+          name="recipient"
+          component={Recipient}
+          options={{ presentation: 'fullScreen' }}
+        />
+      </Wallet.Stack>
+    </Wallet.Provider>
+  );
+
   try {
     act(() => actions.present('wallet'));
     act(() => sheet(renderer).props.onSettle(1));
-    const send = renderer.root.findByProps({ testID: 'send' }).props.onPress;
+    const send = renderer.UNSAFE_root.findByProps({ testID: 'send' }).props
+      .onPress;
     act(() => {
       send();
       send();
     });
     const arrivalComplete = mockCompletions.shift()!;
-    const input = renderer.root.findByType(TextInput);
+    const input = renderer.UNSAFE_root.findByType(TextInput);
     act(() => input.props.onChangeText('42'));
-    const choose = renderer.root.findByProps({ testID: 'choose' }).props
+    const choose = renderer.UNSAFE_root.findByProps({ testID: 'choose' }).props
       .onPress;
     act(() => {
       choose();
@@ -749,7 +756,7 @@ test('queues Choose recipient tapped during Send money arrival exactly once', ()
     });
     expect(state.route?.name).toBe('send');
     expect(state.depth).toBe(2);
-    expect(renderer.root.findAllByType(Recipient)).toHaveLength(0);
+    expect(renderer.UNSAFE_root.findAllByType(Recipient)).toHaveLength(0);
     act(() => arrivalComplete(true));
     expect(state.route).toMatchObject({
       name: 'recipient',
@@ -763,9 +770,9 @@ test('queues Choose recipient tapped during Send money arrival exactly once', ()
     expect(state.route?.name).toBe('send');
     act(() => mockCompletions.shift()!(true));
     expect(state.depth).toBe(2);
-    expect(renderer.root.findByType(TextInput)).toBe(input);
+    expect(renderer.UNSAFE_root.findByType(TextInput)).toBe(input);
     expect(input.props.value).toBe('42');
-    expect(renderer.root.findAllByType(Recipient)).toHaveLength(0);
+    expect(renderer.UNSAFE_root.findAllByType(Recipient)).toHaveLength(0);
   } finally {
     act(() => renderer.unmount());
   }
@@ -787,26 +794,26 @@ test.each([
       callbacks.set(route.key, () => source.push('form'));
       return <Text>{route.key}</Text>;
     }
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(
-        <Tray.Provider>
-          <Observer />
-          <Tray.Stack
-            renderHeader={
-              origin.startsWith('header')
-                ? (props) => <Record {...props} />
-                : undefined
-            }
-          >
-            <Tray.Screen
-              name="form"
-              component={origin.startsWith('screen') ? Record : Form}
-            />
-          </Tray.Stack>
-        </Tray.Provider>
-      );
-    });
+    let renderer!: RenderResult;
+
+    renderer = renderComponent(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack
+          renderHeader={
+            origin.startsWith('header')
+              ? (props) => <Record {...props} />
+              : undefined
+          }
+        >
+          <Tray.Screen
+            name="form"
+            component={origin.startsWith('screen') ? Record : Form}
+          />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+
     try {
       act(() => navigation.present('form'));
       const root = navigationState.route!;
@@ -891,10 +898,10 @@ function focusFixture(header = false, afterTransition = false) {
       </Tray.Provider>
     </ValueContext.Provider>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render());
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render());
+
   return { renderer, events, mounted, render };
 }
 
@@ -972,9 +979,9 @@ test('focus effects restart only the focused callback when dependencies change',
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   const root = navigationState.route!.key;
-  act(() => renderer.update(render()));
+  act(() => renderer.rerender(render()));
   expect(events).toEqual([`focus ${root} first`]);
-  act(() => renderer.update(render('second')));
+  act(() => renderer.rerender(render('second')));
   expect(events.slice(-2)).toEqual([
     `blur ${root} first`,
     `focus ${root} second`,
@@ -983,7 +990,7 @@ test('focus effects restart only the focused callback when dependencies change',
   act(() => mockCompletions.shift()!(true));
   const next = navigationState.route!.key;
   const count = events.length;
-  act(() => renderer.update(render('third')));
+  act(() => renderer.rerender(render('third')));
   expect(events.slice(count)).toEqual([
     `blur ${next} second`,
     `focus ${next} third`,
@@ -1133,21 +1140,21 @@ test.each(['same factory', 'different factory'] as const)(
         </Inner.Provider>
       );
     }
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(
-        <Tray.Provider>
-          <Observer />
-          <Tray.Stack>
-            <Tray.Screen name="form" component={OuterScreen} />
-          </Tray.Stack>
-        </Tray.Provider>
-      );
-    });
+    let renderer!: RenderResult;
+
+    renderer = renderComponent(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack>
+          <Tray.Screen name="form" component={OuterScreen} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+
     act(() => navigation.present('form'));
     act(() => sheet(renderer).props.onSettle(1));
     act(() => inner.present('form'));
-    const innerSheet = renderer.root.findAllByType(
+    const innerSheet = renderer.UNSAFE_root.findAllByType(
       'BottomSheet' as React.ElementType
     )[1]!;
     act(() => innerSheet.props.onSettle(1));
@@ -1207,12 +1214,11 @@ test.each([
       return null;
     }
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
-    let renderer: TestRenderer.ReactTestRenderer | undefined;
+    let renderer: RenderResult | undefined;
     try {
       expect(() => {
-        act(() => {
-          renderer = TestRenderer.create(tree);
-        });
+        renderer = renderComponent(tree);
+
         if (location === 'other factory') act(() => other.present('form'));
         if (location === 'nested provider body')
           act(() => navigation.present('form'));
@@ -1255,10 +1261,10 @@ test('isolates screen content from navigation and layout updates while preservin
       </Tray.Provider>
     </ValueContext.Provider>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render());
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render());
+
   const originalActions = navigation;
   act(() => navigation.present('form'));
   const originalRoute = renders.mock.calls[0]![0].route;
@@ -1272,14 +1278,16 @@ test('isolates screen content from navigation and layout updates while preservin
   );
   act(() => navigation.push('preview', { label: 'next' }));
   act(() => mockCompletions.shift()!(true));
-  act(() => renderer.update(render('initial', 'Updated title')));
+  act(() => renderer.rerender(render('initial', 'Updated title')));
   expect(renders).toHaveBeenCalledTimes(1);
   expect(actionsRendered).toHaveBeenCalledTimes(1);
   expect(navigation).toBe(originalActions);
 
-  act(() => renderer.root.findByType(TextInput).props.onChangeText('edited'));
+  act(() =>
+    renderer.UNSAFE_root.findByType(TextInput).props.onChangeText('edited')
+  );
   expect(renders).toHaveBeenCalledTimes(2);
-  act(() => renderer.update(render('updated')));
+  act(() => renderer.rerender(render('updated')));
   expect(renders).toHaveBeenCalledTimes(3);
   expect(renders).toHaveBeenLastCalledWith({
     route: originalRoute,
@@ -1290,12 +1298,12 @@ test('isolates screen content from navigation and layout updates while preservin
   });
   act(() => navigation.back());
   act(() => mockCompletions.shift()!(true));
-  expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
+  expect(renderer.UNSAFE_root.findByType(TextInput).props.value).toBe('edited');
   act(() => navigation.dismiss());
   expect(renders).toHaveBeenCalledTimes(3);
   expect(actionsRendered).toHaveBeenCalledTimes(1);
   act(() => sheet(renderer).props.onSettle(0));
-  expect(renderer.root.findAllByType(Content)).toHaveLength(0);
+  expect(renderer.UNSAFE_root.findAllByType(Content)).toHaveLength(0);
   expect(actionsRendered).toHaveBeenCalledTimes(1);
   act(() => renderer.unmount());
 });
@@ -1316,18 +1324,18 @@ test('notifies state consumers only when their selection changes', () => {
     route(Tray.useTrayState((state) => state.route));
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Presented />
-        <Depth />
-        <Route />
-        {stack()}
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Presented />
+      <Depth />
+      <Route />
+      {stack()}
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   expect(presented.mock.calls).toEqual([[false], [true]]);
@@ -1393,16 +1401,16 @@ test('isolates custom header content from tray layout and settlement while prese
       </Tray.Provider>
     </ValueContext.Provider>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render());
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render());
+
   act(() => navigation.present('form'));
   const rootKey = navigationState.route!.key;
   act(() => sheet(renderer).props.onSettle(1));
-  const layout = (node: TestRenderer.ReactTestInstance, height: number) =>
+  const layout = (node: RenderResult['UNSAFE_root'], height: number) =>
     act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
-  layout(headerFor(renderer.root.findByType(Header)), 90);
+  layout(headerFor(renderer.UNSAFE_root.findByType(Header)), 90);
   layout(pageFor(renderer, Form), 200);
 
   act(() =>
@@ -1423,24 +1431,24 @@ test('isolates custom header content from tray layout and settlement while prese
   );
   expect(renders).toHaveBeenCalledTimes(1);
   expect(renderHeader).toHaveBeenCalledTimes(1);
-  act(() => renderer.update(render()));
+  act(() => renderer.rerender(render()));
   expect(renders).toHaveBeenCalledTimes(1);
-  act(() => renderer.update(render('initial', 'Updated')));
+  act(() => renderer.rerender(render('initial', 'Updated')));
   expect(renders).toHaveBeenCalledTimes(2);
-  act(() => renderer.update(render('initial', 'Updated', '#abcdef')));
+  act(() => renderer.rerender(render('initial', 'Updated', '#abcdef')));
   expect(renders).toHaveBeenCalledTimes(3);
   act(() =>
-    renderer.update(render('initial', 'Updated', '#abcdef', updatedRenderer))
+    renderer.rerender(render('initial', 'Updated', '#abcdef', updatedRenderer))
   );
   expect(renders).toHaveBeenCalledTimes(4);
   act(() =>
-    renderer.update(render('changed', 'Updated', '#abcdef', updatedRenderer))
+    renderer.rerender(render('changed', 'Updated', '#abcdef', updatedRenderer))
   );
   expect(renders).toHaveBeenCalledTimes(5);
   act(() =>
-    renderer.root
-      .findByProps({ testID: 'header-input' })
-      .props.onChangeText('edited')
+    renderer.UNSAFE_root.findByProps({
+      testID: 'header-input',
+    }).props.onChangeText('edited')
   );
   expect(renders).toHaveBeenCalledTimes(6);
   expect(renders).toHaveBeenLastCalledWith(
@@ -1476,18 +1484,18 @@ test('focus consumers rerender only when their own focus changes, including deep
     renders(route.key);
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack>
-          <Tray.Screen name="form" component={Focused} />
-          <Tray.Screen name="preview" component={Focused} />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack>
+        <Tray.Screen name="form" component={Focused} />
+        <Tray.Screen name="preview" component={Focused} />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   const root = navigationState.route!.key;
   act(() => sheet(renderer).props.onSettle(1));
@@ -1529,17 +1537,17 @@ test('custom header state subscriptions remain live behind the memo boundary', (
     );
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack renderHeader={(props) => <Header {...props} />}>
-          <Tray.Screen name="form" component={Form} />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack renderHeader={(props) => <Header {...props} />}>
+        <Tray.Screen name="form" component={Form} />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   const root = navigationState.route!.key;
@@ -1576,17 +1584,17 @@ test('caches object selections, accepts changed selectors, and unsubscribes remo
       {stack()}
     </Tray.Provider>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render('depth'));
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render('depth'));
+
   expect(selected).toHaveBeenLastCalledWith({ value: 0 });
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   expect(selected).toHaveBeenLastCalledWith({ value: 1 });
-  act(() => renderer.update(render('isPresented')));
+  act(() => renderer.rerender(render('isPresented')));
   expect(selected).toHaveBeenLastCalledWith({ value: true });
-  act(() => renderer.update(render()));
+  act(() => renderer.rerender(render()));
   selected.mockClear();
   act(() => navigation.dismiss());
   act(() => sheet(renderer).props.onSettle(0));
@@ -1600,18 +1608,18 @@ test('screen subscriptions read the current stack on mount and keep updating beh
     rendered(Tray.useTrayState((state) => state.depth));
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack>
-          <Tray.Screen name="form" component={SubscribedForm} />
-          <Tray.Screen name="preview" component={Preview} />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack>
+        <Tray.Screen name="form" component={SubscribedForm} />
+        <Tray.Screen name="preview" component={Preview} />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   expect(rendered.mock.calls).toEqual([[1]]);
@@ -1626,20 +1634,20 @@ test('screen subscriptions read the current stack on mount and keep updating beh
 
 test('built-in header preserves Back and Close actions and accessibility', () => {
   const onDismiss = jest.fn();
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack textColor="#123456" onDismiss={onDismiss}>
-          <Tray.Screen name="form" component={Form} />
-          <Tray.Screen name="preview" component={Preview} />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack textColor="#123456" onDismiss={onDismiss}>
+        <Tray.Screen name="form" component={Form} />
+        <Tray.Screen name="preview" component={Preview} />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   const button = (label: string) =>
-    renderer.root.findAll(
+    renderer.UNSAFE_root.findAll(
       (n) =>
         n.props.accessibilityLabel === label &&
         typeof n.props.onPress === 'function'
@@ -1708,10 +1716,10 @@ test('custom headers inherit stack defaults, override per screen, and own their 
       </Tray.Stack>
     </Tray.Provider>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render());
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render());
+
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   expect(renderHeader).toHaveBeenLastCalledWith({
@@ -1721,27 +1729,31 @@ test('custom headers inherit stack defaults, override per screen, and own their 
     canGoBack: false,
     color: '#123456',
   });
-  expect(renderer.root.findAllByProps({ testID: 'header-back' })).toHaveLength(
-    0
+  expect(
+    renderer.UNSAFE_root.findAllByProps({ testID: 'header-back' })
+  ).toHaveLength(0);
+  act(() =>
+    renderer.UNSAFE_root.findByType(TextInput).props.onChangeText('edited')
   );
-  act(() => renderer.root.findByType(TextInput).props.onChangeText('edited'));
-  act(() => renderer.update(render('Updated')));
-  expect(renderer.root.findByType(CustomHeader).props.title).toBe('Updated');
+  act(() => renderer.rerender(render('Updated')));
+  expect(renderer.UNSAFE_root.findByType(CustomHeader).props.title).toBe(
+    'Updated'
+  );
   act(() => navigation.push('preview', { label: 'Review draft' }));
   expect(
-    renderer.root
-      .findAllByType(CustomHeader)
-      .map((header) => header.props.title)
+    renderer.UNSAFE_root.findAllByType(CustomHeader).map(
+      (header) => header.props.title
+    )
   ).toEqual(['Updated', 'Review draft']);
   act(() => mockCompletions.shift()!(true));
-  expect(renderer.root.findAllByType(CustomHeader)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(CustomHeader)).toHaveLength(1);
   act(() =>
-    renderer.root.findByProps({ testID: 'header-back' }).props.onPress()
+    renderer.UNSAFE_root.findByProps({ testID: 'header-back' }).props.onPress()
   );
   act(() => mockCompletions.shift()!(true));
-  expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
+  expect(renderer.UNSAFE_root.findByType(TextInput).props.value).toBe('edited');
   act(() =>
-    renderer.root.findByProps({ testID: 'header-close' }).props.onPress()
+    renderer.UNSAFE_root.findByProps({ testID: 'header-close' }).props.onPress()
   );
   expect(sheet(renderer).props.index).toBe(0);
   expect(onDismiss).not.toHaveBeenCalled();
@@ -1751,34 +1763,34 @@ test('custom headers inherit stack defaults, override per screen, and own their 
 });
 
 test('crossfades custom and built-in headers without changing the outgoing title or Back button', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack>
-          <Tray.Screen
-            name="form"
-            component={Form}
-            options={{ title: 'Draft' }}
-          />
-          <Tray.Screen
-            name="preview"
-            component={Preview}
-            options={{
-              title: 'Review',
-              renderHeader: (props) => <CustomHeader {...props} />,
-            }}
-          />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack>
+        <Tray.Screen
+          name="form"
+          component={Form}
+          options={{ title: 'Draft' }}
+        />
+        <Tray.Screen
+          name="preview"
+          component={Preview}
+          options={{
+            title: 'Review',
+            renderHeader: (props) => <CustomHeader {...props} />,
+          }}
+        />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
-  const builtIn = renderer.root.findByType(TrayHeaderLayer);
+  const builtIn = renderer.UNSAFE_root.findByType(TrayHeaderLayer);
   act(() => navigation.push('preview', { label: 'Next' }));
-  expect(renderer.root.findAllByType(TrayHeaderLayer)).toHaveLength(2);
+  expect(renderer.UNSAFE_root.findAllByType(TrayHeaderLayer)).toHaveLength(2);
   expect(builtIn.props.active).toBe(false);
   expect(
     builtIn.findByProps({ accessibilityRole: 'header' }).props.children
@@ -1786,14 +1798,18 @@ test('crossfades custom and built-in headers without changing the outgoing title
   expect(
     builtIn.findByProps({ accessibilityLabel: 'Back in tray' }).props.disabled
   ).toBe(true);
-  expect(renderer.root.findByType(CustomHeader).props.title).toBe('Review');
+  expect(renderer.UNSAFE_root.findByType(CustomHeader).props.title).toBe(
+    'Review'
+  );
   act(() => mockCompletions.shift()!(true));
   act(() => navigation.back());
-  expect(renderer.root.findAllByType(TrayHeaderLayer)).toHaveLength(2);
-  expect(renderer.root.findByType(CustomHeader).props.title).toBe('Review');
+  expect(renderer.UNSAFE_root.findAllByType(TrayHeaderLayer)).toHaveLength(2);
+  expect(renderer.UNSAFE_root.findByType(CustomHeader).props.title).toBe(
+    'Review'
+  );
   act(() => mockCompletions.shift()!(true));
-  expect(renderer.root.findAllByType(CustomHeader)).toHaveLength(0);
-  expect(renderer.root.findAllByType(TrayHeaderLayer)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(CustomHeader)).toHaveLength(0);
+  expect(renderer.UNSAFE_root.findAllByType(TrayHeaderLayer)).toHaveLength(1);
   act(() => renderer.unmount());
 });
 
@@ -1817,24 +1833,24 @@ test('retains one outgoing header instance until settlement, including queued Ba
       />
     );
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack renderHeader={(props) => <StatefulHeader {...props} />}>
-          <Tray.Screen name="form" component={Form} />
-          <Tray.Screen name="preview" component={Preview} />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
-  const headers = () => renderer.root.findAllByType(StatefulHeader);
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack renderHeader={(props) => <StatefulHeader {...props} />}>
+        <Tray.Screen name="form" component={Form} />
+        <Tray.Screen name="preview" component={Preview} />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
+  const headers = () => renderer.UNSAFE_root.findAllByType(StatefulHeader);
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   const rootKey = navigationState.route!.key;
   const first = headers()[0]!;
-  const measure = (node: TestRenderer.ReactTestInstance, height: number) =>
+  const measure = (node: RenderResult['UNSAFE_root'], height: number) =>
     act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
   measure(headerFor(first), 90);
   measure(pageFor(renderer, Form), 200);
@@ -1846,9 +1862,9 @@ test('retains one outgoing header instance until settlement, including queued Ba
   expect(headers()[0]).toBe(first);
   expect(first.findByType(TextInput).props.value).toBe('edited header');
   expect(mounted).toEqual([rootKey, nextKey]);
-  const outgoing = renderer.root
-    .findAllByType(TrayHeaderLayer)
-    .find((layer) => !layer.props.active)!;
+  const outgoing = renderer.UNSAFE_root.findAllByType(TrayHeaderLayer).find(
+    (layer) => !layer.props.active
+  )!;
   expect(outgoing.findByType(View).props.pointerEvents).toBe('none');
   expect(outgoing.findByType(View).props.accessibilityElementsHidden).toBe(
     true
@@ -1886,40 +1902,38 @@ test('measures custom headers independently for retained pages and ignores stale
     geometry = useTrayGeometry();
     return <Form />;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack
-          topInset={50}
-          bottomInset={20}
-          handleVisible={false}
-          renderHeader={(props) => <CustomHeader {...props} />}
-        >
-          <Tray.Screen
-            name="form"
-            component={GeometryForm}
-            options={{ presentation: 'fullScreen' }}
-          />
-          <Tray.Screen
-            name="preview"
-            component={Preview}
-            options={{ presentation: 'fullScreen', handleVisible: true }}
-          />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack
+        topInset={50}
+        bottomInset={20}
+        handleVisible={false}
+        renderHeader={(props) => <CustomHeader {...props} />}
+      >
+        <Tray.Screen
+          name="form"
+          component={GeometryForm}
+          options={{ presentation: 'fullScreen' }}
+        />
+        <Tray.Screen
+          name="preview"
+          component={Preview}
+          options={{ presentation: 'fullScreen', handleVisible: true }}
+        />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   const layout = (callback: (event: unknown) => void, height: number) =>
     act(() => callback({ nativeEvent: { layout: { height } } }));
   const measureHeader = () =>
     headerFor(
-      renderer.root
-        .findAllByType(CustomHeader)
-        .find(
-          (header) => header.props.route.key === navigationState.route?.key
-        )!
+      renderer.UNSAFE_root.findAllByType(CustomHeader).find(
+        (header) => header.props.route.key === navigationState.route?.key
+      )!
     ).props.onLayout;
   const pageHeight = (component: React.ElementType) =>
     viewportStyle(renderer, component).height;
@@ -1963,31 +1977,32 @@ test('measures custom headers independently for retained pages and ignores stale
 
 test('waits for fresh custom-header layout when returning from a built-in header', () => {
   const shared = jest.spyOn(TrayChoreographyModule, 'useTraySharedTransition');
-  let renderer!: TestRenderer.ReactTestRenderer;
+  let renderer!: RenderResult;
   try {
-    act(() => {
-      renderer = TestRenderer.create(
-        <Tray.Provider>
-          <Observer />
-          <Tray.Stack>
-            <Tray.Screen
-              name="form"
-              component={Form}
-              options={{
-                renderHeader: (props) => <CustomHeader {...props} />,
-              }}
-            />
-            <Tray.Screen name="preview" component={Preview} />
-          </Tray.Stack>
-        </Tray.Provider>
-      );
-    });
+    renderer = renderComponent(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack>
+          <Tray.Screen
+            name="form"
+            component={Form}
+            options={{
+              renderHeader: (props) => <CustomHeader {...props} />,
+            }}
+          />
+          <Tray.Screen name="preview" component={Preview} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+
     const ready = () => shared.mock.calls.at(-1)![0].targetReady;
     const measureHeader = () =>
       act(() =>
-        headerFor(renderer.root.findByType(CustomHeader)).props.onLayout({
-          nativeEvent: { layout: { height: 90 } },
-        })
+        headerFor(renderer.UNSAFE_root.findByType(CustomHeader)).props.onLayout(
+          {
+            nativeEvent: { layout: { height: 90 } },
+          }
+        )
       );
     act(() => navigation.present('form'));
     act(() => sheet(renderer).props.onSettle(1));
@@ -2013,7 +2028,7 @@ test('waits for fresh custom-header layout when returning from a built-in header
 });
 
 test('a null header and hidden handle leave no reserved header space', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
+  let renderer!: RenderResult;
   const render = (handleVisible: boolean, custom = true) => (
     <Tray.Provider>
       <Observer />
@@ -2029,49 +2044,47 @@ test('a null header and hidden handle leave no reserved header space', () => {
       </Tray.Stack>
     </Tray.Provider>
   );
-  act(() => {
-    renderer = TestRenderer.create(render(false));
-  });
+
+  renderer = renderComponent(render(false));
+
   act(() => navigation.present('form'));
-  const header = renderer.root
-    .findByType(TrayHeaderLayer)
+  const header = renderer.UNSAFE_root.findByType(TrayHeaderLayer)
     .findAllByType(View)
     .find((view) => view.props.onLayout)!;
   act(() => header.props.onLayout({ nativeEvent: { layout: { height: 0 } } }));
   const pageHeight = () => viewportStyle(renderer, Form).height;
   const windowHeight = Dimensions.get('window').height;
   expect(pageHeight()).toBe(windowHeight);
-  act(() => renderer.update(render(true)));
+  act(() => renderer.rerender(render(true)));
   expect(pageHeight()).toBe(windowHeight - 14);
-  act(() => renderer.update(render(false, false)));
+  act(() => renderer.rerender(render(false, false)));
   expect(pageHeight()).toBe(windowHeight - 56);
-  act(() => renderer.update(render(true, false)));
+  act(() => renderer.rerender(render(true, false)));
   expect(pageHeight()).toBe(windowHeight - 70);
   act(() => renderer.unmount());
 });
 
 test('a custom header height hint applies until its first layout', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack handleVisible={false} renderHeader={() => null}>
-          <Tray.Screen
-            name="form"
-            component={Form}
-            options={{ presentation: 'fullScreen', headerHeight: 0 }}
-          />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack handleVisible={false} renderHeader={() => null}>
+        <Tray.Screen
+          name="form"
+          component={Form}
+          options={{ presentation: 'fullScreen', headerHeight: 0 }}
+        />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   const pageHeight = () => viewportStyle(renderer, Form).height;
   const windowHeight = Dimensions.get('window').height;
   expect(pageHeight()).toBe(windowHeight);
-  const header = renderer.root
-    .findByType(TrayHeaderLayer)
+  const header = renderer.UNSAFE_root.findByType(TrayHeaderLayer)
     .findAllByType(View)
     .find((view) => view.props.onLayout)!;
   act(() => header.props.onLayout({ nativeEvent: { layout: { height: 40 } } }));
@@ -2080,23 +2093,21 @@ test('a custom header height hint applies until its first layout', () => {
 });
 
 test('keeps the outgoing title until settlement while exposing only the current heading', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        {stack()}
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      {stack()}
+    </Tray.Provider>
+  );
+
   const headings = () =>
-    renderer.root
-      .findAllByType(Text)
+    renderer.UNSAFE_root.findAllByType(Text)
       .filter((node) => node.props.accessibilityRole === 'header')
       .map((node) => node.props.children);
   const outgoing = () =>
-    renderer.root
-      .findAllByType(Text)
+    renderer.UNSAFE_root.findAllByType(Text)
       .filter((node) => node.props.accessibilityElementsHidden)
       .map((node) => node.props.children);
   act(() => navigation.present('form'));
@@ -2125,15 +2136,15 @@ test('keeps the outgoing title until settlement while exposing only the current 
 });
 
 test('ignores invalid page measurements and keeps a stable viewport while resizing', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        {stack()}
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      {stack()}
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   layoutPage(renderer, Form, -1);
   layoutPage(renderer, Form, NaN);
@@ -2184,24 +2195,23 @@ test.each([
     const flushUI = () => {
       for (const style of pending) Object.assign(style.applied, style.update());
     };
-    let renderer!: TestRenderer.ReactTestRenderer;
+    let renderer!: RenderResult;
     try {
-      act(() => {
-        renderer = TestRenderer.create(
-          <Tray.Provider>
-            <Observer />
-            <Tray.Stack appearance={appearance} anchor={anchor}>
-              <Tray.Screen name="form" component={Form} />
-              <Tray.Screen name="preview" component={Preview} />
-            </Tray.Stack>
-          </Tray.Provider>
-        );
-      });
+      renderer = renderComponent(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack appearance={appearance} anchor={anchor}>
+            <Tray.Screen name="form" component={Form} />
+            <Tray.Screen name="preview" component={Preview} />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+
       act(() => navigation.present('form'));
       layoutPage(renderer, Form, 200);
       act(() => sheet(renderer).props.onSettle(1));
       flushUI();
-      const input = renderer.root.findByType(TextInput);
+      const input = renderer.UNSAFE_root.findByType(TextInput);
       act(() => input.props.onChangeText('retained through layout handoff'));
       const expectInFlow = (component: React.ElementType) => {
         expect(cardStyle(renderer).height).toBe('auto');
@@ -2241,10 +2251,10 @@ test.each([
         // Removing the outgoing page must also leave a sized card while the
         // returning page's UI style still contains its absolute positioning.
         expectFixed();
-        expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
+        expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(0);
         flushUI();
         expectInFlow(Form);
-        expect(renderer.root.findByType(TextInput)).toBe(input);
+        expect(renderer.UNSAFE_root.findByType(TextInput)).toBe(input);
         expect(input.props.value).toBe('retained through layout handoff');
       }
     } finally {
@@ -2292,24 +2302,23 @@ test.each([
           heights.add(value as Reanimated.SharedValue<number>);
         return value;
       });
-    let renderer!: TestRenderer.ReactTestRenderer;
+    let renderer!: RenderResult;
     try {
-      act(() => {
-        renderer = TestRenderer.create(
-          <Tray.Provider>
-            <Observer />
-            <Tray.Stack anchor={anchor}>
-              <Tray.Screen name="form" component={Form} />
-              <Tray.Screen
-                name="preview"
-                component={Preview}
-                options={{ anchor: previewAnchor }}
-              />
-            </Tray.Stack>
-          </Tray.Provider>
-        );
-      });
-      const layout = (node: TestRenderer.ReactTestInstance, height: number) =>
+      renderer = renderComponent(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack anchor={anchor}>
+            <Tray.Screen name="form" component={Form} />
+            <Tray.Screen
+              name="preview"
+              component={Preview}
+              options={{ anchor: previewAnchor }}
+            />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+
+      const layout = (node: RenderResult['UNSAFE_root'], height: number) =>
         act(() => node.props.onLayout({ nativeEvent: { layout: { height } } }));
       const card = () => cardStyle(renderer);
       const bottom = (component: React.ElementType, measuredHeight: number) => {
@@ -2334,7 +2343,7 @@ test.each([
       const viewportHeight = viewportStyle(renderer, Form).height;
       layout(pageFor(renderer, Form), 200);
       const animatedHeight = [...heights][0]!;
-      const input = renderer.root.findByType(TextInput);
+      const input = renderer.UNSAFE_root.findByType(TextInput);
       act(() => input.props.onChangeText('retained draft'));
       act(() => sheet(renderer).props.onSettle(1));
       const checkFrames = (frames: number[]) => {
@@ -2363,9 +2372,9 @@ test.each([
         act(() => navigation.back());
         checkFrames([570, 420, 270]);
         act(() => mockCompletions.shift()!(true));
-        expect(renderer.root.findByType(TextInput)).toBe(input);
+        expect(renderer.UNSAFE_root.findByType(TextInput)).toBe(input);
         expect(input.props.value).toBe('retained draft');
-        expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
+        expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(0);
       }
       // Settled content sizes the card in native layout, without waiting for
       // an animated height or remounting the retained input.
@@ -2386,25 +2395,25 @@ test.each([
 );
 
 test('bottom alignment is independent of delayed or changed custom-header measurements', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack
-          handleVisible={false}
-          renderHeader={(props) => <CustomHeader {...props} />}
-        >
-          <Tray.Screen name="form" component={Form} />
-          <Tray.Screen name="preview" component={Preview} />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack
+        handleVisible={false}
+        renderHeader={(props) => <CustomHeader {...props} />}
+      >
+        <Tray.Screen name="form" component={Form} />
+        <Tray.Screen name="preview" component={Preview} />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   const measureHeader = (name: string, height: number) => {
-    const header = renderer.root
-      .findAllByType(CustomHeader)
-      .find((node) => node.props.route.name === name)!;
+    const header = renderer.UNSAFE_root.findAllByType(CustomHeader).find(
+      (node) => node.props.route.name === name
+    )!;
     act(() =>
       headerFor(header).props.onLayout({ nativeEvent: { layout: { height } } })
     );
@@ -2477,29 +2486,28 @@ test.each([
       renders();
       return <Form />;
     }
-    let renderer!: TestRenderer.ReactTestRenderer;
+    let renderer!: RenderResult;
     try {
-      act(() => {
-        renderer = TestRenderer.create(
-          <Tray.Provider>
-            <Observer />
-            <Tray.Stack
-              appearance={appearance}
-              anchor={anchor}
-              topInset={50}
-              bottomInset={20}
-              animation={{ type: 'spring' }}
-            >
-              <Tray.Screen name="form" component={Composer} />
-              <Tray.Screen name="preview" component={Preview} />
-            </Tray.Stack>
-          </Tray.Provider>
-        );
-      });
+      renderer = renderComponent(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack
+            appearance={appearance}
+            anchor={anchor}
+            topInset={50}
+            bottomInset={20}
+            animation={{ type: 'spring' }}
+          >
+            <Tray.Screen name="form" component={Composer} />
+            <Tray.Screen name="preview" component={Preview} />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+
       act(() => navigation.present('form'));
       layoutPage(renderer, Composer, 400);
       act(() => sheet(renderer).props.onSettle(1));
-      const input = renderer.root.findByType(TextInput);
+      const input = renderer.UNSAFE_root.findByType(TextInput);
       act(() => input.props.onChangeText('retained composer draft'));
       const renderCount = renders.mock.calls.length;
       spring.mockClear();
@@ -2572,7 +2580,7 @@ test.each([
       checkFrame(0);
       expect(spring).not.toHaveBeenCalled();
       expect(renders).toHaveBeenCalledTimes(renderCount);
-      expect(renderer.root.findByType(TextInput)).toBe(input);
+      expect(renderer.UNSAFE_root.findByType(TextInput)).toBe(input);
       expect(input.props.value).toBe('retained composer draft');
 
       // Navigation still owns an animated height; only the active settled page
@@ -2608,10 +2616,10 @@ test('keyboard frames update shared geometry without rerendering React content',
     renders();
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<KeyboardObserver />);
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(<KeyboardObserver />);
+
   const event = { height: 150, progress: 0.5, duration: 250, target: 1 };
   act(() => mockKeyboardHandlers.onStart!(event));
   expect(keyboard.isVisible).toBe(true);
@@ -2670,32 +2678,31 @@ test.each(['top', 'bottom'] as const)(
       renderForm();
       return <Form />;
     }
-    let renderer!: TestRenderer.ReactTestRenderer;
+    let renderer!: RenderResult;
     try {
-      act(() => {
-        renderer = TestRenderer.create(
-          <Tray.Provider>
-            <Observer />
-            <Tray.Stack topInset={50} bottomInset={20} anchor={anchor}>
-              <Tray.Screen
-                name="form"
-                component={KeyboardForm}
-                options={{ presentation: 'fullScreen' }}
-              />
-              <Tray.Screen
-                name="preview"
-                component={Preview}
-                options={{ presentation: 'fullScreen' }}
-              />
-            </Tray.Stack>
-          </Tray.Provider>
-        );
-      });
+      renderer = renderComponent(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack topInset={50} bottomInset={20} anchor={anchor}>
+            <Tray.Screen
+              name="form"
+              component={KeyboardForm}
+              options={{ presentation: 'fullScreen' }}
+            />
+            <Tray.Screen
+              name="preview"
+              component={Preview}
+              options={{ presentation: 'fullScreen' }}
+            />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+
       act(() => navigation.present('form'));
       const windowHeight = Dimensions.get('window').height;
       layoutPage(renderer, KeyboardForm, windowHeight - 140);
       act(() => sheet(renderer).props.onSettle(1));
-      const input = renderer.root.findByType(TextInput);
+      const input = renderer.UNSAFE_root.findByType(TextInput);
       act(() => input.props.onChangeText('keyboard draft'));
       const renderCount = renderForm.mock.calls.length;
       const checkLayout = (
@@ -2707,18 +2714,18 @@ test.each(['top', 'bottom'] as const)(
         const page = StyleSheet.flatten(
           pageFor(renderer, KeyboardForm).props.style
         );
-        let content = renderer.root.findByType(KeyboardForm).parent!;
+        let content = renderer.UNSAFE_root.findByType(KeyboardForm).parent!;
         while (content.type !== Reanimated.default.View)
           content = content.parent!;
         const contentStyle = StyleSheet.flatten(content.props.style);
         const bottom = 20 * (1 - keyboardProgress);
-        const keyboardSurface = renderer.root
-          .findAllByType(Reanimated.default.View)
-          .find(
-            (view) =>
-              view.props.pointerEvents === 'none' &&
-              StyleSheet.flatten(view.props.style)?.backgroundColor
-          )!;
+        const keyboardSurface = renderer.UNSAFE_root.findAllByType(
+          Reanimated.default.View
+        ).find(
+          (view) =>
+            view.props.pointerEvents === 'none' &&
+            StyleSheet.flatten(view.props.style)?.backgroundColor
+        )!;
         expect(StyleSheet.flatten(keyboardSurface.props.style)).toMatchObject({
           bottom: 0,
           height: keyboardHeight,
@@ -2739,7 +2746,7 @@ test.each(['top', 'bottom'] as const)(
           anchor === 'bottom' ? card.height - viewport.height : 0;
         expect(viewportTop + viewport.transform[0].translateY).toBeCloseTo(120);
         expect(renderForm).toHaveBeenCalledTimes(renderCount);
-        expect(renderer.root.findByType(TextInput)).toBe(input);
+        expect(renderer.UNSAFE_root.findByType(TextInput)).toBe(input);
         expect(input.props.value).toBe('keyboard draft');
       };
       const event = { height: 300, progress: 1, duration: 250, target: 1 };
@@ -2844,28 +2851,27 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
       window: { ...dimensions.window, height: 800 },
       screen: { ...dimensions.screen, height: 800 },
     });
-    let renderer!: TestRenderer.ReactTestRenderer;
+    let renderer!: RenderResult;
     try {
-      act(() => {
-        renderer = TestRenderer.create(
-          <Tray.Provider>
-            <Observer />
-            <Tray.Stack
-              appearance={mode === 'sheet' ? 'sheet' : 'floating'}
-              topInset={50}
-              bottomInset={20}
-            >
-              <Tray.Screen
-                name="form"
-                component={Form}
-                options={{
-                  presentation: mode === 'fullScreen' ? 'fullScreen' : 'tray',
-                }}
-              />
-            </Tray.Stack>
-          </Tray.Provider>
-        );
-      });
+      renderer = renderComponent(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack
+            appearance={mode === 'sheet' ? 'sheet' : 'floating'}
+            topInset={50}
+            bottomInset={20}
+          >
+            <Tray.Screen
+              name="form"
+              component={Form}
+              options={{
+                presentation: mode === 'fullScreen' ? 'fullScreen' : 'tray',
+              }}
+            />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+
       act(() => navigation.present('form'));
       const card = () => cardStyle(renderer);
       layoutPage(
@@ -2890,9 +2896,9 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
       if (mode !== 'fullScreen')
         expectIntrinsicLayout(renderer, Form, 70, mode === 'sheet' ? 20 : 0);
       expect(sheet(renderer).props.style.bottom).toBe(0);
-      expect(renderer.root.findByProps({ testID: 'draft' }).props.value).toBe(
-        'draft'
-      );
+      expect(
+        renderer.UNSAFE_root.findByProps({ testID: 'draft' }).props.value
+      ).toBe('draft');
     } finally {
       if (renderer) act(() => renderer.unmount());
       Dimensions.set(dimensions);
@@ -2908,26 +2914,26 @@ test.each([
 ] as const)(
   'restores $appearance geometry and form state with topInset=$topInset on Back',
   ({ appearance, topInset }) => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(
-        <Tray.Provider>
-          <Observer />
-          <Tray.Stack
-            appearance={appearance}
-            topInset={topInset}
-            bottomInset={20}
-          >
-            <Tray.Screen name="form" component={Form} />
-            <Tray.Screen
-              name="preview"
-              component={Preview}
-              options={{ presentation: 'fullScreen' }}
-            />
-          </Tray.Stack>
-        </Tray.Provider>
-      );
-    });
+    let renderer!: RenderResult;
+
+    renderer = renderComponent(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack
+          appearance={appearance}
+          topInset={topInset}
+          bottomInset={20}
+        >
+          <Tray.Screen name="form" component={Form} />
+          <Tray.Screen
+            name="preview"
+            component={Preview}
+            options={{ presentation: 'fullScreen' }}
+          />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+
     const card = () => cardStyle(renderer);
     const viewport = () =>
       viewportStyle(
@@ -2938,7 +2944,9 @@ test.each([
     act(() => navigation.present('form'));
     layoutPage(renderer, Form, appearance === 'sheet' ? 110 : 130);
     act(() => sheet(renderer).props.onSettle(1));
-    act(() => renderer.root.findByType(TextInput).props.onChangeText('edited'));
+    act(() =>
+      renderer.UNSAFE_root.findByType(TextInput).props.onChangeText('edited')
+    );
     act(() => navigation.push('preview', { label: 'full screen' }));
     layoutPage(renderer, Preview, window.height - topInset - 90);
     expect(viewport().width).toBe(window.width);
@@ -2947,7 +2955,7 @@ test.each([
     expect(StyleSheet.flatten(page.props.style)).toMatchObject({
       height: '100%',
     });
-    expect(renderer.root.findAllByType(Form)).toHaveLength(1);
+    expect(renderer.UNSAFE_root.findAllByType(Form)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
     expect(viewport().bottom).toBe(0);
     expect(viewport().transform).toEqual([{ translateY: -20 }]);
@@ -2960,11 +2968,13 @@ test.each([
 
     act(() => navigation.back());
     layoutPage(renderer, Form, appearance === 'sheet' ? 110 : 130);
-    expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
+    expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(1);
     act(() => mockCompletions.shift()!(true));
     expectIntrinsicLayout(renderer, Form, 70, appearance === 'sheet' ? 20 : 0);
-    expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
-    expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
+    expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(0);
+    expect(renderer.UNSAFE_root.findByType(TextInput).props.value).toBe(
+      'edited'
+    );
     expect(card()).toMatchObject({
       height: 'auto',
       marginHorizontal: appearance === 'floating' ? 16 : 0,
@@ -2976,18 +2986,18 @@ test.each([
 );
 
 test('uses the new transition start visibility for pushed and retained Back pages', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        {stack()}
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      {stack()}
+    </Tray.Provider>
+  );
+
   const opacity = (component: React.ElementType) => {
     const page = pageFor(renderer, component);
-    let node = renderer.root.findByType(component).parent;
+    let node = renderer.UNSAFE_root.findByType(component).parent;
     let value = 1;
     while (node && node !== page.parent) {
       value *= StyleSheet.flatten(node.props.style)?.opacity ?? 1;
@@ -3014,20 +3024,20 @@ test('uses the new transition start visibility for pushed and retained Back page
   expect(opacity(Form)).toBe(0);
   act(() => mockCompletions.shift()!(true));
   expect(opacity(Form)).toBe(1);
-  expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
+  expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(0);
   act(() => renderer.unmount());
 });
 
 test('gates a shared destination before its layout is ready without releasing the source', async () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        {stack()}
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      {stack()}
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
   await act(async () => {
@@ -3037,28 +3047,28 @@ test('gates a shared destination before its layout is ready without releasing th
   expect(StyleSheet.flatten(target.props.style).opacity).toBe(0);
   expect(target.props.pointerEvents).toBe('none');
   expect(target.props.accessibilityElementsHidden).toBe(true);
-  expect(renderer.root.findAllByType(Form)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(Form)).toHaveLength(1);
   expect(mockCompletions).toHaveLength(0);
   act(() => renderer.unmount());
 });
 
 test('presents a full-screen root and shrinks for a pushed content-sized page', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        <Tray.Stack topInset={50} bottomInset={20}>
-          <Tray.Screen name="form" component={Form} />
-          <Tray.Screen
-            name="preview"
-            component={Preview}
-            options={{ presentation: 'fullScreen' }}
-          />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      <Tray.Stack topInset={50} bottomInset={20}>
+        <Tray.Screen name="form" component={Form} />
+        <Tray.Screen
+          name="preview"
+          component={Preview}
+          options={{ presentation: 'fullScreen' }}
+        />
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('preview', { label: 'root' }));
   layoutPage(
     renderer,
@@ -3103,58 +3113,60 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
   );
   act(() => mockCompletions.shift()!(true));
   expect(cardStyle(renderer).height).toBe(Dimensions.get('window').height);
-  expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(1);
   act(() => renderer.unmount());
 });
 
 test('preserves drafts across rerenders and Back, releasing popped views only on completion', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
+  let renderer!: RenderResult;
   const render = () => (
     <Tray.Provider>
       <Observer />
       {stack()}
     </Tray.Provider>
   );
-  act(() => {
-    renderer = TestRenderer.create(render());
-  });
+
+  renderer = renderComponent(render());
+
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
-  act(() => renderer.root.findByType(TextInput).props.onChangeText('edited'));
+  act(() =>
+    renderer.UNSAFE_root.findByType(TextInput).props.onChangeText('edited')
+  );
   act(() => navigation.push('preview', { label: 'hello' }));
-  expect(renderer.root.findAllByType(Form)).toHaveLength(1);
-  expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(Form)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(1);
   expect(unmounted).toEqual([]);
-  act(() => renderer.update(render()));
+  act(() => renderer.rerender(render()));
   expect(mockCompletions).toHaveLength(1);
   act(() => mockCompletions.shift()!(true));
   act(() => navigation.back());
   const complete = mockCompletions.shift()!;
   act(() => complete(false));
-  expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(1);
   act(() => complete(true));
-  expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
-  expect(renderer.root.findByType(TextInput).props.value).toBe('edited');
+  expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(0);
+  expect(renderer.UNSAFE_root.findByType(TextInput).props.value).toBe('edited');
   expect(unmounted).not.toContain('form');
   act(() => renderer.unmount());
 });
 
 test('dismissal keeps content until native ack and an old ack cannot dismiss the reopened sheet', () => {
   const onDismiss = jest.fn();
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        {stack(Tray, onDismiss)}
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      {stack(Tray, onDismiss)}
+    </Tray.Provider>
+  );
+
   act(() => navigation.present('form'));
   const oldSettled = sheet(renderer).props.onSettle;
   act(() => oldSettled(1));
   act(() => navigation.dismiss());
-  expect(renderer.root.findAllByType(Form)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(Form)).toHaveLength(1);
   expect(onDismiss).not.toHaveBeenCalled();
   act(() => navigation.present('preview', { label: 'new' }));
   act(() => oldSettled(0));
@@ -3168,15 +3180,15 @@ test('dismissal keeps content until native ack and an old ack cannot dismiss the
 });
 
 test('rejects missing screens before opening a native sheet', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <Observer />
-        {stack()}
-      </Tray.Provider>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <Observer />
+      {stack()}
+    </Tray.Provider>
+  );
+
   expect(() => {
     // @ts-expect-error Also exercise the runtime guard for untyped callers.
     navigation.present('missing');
@@ -3206,19 +3218,18 @@ test.each(['separate factories', 'the same factory'])(
       innerState = InnerTray.useTrayState((state) => state);
       return null;
     }
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(
-        <Tray.Provider>
-          <OuterObserver />
-          {stack(Tray, outerDismissed)}
-          <InnerTray.Provider>
-            <InnerObserver />
-            {stack(InnerTray, innerDismissed)}
-          </InnerTray.Provider>
-        </Tray.Provider>
-      );
-    });
+    let renderer!: RenderResult;
+
+    renderer = renderComponent(
+      <Tray.Provider>
+        <OuterObserver />
+        {stack(Tray, outerDismissed)}
+        <InnerTray.Provider>
+          <InnerObserver />
+          {stack(InnerTray, innerDismissed)}
+        </InnerTray.Provider>
+      </Tray.Provider>
+    );
 
     act(() => outer.present('form'));
     const outerSettled = sheet(renderer).props.onSettle;
@@ -3279,46 +3290,52 @@ function ConfigurableTray({
 }
 
 test('reads fragments without mounting declarations and updates titles without remounting views', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<ConfigurableTray />);
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(<ConfigurableTray />);
+
+  expect(renderer.UNSAFE_root.findAllByType(Form)).toHaveLength(0);
+  expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(0);
+  expect(renderer.UNSAFE_root.findAllByType(Tray.Screen)).toHaveLength(0);
+  const appContent = renderer.UNSAFE_root.findByProps({
+    testID: 'app-content',
   });
-  expect(renderer.root.findAllByType(Form)).toHaveLength(0);
-  expect(renderer.root.findAllByType(Preview)).toHaveLength(0);
-  expect(renderer.root.findAllByType(Tray.Screen)).toHaveLength(0);
-  const appContent = renderer.root.findByProps({ testID: 'app-content' });
   act(() => navigation.present('form'));
   act(() => sheet(renderer).props.onSettle(1));
-  act(() => renderer.root.findByType(TextInput).props.onChangeText('saved'));
+  act(() =>
+    renderer.UNSAFE_root.findByType(TextInput).props.onChangeText('saved')
+  );
   const present = navigation.present;
-  act(() => renderer.update(<ConfigurableTray title="Updated title" />));
+  act(() => renderer.rerender(<ConfigurableTray title="Updated title" />));
   expect(navigation.present).toBe(present);
-  expect(renderer.root.findByType(TextInput).props.value).toBe('saved');
-  expect(renderer.root.findByProps({ testID: 'app-content' })).toBe(appContent);
+  expect(renderer.UNSAFE_root.findByType(TextInput).props.value).toBe('saved');
+  expect(renderer.UNSAFE_root.findByProps({ testID: 'app-content' })).toBe(
+    appContent
+  );
   expect(
-    renderer.root.findAllByType(Text).map((node) => node.props.children)
+    renderer.UNSAFE_root.findAllByType(Text).map((node) => node.props.children)
   ).toContain('Updated title');
   expect(unmounted).toEqual([]);
   act(() => navigation.push('preview', { label: 'preview' }));
   act(() => mockCompletions.shift()!(true));
   expect(
-    renderer.root.findAllByType(Text).map((node) => node.props.children)
+    renderer.UNSAFE_root.findAllByType(Text).map((node) => node.props.children)
   ).toContain('preview');
   act(() => renderer.unmount());
 });
 
 test('validates missing declarations and accepts new declarations after a committed update', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<ConfigurableTray showPreview={false} />);
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(<ConfigurableTray showPreview={false} />);
+
   expect(() => navigation.present('preview', { label: 'missing' })).toThrow(
     'Unknown tray screen: preview'
   );
   expect(navigationState.isPresented).toBe(false);
-  act(() => renderer.update(<ConfigurableTray />));
+  act(() => renderer.rerender(<ConfigurableTray />));
   act(() => navigation.present('preview', { label: 'available' }));
-  expect(renderer.root.findAllByType(Preview)).toHaveLength(1);
+  expect(renderer.UNSAFE_root.findAllByType(Preview)).toHaveLength(1);
   act(() => renderer.unmount());
 });
 
@@ -3328,26 +3345,26 @@ test('can present from a descendant mount effect before the Stack declaration in
     useEffect(() => present('form'), [present]);
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <Tray.Provider>
-        <OpenOnMount />
-        {stack()}
-      </Tray.Provider>
-    );
-  });
-  expect(renderer.root.findAllByType(Form)).toHaveLength(1);
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <Tray.Provider>
+      <OpenOnMount />
+      {stack()}
+    </Tray.Provider>
+  );
+
+  expect(renderer.UNSAFE_root.findAllByType(Form)).toHaveLength(1);
   act(() => renderer.unmount());
 });
 
 test.each(['active', 'retained', 'queued'])(
   'rejects removing a declaration that is %s',
   (phase) => {
-    let renderer!: TestRenderer.ReactTestRenderer;
-    act(() => {
-      renderer = TestRenderer.create(<ConfigurableTray />);
-    });
+    let renderer!: RenderResult;
+
+    renderer = renderComponent(<ConfigurableTray />);
+
     act(() => navigation.present('form'));
     if (phase !== 'queued') act(() => sheet(renderer).props.onSettle(1));
     act(() => {
@@ -3361,7 +3378,7 @@ test.each(['active', 'retained', 'queued'])(
     const error = jest.spyOn(console, 'error').mockImplementation(() => {});
     try {
       expect(() => {
-        act(() => renderer.update(<ConfigurableTray showPreview={false} />));
+        act(() => renderer.rerender(<ConfigurableTray showPreview={false} />));
       }).toThrow('Cannot remove tray screen "preview" while it is in use');
     } finally {
       error.mockRestore();
@@ -3371,15 +3388,15 @@ test.each(['active', 'retained', 'queued'])(
 );
 
 test('rejects replacing the component of a live screen', () => {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<ConfigurableTray />);
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(<ConfigurableTray />);
+
   act(() => navigation.present('form'));
   const error = jest.spyOn(console, 'error').mockImplementation(() => {});
   try {
     expect(() => {
-      act(() => renderer.update(<ConfigurableTray form={() => <View />} />));
+      act(() => renderer.rerender(<ConfigurableTray form={() => <View />} />));
     }).toThrow('Cannot change the component for tray screen "form"');
   } finally {
     error.mockRestore();
@@ -3387,7 +3404,7 @@ test('rejects replacing the component of a live screen', () => {
   }
 });
 
-function headerFor(node: TestRenderer.ReactTestInstance) {
+function headerFor(node: RenderResult['UNSAFE_root']) {
   let ancestor = node.parent;
   while (ancestor && typeof ancestor.props.onLayout !== 'function')
     ancestor = ancestor.parent;
@@ -3395,17 +3412,14 @@ function headerFor(node: TestRenderer.ReactTestInstance) {
   return ancestor;
 }
 
-function pageFor(
-  renderer: TestRenderer.ReactTestRenderer,
-  component: React.ElementType
-) {
-  let node = renderer.root.findByType(component).parent!;
+function pageFor(renderer: RenderResult, component: React.ElementType) {
+  let node = renderer.UNSAFE_root.findByType(component).parent!;
   while (node.props.accessibilityElementsHidden === undefined)
     node = node.parent!;
   return node;
 }
 
-function cardStyle(renderer: TestRenderer.ReactTestRenderer) {
+function cardStyle(renderer: RenderResult) {
   const card = sheet(renderer)
     .findAllByType(Reanimated.default.View)
     .find(
@@ -3413,17 +3427,14 @@ function cardStyle(renderer: TestRenderer.ReactTestRenderer) {
     )!;
   return StyleSheet.flatten(card.props.style);
 }
-function viewportStyle(
-  renderer: TestRenderer.ReactTestRenderer,
-  component: React.ElementType
-) {
+function viewportStyle(renderer: RenderResult, component: React.ElementType) {
   let node = pageFor(renderer, component).parent!;
   while (node.type !== Reanimated.default.View) node = node.parent!;
   return StyleSheet.flatten(node.props.style);
 }
 
 function expectIntrinsicLayout(
-  renderer: TestRenderer.ReactTestRenderer,
+  renderer: RenderResult,
   component: React.ElementType,
   headerHeight: number,
   bottomInset = 0
@@ -3443,7 +3454,7 @@ function expectIntrinsicLayout(
 }
 
 function layoutPage(
-  renderer: TestRenderer.ReactTestRenderer,
+  renderer: RenderResult,
   component: React.ElementType,
   height: number
 ) {

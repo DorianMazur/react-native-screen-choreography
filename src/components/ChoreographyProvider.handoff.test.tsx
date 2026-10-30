@@ -1,5 +1,9 @@
 import { useContext } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
 import { useReducedMotion } from 'react-native-reanimated';
 import { ChoreographyProvider } from './ChoreographyProvider';
@@ -41,7 +45,7 @@ const fabric = globalThis as typeof globalThis & {
 };
 const transition = makeTransition({ renderer: ({ children }) => children });
 const originalOS = Platform.OS;
-let tree: ReactTestRenderer;
+let tree: RenderResult;
 let ctx: ChoreographyContextType;
 const onEnd = jest.fn();
 function Consumer() {
@@ -87,8 +91,8 @@ function App({
 function Payload() {
   return null;
 }
-const host = () => tree.root.findByType(NativeTransitionHost).props;
-const destination = () => tree.root.findByType(Portal).props.hostName;
+const host = () => tree.UNSAFE_root.findByType(NativeTransitionHost).props;
+const destination = () => tree.UNSAFE_root.findByType(Portal).props.hostName;
 async function start(direction: 'forward' | 'backward' = 'forward') {
   let session!: Awaited<ReturnType<typeof ctx.startTransition>>;
   await act(async () => {
@@ -130,9 +134,12 @@ beforeEach(async () => {
           ? undefined
           : fabric.__screenChoreographyCaptureFabricLayout!(screens, nodes)
   );
-  await act(async () => {
-    tree = create(<App />, { createNodeMock: () => ({}) });
+
+  tree = renderComponent(<App />, {
+    createNodeMock: () => ({}),
+    wrapper: ({ children }) => children,
   });
+
   await act(async () => {
     ctx.setScreenReady('list', true);
     ctx.setScreenReady('detail', true);
@@ -151,10 +158,9 @@ test.each(['complete', 'cancel'] as const)(
   '%s retargets the live owner before removing Android hosts, and ignores stale acknowledgments',
   async (outcome) => {
     const session = await start();
-    const payload = tree.root.findByType(Payload);
-    const overlayHosts = tree.root
-      .findByType(TransitionOverlay)
-      .findAllByType(PortalHost);
+    const payload = tree.UNSAFE_root.findByType(Payload);
+    const overlayHosts =
+      tree.UNSAFE_root.findByType(TransitionOverlay).findAllByType(PortalHost);
     expect(overlayHosts).toHaveLength(1);
     expect(destination()).toContain('overlay');
     onEnd.mockImplementation(() => {
@@ -169,11 +175,14 @@ test.each(['complete', 'cancel'] as const)(
     expect(ctx.navigationController.acquireNavigationLock('list')).toBe(false);
     expect(host().active).toBe(true);
     expect(host().presentation).toBeUndefined();
-    expect(tree.root.findByType(Payload)).toBe(payload);
+    expect(tree.UNSAFE_root.findByType(Payload)).toBe(payload);
     expect(
-      tree.root.findByType(TransitionOverlay).findAllByType(PortalHost)[0]
+      tree.UNSAFE_root.findByType(TransitionOverlay).findAllByType(
+        PortalHost
+      )[0]
     ).toBe(overlayHosts[0]);
-    const retained = tree.root.findByType(TransitionOverlay).props.session;
+    const retained =
+      tree.UNSAFE_root.findByType(TransitionOverlay).props.session;
     expect(retained.pairs[0].source).toEqual({ screenId: 'list' });
     expect(retained.pairs[0].target).toEqual({ screenId: 'detail' });
     if (outcome === 'complete') expect(destination()).toContain('destination');
@@ -186,7 +195,7 @@ test.each(['complete', 'cancel'] as const)(
     expect(ctx.navigationController.isNavigationLocked()).toBe(false);
     expect(host().active).toBe(false);
     expect(
-      tree.root.findByType(TransitionOverlay).findAllByType(PortalHost)
+      tree.UNSAFE_root.findByType(TransitionOverlay).findAllByType(PortalHost)
     ).toHaveLength(0);
     expect(onEnd).toHaveBeenCalledTimes(1);
     // An acknowledgment left in the RN queue cannot clear a newer handoff.
@@ -199,7 +208,7 @@ test.each(['complete', 'cancel'] as const)(
 );
 
 test('repeated Back and interactive cancellation preserve the same owner and return host', async () => {
-  const payload = tree.root.findByType(Payload);
+  const payload = tree.UNSAFE_root.findByType(Payload);
   for (let index = 0; index < 3; index++) {
     const opening = await start();
     await act(async () => ctx.completeTransition(opening.id));
@@ -212,7 +221,7 @@ test('repeated Back and interactive cancellation preserve the same owner and ret
     await act(async () => ctx.completeTransition(back.id));
     expect(destination()).toBeUndefined();
     await settle();
-    expect(tree.root.findByType(Payload)).toBe(payload);
+    expect(tree.UNSAFE_root.findByType(Payload)).toBe(payload);
     expect(ctx.navigationController.isNavigationLocked()).toBe(false);
   }
 });
@@ -220,7 +229,7 @@ test('repeated Back and interactive cancellation preserve the same owner and ret
 test('removing a destination during handoff returns the payload home', async () => {
   const session = await start();
   await act(async () => ctx.completeTransition(session.id));
-  await act(async () => tree.update(<App detail={false} />));
+  await act(async () => tree.rerender(<App detail={false} />));
   expect(destination()).toBeUndefined();
   await settle();
   expect(ctx.navigationController.isNavigationLocked()).toBe(false);
@@ -247,7 +256,7 @@ test.each(['reduced-motion', 'missing-pairs', 'ios'] as const)(
   async (mode) => {
     if (mode === 'reduced-motion') {
       jest.mocked(useReducedMotion).mockReturnValue(true);
-      await act(async () => tree.update(<App />));
+      await act(async () => tree.rerender(<App />));
     }
     if (mode === 'missing-pairs')
       ctx.unregisterElement('card', 'detail', 'group');
@@ -283,12 +292,12 @@ test.each(['ios', 'android'] as const)(
     Platform.OS = platform;
     attachment.hostsReportAttachment = platform === 'ios';
     try {
-      await act(async () => tree.update(<App key={platform} preview />));
+      await act(async () => tree.rerender(<App key={platform} preview />));
       await act(async () => {
         for (const screen of ['list', 'detail', 'preview'])
           ctx.setScreenReady(screen, true);
       });
-      const payload = tree.root.findByType(Payload);
+      const payload = tree.UNSAFE_root.findByType(Payload);
       let previousId: string | undefined;
       for (const [source, target, direction] of [
         ['list', 'detail', 'forward'],
@@ -330,7 +339,7 @@ test.each(['ios', 'android'] as const)(
             ? undefined
             : `screen-choreography:live:destination:["${target}","group","card"]`
         );
-        expect(tree.root.findByType(Payload)).toBe(payload);
+        expect(tree.UNSAFE_root.findByType(Payload)).toBe(payload);
         if (platform === 'android') {
           expect(ctx.overlayHandoffSessionId).toBe(id);
           expect(ctx.navigationController.isNavigationLocked()).toBe(true);
