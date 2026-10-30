@@ -51,7 +51,7 @@ The React Navigation and Expo Router apps share demo screens, so you can compare
 
 The checked-in example environments are React Native 0.83 and Expo SDK 57. See [installation](./guide/installation) for the package’s declared peer requirements and compatibility considerations.
 
-The homepage preview follows the current Gallery layout: a wide featured photo above smaller tiles. It is a browser illustration of the ownership model. The native recordings above demonstrate the transitions; their styling predates the current example app. Run either app to explore the updated UI and both tray flows.
+The homepage preview follows the current Gallery layout: a wide featured photo above smaller tiles. It is a browser illustration of the ownership model. The native recordings above demonstrate the transitions. Run either app to try them and both tray flows.
 
 Photography comes from the existing example assets. [Sources and license](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/assets/photos/README.md).
 

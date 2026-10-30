@@ -1,7 +1,7 @@
 <script setup>
-import gallery from '../../../Gallery_demo_new.gif';
-import trips from '../../../Trips.gif';
-import wallet from '../../../Wallet_demo_new.gif';
+import gallery from '../../../media/gallery.gif';
+import trips from '../../../media/trips.gif';
+import wallet from '../../../media/wallet.gif';
 
 const demos = [
   {

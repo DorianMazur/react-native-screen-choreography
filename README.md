@@ -10,8 +10,6 @@ Move real content between React Native screens and resizable trays without losin
   <img src="docs/media/screens.gif" width="620" alt="Gallery, Trips, and Wallet: synchronized shared-element transitions from each overview to its detail screen and back" />
 </p>
 
-<p align="center">Watch: <a href="docs/media/gallery.mp4">Gallery</a> · <a href="docs/media/trips.mp4">Trips</a> · <a href="docs/media/wallet.mp4">Wallet</a></p>
-
 ## What you can build
 
 - **Shared element transitions:** move several elements together, with one live content subtree per shared element. React state and context stay with the original owner.
@@ -35,8 +33,6 @@ The example app includes two flows:
   &nbsp;
   <a href="docs/media/wallet-tray.mp4"><img src="docs/media/wallet-tray.gif" width="240" alt="Wallet tray: edit 25 to 250, open recipients, and return with 250 preserved" /></a>
 </p>
-
-<p align="center">Watch: <a href="docs/media/gallery-tray.mp4">Gallery Plus</a> · <a href="docs/media/wallet-tray.mp4">Wallet tray</a></p>
 
 Trays use the optional `/tray` entry with Software Mansion bottom sheets and Keyboard Controller. Those dependencies are only required when using trays.
 
