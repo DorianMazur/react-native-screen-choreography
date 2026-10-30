@@ -18,6 +18,11 @@ module.exports = {
     '^.+\\.(js|jsx|ts|tsx)$': 'babel-jest',
   },
   moduleNameMapper: {
+    // Repository tests run before lib/ is built. Keep /mock exports unmapped.
+    '^react-native-screen-choreography$': '<rootDir>/src/entries/index.ts',
+    '^react-native-screen-choreography/core$': '<rootDir>/src/entries/core.ts',
+    '^react-native-screen-choreography/expo-router$':
+      '<rootDir>/src/entries/expo-router.ts',
     '^react-native-reanimated$':
       '<rootDir>/__mocks__/react-native-reanimated.js',
   },

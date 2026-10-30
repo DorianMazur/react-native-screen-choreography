@@ -8,7 +8,7 @@ import * as choreography from 'react-native-screen-choreography';
 import * as core from 'react-native-screen-choreography/core';
 import * as expo from 'react-native-screen-choreography/expo-router';
 
-// Exercise the same setup a consuming app uses, including package exports.
+// Source entries resolve before a build; /mock paths use the package exports.
 jest.mock('react-native-screen-choreography', () =>
   require('react-native-screen-choreography/mock')
 );
