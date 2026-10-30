@@ -1,5 +1,9 @@
 import { useEffect, useLayoutEffect } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { makeMutable } from 'react-native-reanimated';
 import {
   ChoreographyContext,
@@ -209,19 +213,16 @@ test.each(cases)(
         targetScreenId: 'detail',
       }),
     };
-    let tree: ReactTestRenderer | undefined;
+    let tree: RenderResult | undefined;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider
-            value={context as ChoreographyContextType}
-          >
-            <ChoreographyScreen screenId="TripDetail">
-              {null}
-            </ChoreographyScreen>
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContext.Provider
+          value={context as ChoreographyContextType}
+        >
+          <ChoreographyScreen screenId="TripDetail">{null}</ChoreographyScreen>
+        </ChoreographyContext.Provider>
+      );
+
       if (api === 'marked') {
         expect(mockSetPreventRemove).toHaveBeenLastCalledWith(
           expect.any(String),

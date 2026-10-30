@@ -1,5 +1,9 @@
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import type {
   TransitionRendererProps,
   SharedElementTransitionRendererProps,
@@ -74,12 +78,10 @@ describe('makeTransition', () => {
     }
     const transition = makeTransition({ renderer: Renderer });
     const props = rendererProps();
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
 
     try {
-      await act(async () => {
-        tree = create(React.createElement(transition.renderer, props));
-      });
+      tree = renderComponent(React.createElement(transition.renderer, props));
 
       const received = render.mock.calls[0]![0];
       expect(received).toMatchObject({
@@ -102,7 +104,7 @@ describe('makeTransition', () => {
       expect(received.source).not.toHaveProperty('content');
       expect(received.target).not.toHaveProperty('content');
 
-      const host = tree.root.findByType(PortalHost);
+      const host = tree.UNSAFE_root.findByType(PortalHost);
       expect(host.props.name).toBe(
         'screen-choreography:live:overlay:["feed:one","detail:two","media","player"]'
       );
@@ -124,12 +126,10 @@ describe('makeTransition', () => {
     }
     const transition = makeTransition({ renderer: Renderer, zIndex: 314 });
     const props = rendererProps({ direction: 'backward', zIndex: 314 });
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
 
     try {
-      await act(async () => {
-        tree = create(React.createElement(transition.renderer, props));
-      });
+      tree = renderComponent(React.createElement(transition.renderer, props));
 
       expect(received.source.metrics).toBe(props.source.metrics);
       expect(received.target.metrics).toBe(props.target.metrics);
@@ -161,14 +161,13 @@ describe('makeTransition', () => {
         metadata: { label: 'source-v2' },
       },
     });
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
 
     try {
+      tree = renderComponent(React.createElement(transition.renderer, first));
+
       await act(async () => {
-        tree = create(React.createElement(transition.renderer, first));
-      });
-      await act(async () => {
-        tree.update(React.createElement(transition.renderer, second));
+        tree.rerender(React.createElement(transition.renderer, second));
       });
 
       expect(mounts).toHaveBeenCalledTimes(1);
@@ -195,12 +194,11 @@ describe('makeTransition', () => {
     const names: string[] = [];
 
     for (const props of cases) {
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       try {
-        await act(async () => {
-          tree = create(React.createElement(transition.renderer, props));
-        });
-        names.push(tree.root.findByType(PortalHost).props.name);
+        tree = renderComponent(React.createElement(transition.renderer, props));
+
+        names.push(tree.UNSAFE_root.findByType(PortalHost).props.name);
       } finally {
         await act(async () => tree?.unmount());
       }

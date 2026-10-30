@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
@@ -47,15 +51,14 @@ test.each(['react-navigation', 'expo-push', 'expo-navigate'] as const)(
             });
       return null;
     }
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={context}>
-            <Caller />
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContext.Provider value={context}>
+          <Caller />
+        </ChoreographyContext.Provider>
+      );
+
       await act(async () => {
         expect(await navigate()).toBeUndefined();
       });

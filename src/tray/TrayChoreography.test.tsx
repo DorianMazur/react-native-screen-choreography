@@ -1,5 +1,9 @@
 import React from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  renderAsync as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyContext,
   type ChoreographyContextType,
@@ -45,7 +49,7 @@ function prepared() {
 }
 let context: ChoreographyContextType;
 let result: ReturnType<typeof useTraySharedTransition>;
-let renderer: ReactTestRenderer;
+let renderer: RenderResult;
 const dispatch = jest.fn();
 const onPrepare = jest.fn();
 const onFinish = jest.fn();
@@ -88,8 +92,8 @@ beforeEach(() => {
     overlayHandoffSessionId: null,
   } as unknown as ChoreographyContextType;
 });
-afterEach(() => {
-  if (renderer) act(() => renderer.unmount());
+afterEach(async () => {
+  if (renderer) await renderer.unmountAsync();
 });
 
 test('ignores source capture after dismissal and reports cancellation once', async () => {
@@ -104,12 +108,14 @@ test('ignores source capture after dismissal and reports cancellation once', asy
   );
   try {
     const state = pending();
-    await act(async () => {
-      renderer = create(tree(state));
-    });
+
+    renderer = await renderComponent(tree(state));
+
     expect(onPrepare).toHaveBeenCalledTimes(1);
     await act(async () => {
-      renderer.update(tree(trayReducer(state, { type: 'dismiss' })));
+      await renderer.rerenderAsync(
+        tree(trayReducer(state, { type: 'dismiss' }))
+      );
     });
     await act(async () => {
       resolve();
@@ -129,12 +135,12 @@ test('ignores source capture after dismissal and reports cancellation once', asy
 
 test('waits for destination layout and native handoff before releasing retained pages', async () => {
   const state = prepared();
-  await act(async () => {
-    renderer = create(tree(state, false));
-  });
+
+  renderer = await renderComponent(tree(state, false));
+
   expect(context.startTransition).not.toHaveBeenCalled();
   await act(async () => {
-    renderer.update(tree(state));
+    await renderer.rerenderAsync(tree(state));
   });
   expect(context.startTransition).toHaveBeenCalledWith(
     expect.objectContaining({ groupId: 'person', direction: 'forward' })
@@ -144,7 +150,7 @@ test('waits for destination layout and native handoff before releasing retained 
     jest.mocked(animateOwnedProgress).mock.calls[0]![0].onComplete;
   context = { ...context, overlayHandoffSessionId: 'session' };
   await act(async () => {
-    renderer.update(tree(state));
+    await renderer.rerenderAsync(tree(state));
     completion(1, 'session');
   });
   expect(onFinish).toHaveBeenCalledTimes(1);
@@ -152,7 +158,7 @@ test('waits for destination layout and native handoff before releasing retained 
   expect(dispatch).not.toHaveBeenCalled();
   context = { ...context, overlayHandoffSessionId: null };
   await act(async () => {
-    renderer.update(tree(state));
+    await renderer.rerenderAsync(tree(state));
   });
   expect(dispatch).toHaveBeenCalledWith({
     type: 'transitionEnd',
@@ -163,22 +169,22 @@ test('waits for destination layout and native handoff before releasing retained 
 
 test('falls back when no shared pair can be prepared', async () => {
   jest.mocked(context.startTransition).mockResolvedValue(null);
-  await act(async () => {
-    renderer = create(tree(prepared()));
-  });
+
+  renderer = await renderComponent(tree(prepared()));
+
   expect(result.enabled).toBe(false);
   expect(animateOwnedProgress).not.toHaveBeenCalled();
 });
 
 test('ignores an animation completion after the sheet starts closing', async () => {
   const state = prepared();
-  await act(async () => {
-    renderer = create(tree(state));
-  });
+
+  renderer = await renderComponent(tree(state));
+
   const completion =
     jest.mocked(animateOwnedProgress).mock.calls[0]![0].onComplete;
   await act(async () => {
-    renderer.update(tree(trayReducer(state, { type: 'dismiss' })));
+    await renderer.rerenderAsync(tree(trayReducer(state, { type: 'dismiss' })));
   });
   await act(async () => {
     completion(1, 'session');
@@ -199,11 +205,10 @@ test('traces source capture through confirmed presentation across the destinatio
     })
   );
   try {
+    renderer = await renderComponent(tree(pending()));
+
     await act(async () => {
-      renderer = create(tree(pending()));
-    });
-    await act(async () => {
-      renderer.update(tree(prepared()));
+      await renderer.rerenderAsync(tree(prepared()));
     });
     const config = jest.mocked(context.startTransition).mock.calls[0]![0];
     expect(config.trace).toBeDefined();
@@ -237,11 +242,10 @@ test('without diagnostics, shared navigation allocates no preparation stages or 
   const start = jest.spyOn(PreparationTrace.prototype, 'start');
   const finish = jest.spyOn(PreparationTrace.prototype, 'finish');
   try {
+    renderer = await renderComponent(tree(pending()));
+
     await act(async () => {
-      renderer = create(tree(pending()));
-    });
-    await act(async () => {
-      renderer.update(tree(prepared()));
+      await renderer.rerenderAsync(tree(prepared()));
     });
     const config = jest.mocked(context.startTransition).mock.calls[0]![0];
     expect(config).not.toHaveProperty('trace');

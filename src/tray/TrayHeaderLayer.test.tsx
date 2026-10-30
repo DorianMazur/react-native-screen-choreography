@@ -3,7 +3,11 @@ import Animated, {
   makeMutable,
   useAnimatedReaction,
 } from 'react-native-reanimated';
-import TestRenderer, { act } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { TrayHeaderLayer } from './TrayHeaderLayer';
 
 beforeEach(() => jest.clearAllMocks());
@@ -32,11 +36,11 @@ test('crossfades both live headers from the supplied timeline with one input own
       </TrayHeaderLayer>
     </>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render());
-  });
-  const layers = () => renderer.root.findAllByType(TrayHeaderLayer);
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render());
+
+  const layers = () => renderer.UNSAFE_root.findAllByType(TrayHeaderLayer);
   const opacity = () =>
     layers().map(
       (layer) =>
@@ -49,7 +53,7 @@ test('crossfades both live headers from the supplied timeline with one input own
   act(() => acknowledge(prepare(), null));
   for (const value of [0.25, 0.5, 1, 1.2, -0.1]) {
     progress.value = value;
-    act(() => renderer.update(render()));
+    act(() => renderer.rerender(render()));
     const clamped = Math.max(0, Math.min(1, value));
     expect(opacity()).toEqual([1 - clamped, clamped]);
   }
@@ -78,13 +82,13 @@ test('gates the first animated frame and rejects stale acknowledgements after re
       Header
     </TrayHeaderLayer>
   );
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(render(1, 2));
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(render(1, 2));
+
   const hidden = () =>
-    StyleSheet.flatten(renderer.root.findByType(View).props.style).opacity ===
-    0;
+    StyleSheet.flatten(renderer.UNSAFE_root.findByType(View).props.style)
+      .opacity === 0;
   const reaction = () => {
     const [prepare, acknowledge] = jest
       .mocked(useAnimatedReaction)
@@ -94,16 +98,16 @@ test('gates the first animated frame and rejects stale acknowledgements after re
   };
   const stale = reaction();
   expect(hidden()).toBe(true);
-  act(() => renderer.update(render(2, 2)));
+  act(() => renderer.rerender(render(2, 2)));
   act(stale);
   expect(hidden()).toBe(true);
   act(reaction());
   expect(hidden()).toBe(false);
-  act(() => renderer.update(render(2, 3)));
+  act(() => renderer.rerender(render(2, 3)));
   const afterUnmount = reaction();
   act(stale);
   expect(hidden()).toBe(true);
-  act(() => renderer.update(render(2)));
+  act(() => renderer.rerender(render(2)));
   expect(hidden()).toBe(false);
   act(() => renderer.unmount());
   act(afterUnmount);

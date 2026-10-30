@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
 import {
   ChoreographyContext,
@@ -26,7 +30,7 @@ const lineage = {
   targetScreenId: 'detail',
   spring: { damping: 32, stiffness: 260 },
 };
-const trees: ReactTestRenderer[] = [];
+const trees: RenderResult[] = [];
 const originalOS = Platform.OS;
 let frames: ((timestamp: number) => void)[];
 
@@ -100,15 +104,15 @@ async function mountRemoval({
     removal = useChoreographyScreenRemoval({ screenId });
     return null;
   }
-  await act(async () => {
-    trees.push(
-      create(
-        <ChoreographyContext.Provider value={context}>
-          <Harness />
-        </ChoreographyContext.Provider>
-      )
-    );
-  });
+
+  trees.push(
+    renderComponent(
+      <ChoreographyContext.Provider value={context}>
+        <Harness />
+      </ChoreographyContext.Provider>
+    )
+  );
+
   return {
     context,
     removal,

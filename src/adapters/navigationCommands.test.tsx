@@ -1,5 +1,9 @@
 import { useLayoutEffect, useState } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { useChoreographyNavigation } from './react-navigation';
 import { useChoreographyRouter } from './expo-router';
 import {
@@ -41,7 +45,7 @@ const { useChoreographyNavigator } = jest.requireMock(
 const { waitForNavigationTarget } = jest.requireMock(
   '../core/navigationTarget'
 );
-let tree: ReactTestRenderer | undefined;
+let tree: RenderResult | undefined;
 
 function makeNavigation() {
   return { navigate: jest.fn(), goBack: jest.fn() };
@@ -127,17 +131,17 @@ test.each(['React Navigation', 'Expo push', 'Expo navigate'] as const)(
       );
     }
     const Caller = adapter === 'React Navigation' ? NativeCaller : ExpoCaller;
-    await act(async () => {
-      tree = create(
-        <ChoreographyContext.Provider value={context}>
-          <Caller attempt={false} />
-        </ChoreographyContext.Provider>
-      );
-    });
+
+    tree = renderComponent(
+      <ChoreographyContext.Provider value={context}>
+        <Caller attempt={false} />
+      </ChoreographyContext.Provider>
+    );
+
     routeHooks.useIsFocused.mockReturnValue(false);
     routeHooks.useRoute.mockReturnValue({ key: 'source-current' });
     await act(async () =>
-      tree!.update(
+      tree!.rerender(
         <ChoreographyContext.Provider value={context}>
           <Caller attempt />
         </ChoreographyContext.Provider>
@@ -203,15 +207,15 @@ test.each(['React Navigation', 'Expo Router'] as const)(
     const firstNavigation = makeNavigation();
     const firstRouter = makeRouter();
     routeHooks.useNavigation.mockReturnValue(firstNavigation);
-    await act(async () => {
-      tree = create(
-        adapter === 'React Navigation' ? (
-          <NativeCaller navigation={firstNavigation} />
-        ) : (
-          <ExpoCaller router={firstRouter} />
-        )
-      );
-    });
+
+    tree = renderComponent(
+      adapter === 'React Navigation' ? (
+        <NativeCaller navigation={firstNavigation} />
+      ) : (
+        <ExpoCaller router={firstRouter} />
+      )
+    );
+
     await start();
     const request = core.navigate.mock.calls[0]![0];
     const nextNavigation = makeNavigation();
@@ -219,7 +223,7 @@ test.each(['React Navigation', 'Expo Router'] as const)(
     routeHooks.useRoute.mockReturnValue({ key: 'source-next' });
     routeHooks.useNavigation.mockReturnValue(nextNavigation);
     await act(async () =>
-      tree!.update(
+      tree!.rerender(
         adapter === 'React Navigation' ? (
           <NativeCaller navigation={nextNavigation} />
         ) : (
@@ -263,15 +267,15 @@ test('React Navigation retains commands while forwarding the latest core and nav
   const originalNavigation = makeNavigation();
   const originalCore = makeCoreCommands();
   useChoreographyNavigator.mockReturnValue(originalCore);
-  await act(async () => {
-    tree = create(<Harness navigation={originalNavigation} />);
-  });
+
+  tree = renderComponent(<Harness navigation={originalNavigation} />);
+
   const retained = commands;
   const navigation = makeNavigation();
   const core = makeCoreCommands();
   useChoreographyNavigator.mockReturnValue(core);
   routeHooks.useRoute.mockReturnValue({ key: 'source-current' });
-  await act(async () => tree!.update(<Harness navigation={navigation} />));
+  await act(async () => tree!.rerender(<Harness navigation={navigation} />));
 
   expect(commands).toBe(retained);
   const params = { id: 42, transitionGroup: 'legacy-group' };
@@ -307,9 +311,9 @@ test('Expo Router retains push, navigate and back while forwarding the latest bi
   const originalCore = makeCoreCommands();
   useChoreographyNavigator.mockReturnValue(originalCore);
   routeHooks.useNavigation.mockReturnValue(makeNavigation());
-  await act(async () => {
-    tree = create(<Harness router={originalRouter} />);
-  });
+
+  tree = renderComponent(<Harness router={originalRouter} />);
+
   const retained = commands;
   const router = makeRouter();
   const core = makeCoreCommands();
@@ -317,7 +321,7 @@ test('Expo Router retains push, navigate and back while forwarding the latest bi
   useChoreographyNavigator.mockReturnValue(core);
   routeHooks.useRoute.mockReturnValue({ key: 'source-current' });
   routeHooks.useNavigation.mockReturnValue(navigation);
-  await act(async () => tree!.update(<Harness router={router} />));
+  await act(async () => tree!.rerender(<Harness router={router} />));
 
   expect(commands).toBe(retained);
   for (const method of ['push', 'navigate'] as const) {

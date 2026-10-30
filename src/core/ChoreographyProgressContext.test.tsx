@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyContext,
   ChoreographyControlsContext,
@@ -14,7 +18,7 @@ jest.mock('react-native-reanimated', () => ({
 }));
 
 test('notifies progress consumers only when screen-visible session fields change', async () => {
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   let state!: ReturnType<typeof useChoreographyProgress>;
   const renders = jest.fn();
   function Consumer() {
@@ -54,10 +58,9 @@ test('notifies progress consumers only when screen-visible session fields change
         </ChoreographyContext.Provider>
       </ChoreographyControlsContext.Provider>
     );
-    await act(async () => {
-      if (tree) tree.update(content);
-      else tree = create(content);
-    });
+
+    if (tree) tree.rerender(content);
+    else tree = renderComponent(content);
   }
   try {
     await render(null, null);
@@ -88,7 +91,7 @@ test('notifies progress consumers only when screen-visible session fields change
 });
 
 test('pending route names resolve to the focused screen instance before a session exists', async () => {
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   const states = new Map<string, ReturnType<typeof useChoreographyProgress>>();
   function Consumer({ id }: { id: string }) {
     states.set(id, useChoreographyProgress());
@@ -105,24 +108,23 @@ test('pending route names resolve to the focused screen instance before a sessio
     progress: controls.progress,
   } as ChoreographyContextType;
   try {
-    await act(async () => {
-      tree = create(
-        <ChoreographyControlsContext.Provider value={controls}>
-          <ChoreographyContext.Provider value={context}>
-            <ChoreographyScreenBase
-              screenId="detail"
-              instanceId="detail.old"
-              isFocused={false}
-            >
-              <Consumer id="old" />
-            </ChoreographyScreenBase>
-            <ChoreographyScreenBase screenId="detail" instanceId="detail.new">
-              <Consumer id="new" />
-            </ChoreographyScreenBase>
-          </ChoreographyContext.Provider>
-        </ChoreographyControlsContext.Provider>
-      );
-    });
+    tree = renderComponent(
+      <ChoreographyControlsContext.Provider value={controls}>
+        <ChoreographyContext.Provider value={context}>
+          <ChoreographyScreenBase
+            screenId="detail"
+            instanceId="detail.old"
+            isFocused={false}
+          >
+            <Consumer id="old" />
+          </ChoreographyScreenBase>
+          <ChoreographyScreenBase screenId="detail" instanceId="detail.new">
+            <Consumer id="new" />
+          </ChoreographyScreenBase>
+        </ChoreographyContext.Provider>
+      </ChoreographyControlsContext.Provider>
+    );
+
     expect(states.get('new')).toMatchObject({
       isPendingTarget: true,
       role: 'inactive',

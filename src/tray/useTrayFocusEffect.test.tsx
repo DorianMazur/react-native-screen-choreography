@@ -1,5 +1,9 @@
 import { useCallback, useLayoutEffect, useSyncExternalStore } from 'react';
-import TestRenderer, { act } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { createTrayStateStore } from './state';
 import { useTrayFocusEffect } from './useTrayFocusEffect';
 import type { TrayFocusEffectOptions } from './types';
@@ -33,10 +37,10 @@ function fixture(afterTransition = true) {
       </>
     );
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Screens value="first" />);
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(<Screens value="first" />);
+
   const state = store.getStackSnapshot;
   const dispatch = (action: Parameters<typeof store.dispatch>[0]) =>
     act(() => {
@@ -63,7 +67,7 @@ function fixture(afterTransition = true) {
       id: state().preparation!.id,
     });
   const update = (value: string) =>
-    act(() => renderer.update(<Screens value={value} />));
+    act(() => renderer.rerender(<Screens value={value} />));
   const unmount = () => act(() => renderer.unmount());
   const current = () => state().entries.at(-1)!.key;
   return {
@@ -272,15 +276,15 @@ test('rechecks eligibility when another commit effect navigates before delivery'
     useTrayFocusEffect(store, '1', effect, { afterTransition: true });
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(
-      <>
-        <Navigate />
-        <Observer />
-      </>
-    );
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(
+    <>
+      <Navigate />
+      <Observer />
+    </>
+  );
+
   expect(effect).not.toHaveBeenCalled();
   act(() => renderer.unmount());
 });
@@ -295,23 +299,23 @@ test('new observers on an already settled route run immediately and changes to o
     useTrayFocusEffect(store, '1', effect, options);
     return null;
   }
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(<Observer />);
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(<Observer />);
+
   expect(effect).toHaveBeenCalledTimes(1);
-  act(() => renderer.update(<Observer options={{ afterTransition: true }} />));
+  act(() =>
+    renderer.rerender(<Observer options={{ afterTransition: true }} />)
+  );
   expect(cleanup).toHaveBeenCalledTimes(1);
   act(() => {
     store.dispatch({ type: 'settled', session: 1, index: 1 });
   });
   expect(effect).toHaveBeenCalledTimes(2);
   act(() => renderer.unmount());
-  act(() => {
-    renderer = TestRenderer.create(
-      <Observer options={{ afterTransition: true }} />
-    );
-  });
+
+  renderer = renderComponent(<Observer options={{ afterTransition: true }} />);
+
   expect(effect).toHaveBeenCalledTimes(3);
   act(() => renderer.unmount());
 });

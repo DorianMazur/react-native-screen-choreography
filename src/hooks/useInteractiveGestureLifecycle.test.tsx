@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
 import type { InteractiveTransitionHandle } from '../types';
 import { useInteractiveGestureLifecycle } from './useInteractiveGestureLifecycle';
@@ -87,7 +91,7 @@ function makeHandle(id = 'session') {
 }
 
 describe('interactive gesture lifecycle', () => {
-  let tree: ReactTestRenderer | undefined;
+  let tree: RenderResult | undefined;
   let lifecycle: Lifecycle;
   let controller: Controller;
   let options: Options;
@@ -110,14 +114,13 @@ describe('interactive gesture lifecycle', () => {
       onFallbackFinish: fallback,
       ...overrides,
     };
-    await act(async () => {
-      tree = create(<Harness />);
-    });
+
+    tree = renderComponent(<Harness />);
   }
 
   async function rerender(overrides: Partial<Options> = {}) {
     options = { ...options, ...overrides };
-    await act(async () => tree!.update(<Harness />));
+    await act(async () => tree!.rerender(<Harness />));
   }
 
   async function unmount() {

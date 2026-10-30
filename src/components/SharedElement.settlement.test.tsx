@@ -1,5 +1,9 @@
 import { useContext } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { ChoreographyScreenBase } from './ChoreographyScreenBase';
 import { SharedElement } from './SharedElement';
@@ -57,7 +61,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
   let context!: ChoreographyContextType;
   let actions!: ChoreographyActionsType;
   let presentation!: SharedElementPresentation;
-  let tree: ReactTestRenderer | undefined;
+  let tree: RenderResult | undefined;
 
   function Consumer() {
     context = useContext(ChoreographyContext)!;
@@ -93,21 +97,21 @@ describe('SharedElement owner settlement when the destination route goes away', 
   }
 
   const ownerHostName = () =>
-    tree!.root.findByType(Portal).props.hostName as string | undefined;
+    tree!.UNSAFE_root.findByType(Portal).props.hostName as string | undefined;
 
   const expectCollapsedAtHome = () => {
     expect(ownerHostName()).toBeUndefined();
-    expect(tree!.root.findByType(Portal).parent!.props.pointerEvents).toBe(
-      'auto'
-    );
+    expect(
+      tree!.UNSAFE_root.findByType(Portal).parent!.props.pointerEvents
+    ).toBe('auto');
     expect(presentation.settled).toBe('collapsed');
     expect(presentation.presentationProgress.value).toBe(0);
   };
 
   const expectExpandedOnDetail = () => {
-    expect(tree!.root.findByType(Portal).parent!.props.pointerEvents).toBe(
-      'box-only'
-    );
+    expect(
+      tree!.UNSAFE_root.findByType(Portal).parent!.props.pointerEvents
+    ).toBe('box-only');
     expect(ownerHostName()).toBe(
       `screen-choreography:live:destination:["detail","${GROUP}","medal"]`
     );
@@ -116,7 +120,7 @@ describe('SharedElement owner settlement when the destination route goes away', 
   };
 
   const removeDetailRoute = async () => {
-    await act(async () => tree!.update(<App detail={false} />));
+    await act(async () => tree!.rerender(<App detail={false} />));
   };
 
   const openDetail = async () => {
@@ -186,9 +190,9 @@ describe('SharedElement owner settlement when the destination route goes away', 
       expect(ownerHostName()).toContain('overlay');
       await act(async () => {
         if (presentationFailure === 'native') {
-          tree!.root
-            .findByType(NativeTransitionHost)
-            .props.onPresentationFailed(context.activeSession!.id);
+          tree!.UNSAFE_root.findByType(
+            NativeTransitionHost
+          ).props.onPresentationFailed(context.activeSession!.id);
         }
         await jest.runAllTimersAsync();
         await back;
@@ -228,9 +232,9 @@ describe('SharedElement owner settlement when the destination route goes away', 
                 tags
               )
     );
-    await act(async () => {
-      tree = create(<App detail />, { createNodeMock: () => ({}) });
-    });
+
+    tree = renderComponent(<App detail />, { createNodeMock: () => ({}) });
+
     await act(async () => {
       context.setScreenReady('list', true);
       context.setScreenReady('detail', true);
@@ -293,9 +297,9 @@ describe('SharedElement owner settlement when the destination route goes away', 
       const sessionId = context.activeSession!.id;
       await act(async () => {
         if (failure === 'native') {
-          tree!.root
-            .findByType(NativeTransitionHost)
-            .props.onPresentationFailed(sessionId);
+          tree!.UNSAFE_root.findByType(
+            NativeTransitionHost
+          ).props.onPresentationFailed(sessionId);
         } else if (failure === 'cancel') {
           context.cancelTransition(sessionId);
         }

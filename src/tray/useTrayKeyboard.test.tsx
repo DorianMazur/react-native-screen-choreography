@@ -1,6 +1,10 @@
 import React from 'react';
 import { StyleSheet, View } from 'react-native';
-import TestRenderer, { act } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import type { KeyboardHandler } from 'react-native-keyboard-controller';
 import { createTray } from './createTray';
 import { useTrayKeyboard } from './useTrayKeyboard';
@@ -54,14 +58,14 @@ jest.mock('../native/NativeOverlay', () => ({
   NativeOverlay: 'Overlay',
 }));
 
-const renderers: TestRenderer.ReactTestRenderer[] = [];
+const renderers: RenderResult[] = [];
 const event = { height: 300, progress: 1, duration: 250, target: 1 };
 
 function render(element: React.ReactElement) {
-  let renderer!: TestRenderer.ReactTestRenderer;
-  act(() => {
-    renderer = TestRenderer.create(element);
-  });
+  let renderer!: RenderResult;
+
+  renderer = renderComponent(element);
+
   renderers.push(renderer);
   return renderer;
 }
@@ -243,7 +247,9 @@ test('shares the host keyboard values with screen and header consumers without p
   expect(pageKeyboard.progress.value).toBe(0.5);
   expect(pageRenders).toHaveBeenCalledTimes(renders);
   act(() => handlers.current.onEnd!(event));
-  const sheet = renderer.root.findByType('BottomSheet' as React.ElementType);
+  const sheet = renderer.UNSAFE_root.findByType(
+    'BottomSheet' as React.ElementType
+  );
   expect(StyleSheet.flatten(sheet.props.style).bottom).toBe(
     pageKeyboard.height.value
   );

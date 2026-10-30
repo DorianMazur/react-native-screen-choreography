@@ -1,4 +1,8 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { makeMutable } from 'react-native-reanimated';
 import { scheduleOnRN } from 'react-native-worklets';
 import { useScreenAnimationLifetime } from './useScreenAnimationLifetime';
@@ -9,7 +13,7 @@ jest.mock('react-native-worklets', () => ({
 }));
 
 let frames: ((time: number) => void)[];
-const trees: ReactTestRenderer[] = [];
+const trees: RenderResult[] = [];
 
 beforeEach(() => {
   frames = [];
@@ -32,10 +36,10 @@ async function mountLifetime() {
     result = useScreenAnimationLifetime(overlayProgress);
     return null;
   }
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(<Harness />);
-  });
+  let tree!: RenderResult;
+
+  tree = renderComponent(<Harness />);
+
   trees.push(tree);
   return {
     overlayProgress,
@@ -43,7 +47,7 @@ async function mountLifetime() {
       return result;
     },
     tree,
-    update: () => act(async () => tree.update(<Harness />)),
+    update: () => act(async () => tree.rerender(<Harness />)),
   };
 }
 

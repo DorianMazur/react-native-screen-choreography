@@ -1,8 +1,12 @@
 import { StrictMode, Suspense, useEffect, useLayoutEffect } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { useStableCallback } from './useStableCallback';
 
-let tree: ReactTestRenderer | undefined;
+let tree: RenderResult | undefined;
 
 afterEach(async () => {
   await act(async () => tree?.unmount());
@@ -21,12 +25,11 @@ test('a retained command forwards arguments and the latest async result', async 
     return null;
   }
 
-  await act(async () => {
-    tree = create(<Harness callback={first} />);
-  });
+  tree = renderComponent(<Harness callback={first} />);
+
   const retained = command;
   expect(retained('detail', 1)).toBe(firstResult);
-  await act(async () => tree!.update(<Harness callback={second} />));
+  await act(async () => tree!.rerender(<Harness callback={second} />));
 
   expect(command).toBe(retained);
   expect(retained('updated-detail', 2)).toBe(secondResult);
@@ -58,10 +61,9 @@ test.each([
       return <Child command={command} value={value} />;
     }
 
-    await act(async () => {
-      tree = create(<Harness value={1} />);
-    });
-    await act(async () => tree!.update(<Harness value={2} />));
+    tree = renderComponent(<Harness value={1} />);
+
+    await act(async () => tree!.rerender(<Harness value={2} />));
     expect(called.mock.calls).toEqual([
       [1, 1],
       [2, 2],
@@ -78,16 +80,15 @@ test('a suspended render does not replace the last committed command', async () 
     return null;
   }
 
-  await act(async () => {
-    tree = create(
-      <Suspense fallback={null}>
-        <Harness value={1} />
-      </Suspense>
-    );
-  });
+  tree = renderComponent(
+    <Suspense fallback={null}>
+      <Harness value={1} />
+    </Suspense>
+  );
+
   const retained = command;
   await act(async () =>
-    tree!.update(
+    tree!.rerender(
       <Suspense fallback={null}>
         <Harness value={2} suspend />
       </Suspense>
@@ -96,7 +97,7 @@ test('a suspended render does not replace the last committed command', async () 
 
   expect(retained()).toBe(1);
   await act(async () =>
-    tree!.update(
+    tree!.rerender(
       <Suspense fallback={null}>
         <Harness value={3} />
       </Suspense>
@@ -116,17 +117,17 @@ test('Strict Mode replay preserves identity and forwards thrown errors', async (
     });
     return null;
   }
-  await act(async () => {
-    tree = create(
-      <StrictMode>
-        <Harness fail={false} />
-      </StrictMode>
-    );
-  });
+
+  tree = renderComponent(
+    <StrictMode>
+      <Harness fail={false} />
+    </StrictMode>
+  );
+
   const retained = command;
   expect(retained()).toBe(1);
   await act(async () =>
-    tree!.update(
+    tree!.rerender(
       <StrictMode>
         <Harness fail />
       </StrictMode>
