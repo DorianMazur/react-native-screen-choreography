@@ -2,6 +2,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import {
   copyFileSync,
+  existsSync,
   mkdirSync,
   mkdtempSync,
   readFileSync,
@@ -44,6 +45,12 @@ import plistlib,sys
 with open(sys.argv[1], 'wb') as f: plistlib.dump({'Tests': {'TestBundlePath': 'fixture'}}, f)
 PY
 else
+  while [[ "$1" != -xctestrun ]]; do shift; done
+  python3 - "$2" "$PERFORMANCE_OUTPUT/test-environment.json" <<'PY'
+import json,plistlib,sys
+with open(sys.argv[1], 'rb') as f: settings = plistlib.load(f)
+with open(sys.argv[2], 'w') as f: json.dump(settings['Tests']['EnvironmentVariables'], f)
+PY
   echo 'XCTest fixture finished'
   exit "$TEST_EXIT_STATUS"
 fi
@@ -71,13 +78,26 @@ fi
       new URL('./run-ios.sh', import.meta.url),
       path.join(root, 'scripts/performance/run-ios.sh')
     );
-    for (const [buildStatus, testStatus, reportStatus, expectedStatus] of [
-      [0, 0, 0, 0],
-      [0, 0, 1, 1],
-      [0, 65, 1, 65],
-      [66, 0, 1, 66],
-    ]) {
-      const output = path.join(root, `results-${expectedStatus}`);
+    for (const [
+      index,
+      {
+        screenCycles,
+        trayCycles,
+        buildStatus = 0,
+        testStatus = 0,
+        reportStatus = 0,
+        expectedStatus = 0,
+      },
+    ] of [
+      {},
+      { screenCycles: '2', trayCycles: '4' },
+      { reportStatus: 1, expectedStatus: 1 },
+      { testStatus: 65, reportStatus: 1, expectedStatus: 65 },
+      { buildStatus: 66, reportStatus: 1, expectedStatus: 66 },
+      { trayCycles: '6', expectedStatus: 2 },
+      { screenCycles: '0', expectedStatus: 2 },
+    ].entries()) {
+      const output = path.join(root, `results-${index}`);
       const result = spawnSync(
         'bash',
         [path.join(root, 'scripts/performance/run-ios.sh')],
@@ -89,6 +109,8 @@ fi
             PATH: `${root}/bin:${process.env.PATH}`,
             USE_CCACHE: '0',
             PERFORMANCE_OUTPUT: output,
+            PERFORMANCE_SCREEN_TIMING_CYCLES: screenCycles,
+            PERFORMANCE_TRAY_TIMING_CYCLES: trayCycles,
             PERFORMANCE_DERIVED_DATA: path.join(root, 'derived'),
             BUILD_EXIT_STATUS: String(buildStatus),
             TEST_EXIT_STATUS: String(testStatus),
@@ -97,10 +119,20 @@ fi
         }
       );
       assert.equal(result.status, expectedStatus, result.stderr);
+      if (expectedStatus === 2) {
+        assert.match(
+          result.stderr,
+          /PERFORMANCE_(SCREEN|TRAY)_TIMING_CYCLES must be/
+        );
+        assert.equal(existsSync(output), false);
+        continue;
+      }
       const metadata = JSON.parse(
         readFileSync(path.join(output, 'metadata.json'), 'utf8')
       );
       assert.equal(metadata.lifecycleValidation, 2);
+      assert.equal(metadata.screenTimingCycles, Number(screenCycles ?? 20));
+      assert.equal(metadata.trayTimingCycles, Number(trayCycles ?? 5));
       assert.equal(metadata.runnerExitCode, buildStatus || testStatus);
       assert.equal(metadata.workletsVersion, 'test');
       const argumentsList = readFileSync(
@@ -118,11 +150,21 @@ fi
         argumentsList.filter((arg) => arg === 'test-without-building').length,
         buildStatus === 0 ? 1 : 0
       );
-      if (buildStatus === 0)
+      if (buildStatus === 0) {
+        assert.deepEqual(
+          JSON.parse(
+            readFileSync(path.join(output, 'test-environment.json'), 'utf8')
+          ),
+          {
+            PERFORMANCE_SCREEN_TIMING_CYCLES: screenCycles ?? '20',
+            PERFORMANCE_TRAY_TIMING_CYCLES: trayCycles ?? '5',
+          }
+        );
         assert.equal(
           readFileSync(path.join(output, 'tests.log'), 'utf8'),
           'XCTest fixture finished\n'
         );
+      }
     }
   } finally {
     rmSync(root, { recursive: true, force: true });

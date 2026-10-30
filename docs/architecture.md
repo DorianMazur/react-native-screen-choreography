@@ -401,6 +401,14 @@ the pushed entry; retained pages are released after the shared host settles.
 On iOS, a transition host nested inside a foreground overlay presents above that
 owning overlay while unrelated foreground overlays retain their ordering.
 
+iOS trays stay in the anchor's window, so overlays added to that window later,
+such as toasts or a lock screen, still cover them. The tray layer owns a view
+controller that is never added to the controller hierarchy: UIKit menus and
+React Native modals find it, and it forwards each presentation to the topmost
+controller above the anchor, including when the tray opens above an existing
+native modal. Status bar, orientation and key window stay with the app. Android
+keeps the tray in its existing Activity view hierarchy.
+
 Each entry has one live React instance. Previous entries stay mounted for Back;
 popped or replaced entries remain until their transition finishes. Native sheet
 settlement releases the whole stack. Pushes normally require an open, idle stack.

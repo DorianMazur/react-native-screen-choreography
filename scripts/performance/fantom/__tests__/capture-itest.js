@@ -38,6 +38,11 @@ describe('Production Fabric capture', () => {
     const read = fixture.request();
     expect(typeof read).toBe('function');
     expect(read(true)).toBe(true);
+    // Reading failure diagnostics must not consume or invalidate the batch.
+    const diagnostics = read('diagnostics');
+    expect(diagnostics.captureStatus).toBe('captured');
+    expect(diagnostics.capturedFrames).toBe(10);
+    expect(diagnostics.pendingMount).toBe(false);
     expect(read()).toEqual(expectedFrames(10));
     expect(read()).toBe(null);
     expect(read(true)).toBe(true);

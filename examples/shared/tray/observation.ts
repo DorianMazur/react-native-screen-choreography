@@ -4,6 +4,7 @@ import { createContext, useContext, useLayoutEffect, useRef } from 'react';
 export const TrayExampleObservation = createContext<{
   render: (name: string, phase: 'mount' | 'update') => void;
   mount: (name: string) => () => void;
+  scrollEnd?: (name: string) => void;
 } | null>(null);
 
 export function useTrayExampleObservation(name: string) {
@@ -15,4 +16,5 @@ export function useTrayExampleObservation(name: string) {
     mounted.current = true;
   });
   useLayoutEffect(() => observer?.mount(name), [observer, name]);
+  return observer;
 }

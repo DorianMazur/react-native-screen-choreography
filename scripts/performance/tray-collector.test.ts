@@ -34,6 +34,28 @@ for (const scenario of ['tray-wallet', 'tray-gallery'] as const) {
   });
 }
 
+test('an incomplete lifecycle report preserves the fixture rejection reason', () => {
+  const data = trayFixture('tray-wallet');
+  data.samples = data.samples.filter(
+    (sample: InputRecord) => sample.kind !== 'session-active'
+  );
+  data.valid = false;
+  data.errors = ['tray-shared-probe-rejected'];
+  const summary = summarize([{ file: 'failed-tray.json', data }], {
+    platform: 'android',
+    mode: 'native-release',
+    metadata: { lifecycleValidation: 2, timingCycles: 1 },
+  });
+  assert.ok(
+    summary.errors.some(
+      (error) =>
+        error.includes('Missing or duplicate lifecycle events') &&
+        error.includes('tray-shared-probe-rejected')
+    )
+  );
+  assert.deepEqual(summary.metrics, {});
+});
+
 const corruptions: Record<string, (data: InputRecord) => void> = {
   'missing breadcrumbs': (data) => {
     data.samples = [];

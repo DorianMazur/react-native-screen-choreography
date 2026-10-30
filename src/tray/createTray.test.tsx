@@ -79,8 +79,8 @@ jest.mock('@swmansion/react-native-bottom-sheet', () => ({
     children,
   ModalBottomSheet: 'BottomSheet',
 }));
-jest.mock('../components/ChoreographyOverlay', () => ({
-  ChoreographyOverlay: 'Overlay',
+jest.mock('../native/NativeOverlay', () => ({
+  NativeOverlay: 'Overlay',
 }));
 
 type Routes = { form: undefined; preview: { label: string } };
@@ -2047,6 +2047,35 @@ test('a null header and hidden handle leave no reserved header space', () => {
   expect(pageHeight()).toBe(windowHeight - 56);
   act(() => renderer.update(render(true, false)));
   expect(pageHeight()).toBe(windowHeight - 70);
+  act(() => renderer.unmount());
+});
+
+test('a custom header height hint applies until its first layout', () => {
+  let renderer!: TestRenderer.ReactTestRenderer;
+  act(() => {
+    renderer = TestRenderer.create(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack handleVisible={false} renderHeader={() => null}>
+          <Tray.Screen
+            name="form"
+            component={Form}
+            options={{ presentation: 'fullScreen', headerHeight: 0 }}
+          />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  act(() => navigation.present('form'));
+  const pageHeight = () => viewportStyle(renderer, Form).height;
+  const windowHeight = Dimensions.get('window').height;
+  expect(pageHeight()).toBe(windowHeight);
+  const header = renderer.root
+    .findByType(TrayHeaderLayer)
+    .findAllByType(View)
+    .find((view) => view.props.onLayout)!;
+  act(() => header.props.onLayout({ nativeEvent: { layout: { height: 40 } } }));
+  expect(pageHeight()).toBe(windowHeight - 40);
   act(() => renderer.unmount());
 });
 

@@ -5,6 +5,10 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo "Only native-release is supported." >&2; exit 2; }
+screen_cycles="${PERFORMANCE_SCREEN_TIMING_CYCLES:-20}"
+tray_cycles="${PERFORMANCE_TRAY_TIMING_CYCLES:-5}"
+[[ "$screen_cycles" =~ ^[1-9][0-9]*$ && "$screen_cycles" -le 99 ]] || { echo 'PERFORMANCE_SCREEN_TIMING_CYCLES must be in 1..99.' >&2; exit 2; }
+[[ "$tray_cycles" =~ ^[1-9]$ && "$tray_cycles" -le 5 ]] || { echo 'PERFORMANCE_TRAY_TIMING_CYCLES must be in 1..5.' >&2; exit 2; }
 
 if [[ -n "${ANDROID_HOME:-}" ]]; then export PATH="$ANDROID_HOME/platform-tools:$PATH"; fi
 if [[ -n "${ANDROID_SDK_ROOT:-}" ]]; then export PATH="$ANDROID_SDK_ROOT/platform-tools:$PATH"; fi
@@ -12,15 +16,13 @@ command -v adb >/dev/null || { echo 'Install Android SDK platform-tools and set 
 adb get-state >/dev/null
 # Let the booted emulator settle before starting the benchmark suite.
 sleep 10
-cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
 abi="${PERFORMANCE_ABI:-$(adb shell getprop ro.product.cpu.abi | tr -d '\r')}"
 output="${PERFORMANCE_OUTPUT:-$repo_root/artifacts/performance/android-$mode-$(date -u +%Y%m%dT%H%M%SZ)}"
 [[ ! -e "$output" ]] || { echo "Use a fresh PERFORMANCE_OUTPUT directory: $output" >&2; exit 2; }
 mkdir -p "$output/raw" "$output/report"
 output="$(cd "$output" && pwd)"
 printf 'Results: %s\n' "$output"
-printf 'Per scenario: %s measured timing/input round trips.\n' "$cycles"
+printf 'Per scenario: %s screen cycles; %s tray cycles.\n' "$screen_cycles" "$tray_cycles"
 
 export PERFORMANCE_DEVICE_MODEL="$(adb shell getprop ro.product.model | tr -d '\r')"
 export PERFORMANCE_OS_VERSION="$(adb shell getprop ro.build.version.release | tr -d '\r')"
@@ -40,7 +42,7 @@ if [[ "$PERFORMANCE_IS_EMULATOR" == 1 ]]; then
     }
   ' "${ANDROID_HOME:-${ANDROID_SDK_ROOT:-}}/emulator/source.properties")"
 fi
-node - "$output/metadata.json" "$abi" "$cycles" <<'NODE'
+node - "$output/metadata.json" "$abi" "$screen_cycles" "$tray_cycles" <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.argv[2], JSON.stringify({
   deviceModel: process.env.PERFORMANCE_DEVICE_MODEL,
@@ -55,7 +57,8 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
   workletsVersion: require('./examples/react-navigation/node_modules/react-native-worklets/package.json').version,
-  abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  abi: process.argv[3], screenTimingCycles: Number(process.argv[4]),
+  trayTimingCycles: Number(process.argv[5]),
   lifecycleValidation: 2,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
@@ -66,7 +69,8 @@ arguments=(
   --no-daemon --console=plain
   -PscreenChoreographyTracePresentation=true
   "-PreactNativeArchitectures=$abi"
-  "-Pandroid.testInstrumentationRunnerArguments.performanceTimingCycles=$cycles"
+  "-Pandroid.testInstrumentationRunnerArguments.performanceScreenTimingCycles=$screen_cycles"
+  "-Pandroid.testInstrumentationRunnerArguments.performanceTrayTimingCycles=$tray_cycles"
 )
 # These directories contain only this example's previous benchmark exports.
 # Clear them so stale data cannot make a failed collection appear successful.

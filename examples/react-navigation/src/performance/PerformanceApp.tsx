@@ -369,7 +369,10 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         }
       },
       request: (direction) => {
-        if (!collector.request(direction)) return false;
+        if (!collector.request(direction)) {
+          collector.note('navigation-request-rejected', { direction });
+          return false;
+        }
         motionRequest.value = collector.currentRequest();
         setProbeAck(null);
         setExported(false);

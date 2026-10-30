@@ -543,7 +543,7 @@ export class TransitionCoordinator {
     }));
     const endCaptureStage = config.trace?.start('fabric-mounted-capture');
     let captureEnded = false;
-    const endCapture = (details: { ready: boolean }) => {
+    const endCapture = (details: Record<string, string | number | boolean>) => {
       if (captureEnded) return;
       captureEnded = true;
       endCaptureStage?.(details);
@@ -552,6 +552,9 @@ export class TransitionCoordinator {
       entries,
       isCurrent,
       cancellers: this.preparationCancellers,
+      onFailure: config.trace
+        ? (details) => endCapture({ ...details, ready: false })
+        : undefined,
     });
     const snapshot = this.normalizeLayout(
       capture instanceof Promise ? await capture : capture,

@@ -42,6 +42,8 @@ struct NativeCaptureRequest {
   bool invalidated{false};
   std::weak_ptr<const RootShadowNode> mountedRoot;
   std::vector<CapturedFrame> frames;
+  const char *captureStatus{"awaiting-mount"};
+  size_t mountAttempts{0};
 };
 
 class MountedLayouts;
@@ -166,6 +168,9 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
             return jsi::Value::undefined();
           }
           std::lock_guard lock(owner->mutex);
+          if (count == 1 && args[0].isString() && args[0].asString(rt).utf8(rt) == "diagnostics") {
+            return owner->owner ? owner->owner->captureDiagnostics(rt, request) : jsi::Value::null();
+          }
           if (validateOnly) return jsi::Value(owner->owner && owner->owner->validateNativeCapture(request));
           if (!owner->owner || count != 0) return jsi::Value::null();
           return owner->owner->readNativeCapture(rt, request);
@@ -254,9 +259,14 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
 
   void refreshRequest(const std::shared_ptr<NativeCaptureRequest> &request,
       const RootShadowNode::Shared &root) {
-    if (invalidated_.load() || request->consumed.load() || !isCurrent(root)) return;
+    if (invalidated_.load() || request->consumed.load()) return;
     std::lock_guard lock(request->mutex);
     if (request->invalidated || request->consumed.load()) return;
+    ++request->mountAttempts;
+    if (!isCurrent(root)) {
+      request->captureStatus = "mount-not-current";
+      return;
+    }
     std::vector<CapturedFrame> frames;
     frames.reserve(request->tags.size());
     for (size_t i = 0; i < request->tags.size(); ++i) {
@@ -269,6 +279,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
         request->invalidated = true;
         request->mountedRoot.reset();
         request->frames.clear();
+        request->captureStatus = "endpoint-identity-changed";
         return;
       }
       const auto screenMetrics = LayoutableShadowNode::computeRelativeLayoutMetrics(screen->getFamily(), *root, {});
@@ -276,15 +287,54 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
       if (!valid(screenMetrics) || !valid(metrics)) {
         request->mountedRoot.reset();
         request->frames.clear();
+        request->captureStatus = !valid(screenMetrics) ? "invalid-screen-metrics" : "invalid-element-metrics";
         return;
       }
       const auto &frame = metrics.frame;
       frames.push_back({static_cast<double>(frame.origin.x), static_cast<double>(frame.origin.y),
           static_cast<double>(frame.size.width), static_cast<double>(frame.size.height)});
     }
-    if (!isCurrent(root)) return;
+    if (!isCurrent(root)) {
+      request->captureStatus = "commit-during-capture";
+      return;
+    }
     request->frames = std::move(frames);
     request->mountedRoot = root;
+    request->captureStatus = "captured";
+  }
+
+  jsi::Value captureDiagnostics(jsi::Runtime &runtime, const std::shared_ptr<NativeCaptureRequest> &request) {
+    jsi::Object result(runtime);
+    RootShadowNode::Shared capturedRoot;
+    RootShadowNode::Shared observedRoot;
+    {
+      std::lock_guard lock(request->mutex);
+      result.setProperty(runtime, "captureStatus", request->captureStatus);
+      result.setProperty(runtime, "mountAttempts", static_cast<double>(request->mountAttempts));
+      result.setProperty(runtime, "capturedFrames", static_cast<double>(request->frames.size()));
+      result.setProperty(runtime, "endpointCount", static_cast<double>(request->tags.size()));
+      result.setProperty(runtime, "invalidated", request->invalidated);
+      capturedRoot = request->mountedRoot.lock();
+    }
+    {
+      std::lock_guard lock(mutex_);
+      const auto found = roots_.find(request->surface);
+      if (found != roots_.end()) observedRoot = found->second.lock();
+    }
+    result.setProperty(runtime, "hasCapturedRoot", !!capturedRoot);
+    result.setProperty(runtime, "hasObservedRoot", !!observedRoot);
+    manager_.getShadowTreeRegistry().visit(request->surface, [&](const ShadowTree &tree) {
+      const auto &mounting = tree.getMountingCoordinator();
+      const auto base = mounting->getBaseRevision();
+      const auto committed = tree.getCurrentRevision();
+      result.setProperty(runtime, "pendingMount", mounting->hasPendingTransactions());
+      result.setProperty(runtime, "baseRevision", static_cast<double>(base.number));
+      result.setProperty(runtime, "committedRevision", static_cast<double>(committed.number));
+      result.setProperty(runtime, "observedMatchesBase", observedRoot == base.rootShadowNode);
+      result.setProperty(runtime, "capturedMatchesBase", capturedRoot == base.rootShadowNode);
+      result.setProperty(runtime, "baseMatchesCommitted", base.rootShadowNode == committed.rootShadowNode);
+    });
+    return result;
   }
 
   jsi::Value readNativeCapture(jsi::Runtime &runtime, const std::shared_ptr<NativeCaptureRequest> &request) {

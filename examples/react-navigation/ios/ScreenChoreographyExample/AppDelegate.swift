@@ -5,6 +5,15 @@ import ReactAppDependencyProvider
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
+  private static let scenario = ProcessInfo.processInfo.environment["PERFORMANCE_SCENARIO"]
+  private static let benchmarking = ["gallery", "trips", "wallet", "tray-wallet", "tray-gallery"].contains(scenario ?? "")
+
+  static func main() {
+    UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv,
+                      benchmarking ? NSStringFromClass(BenchmarkApplication.self) : nil,
+                      NSStringFromClass(AppDelegate.self))
+  }
+
   var window: UIWindow?
 
   var reactNativeDelegate: ReactNativeDelegate?
@@ -21,16 +30,12 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-    let scenario = ProcessInfo.processInfo.environment["PERFORMANCE_SCENARIO"]
-    let benchmarking = ["gallery", "trips", "wallet", "tray-wallet", "tray-gallery"].contains(scenario ?? "")
-    window = benchmarking
-      ? BenchmarkWindow(frame: UIScreen.main.bounds)
-      : UIWindow(frame: UIScreen.main.bounds)
+    window = UIWindow(frame: UIScreen.main.bounds)
 
     factory.startReactNative(
       withModuleName: "ScreenChoreographyExample",
       in: window,
-      initialProperties: benchmarking ? ["performanceScenario": scenario!] : nil,
+      initialProperties: Self.benchmarking ? ["performanceScenario": Self.scenario!] : nil,
       launchOptions: launchOptions
     )
 
