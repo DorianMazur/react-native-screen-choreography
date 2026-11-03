@@ -73,6 +73,8 @@ export interface TrayHeaderProps<
 > extends TrayScreenProps<P, N> {
   title: string;
   canGoBack: boolean;
+  /** Disable custom dismissal controls while true; tray.dismiss() remains available. */
+  dismissDisabled: boolean;
   /** The stack's textColor. */
   color: ColorValue;
 }
@@ -140,6 +142,8 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   renderHeader?: (props: TrayHeaderProps<P>) => ReactNode;
   /** Show the drag indicator above the header. Defaults to true; dragging stays enabled. */
   handleVisible?: boolean;
+  /** Hide the handle and block user dismissal (drag, backdrop, Close, and Back at the root). Code can still call dismiss(). Defaults to false. */
+  dismissDisabled?: boolean;
   /** Card resizing between screens, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
   /** Called when a new tray presentation begins. */

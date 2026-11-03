@@ -45,6 +45,7 @@ import {
 } from './TrayChoreography';
 import { readTrayDeclaration } from './declarations';
 import { useTrayKeyboard } from './useTrayKeyboard';
+import { useTrayNativeSheet } from './useTrayNativeSheet';
 import { useTrayFocusEffect } from './useTrayFocusEffect';
 import { TrayHeaderLayer } from './TrayHeaderLayer';
 import { animateTrayValue } from './animation';
@@ -242,11 +243,15 @@ export function createTray<P extends TrayParamList>() {
       if (!isPresented) return;
       const listener = BackHandler.addEventListener('hardwareBackPress', () => {
         if (Keyboard.isVisible()) Keyboard.dismiss();
-        else tray.back();
+        else if (
+          !lifecycleCallbacks.current.dismissDisabled ||
+          store.getStackSnapshot().entries.length > 1
+        )
+          tray.back();
         return true;
       });
       return () => listener.remove();
-    }, [tray, isPresented]);
+    }, [tray, isPresented, store]);
 
     return (
       <Context.Provider value={tray}>
@@ -315,6 +320,7 @@ function TrayHost<P extends TrayParamList>({
   textColor = '#18181b',
   renderHeader: stackRenderHeader,
   handleVisible: stackHandleVisible = true,
+  dismissDisabled = false,
   animation,
 }: Omit<TrayStackProps<P>, 'children' | 'animation'> & {
   animation: ResolvedTrayAnimation;
@@ -330,6 +336,9 @@ function TrayHost<P extends TrayParamList>({
   const { height, width } = useWindowDimensions();
   const DiagnosticObserver = useContext(TrayDiagnosticsContext)?.Observer;
   const keyboard = useTrayKeyboard();
+  const nativeSheet = useTrayNativeSheet();
+  const isBlockedSnap = (index: number) =>
+    index === 0 && dismissDisabled && state.phase !== 'closing';
   const keyboardHeight = keyboard.height;
   const keyboardProgress = keyboard.progress;
   const keyboardState = useMemo(
@@ -371,7 +380,8 @@ function TrayHost<P extends TrayParamList>({
   const headerHeightFor = (entry: TrayEntry) => {
     const options = screens[entry.name];
     const custom = options?.renderHeader ?? stackRenderHeader;
-    const handle = options?.handleVisible ?? stackHandleVisible;
+    const handle =
+      !dismissDisabled && (options?.handleVisible ?? stackHandleVisible);
     return (
       (handle ? HANDLE_HEIGHT : 0) +
       (custom
@@ -671,32 +681,48 @@ function TrayHost<P extends TrayParamList>({
         style={styles.fill}
         pointerEvents="box-none"
         accessibilityViewIsModal
-        onAccessibilityEscape={tray.back}
+        onAccessibilityEscape={() => {
+          if (canGoBack || !dismissDisabled) tray.back();
+        }}
       >
         <Pressable
           style={styles.fill}
           accessibilityRole="button"
           accessibilityLabel="Dismiss tray"
+          disabled={dismissDisabled}
+          accessibilityState={{ disabled: dismissDisabled }}
           onPress={tray.dismiss}
         />
         <BottomSheetProvider>
           <ModalBottomSheet
-            detents={[...DETENTS]}
+            detents={
+              dismissDisabled
+                ? [{ value: 0, programmatic: true }, 'content']
+                : [...DETENTS]
+            }
             index={state.phase === 'closing' ? 0 : 1}
             style={sheetPosition as ViewStyle}
-            wrapNativeView={Animated.createAnimatedComponent}
+            wrapNativeView={nativeSheet.wrapNativeView}
             extendUnderStatusBar
             animateIn={!reducedMotion}
             animateContentHeight={false}
             scrimColor="#000000"
             scrimOpacities={[0, 0.35]}
             onIndexChange={(index) => {
+              if (isBlockedSnap(index)) {
+                nativeSheet.reopen();
+                return;
+              }
               Keyboard.dismiss();
               dispatch({ type: 'snapped', session: state.session, index });
             }}
-            onSettle={(index) =>
-              dispatch({ type: 'settled', session: state.session, index })
-            }
+            onSettle={(index) => {
+              if (isBlockedSnap(index)) {
+                nativeSheet.reopen();
+                return;
+              }
+              dispatch({ type: 'settled', session: state.session, index });
+            }}
           >
             <Animated.View
               style={[styles.card, { backgroundColor }, cardGeometry]}
@@ -712,7 +738,8 @@ function TrayHost<P extends TrayParamList>({
                   const entryRenderHeader =
                     screens[entry.name]?.renderHeader ?? stackRenderHeader;
                   const handleVisible =
-                    screens[entry.name]?.handleVisible ?? stackHandleVisible;
+                    !dismissDisabled &&
+                    (screens[entry.name]?.handleVisible ?? stackHandleVisible);
                   const entryTitle = screens[entry.name]?.title ?? entry.name;
                   const entryCanGoBack = isActive
                     ? state.entries.length > 1
@@ -757,6 +784,7 @@ function TrayHost<P extends TrayParamList>({
                             route={entry as TrayRoute<P, keyof P & string>}
                             title={entryTitle}
                             canGoBack={entryCanGoBack}
+                            dismissDisabled={dismissDisabled}
                             color={textColor}
                           />
                         </TrayCustomHeader>
@@ -825,8 +853,13 @@ function TrayHost<P extends TrayParamList>({
                           <Pressable
                             accessibilityRole="button"
                             accessibilityLabel="Close tray"
+                            disabled={dismissDisabled}
+                            accessibilityState={{ disabled: dismissDisabled }}
                             onPress={tray.dismiss}
-                            style={styles.headerButton}
+                            style={[
+                              styles.headerButton,
+                              dismissDisabled && styles.disabledButton,
+                            ]}
                           >
                             <View
                               pointerEvents="none"
@@ -1344,6 +1377,7 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
+  disabledButton: { opacity: 0.4 },
   back: { fontSize: 36, lineHeight: 38 },
   close: { fontSize: 26 },
   titles: { flex: 1, justifyContent: 'center' },
