@@ -5,7 +5,10 @@ import Animated from 'react-native-reanimated';
 
 type WrapNativeView = NonNullable<ModalBottomSheetProps['wrapNativeView']>;
 
-export function useTrayNativeSheet() {
+export function useTrayNativeSheet(): {
+  wrapNativeView: WrapNativeView;
+  reopen: () => void;
+} {
   return useMemo(() => {
     let reopen: (() => void) | undefined;
     const wrapNativeView: WrapNativeView = (Component) => {
