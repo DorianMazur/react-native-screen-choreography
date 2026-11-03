@@ -2,11 +2,15 @@ import { initialTrayState, trayReducer } from './stack';
 import type { TrayAction, TrayStackState } from './stack';
 import type { TrayParamList, TrayRoute, TrayState } from './types';
 
-type TrayLifecycleEvent =
-  | 'onWillPresent'
-  | 'onPresent'
-  | 'onWillDismiss'
-  | 'onDismiss';
+type TrayLifecycleEvent<P extends TrayParamList> =
+  | {
+      type: 'onWillPresent' | 'onPresent' | 'onNavigate' | 'onWillDismiss';
+      route: TrayRoute<P, keyof P & string>;
+    }
+  | { type: 'onDismiss' };
+
+const topRoute = <P extends TrayParamList>(state: TrayStackState) =>
+  state.entries[state.entries.length - 1] as TrayRoute<P, keyof P & string>;
 
 type TrayDispatchObserver = (
   action: TrayAction,
@@ -18,7 +22,7 @@ export function createTrayStateStore<P extends TrayParamList>(
   observe?: TrayDispatchObserver
 ) {
   let stack = initialTrayState;
-  let lifecycleEvents: TrayLifecycleEvent[] = [];
+  let lifecycleEvents: TrayLifecycleEvent<P>[] = [];
   let snapshot: TrayState<P> = {
     route: undefined,
     depth: 0,
@@ -59,11 +63,20 @@ export function createTrayStateStore<P extends TrayParamList>(
       // Preserve every accepted event across React batching. A native close
       // can also start a queued presentation in this same state update.
       if (next.dismissals !== stack.dismissals)
-        lifecycleEvents.push('onDismiss');
-      if (next.session !== stack.session) lifecycleEvents.push('onWillPresent');
-      if (next.presented && !stack.presented) lifecycleEvents.push('onPresent');
+        lifecycleEvents.push({ type: 'onDismiss' });
+      if (next.session !== stack.session)
+        lifecycleEvents.push({ type: 'onWillPresent', route: topRoute(next) });
+      // Report the screen the sheet settled on, before a queued command drains.
+      if (next.presented && !stack.presented)
+        lifecycleEvents.push({ type: 'onPresent', route: topRoute(stack) });
+      if (
+        next.session === stack.session &&
+        next.phase !== 'closed' &&
+        topRoute(next) !== topRoute(stack)
+      )
+        lifecycleEvents.push({ type: 'onNavigate', route: topRoute(next) });
       if (next.phase === 'closing' && stack.phase !== 'closing')
-        lifecycleEvents.push('onWillDismiss');
+        lifecycleEvents.push({ type: 'onWillDismiss', route: topRoute(next) });
       // Commit before notifying subscribers so reentrant commands see the
       // accepted operation, even when the public route snapshot is unchanged.
       stack = next;

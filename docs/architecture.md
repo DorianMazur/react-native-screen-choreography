@@ -371,7 +371,7 @@ declarations during render; screens mount only when opened. Definitions must
 remain available while used by a live view or queued command.
 
 Software Mansion handles dragging, scrolling, the backdrop, and native sheet
-settlement. Reanimated handles page crossfades and card resizing during navigation.
+settlement. Reanimated handles page crossfades, optional full-screen slides, and card resizing during navigation.
 A settled compact page sizes the card directly through native layout. Transitioning
 and retained pages measure in fixed destination viewports so intermediate animated
 heights cannot feed back into layout. Each page's viewport and content anchor to
@@ -423,7 +423,7 @@ store; the provider subscribes to the stack, while `useTrayState` subscribes to
 selected public state. Screen content is memoized with its component, route, and
 stable navigation factory; custom header content is memoized with its renderer and
 header props.
-The store records whole-tray lifecycle events in dispatch order, and the provider
+The store records tray lifecycle and navigation events with their routes in dispatch order, and the provider
 delivers them after React commits. This preserves events when opening, closing,
 and queued reopening are batched. Each session records its first native open
 settlement separately from the requested detent, so a drag, content resize, or
