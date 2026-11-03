@@ -372,6 +372,7 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
         textColor={ink}
         renderHeader={(props) => <WalletHeader {...props} />}
         handleVisible={false}
+        fullScreenTransition="slide"
         animation={{ type: 'spring', stiffness: 300, damping: 30 }}
       >
         <Tray.Screen
@@ -382,7 +383,7 @@ export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
         <Tray.Screen
           name="send"
           component={Send}
-          options={{ title: 'Send money' }}
+          options={{ title: 'Send money', presentation: 'fullScreen' }}
         />
         <Tray.Screen
           name="recipient"

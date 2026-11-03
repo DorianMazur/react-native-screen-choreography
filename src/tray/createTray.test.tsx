@@ -33,6 +33,7 @@ import { TransitionCoordinator } from '../core/TransitionCoordinator';
 import type { KeyboardHandler } from 'react-native-keyboard-controller';
 import type {
   TrayHeaderProps,
+  TrayLifecycleDetails,
   TrayNavigation,
   TrayScreenProps,
   TrayStackProps,
@@ -226,9 +227,16 @@ function sheet(renderer: RenderResult) {
 function lifecycleFixture() {
   const events: string[] = [];
   const callbacks = {
-    onWillPresent: jest.fn(() => events.push('willPresent')),
-    onPresent: jest.fn(() => events.push('present')),
-    onWillDismiss: jest.fn(() => events.push('willDismiss')),
+    onWillPresent: jest.fn((_details: TrayLifecycleDetails<Routes>) =>
+      events.push('willPresent')
+    ),
+    onPresent: jest.fn((_details: TrayLifecycleDetails<Routes>) =>
+      events.push('present')
+    ),
+    onNavigate: jest.fn((_details: TrayLifecycleDetails<Routes>) => {}),
+    onWillDismiss: jest.fn((_details: TrayLifecycleDetails<Routes>) =>
+      events.push('willDismiss')
+    ),
     onDismiss: jest.fn(() => events.push('dismiss')),
   };
   const render = (options: Partial<TrayStackProps<Routes>> = callbacks) => (
@@ -489,6 +497,179 @@ test('tray lifecycle distinguishes opening from native settlement and ignores la
   expect(navigationState.isPresented).toBe(false);
   act(() => f.renderer.unmount());
 });
+
+test('lifecycle details follow each destination and preserve params and declared defaults', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  const root = navigationState.route!;
+  const rootDetails = {
+    route: root,
+    options: { title: 'Form', presentation: 'tray' },
+  };
+  expect(f.callbacks.onWillPresent).toHaveBeenCalledWith(rootDetails);
+  expect(f.callbacks.onNavigate).not.toHaveBeenCalled();
+  act(() => sheet(f.renderer).props.onSettle(1));
+  expect(f.callbacks.onPresent).toHaveBeenCalledWith(rootDetails);
+  for (let visit = 0; visit < 2; visit++) {
+    act(() => navigation.push('preview', { label: `visit ${visit}` }));
+    expect(f.callbacks.onNavigate).toHaveBeenLastCalledWith({
+      route: navigationState.route,
+      options: { title: 'Preview', presentation: 'tray' },
+    });
+    expect(f.callbacks.onNavigate.mock.calls.at(-1)![0].route.params).toEqual({
+      label: `visit ${visit}`,
+    });
+    // Back waits for forward completion; the old completion cannot emit again.
+    act(() => navigation.back());
+    const finish = mockCompletions.shift()!;
+    act(() => finish(true));
+    expect(f.callbacks.onNavigate).toHaveBeenLastCalledWith(rootDetails);
+    act(() => finish(true));
+    act(() => mockCompletions.shift()!(true));
+    expect(f.callbacks.onNavigate).toHaveBeenCalledTimes((visit + 1) * 2);
+  }
+  act(() => navigation.dismiss());
+  expect(f.callbacks.onWillDismiss).toHaveBeenCalledWith(rootDetails);
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(f.callbacks.onDismiss).toHaveBeenCalledWith();
+  expect(f.callbacks.onNavigate).toHaveBeenCalledTimes(4);
+  act(() => f.renderer.unmount());
+});
+
+test('batched dismissal retains details when the released screen declaration is removed', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  const route = navigationState.route;
+  act(() => sheet(f.renderer).props.onSettle(1));
+  const native = sheet(f.renderer).props;
+  act(() => {
+    native.onIndexChange(0);
+    native.onSettle(0);
+    f.renderer.rerender(
+      <Tray.Provider>
+        <Observer />
+        <Tray.Stack {...f.callbacks}>
+          <Tray.Screen name="preview" component={Preview} />
+        </Tray.Stack>
+      </Tray.Provider>
+    );
+  });
+  expect(f.callbacks.onWillDismiss).toHaveBeenCalledWith({
+    route,
+    options: { title: 'Form', presentation: 'tray' },
+  });
+  expect(f.callbacks.onDismiss).toHaveBeenCalledTimes(1);
+  act(() => f.renderer.unmount());
+});
+
+test('opening reports the settled screen before a queued replacement navigates', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  const root = navigationState.route!;
+  act(() => navigation.replace('preview', { label: 'queued' }));
+  expect(f.callbacks.onNavigate).not.toHaveBeenCalled();
+  act(() => sheet(f.renderer).props.onSettle(1));
+  expect(f.callbacks.onPresent.mock.calls[0]![0].route).toBe(root);
+  expect(f.callbacks.onNavigate).toHaveBeenCalledTimes(1);
+  expect(f.callbacks.onNavigate.mock.calls[0]![0].route).toEqual(
+    navigationState.route
+  );
+  expect(f.callbacks.onPresent.mock.invocationCallOrder[0]).toBeLessThan(
+    f.callbacks.onNavigate.mock.invocationCallOrder[0]!
+  );
+  act(() => mockCompletions.shift()!(true));
+  act(() => f.renderer.unmount());
+});
+
+test.each([
+  [undefined, 'fullScreen', 'fullScreen', 0],
+  ['slide', 'fullScreen', 'fullScreen', 16],
+  ['slide', 'tray', 'fullScreen', 0],
+  ['slide', 'fullScreen', 'tray', 0],
+] as const)(
+  'page motion %s from %s to %s reverses on Back',
+  (mode, from, to, offset) => {
+    const animatedStyle = jest
+      .spyOn(Reanimated, 'useAnimatedStyle')
+      .mockImplementation((updater) =>
+        Object.defineProperties(
+          {} as ReturnType<typeof Reanimated.useAnimatedStyle>,
+          Object.fromEntries(
+            Object.keys(updater()).map((key) => [
+              key,
+              {
+                enumerable: true,
+                get: () => (updater() as Record<string, unknown>)[key],
+              },
+            ])
+          )
+        )
+      );
+    const timing = jest
+      .spyOn(Reanimated, 'withTiming')
+      .mockImplementation((value, _config, complete) => {
+        if (complete) {
+          mockCompletions.push(complete);
+          return 0.5 as typeof value;
+        }
+        return value;
+      });
+    let renderer!: RenderResult;
+    try {
+      renderer = renderComponent(
+        <Tray.Provider>
+          <Observer />
+          <Tray.Stack fullScreenTransition={mode}>
+            <Tray.Screen
+              name="form"
+              component={Form}
+              options={{ presentation: from }}
+            />
+            <Tray.Screen
+              name="preview"
+              component={Preview}
+              options={{ presentation: to }}
+            />
+          </Tray.Stack>
+        </Tray.Provider>
+      );
+      const motion = (component: React.ElementType) => {
+        const page = pageFor(renderer, component)
+          .findAllByType(Reanimated.default.View)
+          .find((node) => {
+            const style = StyleSheet.flatten(node.props.style);
+            return (
+              style?.opacity !== undefined &&
+              style?.transform?.[0]?.translateX !== undefined
+            );
+          })!;
+        return StyleSheet.flatten(page.props.style);
+      };
+      act(() => navigation.present('form'));
+      act(() => sheet(renderer).props.onSettle(1));
+      act(() => navigation.push('preview', { label: 'next' }));
+      expect(motion(Preview)).toMatchObject({
+        opacity: 2 / 3,
+        transform: [{ translateX: offset }],
+      });
+      expect(motion(Form).transform).toEqual([{ translateX: -offset }]);
+      act(() => mockCompletions.shift()!(true));
+      expect(motion(Preview).transform).toEqual([{ translateX: 0 }]);
+      act(() => navigation.back());
+      expect(motion(Form)).toMatchObject({
+        opacity: 2 / 3,
+        transform: [{ translateX: -offset || 0 }],
+      });
+      expect(Math.abs(motion(Preview).transform[0].translateX)).toBe(offset);
+      act(() => mockCompletions.shift()!(true));
+      expect(motion(Form).transform).toEqual([{ translateX: 0 }]);
+    } finally {
+      if (renderer) act(() => renderer.unmount());
+      timing.mockRestore();
+      animatedStyle.mockRestore();
+    }
+  }
+);
 
 test('dismissal during opening suppresses onPresent and stale callbacks cannot affect reopening', () => {
   const f = lifecycleFixture();

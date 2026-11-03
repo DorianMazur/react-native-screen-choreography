@@ -19,30 +19,36 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 
 ## `TrayStackProps`
 
-| Prop              | Default         | Purpose                                                                  |
-| ----------------- | --------------- | ------------------------------------------------------------------------ |
-| `children`        | Required        | Direct `Tray.Screen` declarations; fragments are supported.              |
-| `appearance`      | `'floating'`    | Inset `'floating'` card or bottom-attached `'sheet'`.                    |
-| `anchor`          | `'bottom'`      | Keep screen content aligned to the `'top'` or `'bottom'` while resizing. |
-| `topInset`        | `0`             | Space above the tray; content inset for full-screen views.               |
-| `bottomInset`     | `0`             | Bottom safe area; floating cards add 12 points of spacing.               |
-| `horizontalInset` | `16`            | Side spacing for floating cards.                                         |
-| `backgroundColor` | `'#ffffff'`     | Card background.                                                         |
-| `textColor`       | `'#18181b'`     | Header title and icons.                                                  |
-| `renderHeader`    | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`.  |
-| `handleVisible`   | `true`          | Show the drag indicator above the header.                                |
-| `dismissDisabled` | `false`         | Block drag, backdrop, Close, and root Back dismissal.                    |
-| `animation`       | Timing, 240 ms  | Resize and crossfade settings.                                           |
-| `onWillPresent`   | —               | Called when a new tray presentation begins.                              |
-| `onPresent`       | —               | Called once after the native sheet first settles open.                   |
-| `onWillDismiss`   | —               | Called when closing begins, including a drag committed to dismissal.     |
-| `onDismiss`       | —               | Called after the sheet finishes closing.                                 |
+| Prop                   | Default         | Purpose                                                                            |
+| ---------------------- | --------------- | ---------------------------------------------------------------------------------- |
+| `children`             | Required        | Direct `Tray.Screen` declarations; fragments are supported.                        |
+| `appearance`           | `'floating'`    | Inset `'floating'` card or bottom-attached `'sheet'`.                              |
+| `anchor`               | `'bottom'`      | Keep screen content aligned to the `'top'` or `'bottom'` while resizing.           |
+| `topInset`             | `0`             | Space above the tray; content inset for full-screen views.                         |
+| `bottomInset`          | `0`             | Bottom safe area; floating cards add 12 points of spacing.                         |
+| `horizontalInset`      | `16`            | Side spacing for floating cards.                                                   |
+| `backgroundColor`      | `'#ffffff'`     | Card background.                                                                   |
+| `textColor`            | `'#18181b'`     | Header title and icons.                                                            |
+| `renderHeader`         | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`.            |
+| `handleVisible`        | `true`          | Show the drag indicator above the header.                                          |
+| `dismissDisabled`      | `false`         | Block drag, backdrop, Close, and root Back dismissal.                              |
+| `animation`            | Timing, 240 ms  | Resize and crossfade settings.                                                     |
+| `fullScreenTransition` | `'fade'`        | `'fade'` or `'slide'` between full-screen screens.                                 |
+| `onWillPresent`        | —               | Called when a new tray presentation begins.                                        |
+| `onPresent`            | —               | Called once after the native sheet first settles open.                             |
+| `onNavigate`           | —               | Called with the destination when the current screen changes within a presentation. |
+| `onWillDismiss`        | —               | Called when closing begins, including a drag committed to dismissal.               |
+| `onDismiss`            | —               | Called after the sheet finishes closing.                                           |
 
 Declare at least one screen, using `Stack` and `Screen` from the same factory. Unmounting the provider closes the tray directly without calling dismissal callbacks.
 
 Set `dismissDisabled={isSaving}` to hide the handle and prevent user dismissal during an important action. Changes apply to an open tray without resetting its content; a user drag that completes after it turns on is ignored and the sheet returns open. Programmatic `tray.dismiss()` and `tray.back()` remain available, and Back within the tray still works. This does not cancel a dismissal already in progress. Custom headers receive `dismissDisabled` and must apply it to their own Close controls.
 
-Lifecycle callbacks take no arguments and run on the JavaScript thread after React commits the accepted state changes. The `onWill…` callbacks report the start of an operation; they cannot delay or prevent native motion. `onPresent` and `onDismiss` wait for native settlement, including with Reduce Motion enabled.
+Lifecycle callbacks receive `TrayLifecycleDetails<Routes>`, except `onDismiss`, which takes no arguments. They run on the JavaScript thread after React commits the accepted state changes. The `onWill…` callbacks report the start of an operation; they cannot delay or prevent native motion. `onPresent` and `onDismiss` wait for native settlement, including with Reduce Motion enabled.
+
+`onWillPresent` receives the initial screen; `onPresent` receives the screen the sheet settled on, before queued navigation runs. `onNavigate` receives the destination of a push, replacement, Back, or root change, without waiting for its animation to finish. It does not fire for the initial screen of a presentation. `onWillDismiss` receives the screen being dismissed.
+
+Set `fullScreenTransition="slide"` for a 32-point sideways movement alongside the page crossfade: forward moves the incoming page from the right and the outgoing page to the left; Back reverses this. Both screens must use `presentation: 'fullScreen'`. Moves involving content-sized screens and shared-element transitions keep their crossfade. The `animation` setting controls the slide timing too.
 
 `onWillPresent` and `onPresent` describe a whole-tray presentation. Pushing, replacing, returning to a screen, resizing, or calling `present()` while already open does not fire them again. If dismissal interrupts opening before it settles, `onPresent` does not fire. A queued reopening fires `onDismiss` for the old presentation before `onWillPresent` for the new one.
 
@@ -51,6 +57,10 @@ Lifecycle callbacks take no arguments and run on the JavaScript thread after Rea
 `TrayStackProps<Routes>` types the header's route and navigation actions. Screen options can override `anchor`, `renderHeader`, and `handleVisible`. Hiding the handle removes its spacing and leaves dragging enabled.
 
 The default `anchor="bottom"` keeps incoming and outgoing screens' bottom edges at the bottom of the card's content area as it grows or shrinks, including Back and shared transitions. The header stays at the top, and safe-area padding remains below the content. Anchoring moves each screen without changing its measured height or scroll position. Set `anchor="top"` for top alignment. See [Anchor content during resizing](../guide/dynamic-trays.md#anchor-content-during-resizing).
+
+## `TrayLifecycleDetails`
+
+`TrayLifecycleDetails<Routes>` contains `route` (the screen's key, name, and typed params) and `options` (its declared `TrayScreenOptions`, with `title` and `presentation` defaults applied). It does not include the screen component or resolve inherited stack options.
 
 ## `TrayHeaderProps`
 
@@ -144,7 +154,7 @@ Pass `{ groupId: string }` as the third argument to `push` to animate matching s
 
 Use `SharedElement` and `SharedElement.Target` from `/core`, with matching IDs and the same transition. See [Share an element between tray screens](../guide/dynamic-trays.md#share-an-element-between-tray-screens).
 
-`replace` uses a crossfade. `popToRoot` reverses a shared transition only when the root was its original source. Missing matching elements fall back to a crossfade.
+`replace` uses the configured page transition. `popToRoot` reverses a shared transition only when the root was its original source. Missing matching elements fall back to the configured page transition.
 
 ## `TrayState`
 

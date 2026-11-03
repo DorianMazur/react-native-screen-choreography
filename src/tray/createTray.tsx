@@ -73,6 +73,7 @@ const DETENTS = [0, 'content'] as const;
 const DEFAULT_HEADER_HEIGHT = 56;
 const HANDLE_HEIGHT = 14;
 const CONTENT_FADE_END = 0.75;
+const FULL_SCREEN_SLIDE_DISTANCE = 32;
 
 /** Call outside render to preserve the provider and screen identities. */
 export function createTray<P extends TrayParamList>() {
@@ -159,6 +160,7 @@ export function createTray<P extends TrayParamList>() {
     );
     const { dispatch } = store;
     const screens = useRef(declaration.screens);
+    const lifecycleScreens = useRef(declaration.screens);
     const lifecycleCallbacks = useRef(declaration.options);
     for (const entry of [
       ...state.entries,
@@ -178,6 +180,12 @@ export function createTray<P extends TrayParamList>() {
         );
     }
     useLayoutEffect(() => {
+      // A batched native dismissal can release a declaration before its
+      // lifecycle callbacks run. Keep it only until those events are delivered.
+      lifecycleScreens.current = {
+        ...lifecycleScreens.current,
+        ...declaration.screens,
+      };
       screens.current = declaration.screens;
       lifecycleCallbacks.current = declaration.options;
     });
@@ -235,9 +243,21 @@ export function createTray<P extends TrayParamList>() {
       // A child effect may have dispatched again before this effect runs.
       // Wait for that state to commit before delivering its lifecycle events.
       if (store.getStackSnapshot() !== state) return;
-      for (const event of store.takeLifecycleEvents())
-        lifecycleCallbacks.current[event]?.();
-    }, [store, state]);
+      const eventScreens = lifecycleScreens.current;
+      lifecycleScreens.current = screens.current;
+      for (const event of store.takeLifecycleEvents()) {
+        if (event.type === 'onDismiss') {
+          lifecycleCallbacks.current.onDismiss?.();
+          continue;
+        }
+        const callback = lifecycleCallbacks.current[event.type];
+        if (!callback) continue;
+        // eslint-disable-next-line @typescript-eslint/no-unused-vars
+        const { component: _component, ...options } =
+          eventScreens[event.route.name]!;
+        callback({ route: event.route, options });
+      }
+    });
 
     useEffect(() => {
       if (!isPresented) return;
@@ -322,6 +342,7 @@ function TrayHost<P extends TrayParamList>({
   handleVisible: stackHandleVisible = true,
   dismissDisabled = false,
   animation,
+  fullScreenTransition = 'fade',
 }: Omit<TrayStackProps<P>, 'children' | 'animation'> & {
   animation: ResolvedTrayAnimation;
   screens: TrayScreenMap<P>;
@@ -467,6 +488,12 @@ function TrayHost<P extends TrayParamList>({
   });
   const sharedEnabled = shared.enabled;
   const sharedStarted = shared.started;
+  const slide =
+    fullScreenTransition === 'slide' &&
+    !sharedEnabled &&
+    fullScreen &&
+    !!previous &&
+    screens[previous.name]?.presentation === 'fullScreen';
   const sharedMotionId = shared.motionId;
   const sharedProgress = shared.progress;
   const direction = state.transition?.direction;
@@ -895,6 +922,7 @@ function TrayHost<P extends TrayParamList>({
                     sharedStarted={sharedStarted}
                     sharedMotionId={sharedMotionId}
                     direction={state.transition?.direction ?? 1}
+                    slide={slide}
                     onPageLayout={(pageHeight) => {
                       const entryPadding =
                         entryFullScreen || appearance === 'sheet'
@@ -1107,6 +1135,7 @@ function TrayPage({
   sharedStarted,
   sharedMotionId,
   direction,
+  slide,
   onPageLayout,
   active,
   from,
@@ -1134,6 +1163,8 @@ function TrayPage({
   sharedStarted: boolean;
   sharedMotionId: SharedValue<number | undefined>;
   direction: 1 | -1;
+  /** Move sideways with the crossfade, from the leading page to the trailing one. */
+  slide: boolean;
   onPageLayout: (height: number) => void;
   active: boolean;
   from: boolean;
@@ -1218,8 +1249,12 @@ function TrayPage({
           ? Math.max(0, Math.min(1, progress.value))
           : 0;
     const opacity = Math.min(1, p / CONTENT_FADE_END);
+    const offset = slide ? FULL_SCREEN_SLIDE_DISTANCE * direction : 0;
     return {
       opacity: active ? opacity : from ? 1 - opacity : 0,
+      transform: [
+        { translateX: active ? offset * (1 - p) : from ? -offset * p : 0 },
+      ],
     };
   });
   const viewportSize = useAnimatedStyle(() =>

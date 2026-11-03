@@ -97,6 +97,16 @@ export interface TrayScreenOptions<
   headerHeight?: number;
 }
 
+/** The screen a lifecycle event concerns. */
+export interface TrayLifecycleDetails<P extends TrayParamList = TrayParamList> {
+  route: TrayRoute<P, keyof P & string>;
+  /** The screen's declared options, with the title and presentation defaults applied. */
+  options: TrayScreenOptions<P> & {
+    title: string;
+    presentation: NonNullable<TrayScreenOptions['presentation']>;
+  };
+}
+
 export interface TrayScreenDeclarationProps<
   P extends TrayParamList,
   N extends keyof P & string = keyof P & string,
@@ -146,12 +156,23 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   dismissDisabled?: boolean;
   /** Card resizing between screens, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
-  /** Called when a new tray presentation begins. */
-  onWillPresent?: () => void;
-  /** Called once per presentation, after the native sheet settles open. */
-  onPresent?: () => void;
-  /** Called when closing begins, including a drag that commits to dismissal. */
-  onWillDismiss?: () => void;
+  /**
+   * How one full-screen screen replaces another. 'slide' also moves both pages sideways with the crossfade: forward,
+   * the new page comes in from the right and the covered one leaves to the left; back, the reverse. Moves to and from
+   * tray screens, and shared transitions, always crossfade. Defaults to 'fade'.
+   */
+  fullScreenTransition?: 'fade' | 'slide';
+  /** Called when a new tray presentation begins, with the root screen it opens on. */
+  onWillPresent?: (details: TrayLifecycleDetails<P>) => void;
+  /** Called once per presentation, after the native sheet settles open, with the screen it settled on. */
+  onPresent?: (details: TrayLifecycleDetails<P>) => void;
+  /**
+   * Called when an open tray moves to another screen, with the screen it moves to. Not called for the screen a
+   * presentation opens on.
+   */
+  onNavigate?: (details: TrayLifecycleDetails<P>) => void;
+  /** Called when closing begins, including a drag that commits to dismissal, with the screen being dismissed. */
+  onWillDismiss?: (details: TrayLifecycleDetails<P>) => void;
   /** Called only after the native sheet confirms dismissal. */
   onDismiss?: () => void;
 }

@@ -4,6 +4,7 @@ export type {
   TrayFocusEffectOptions,
   TrayHeaderProps,
   TrayKeyboardState,
+  TrayLifecycleDetails,
   TrayNavigation,
   TrayNavigationOptions,
   TrayParamList,
