@@ -1,4 +1,4 @@
-import { useLayoutEffect, useMemo, useRef, useState } from 'react';
+import { useLayoutEffect, useMemo, useState } from 'react';
 import type { ComponentProps } from 'react';
 import type { ModalBottomSheetProps } from '@swmansion/react-native-bottom-sheet';
 import Animated from 'react-native-reanimated';
@@ -15,20 +15,16 @@ export function useTrayNativeSheet(): {
       const NativeView = Animated.createAnimatedComponent(Component);
       return function TrayNativeSheet(props: ComponentProps<typeof Component>) {
         const [openIndex, setOpenIndex] = useState(1);
-        const requestedIndex = useRef(1);
-        const restoring = useRef(false);
         useLayoutEffect(() => {
           reopen = () => {
-            // Snap and settlement can arrive in the same React batch.
-            if (restoring.current) return;
-            restoring.current = true;
-            requestedIndex.current = requestedIndex.current === 1 ? 2 : 1;
-            setOpenIndex(requestedIndex.current);
+            // Coalesce callbacks in one batch using the last committed index.
+            // Later callbacks can retry even if native recovery was interrupted.
+            setOpenIndex(openIndex === 1 ? 2 : 1);
           };
           return () => {
             reopen = undefined;
           };
-        }, []);
+        }, [openIndex]);
         return (
           <NativeView
             {...props}
@@ -51,7 +47,6 @@ export function useTrayNativeSheet(): {
             }
             onSettle={(event) => {
               const index = event.nativeEvent.index;
-              if (index === requestedIndex.current) restoring.current = false;
               props.onSettle?.({
                 ...event,
                 nativeEvent: { index: index === 2 ? 1 : index },
