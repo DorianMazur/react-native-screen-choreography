@@ -31,6 +31,7 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 | `textColor`       | `'#18181b'`     | Header title and icons.                                                  |
 | `renderHeader`    | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`.  |
 | `handleVisible`   | `true`          | Show the drag indicator above the header.                                |
+| `dismissDisabled` | `false`         | Block drag, backdrop, Close, and root Back dismissal.                    |
 | `animation`       | Timing, 240 ms  | Resize and crossfade settings.                                           |
 | `onWillPresent`   | —               | Called when a new tray presentation begins.                              |
 | `onPresent`       | —               | Called once after the native sheet first settles open.                   |
@@ -38,6 +39,8 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 | `onDismiss`       | —               | Called after the sheet finishes closing.                                 |
 
 Declare at least one screen, using `Stack` and `Screen` from the same factory. Unmounting the provider closes the tray directly without calling dismissal callbacks.
+
+Set `dismissDisabled={isSaving}` to prevent user dismissal during an important action. Changes apply to an open tray without resetting its content. Programmatic `tray.dismiss()` and `tray.back()` remain available, and Back within the tray still works. This does not cancel a dismissal already in progress. Custom headers receive `dismissDisabled` and must apply it to their own Close controls.
 
 Lifecycle callbacks take no arguments and run on the JavaScript thread after React commits the accepted state changes. The `onWill…` callbacks report the start of an operation; they cannot delay or prevent native motion. `onPresent` and `onDismiss` wait for native settlement, including with Reduce Motion enabled.
 
@@ -53,13 +56,14 @@ The default `anchor="bottom"` keeps incoming and outgoing screens' bottom edges 
 
 `TrayHeaderProps<Routes, Name>` describes a screen's custom header. Omit `Name` for a stack renderer; `route` is then a discriminated union of all routes.
 
-| Member      | Meaning                                                         |
-| ----------- | --------------------------------------------------------------- |
-| `route`     | This header's route, including its key, name, and typed params. |
-| `tray`      | Stable `TrayNavigation<Routes>` actions.                        |
-| `title`     | Screen title, falling back to the screen name.                  |
-| `canGoBack` | Whether another screen exists below this one.                   |
-| `color`     | The stack's `textColor`.                                        |
+| Member            | Meaning                                                         |
+| ----------------- | --------------------------------------------------------------- |
+| `route`           | This header's route, including its key, name, and typed params. |
+| `tray`            | Stable `TrayNavigation<Routes>` actions.                        |
+| `title`           | Screen title, falling back to the screen name.                  |
+| `canGoBack`       | Whether another screen exists below this one.                   |
+| `dismissDisabled` | Whether the custom header should disable its Close control.     |
+| `color`           | The stack's `textColor`.                                        |
 
 Return your header element from `renderHeader`, or return `null` to omit the header. The handle is controlled separately. The tray measures the header's natural height and includes it in card sizing, full-screen content space, and shared-transition geometry. Use padding or an explicit height for your design; avoid `flex: 1` on the header root.
 

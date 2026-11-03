@@ -7,7 +7,9 @@ import React, {
   useState,
 } from 'react';
 import {
+  BackHandler,
   Dimensions,
+  Keyboard,
   Pressable,
   StyleSheet,
   Text,
@@ -16,6 +18,7 @@ import {
 } from 'react-native';
 import {
   act,
+  fireEvent,
   render as renderComponent,
   type RenderResult,
 } from '@testing-library/react-native/pure';
@@ -240,6 +243,100 @@ function lifecycleFixture() {
 
   return { renderer, render, events, callbacks };
 }
+
+test('dismissDisabled updates user controls without resetting content or blocking code dismissal', () => {
+  const f = lifecycleFixture();
+  const actions = navigation;
+  const update = (dismissDisabled: boolean) =>
+    f.renderer.rerender(f.render({ ...f.callbacks, dismissDisabled }));
+  act(() => navigation.present('form'));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  fireEvent.changeText(f.renderer.getByTestId('draft'), 'keep my work');
+  expect(sheet(f.renderer).props.detents).toEqual([0, 'content']);
+
+  update(true);
+  expect(navigation).toBe(actions);
+  expect(sheet(f.renderer).props.detents).toEqual([
+    { value: 0, programmatic: true },
+    'content',
+  ]);
+  for (const label of ['Close tray', 'Dismiss tray']) {
+    const button = f.renderer.getByLabelText(label);
+    expect(button.props.accessibilityState).toEqual({ disabled: true });
+    fireEvent.press(button);
+  }
+  const escape = () =>
+    f.renderer.UNSAFE_root.findAllByType(View)
+      .find((node) => node.props.onAccessibilityEscape)!
+      .props.onAccessibilityEscape();
+  act(escape);
+  expect(sheet(f.renderer).props.index).toBe(1);
+  expect(f.callbacks.onWillDismiss).not.toHaveBeenCalled();
+  expect(f.renderer.getByTestId('draft').props.value).toBe('keep my work');
+
+  update(false);
+  expect(sheet(f.renderer).props.detents).toEqual([0, 'content']);
+  fireEvent.press(f.renderer.getByLabelText('Close tray'));
+  expect(sheet(f.renderer).props.index).toBe(0);
+  update(true);
+  expect(sheet(f.renderer).props.index).toBe(0);
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(f.callbacks.onDismiss).toHaveBeenCalledTimes(1);
+
+  act(() => navigation.present('form'));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  act(() => navigation.dismiss());
+  expect(sheet(f.renderer).props.index).toBe(0);
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(f.callbacks.onDismiss).toHaveBeenCalledTimes(2);
+  f.renderer.unmount();
+});
+
+test('dismissDisabled consumes hardware Back at the root and still allows keyboard and stack Back', () => {
+  let back!: () => boolean | null | undefined;
+  const listener = jest
+    .spyOn(BackHandler, 'addEventListener')
+    .mockImplementation((_event, handler) => {
+      back = handler;
+      return { remove: jest.fn() };
+    });
+  const keyboardVisible = jest
+    .spyOn(Keyboard, 'isVisible')
+    .mockReturnValue(false);
+  const dismissKeyboard = jest
+    .spyOn(Keyboard, 'dismiss')
+    .mockImplementation(() => {});
+  const f = lifecycleFixture();
+  try {
+    f.renderer.rerender(f.render({ ...f.callbacks, dismissDisabled: true }));
+    act(() => navigation.present('form'));
+    act(() => sheet(f.renderer).props.onSettle(1));
+    act(() => expect(back()).toBe(true));
+    expect(sheet(f.renderer).props.index).toBe(1);
+    keyboardVisible.mockReturnValue(true);
+    dismissKeyboard.mockClear();
+    act(() => back());
+    expect(dismissKeyboard).toHaveBeenCalledTimes(1);
+    keyboardVisible.mockReturnValue(false);
+
+    act(() => navigation.push('preview', { label: 'next' }));
+    act(() => mockCompletions.shift()!(true));
+    act(() => back());
+    expect(navigationState.route?.name).toBe('form');
+    act(() => mockCompletions.shift()!(true));
+    act(() => back());
+    expect(f.callbacks.onWillDismiss).not.toHaveBeenCalled();
+
+    f.renderer.rerender(f.render({ ...f.callbacks, dismissDisabled: false }));
+    act(() => back());
+    expect(sheet(f.renderer).props.index).toBe(0);
+  } finally {
+    f.renderer.unmount();
+    listener.mockRestore();
+    keyboardVisible.mockRestore();
+    dismissKeyboard.mockRestore();
+  }
+});
 
 test('diagnostics install only while enabled and never recreate the tray or its content', () => {
   const dispatch = jest.fn();
@@ -1676,6 +1773,7 @@ test('built-in header preserves Back and Close actions and accessibility', () =>
 function CustomHeader({
   title,
   canGoBack,
+  dismissDisabled,
   tray,
   color,
 }: TrayHeaderProps<Routes>) {
@@ -1685,7 +1783,11 @@ function CustomHeader({
         {title}
       </Text>
       {canGoBack && <Pressable testID="header-back" onPress={tray.back} />}
-      <Pressable testID="header-close" onPress={tray.dismiss} />
+      <Pressable
+        testID="header-close"
+        disabled={dismissDisabled}
+        onPress={tray.dismiss}
+      />
     </View>
   );
 }
@@ -1695,11 +1797,12 @@ test('custom headers inherit stack defaults, override per screen, and own their 
     <CustomHeader {...props} />
   ));
   const onDismiss = jest.fn();
-  const render = (title = 'Draft') => (
+  const render = (title = 'Draft', dismissDisabled = false) => (
     <Tray.Provider>
       <Observer />
       <Tray.Stack
         renderHeader={renderHeader}
+        dismissDisabled={dismissDisabled}
         textColor="#123456"
         onDismiss={onDismiss}
       >
@@ -1727,6 +1830,7 @@ test('custom headers inherit stack defaults, override per screen, and own their 
     tray: renderHeader.mock.calls[0]![0].tray,
     title: 'Draft',
     canGoBack: false,
+    dismissDisabled: false,
     color: '#123456',
   });
   expect(
@@ -1739,6 +1843,16 @@ test('custom headers inherit stack defaults, override per screen, and own their 
   expect(renderer.UNSAFE_root.findByType(CustomHeader).props.title).toBe(
     'Updated'
   );
+  act(() => renderer.rerender(render('Updated', true)));
+  fireEvent.press(renderer.getByTestId('header-close'));
+  expect(sheet(renderer).props.index).toBe(1);
+  expect(
+    renderer.UNSAFE_root.findByType(CustomHeader).props.dismissDisabled
+  ).toBe(true);
+  act(() => renderer.rerender(render('Updated')));
+  expect(
+    renderer.UNSAFE_root.findByType(CustomHeader).props.dismissDisabled
+  ).toBe(false);
   act(() => navigation.push('preview', { label: 'Review draft' }));
   expect(
     renderer.UNSAFE_root.findAllByType(CustomHeader).map(
