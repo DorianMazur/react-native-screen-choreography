@@ -292,6 +292,65 @@ test('dismissDisabled updates user controls without resetting content or blockin
   f.renderer.unmount();
 });
 
+test('dismissDisabled ignores a native close that finishes after dismissal is disabled', () => {
+  const f = lifecycleFixture();
+  const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss');
+  try {
+    act(() => navigation.present('form'));
+    act(() => sheet(f.renderer).props.onSettle(1));
+    fireEvent.changeText(
+      f.renderer.getByTestId('draft'),
+      'payment in progress'
+    );
+    f.renderer.rerender(f.render({ ...f.callbacks, dismissDisabled: true }));
+    dismissKeyboard.mockClear();
+    act(() => {
+      sheet(f.renderer).props.onIndexChange(0);
+      sheet(f.renderer).props.onSettle(0);
+    });
+    expect(sheet(f.renderer).props.index).toBe(1);
+    expect(f.callbacks.onWillDismiss).not.toHaveBeenCalled();
+    expect(f.callbacks.onDismiss).not.toHaveBeenCalled();
+    expect(dismissKeyboard).not.toHaveBeenCalled();
+    expect(f.renderer.getByTestId('draft').props.value).toBe(
+      'payment in progress'
+    );
+    expect(unmounted).toEqual([]);
+  } finally {
+    f.renderer.unmount();
+    dismissKeyboard.mockRestore();
+  }
+});
+
+test('dismissDisabled accepts native close callbacks after programmatic dismissal', () => {
+  const f = lifecycleFixture();
+  f.renderer.rerender(f.render({ ...f.callbacks, dismissDisabled: true }));
+  act(() => navigation.present('form'));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  act(() => navigation.dismiss());
+  act(() => sheet(f.renderer).props.onIndexChange(0));
+  expect(sheet(f.renderer).props.index).toBe(0);
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(navigationState.isPresented).toBe(false);
+  expect(f.callbacks.onWillDismiss).toHaveBeenCalledTimes(1);
+  expect(f.callbacks.onDismiss).toHaveBeenCalledTimes(1);
+  f.renderer.unmount();
+});
+
+test('an enabled user snap to closed still dismisses the tray', () => {
+  const f = lifecycleFixture();
+  f.renderer.rerender(f.render({ ...f.callbacks, dismissDisabled: false }));
+  act(() => navigation.present('form'));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  act(() => sheet(f.renderer).props.onIndexChange(0));
+  expect(sheet(f.renderer).props.index).toBe(0);
+  act(() => sheet(f.renderer).props.onSettle(0));
+  expect(navigationState.isPresented).toBe(false);
+  expect(f.callbacks.onWillDismiss).toHaveBeenCalledTimes(1);
+  expect(f.callbacks.onDismiss).toHaveBeenCalledTimes(1);
+  f.renderer.unmount();
+});
+
 test('dismissDisabled consumes hardware Back at the root and still allows keyboard and stack Back', () => {
   let back!: () => boolean | null | undefined;
   const listener = jest
@@ -2143,11 +2202,16 @@ test('waits for fresh custom-header layout when returning from a built-in header
 
 test('a null header and hidden handle leave no reserved header space', () => {
   let renderer!: RenderResult;
-  const render = (handleVisible: boolean, custom = true) => (
+  const render = (
+    handleVisible: boolean,
+    custom = true,
+    dismissDisabled = false
+  ) => (
     <Tray.Provider>
       <Observer />
       <Tray.Stack
         handleVisible={handleVisible}
+        dismissDisabled={dismissDisabled}
         renderHeader={custom ? () => null : undefined}
       >
         <Tray.Screen
@@ -2172,6 +2236,10 @@ test('a null header and hidden handle leave no reserved header space', () => {
   act(() => renderer.rerender(render(true)));
   expect(pageHeight()).toBe(windowHeight - 14);
   act(() => renderer.rerender(render(false, false)));
+  expect(pageHeight()).toBe(windowHeight - 56);
+  act(() => renderer.rerender(render(true, false)));
+  expect(pageHeight()).toBe(windowHeight - 70);
+  act(() => renderer.rerender(render(true, false, true)));
   expect(pageHeight()).toBe(windowHeight - 56);
   act(() => renderer.rerender(render(true, false)));
   expect(pageHeight()).toBe(windowHeight - 70);

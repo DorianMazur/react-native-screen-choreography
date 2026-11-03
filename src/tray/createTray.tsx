@@ -45,6 +45,7 @@ import {
 } from './TrayChoreography';
 import { readTrayDeclaration } from './declarations';
 import { useTrayKeyboard } from './useTrayKeyboard';
+import { useTrayNativeSheet } from './useTrayNativeSheet';
 import { useTrayFocusEffect } from './useTrayFocusEffect';
 import { TrayHeaderLayer } from './TrayHeaderLayer';
 import { animateTrayValue } from './animation';
@@ -335,6 +336,9 @@ function TrayHost<P extends TrayParamList>({
   const { height, width } = useWindowDimensions();
   const DiagnosticObserver = useContext(TrayDiagnosticsContext)?.Observer;
   const keyboard = useTrayKeyboard();
+  const nativeSheet = useTrayNativeSheet();
+  const isBlockedSnap = (index: number) =>
+    index === 0 && dismissDisabled && state.phase !== 'closing';
   const keyboardHeight = keyboard.height;
   const keyboardProgress = keyboard.progress;
   const keyboardState = useMemo(
@@ -376,7 +380,8 @@ function TrayHost<P extends TrayParamList>({
   const headerHeightFor = (entry: TrayEntry) => {
     const options = screens[entry.name];
     const custom = options?.renderHeader ?? stackRenderHeader;
-    const handle = options?.handleVisible ?? stackHandleVisible;
+    const handle =
+      !dismissDisabled && (options?.handleVisible ?? stackHandleVisible);
     return (
       (handle ? HANDLE_HEIGHT : 0) +
       (custom
@@ -697,19 +702,27 @@ function TrayHost<P extends TrayParamList>({
             }
             index={state.phase === 'closing' ? 0 : 1}
             style={sheetPosition as ViewStyle}
-            wrapNativeView={Animated.createAnimatedComponent}
+            wrapNativeView={nativeSheet.wrapNativeView}
             extendUnderStatusBar
             animateIn={!reducedMotion}
             animateContentHeight={false}
             scrimColor="#000000"
             scrimOpacities={[0, 0.35]}
             onIndexChange={(index) => {
+              if (isBlockedSnap(index)) {
+                nativeSheet.reopen();
+                return;
+              }
               Keyboard.dismiss();
               dispatch({ type: 'snapped', session: state.session, index });
             }}
-            onSettle={(index) =>
-              dispatch({ type: 'settled', session: state.session, index })
-            }
+            onSettle={(index) => {
+              if (isBlockedSnap(index)) {
+                nativeSheet.reopen();
+                return;
+              }
+              dispatch({ type: 'settled', session: state.session, index });
+            }}
           >
             <Animated.View
               style={[styles.card, { backgroundColor }, cardGeometry]}
@@ -725,7 +738,8 @@ function TrayHost<P extends TrayParamList>({
                   const entryRenderHeader =
                     screens[entry.name]?.renderHeader ?? stackRenderHeader;
                   const handleVisible =
-                    screens[entry.name]?.handleVisible ?? stackHandleVisible;
+                    !dismissDisabled &&
+                    (screens[entry.name]?.handleVisible ?? stackHandleVisible);
                   const entryTitle = screens[entry.name]?.title ?? entry.name;
                   const entryCanGoBack = isActive
                     ? state.entries.length > 1

@@ -40,7 +40,7 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 
 Declare at least one screen, using `Stack` and `Screen` from the same factory. Unmounting the provider closes the tray directly without calling dismissal callbacks.
 
-Set `dismissDisabled={isSaving}` to prevent user dismissal during an important action. Changes apply to an open tray without resetting its content. Programmatic `tray.dismiss()` and `tray.back()` remain available, and Back within the tray still works. This does not cancel a dismissal already in progress. Custom headers receive `dismissDisabled` and must apply it to their own Close controls.
+Set `dismissDisabled={isSaving}` to hide the handle and prevent user dismissal during an important action. Changes apply to an open tray without resetting its content; a user drag that completes after it turns on is ignored and the sheet returns open. Programmatic `tray.dismiss()` and `tray.back()` remain available, and Back within the tray still works. This does not cancel a dismissal already in progress. Custom headers receive `dismissDisabled` and must apply it to their own Close controls.
 
 Lifecycle callbacks take no arguments and run on the JavaScript thread after React commits the accepted state changes. The `onWill…` callbacks report the start of an operation; they cannot delay or prevent native motion. `onPresent` and `onDismiss` wait for native settlement, including with Reduce Motion enabled.
 
