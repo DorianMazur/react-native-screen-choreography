@@ -53,6 +53,29 @@ Within `ChoreographyScreen`, progress follows that screen's lifetime. On Android
 
 `backdropStyle` supplies opacity only. Apply your own positioning, background color, and pointer-event behavior to the backdrop view.
 
+## `useChoreographyProgressValue`
+
+Returns only the expansion clock as a `SharedValue<number>`: `0` is collapsed and `1` is expanded. Use it when a component needs custom animated styles but no React session state or built-in backdrop style.
+
+```tsx
+import Animated, { useAnimatedStyle } from 'react-native-reanimated';
+import { useChoreographyProgressValue } from 'react-native-screen-choreography/core';
+
+function Backdrop() {
+  const progress = useChoreographyProgressValue();
+  const style = useAnimatedStyle(() => ({ opacity: progress.value * 0.4 }));
+  return (
+    <Animated.View pointerEvents="none" style={[styles.backdrop, style]} />
+  );
+}
+```
+
+The hook does not subscribe to session phases, roles, groups, or pending targets, and does not allocate an animated style. Session-state changes alone do not rerender its consumer; normal parent and prop updates still apply. Read the value in a worklet and let the library drive it.
+
+Call it inside the screen whose views you animate. It returns the same clock as `useChoreographyProgress().progress`, including Android's freeze before outgoing route removal. Outside a `ChoreographyScreen`, it returns the provider clock. Do not mirror another screen's clock into outgoing views, because that bypasses their lifetime protection.
+
+The clock is not filtered by group and does not retain an individual element's settled endpoint. For retained shared content, use `useSharedElementPresentation().presentationProgress`. Use `useChoreographyProgress` when you need session state, or `useChoreographyControls` for `settleTransition`.
+
 ## `useChoreographyControls`
 
 Provides `settleTransition` when you only need to finish motion in response to interaction. Use `useChoreographyProgress` when you also need progress or transition state.

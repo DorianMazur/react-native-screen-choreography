@@ -20,6 +20,7 @@ export { useChoreographyBlocker } from '../hooks/useChoreographyBlocker';
 export {
   useChoreographyControls,
   useChoreographyProgress,
+  useChoreographyProgressValue,
   useLatchedReveal,
 } from '../hooks/useChoreographyProgress';
 export { useRevealStyle, type RevealOptions } from '../hooks/useRevealStyle';
