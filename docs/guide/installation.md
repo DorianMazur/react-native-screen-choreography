@@ -18,7 +18,7 @@ These are the package's declared peer ranges, not a guarantee that every combina
 | Reanimated                             | `>= 4`                                   |
 | React Native Worklets                  | `>= 0.8`                                 |
 | React Native Teleport                  | `>= 1.2.2`                               |
-| React Navigation native + native stack | `>= 6`, when using that integration      |
+| React Navigation native + native stack | `>= 7`, when using that integration      |
 | Expo Router                            | `>= 56.1.1`, when using that integration |
 
 The bare example uses **React Native 0.83**; the Expo Router example uses **Expo SDK 57** (React Native 0.86.3). Both use React 19 and Reanimated 4. Check the [Reanimated compatibility table](https://docs.swmansion.com/react-native-reanimated/docs/guides/compatibility/) when selecting versions for an existing app.

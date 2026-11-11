@@ -1,6 +1,7 @@
 const core = require('./core');
 const {
   ChoreographyScreen,
+  choreographyScreenLayout,
   useCommands,
   useInteractiveTransition,
 } = require('./navigation');
@@ -22,6 +23,7 @@ function useChoreographyRouter(router) {
 module.exports = {
   ...core,
   ChoreographyScreen,
+  choreographyScreenLayout,
   useChoreographyRouter,
   useInteractiveTransition,
 };

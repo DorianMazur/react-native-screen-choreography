@@ -18,7 +18,10 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: jest.fn(),
   usePreventRemove: jest.fn(),
 }));
-jest.mock('expo-router', () => jest.requireMock('@react-navigation/native'));
+jest.mock('expo-router', () => ({
+  ...jest.requireMock('@react-navigation/native'),
+  useSitemap: jest.fn(),
+}));
 jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: jest.fn(),
 }));
@@ -351,3 +354,65 @@ test('Expo Router retains push, navigate and back while forwarding the latest bi
   expect(originalCore.navigate).not.toHaveBeenCalled();
   expect(originalCore.goBack).not.toHaveBeenCalled();
 });
+
+test.each(['push', 'navigate'] as const)(
+  'Expo %s infers only exact file routes in the root stack',
+  async (method) => {
+    const router = makeRouter();
+    const core = makeCoreCommands();
+    useChoreographyNavigator.mockReturnValue(core);
+    const root = {
+      getState: () => ({
+        type: 'stack',
+        routeNames: ['index', 'artwork/[id]', 'settings'],
+      }),
+    };
+    const nested = { ...root };
+    routeHooks.useNavigation.mockReturnValue(root);
+    jest.requireMock('expo-router').useSitemap.mockReturnValue({
+      children: [
+        { filename: 'index.tsx', children: [] },
+        { filename: 'artwork/[id].ios.tsx', children: [] },
+        { filename: 'settings/_layout.tsx', children: [{}] },
+      ],
+    });
+
+    type Href = string | { pathname: string; params: { id: string } };
+    let commands!: ReturnType<typeof useChoreographyRouter<Href>>;
+    function Caller() {
+      commands = useChoreographyRouter<Href>(router);
+      return null;
+    }
+    tree = renderComponent(<Caller />);
+    const href = { pathname: '/artwork/[id]', params: { id: 'sunrise' } };
+    await commands[method]({ href });
+    const request = core.navigate.mock.calls[0]![0];
+    expect(request.targetScreenId).toBe('artwork/[id]');
+    request.dispatchNavigation();
+    request.resolveTargetScreenId();
+    expect(router[method]).toHaveBeenCalledWith(href);
+    expect(waitForNavigationTarget).toHaveBeenCalledWith(
+      root,
+      'source-first',
+      'artwork/[id]'
+    );
+
+    for (const ambiguous of [
+      '/artwork/sunrise',
+      '/settings',
+      '../artwork/[id]',
+    ]) {
+      await expect(commands[method]({ href: ambiguous })).rejects.toThrow(
+        'targetScreenId'
+      );
+    }
+    routeHooks.useNavigation.mockImplementation((path?: string) =>
+      path === '/' ? root : nested
+    );
+    await act(async () => tree!.rerender(<Caller />));
+    await expect(commands[method]({ href })).rejects.toThrow('targetScreenId');
+    expect(core.navigate).toHaveBeenCalledTimes(1);
+    await commands[method]({ href, targetScreenId: 'CustomDetail' });
+    expect(core.navigate.mock.lastCall![0].targetScreenId).toBe('CustomDetail');
+  }
+);

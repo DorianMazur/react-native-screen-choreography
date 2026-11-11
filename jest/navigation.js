@@ -31,4 +31,9 @@ function useInteractiveTransition() {
   return controller;
 }
 
-module.exports = { ChoreographyScreen, useCommands, useInteractiveTransition };
+module.exports = {
+  choreographyScreenLayout: ChoreographyScreen,
+  ChoreographyScreen,
+  useCommands,
+  useInteractiveTransition,
+};

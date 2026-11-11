@@ -23,6 +23,7 @@ import type {
   RegisteredElement,
   TransitionSessionData,
 } from '../types';
+import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
 import { ElementRegistry } from '../core/ElementRegistry';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
@@ -134,6 +135,7 @@ export function ChoreographyProvider({
   onTransitionEnd,
   onPreparationTrace,
 }: ChoreographyProviderProps) {
+  const [incomingGroups] = useState(() => new IncomingGroups());
   const screenGeometry = useContext(ScreenGeometryContext);
   const progress = useSharedValue(0);
   const reducedMotion = useReducedMotion();
@@ -445,6 +447,7 @@ export function ChoreographyProvider({
       navigationController.cancelRequestsForScreen(screenId);
       screenReadinessRef.current.unregister(screenId);
       coordinatorRef.current?.revalidatePresentation(screenId);
+      incomingGroups.remove(screenId);
       screenNamesRef.current.delete(screenId);
       navigationLineageRef.current.delete(screenId);
       if (
@@ -474,7 +477,7 @@ export function ChoreographyProvider({
         [...removalListeners].forEach((listener) => listener());
       }
     },
-    [navigationController, progressOwnership]
+    [incomingGroups, navigationController, progressOwnership]
   );
 
   const subscribeToScreenRemoval = useCallback(
@@ -992,7 +995,9 @@ export function ChoreographyProvider({
           <ChoreographyContext.Provider value={contextValue}>
             <PreparingSessionContext.Provider value={preparingSession}>
               <ChoreographyProgressProvider>
-                {children}
+                <IncomingGroupsContext.Provider value={incomingGroups}>
+                  {children}
+                </IncomingGroupsContext.Provider>
                 <TransitionHostPortal
                   active={Boolean(isOverlayActive && overlaySession)}
                 >

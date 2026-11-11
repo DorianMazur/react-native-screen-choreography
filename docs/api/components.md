@@ -88,7 +88,7 @@ Wraps each route participating in shared transitions. It waits for layout, manag
 
 ```ts
 {
-  screenId: string;
+  screenId?: string; // Defaults to the route name.
   children: ReactNode;
   ready?: boolean; // default: true
   screenFade?: { during: readonly [number, number] }; // default: [0, 0.4]
@@ -97,7 +97,7 @@ Wraps each route participating in shared transitions. It waits for layout, manag
 }
 ```
 
-Use a stable application label for `screenId`. For React Navigation, match the route name; for Expo Router, match `targetScreenId` on navigation requests. Multiple instances of the same route can use the same label.
+Both adapters use the route name by default. When supplying an explicit `screenId`, match the route name for React Navigation or the request’s `targetScreenId` for Expo Router. Multiple instances of the same route can use the same label.
 
 `allowInteractionDuringTransition` defaults to `true` on both platforms. The arriving screen can receive touches during motion, so a Back button can interrupt an opening transition. Set it to `false` to block those touches until motion completes. Disable individual controls while transitioning if using them would conflict with your screen's state.
 
@@ -149,6 +149,26 @@ Owns the **one live content subtree**. Pair it with `SharedElement.Target` on th
 
 The owner keeps its original React context when moved into the overlay or destination. Keep it mounted for the lifetime of the retained content. Use [`useSharedElementPresentation`](./hooks.md#usesharedelementpresentation) for endpoint-specific layout inside it.
 
+### SharedElement.Pressable
+
+Wrap live content in `SharedElement.Pressable` to launch a navigation from its source:
+
+```tsx
+<SharedElement.Pressable
+  id="hero"
+  groupId={item.id}
+  style={styles.card}
+  accessibilityRole="button"
+  onPress={(options) => navigate('Detail', { id: item.id }, options)}
+>
+  <Artwork item={item} />
+</SharedElement.Pressable>
+```
+
+#### `SharedElementPressableProps`
+
+Accepts owner props with a required `groupId`. Its `onPress(options, event)` receives the navigation options for this press and the native press event. `style` sizes the measured element. `pressableStyle`, accessibility props, and other pressable props apply to the outer React Native Pressable, which stays on the source screen when the artwork moves.
+
 ### `SharedElement.Target`
 
 An empty receiving host with measurable bounds. It does **not** accept children.
@@ -158,6 +178,8 @@ An empty receiving host with measurable bounds. It does **not** accept children.
 ```
 
 `SharedElementTargetProps` is exported. It shares `id`, `groupId`, `transition`, `style`, and `metadata` with the owner. Its additional `hostStyle?: StyleProp<ViewStyle>` adjusts the receiving host independently of the measured wrapper. The host defaults to absolute fill.
+
+Set `fromSource` to receive the group from the navigation that opened this route. The binding belongs to that route instance for its lifetime, including Back. An explicit `groupId` takes precedence. On direct entry a `fromSource` target reserves its layout and has no owner to display.
 
 Give an empty target explicit dimensions or another nonzero layout constraint. Keep one owner mounted and use empty targets on later screens; do not duplicate the content on the destination.
 

@@ -1,6 +1,6 @@
 const React = require('react');
 const { useMutable } = require('./shared-value');
-const { Easing, StyleSheet, View } = require('react-native');
+const { Easing, Pressable, StyleSheet, View } = require('react-native');
 
 const noop = () => {};
 const release = () => noop;
@@ -51,6 +51,34 @@ function SharedElement({ children, style, portalStyle, metadata }) {
     )
   );
 }
+
+SharedElement.Pressable = function PressableOwner({
+  id,
+  groupId,
+  style,
+  portalStyle,
+  metadata,
+  transition,
+  children,
+  onPress,
+  pressableStyle,
+  ...pressableProps
+}) {
+  return React.createElement(
+    Pressable,
+    {
+      ...pressableProps,
+      style: pressableStyle,
+      onPress: (event) =>
+        onPress({ transitionConfig: { group: groupId } }, event),
+    },
+    React.createElement(
+      SharedElement,
+      { id, groupId, style, portalStyle, metadata, transition },
+      children
+    )
+  );
+};
 
 SharedElement.Target = function Target({ style, hostStyle }) {
   return React.createElement(
@@ -110,6 +138,15 @@ function defineTransition(definition) {
   function Element({ name, ...props }) {
     return React.createElement(SharedElement, { ...props, id: name });
   }
+  const navigationOptions = { ...definition.motion };
+  Element.Pressable = function PressableElement({ name, onPress, ...props }) {
+    return React.createElement(SharedElement.Pressable, {
+      ...props,
+      id: name,
+      onPress: (options, event) =>
+        onPress({ ...navigationOptions, ...options }, event),
+    });
+  };
   Element.Target = function Target({ name, ...props }) {
     return React.createElement(SharedElement.Target, { ...props, id: name });
   };
@@ -120,7 +157,7 @@ function defineTransition(definition) {
     Element,
     Enter: Reveal,
     Exit: Reveal,
-    navigationOptions: { ...definition.motion },
+    navigationOptions,
   };
 }
 
@@ -171,6 +208,12 @@ const Springs = {
 };
 
 module.exports = {
+  choreographyStackOptions: {
+    animation: 'none',
+    presentation: 'containedTransparentModal',
+    contentStyle: { backgroundColor: 'transparent' },
+    gestureEnabled: false,
+  },
   ChoreographyProvider,
   ChoreographyOverlay,
   SharedElement,

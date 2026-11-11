@@ -2,6 +2,7 @@ import { useEffect } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
 import {
   act,
+  fireEvent,
   render as renderComponent,
   type RenderResult,
 } from '@testing-library/react-native/pure';
@@ -19,6 +20,8 @@ import {
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import { ScreenIdContext } from '../core/screenIdContext';
+import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
+import { defineTransition } from '../transitions/defineTransition';
 import { makeTransition } from '../transitions/makeTransition';
 import { SharedElement } from './SharedElement';
 import { createNativePresentation } from '../core/nativePresentation';
@@ -957,6 +960,109 @@ describe('SharedElement live endpoints', () => {
       }
     }
   );
+
+  test('the source pressable sends its own group and recipe motion and stays outside the portal', async () => {
+    const { actions } = makeContexts();
+    const artwork = defineTransition({
+      motion: { duration: 350 },
+      shared: { hero: { kind: 'bounds' } },
+    });
+    const onPress = jest.fn();
+    const render = (groupId: string) => (
+      <ChoreographyActionsContext.Provider value={actions}>
+        <ChoreographyContext.Provider value={choreography(null)}>
+          <artwork.Element.Pressable
+            name="hero"
+            groupId={groupId}
+            onPress={onPress}
+            testID="open"
+            accessibilityRole="button"
+          >
+            <View testID="payload" />
+          </artwork.Element.Pressable>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const tree = renderComponent(render('sunrise'));
+    try {
+      fireEvent.press(tree.getByRole('button'));
+      await act(async () => tree.rerender(render('sunset')));
+      fireEvent.press(tree.getByRole('button'));
+      expect(onPress.mock.calls.map(([options]) => options)).toEqual([
+        { transitionConfig: { group: 'sunrise' }, duration: 350 },
+        { transitionConfig: { group: 'sunset' }, duration: 350 },
+      ]);
+      const payload = tree.UNSAFE_root.findByType(Portal);
+      expect(
+        payload.findAllByProps({ testID: 'payload' }).length
+      ).toBeGreaterThan(0);
+      expect(payload.findAllByProps({ testID: 'open' })).toHaveLength(0);
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
+  test('fromSource registers only the resolved route and preserves its registration across prop updates', async () => {
+    const groups = new IncomingGroups();
+    const { actions } = makeContexts();
+    const render = (explicitGroup?: string) => (
+      <IncomingGroupsContext.Provider value={groups}>
+        <ChoreographyActionsContext.Provider value={actions}>
+          <ScreenIdContext.Provider value="detail-first">
+            <SharedElement.Target
+              id="hero"
+              fromSource
+              groupId={explicitGroup}
+              metadata={{ explicitGroup }}
+            />
+          </ScreenIdContext.Provider>
+          <ScreenIdContext.Provider value="detail-second">
+            <SharedElement.Target id="hero" fromSource />
+          </ScreenIdContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      </IncomingGroupsContext.Provider>
+    );
+    const tree = renderComponent(render());
+    try {
+      expect(actions.registerElement).not.toHaveBeenCalled();
+      await act(async () => {
+        groups.bind('detail-first', 'sunrise');
+      });
+      expect(actions.registerElement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          screenId: 'detail-first',
+          id: 'hero',
+          groupId: 'sunrise',
+        })
+      );
+      await act(async () => tree.rerender(render('sunrise')));
+      await act(async () => tree.rerender(render()));
+      await act(async () => {
+        groups.bind('detail-second', 'sunset');
+      });
+      expect(actions.registerElement).toHaveBeenCalledTimes(2);
+      expect(actions.unregisterElement).not.toHaveBeenCalled();
+      expect(
+        tree.UNSAFE_root.findAllByType(PortalHost).map(
+          (host) => host.props.name
+        )
+      ).toEqual([
+        getLiveDestinationHostName('detail-first', 'hero', 'sunrise'),
+        getLiveDestinationHostName('detail-second', 'hero', 'sunset'),
+      ]);
+      await act(async () => groups.remove('detail-first'));
+      expect(actions.unregisterElement).toHaveBeenCalledWith(
+        'hero',
+        'detail-first',
+        'sunrise'
+      );
+      expect(tree.UNSAFE_root.findByType(PortalHost).props.name).toBe(
+        getLiveDestinationHostName('detail-second', 'hero', 'sunset')
+      );
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
 
   test('keeps registration stable while renderer and metadata snapshots advance', async () => {
     const state = makeContexts();

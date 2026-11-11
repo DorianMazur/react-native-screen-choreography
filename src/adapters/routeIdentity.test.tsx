@@ -13,8 +13,8 @@ import {
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import { ScreenIdContext, useScreenId } from '../core/screenIdContext';
-import { ChoreographyScreen as NavigationScreen } from './react-navigation';
-import { ChoreographyScreen as RouterScreen } from './expo-router';
+import { choreographyScreenLayout as navigationLayout } from './react-navigation';
+import { choreographyScreenLayout as expoLayout } from './expo-router';
 
 jest.mock('react-native-reanimated', () => {
   const { useRef } = jest.requireActual('react');
@@ -92,11 +92,11 @@ test('live owners and destinations are namespaced by route instance', async () =
 });
 
 test.each([
-  ['React Navigation', NavigationScreen],
-  ['Expo Router', RouterScreen],
+  ['React Navigation', navigationLayout],
+  ['Expo Router', expoLayout],
 ] as const)(
   '%s isolates repeated screen instances',
-  async (_adapter, Screen) => {
+  async (_adapter, screenLayout) => {
     jest.useFakeTimers();
     const globals = globalThis as typeof globalThis & {
       __screenChoreographyRequestFabricLayout?: jest.Mock;
@@ -157,17 +157,13 @@ test.each([
           <RouteContext.Provider
             value={{ key: 'detail-first', name: 'Detail', focused: true }}
           >
-            <Screen screenId="Detail">
-              <Element pageX={10} />
-            </Screen>
+            {screenLayout({ children: <Element pageX={10} /> })}
           </RouteContext.Provider>
           {includeSecond && (
             <RouteContext.Provider
               value={{ key: 'detail-second', name: 'Detail', focused: true }}
             >
-              <Screen screenId="Detail">
-                <Element pageX={200} />
-              </Screen>
+              {screenLayout({ children: <Element pageX={200} /> })}
             </RouteContext.Provider>
           )}
         </ChoreographyProvider>

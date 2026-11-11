@@ -129,6 +129,33 @@ test('renders one stateful owner, empty targets, and visible companion content',
   expect(card.navigationOptions).toEqual({ duration: 250 });
 });
 
+test('the recipe mock launches with the same group and motion as the live pressable', () => {
+  const { Element } = core.defineTransition({
+    shared: { hero: { kind: 'bounds' } },
+    motion: { duration: 300 },
+  });
+  const onPress = jest.fn();
+  const result = render(
+    expo.choreographyScreenLayout({
+      children: (
+        <Element.Pressable
+          name="hero"
+          groupId="one"
+          onPress={onPress}
+          accessibilityRole="button"
+        >
+          <Text>Open</Text>
+        </Element.Pressable>
+      ),
+    })
+  );
+  fireEvent.press(result.getByRole('button'));
+  expect(onPress.mock.calls[0]![0]).toEqual({
+    transitionConfig: { group: 'one' },
+    duration: 300,
+  });
+});
+
 test('idle progress is stable within a provider and isolated between providers', () => {
   const first = renderHook(core.useChoreographyProgress, {
     wrapper: core.ChoreographyProvider,
