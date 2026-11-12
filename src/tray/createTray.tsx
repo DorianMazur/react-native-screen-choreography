@@ -386,6 +386,13 @@ function TrayHost<P extends TrayParamList>({
       motion.remove();
     };
   }, []);
+  // The native sheet reports `onSettle` only when its open animation ends.
+  // With `animateIn` off it is placed at the open detent without one, so the
+  // tray would stay `opening` and reject every push. Settle it here instead.
+  useEffect(() => {
+    if (reducedMotion && state.phase === 'opening')
+      dispatch({ type: 'settled', session: state.session, index: 1 });
+  }, [reducedMotion, state.phase, state.session, dispatch]);
   const active = state.entries[state.entries.length - 1]!;
   const entries = [...state.entries, ...(state.transition?.retained ?? [])];
   const renderHeader = screens[active.name]?.renderHeader ?? stackRenderHeader;

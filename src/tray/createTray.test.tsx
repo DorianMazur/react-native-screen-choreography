@@ -498,6 +498,23 @@ test('tray lifecycle distinguishes opening from native settlement and ignores la
   act(() => f.renderer.unmount());
 });
 
+test('a reduced-motion tray accepts pushes without a native opening settlement', () => {
+  const motion = jest
+    .spyOn(Reanimated, 'useReducedMotion')
+    .mockReturnValue(true);
+  const f = lifecycleFixture();
+  try {
+    act(() => navigation.present('form'));
+    expect(sheet(f.renderer).props.animateIn).toBe(false);
+    expect(f.events).toEqual(['willPresent', 'present']);
+    act(() => navigation.push('preview', { label: 'next' }));
+    expect(navigationState.route?.name).toBe('preview');
+  } finally {
+    f.renderer.unmount();
+    motion.mockRestore();
+  }
+});
+
 test('lifecycle details follow each destination and preserve params and declared defaults', () => {
   const f = lifecycleFixture();
   act(() => navigation.present('form'));
