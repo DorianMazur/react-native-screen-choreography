@@ -3,10 +3,8 @@ import {
   render as renderComponent,
   type RenderResult,
 } from '@testing-library/react-native/pure';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { ReverseTransitionController } from '../core/ReverseTransitionController';
@@ -45,19 +43,19 @@ test('retained core commands use the current source, preparation callback and ba
   let tree: RenderResult | undefined;
   try {
     tree = renderComponent(
-      <ChoreographyContext.Provider value={context}>
+      <ChoreographyContextProvider value={context}>
         <Caller screenId="source-first" back={backFirst} />
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
 
     const retained = commands;
     await act(async () => {
       tree!.rerender(
-        <ChoreographyContext.Provider
+        <ChoreographyContextProvider
           value={{ ...context, captureSourceGroup: captureCurrent }}
         >
           <Caller screenId="source-current" back={backCurrent} />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       );
     });
 
@@ -129,9 +127,9 @@ test.each(['focus', 'pending target', 'active session'] as const)(
     let tree: RenderResult | undefined;
     try {
       tree = renderComponent(
-        <ChoreographyContext.Provider value={context}>
+        <ChoreographyContextProvider value={context}>
           <Caller focused />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       );
 
       const retained = commands.navigate;
@@ -153,9 +151,9 @@ test.each(['focus', 'pending target', 'active session'] as const)(
       context.navigationController.setActiveSession(next.activeSession);
       await act(async () =>
         tree!.rerender(
-          <ChoreographyContext.Provider value={next}>
+          <ChoreographyContextProvider value={next}>
             <Caller focused={gate !== 'focus'} />
-          </ChoreographyContext.Provider>
+          </ChoreographyContextProvider>
         )
       );
       const request = {
@@ -212,9 +210,9 @@ test('a retained Back reverses the current opening and uses plain Back after set
   let tree: RenderResult | undefined;
   try {
     tree = renderComponent(
-      <ChoreographyContext.Provider value={context}>
+      <ChoreographyContextProvider value={context}>
         <Caller />
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
 
     const retained = commands.goBack;
@@ -232,11 +230,11 @@ test('a retained Back reverses the current opening and uses plain Back after set
     context.navigationController.setActiveSession(session);
     await act(async () =>
       tree!.rerender(
-        <ChoreographyContext.Provider
+        <ChoreographyContextProvider
           value={{ ...context, activeSession: session }}
         >
           <Caller />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       )
     );
     const options = { spring: { stiffness: 250, damping: 32 }, duration: 300 };
@@ -253,9 +251,9 @@ test('a retained Back reverses the current opening and uses plain Back after set
     context.navigationController.setActiveSession(null);
     await act(async () =>
       tree!.rerender(
-        <ChoreographyContext.Provider value={context}>
+        <ChoreographyContextProvider value={context}>
           <Caller />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       )
     );
     await act(async () => retained());

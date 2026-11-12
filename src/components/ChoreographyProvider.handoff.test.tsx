@@ -5,7 +5,12 @@ import {
   type RenderResult,
 } from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
-import { useReducedMotion } from 'react-native-reanimated';
+import { useReducedMotion, withSpring } from 'react-native-reanimated';
+import {
+  useChoreographyNavigation,
+  useInteractiveTransition,
+} from '../adapters/react-navigation';
+import { useChoreographyRouter } from '../adapters/expo-router';
 import { ChoreographyProvider } from './ChoreographyProvider';
 import { ChoreographyScreenBase } from './ChoreographyScreenBase';
 import { SharedElement } from './SharedElement';
@@ -15,12 +20,26 @@ import {
 } from '../core/ChoreographyContext';
 import { TransitionOverlay } from '../core/TransitionOverlay';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
+import { runReverseTransition } from '../core/runReverseTransition';
 import { makeTransition } from '../transitions/makeTransition';
 
+jest.mock('@react-navigation/native', () => ({
+  useRoute: () => ({
+    key: jest.requireActual('../core/screenIdContext').useScreenId(),
+  }),
+  useIsFocused: () => true,
+  useNavigation: () => ({}),
+}));
+jest.mock('expo-router', () => ({
+  ...jest.requireMock('@react-navigation/native'),
+  useSitemap: () => null,
+}));
+jest.mock('expo-router/react-navigation', () => ({}));
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
   __esModule: true,
   useReducedMotion: jest.fn(() => false),
+  withSpring: jest.fn((target) => target),
 }));
 jest.mock('react-native-teleport', () => ({
   Portal: 'Portal',
@@ -53,9 +72,13 @@ function Consumer() {
   return null;
 }
 function App({
+  listContent,
+  detailContent,
   detail = true,
   preview = false,
 }: {
+  listContent?: React.ReactNode;
+  detailContent?: React.ReactNode;
   detail?: boolean;
   preview?: boolean;
 }) {
@@ -63,12 +86,14 @@ function App({
     <ChoreographyProvider onTransitionEnd={onEnd}>
       <Consumer />
       <ChoreographyScreenBase screenId="list">
+        {listContent}
         <SharedElement id="card" groupId="group" transition={transition}>
           <Payload />
         </SharedElement>
       </ChoreographyScreenBase>
       {detail && (
         <ChoreographyScreenBase screenId="detail">
+          {detailContent}
           <SharedElement.Target
             id="card"
             groupId="group"
@@ -152,6 +177,119 @@ afterEach(async () => {
   delete fabric.__screenChoreographyRequestFabricLayout;
   delete fabric.__screenChoreographySubscribeFabricMount;
   jest.restoreAllMocks();
+});
+
+test('screens calling navigation and gesture hooks directly skip session renders through forward and Back', async () => {
+  // Keep props, parent children and route focus fixed to isolate session updates.
+  let phase = 'mount';
+  const renders = {
+    navigation: [] as string[],
+    router: [] as string[],
+    gesture: [] as string[],
+  };
+  const router = { push: jest.fn(), navigate: jest.fn(), back: jest.fn() };
+  const navigation = {
+    navigate: jest.fn(),
+    getState: () => ({ routes: [{ name: 'detail', key: 'detail' }] }),
+    addListener: () => () => {},
+  };
+  let commands!: ReturnType<typeof useChoreographyNavigation>;
+  function ListScreen() {
+    commands = useChoreographyNavigation(navigation);
+    renders.navigation.push(phase);
+    return null;
+  }
+  function ExpoListScreen() {
+    useChoreographyRouter(router);
+    renders.router.push(phase);
+    return null;
+  }
+  function GestureScreen() {
+    useInteractiveTransition();
+    renders.gesture.push(phase);
+    return null;
+  }
+  await act(async () =>
+    tree.rerender(
+      <App
+        listContent={
+          <>
+            <ListScreen />
+            <ExpoListScreen />
+          </>
+        }
+        detailContent={<GestureScreen />}
+      />
+    )
+  );
+  await act(async () => ctx.setScreenReady('detail', false));
+  phase = 'forward pending target';
+  let opening!: Promise<void>;
+  await act(async () => {
+    opening = commands.navigate('detail', undefined, {
+      transitionConfig: { group: 'group' },
+    });
+  });
+  expect(navigation.navigate).toHaveBeenCalledTimes(1);
+  expect(ctx.pendingTargetScreenId).toBe('detail');
+  phase = 'forward activation';
+  await act(async () => ctx.setScreenReady('detail', true));
+  const forward = ctx.activeSession!;
+  expect(forward.direction).toBe('forward');
+  phase = 'forward presented, pending target cleared';
+  await act(async () => {
+    host().onPresentationReady(forward.id);
+    await opening;
+  });
+  expect(ctx.pendingTargetScreenId).toBeNull();
+  phase = 'target metrics refreshed';
+  fabric.__screenChoreographyCaptureFabricLayout!.mockImplementation(
+    (_screens, nodes) =>
+      nodes.map(() => ({ pageX: 25, pageY: 30, width: 110, height: 100 }))
+  );
+  await act(async () => ctx.refreshActiveSessionMetrics('target'));
+  expect(ctx.activeSession!.pairs[0]!.targetMetrics.pageX).toBe(25);
+  phase = 'forward settlement';
+  await act(async () => ctx.completeTransition(forward.id));
+  phase = 'forward host released';
+  await settle();
+  phase = 'Back activation';
+  const popAction = jest.fn(async () => ({ removed: true, presented: true }));
+  let returning!: Promise<void>;
+  await act(async () => {
+    returning = runReverseTransition({
+      ctx,
+      currentScreenId: 'detail',
+      sourceScreenId: 'list',
+      groupId: 'group',
+      popAction,
+    });
+  });
+  const back = ctx.activeSession!;
+  expect(back.direction).toBe('backward');
+  await act(async () => host().onPresentationReady(back.id));
+  // Cross the Android source suspension fence before confirming the pop.
+  jest.spyOn(global, 'requestAnimationFrame').mockImplementation((frame) => {
+    frame(0);
+    return 1;
+  });
+  phase = 'Back removal confirmed';
+  await act(async () => ctx.reverseController.commitNearEndpoint(back.id));
+  expect(popAction).toHaveBeenCalledTimes(1);
+  expect(ctx.interruptibleReturnSessionId).toBe(back.id);
+  phase = 'Back settlement';
+  await act(async () => {
+    jest.mocked(withSpring).mock.lastCall![2]!(true);
+    await returning;
+  });
+  phase = 'Back host released';
+  await settle();
+  expect(ctx.navigationController.isNavigationLocked()).toBe(false);
+  expect(renders).toEqual({
+    navigation: ['mount'],
+    router: ['mount'],
+    gesture: ['mount'],
+  });
 });
 
 test.each(['complete', 'cancel'] as const)(

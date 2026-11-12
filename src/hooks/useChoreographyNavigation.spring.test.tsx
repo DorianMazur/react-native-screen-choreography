@@ -4,10 +4,8 @@ import {
   type RenderResult,
 } from '@testing-library/react-native/pure';
 import { withSpring } from 'react-native-reanimated';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { FAST_SPRING } from '../core/constants';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
@@ -90,9 +88,9 @@ async function mount(context: ChoreographyContextType, screenId: string) {
   }
 
   tree = renderComponent(
-    <ChoreographyContext.Provider value={context}>
+    <ChoreographyContextProvider value={context}>
       <Harness />
-    </ChoreographyContext.Provider>
+    </ChoreographyContextProvider>
   );
 
   return { navigation, removal, goBack };

@@ -26,6 +26,7 @@ import type {
 import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
 import { ElementRegistry } from '../core/ElementRegistry';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { hostsReportAttachment } from '../native/attachmentCapability';
@@ -37,7 +38,6 @@ import {
   type OverlayPresentation,
 } from '../core/TransitionOverlay';
 import {
-  ChoreographyContext,
   ChoreographyActionsContext,
   PreparingSessionContext,
   ChoreographyControlsContext,
@@ -992,7 +992,7 @@ export function ChoreographyProvider({
     <PortalProvider>
       <ChoreographyActionsContext.Provider value={actionsValue}>
         <ChoreographyControlsContext.Provider value={controlsValue}>
-          <ChoreographyContext.Provider value={contextValue}>
+          <ChoreographyContextProvider value={contextValue}>
             <PreparingSessionContext.Provider value={preparingSession}>
               <ChoreographyProgressProvider>
                 <IncomingGroupsContext.Provider value={incomingGroups}>
@@ -1029,7 +1029,7 @@ export function ChoreographyProvider({
                 </TransitionHostPortal>
               </ChoreographyProgressProvider>
             </PreparingSessionContext.Provider>
-          </ChoreographyContext.Provider>
+          </ChoreographyContextProvider>
         </ChoreographyControlsContext.Provider>
       </ChoreographyActionsContext.Provider>
     </PortalProvider>
