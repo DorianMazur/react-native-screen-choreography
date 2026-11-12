@@ -1,3 +1,4 @@
+import { IncomingGroupsContext } from '../core/incomingGroups';
 import { hasFabricLayoutCapture } from '../core/fabricLayout';
 import { PreparationTrace } from '../core/preparationTrace';
 import { useCallback, useContext, useEffect, useState } from 'react';
@@ -51,6 +52,7 @@ export function useChoreographyNavigator({
   isFocused,
   goBack: navigateBack,
 }: ChoreographyNavigatorBinding) {
+  const incomingGroups = useContext(IncomingGroupsContext);
   const ctx = useContext(ChoreographyContext) as ChoreographyContextType;
   if (!ctx) {
     throw new Error(
@@ -381,8 +383,17 @@ export function useChoreographyNavigator({
           },
           resolveTargetScreenId: request.resolveTargetScreenId,
           waitForScreenReady: async (pendingScreenId) => {
+            // Preparation has resolved and validated the destination instance.
+            const releaseBinding = incomingGroups?.bind(
+              pendingScreenId,
+              groupId
+            );
             const startedAt = nowMs();
             const ready = await waitForScreenReady(pendingScreenId);
+            if (!ready && releaseBinding && !resolveScreenId(pendingScreenId)) {
+              // An unwrapped destination will never run screen-unmount cleanup.
+              releaseBinding();
+            }
             logNavigation(
               () =>
                 `screen ready=${ready} target=${pendingScreenId} duration=${elapsedMs(startedAt)} total=${elapsedMs(tapStartedAt)}`
@@ -450,6 +461,7 @@ export function useChoreographyNavigator({
       ctx.activeSession,
       ctx.pendingTargetScreenId,
       ctx.onPreparationTrace,
+      incomingGroups,
       ctx.isOverlayPresented,
       resolveScreenId,
       controller,

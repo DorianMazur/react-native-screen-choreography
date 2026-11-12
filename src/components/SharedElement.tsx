@@ -10,12 +10,22 @@ import {
   useMemo,
   useContext,
   useReducer,
+  useSyncExternalStore,
   memo,
 } from 'react';
-import { type StyleProp, type ViewStyle, StyleSheet, View } from 'react-native';
+import {
+  type StyleProp,
+  type ViewStyle,
+  type PressableProps,
+  type GestureResponderEvent,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 import Animated, { useDerivedValue } from 'react-native-reanimated';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
+  ChoreographyNavigateOptions,
   ElementPresentation,
   Transition,
   SharedElementTransition,
@@ -27,6 +37,7 @@ import {
   ChoreographyContext,
   PreparingSessionContext,
 } from '../core/ChoreographyContext';
+import { IncomingGroupsContext } from '../core/incomingGroups';
 import { useScreenId } from '../core/screenIdContext';
 import {
   getLiveContentMarkerId,
@@ -50,7 +61,19 @@ export interface SharedElementProps {
   metadata?: unknown;
 }
 
+export type SharedElementPressableProps = SharedElementProps &
+  Omit<PressableProps, 'children' | 'style' | 'onPress'> & {
+    groupId: string;
+    pressableStyle?: PressableProps['style'];
+    onPress: (
+      options: ChoreographyNavigateOptions,
+      event: GestureResponderEvent
+    ) => void;
+  };
+
 export interface SharedElementTargetProps {
+  /** Receive the group carried to this route by forward navigation. */
+  fromSource?: boolean;
   id: string;
   groupId?: string;
   /** Reuse the owner's factory result for consistent forward and back motion. */
@@ -524,15 +547,32 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   );
 });
 
+// Explicit targets have no dependency on incoming navigation requests.
+const skipSubscription = () => () => {};
+
 function LiveSharedElementTarget({
   id,
-  groupId,
+  groupId: explicitGroup,
+  fromSource,
   style,
   transition = defaultTransition,
   hostStyle,
   metadata,
 }: SharedElementTargetProps) {
   const screenId = useScreenId();
+  const incomingGroups = useContext(IncomingGroupsContext);
+  const inferGroup = fromSource && explicitGroup === undefined;
+  const groups = inferGroup ? incomingGroups : null;
+  const getGroup = () => explicitGroup ?? groups?.get(screenId);
+  const groupId = useSyncExternalStore(
+    groups?.subscribe ?? skipSubscription,
+    getGroup,
+    getGroup
+  );
+  if (inferGroup && !incomingGroups)
+    throw new Error('fromSource requires a ChoreographyProvider.');
+  // Reserve the layout on direct entry and before the router resolves the key.
+  if (inferGroup && groupId === undefined) return <View style={style} />;
   return (
     <SharedElementRegistration
       id={id}
@@ -549,8 +589,43 @@ function LiveSharedElementTarget({
   );
 }
 
+function PressableOwner({
+  id,
+  groupId,
+  style,
+  portalStyle,
+  metadata,
+  transition,
+  children,
+  onPress,
+  pressableStyle,
+  ...pressableProps
+}: SharedElementPressableProps) {
+  return (
+    <Pressable
+      {...pressableProps}
+      style={pressableStyle}
+      onPress={(event) =>
+        onPress({ transitionConfig: { group: groupId } }, event)
+      }
+    >
+      <LiveSharedElement
+        id={id}
+        groupId={groupId}
+        style={style}
+        portalStyle={portalStyle}
+        metadata={metadata}
+        transition={transition}
+      >
+        {children}
+      </LiveSharedElement>
+    </Pressable>
+  );
+}
+
 export const SharedElement = Object.assign(LiveSharedElement, {
   Target: LiveSharedElementTarget,
+  Pressable: PressableOwner,
 });
 
 const styles = StyleSheet.create({

@@ -7,6 +7,22 @@ description: React Navigation, Expo Router, and interactive back hook signatures
 
 Use the adapter for your router. Navigation hooks require a mounted provider and the corresponding route context.
 
+## `choreographyStackOptions`
+
+Apply this preset to the destination in a React Navigation native stack or Expo Router Stack:
+
+```tsx
+<Stack.Screen name="Detail" options={choreographyStackOptions} />
+```
+
+It sets `animation: 'none'`, `presentation: 'containedTransparentModal'`, `contentStyle: { backgroundColor: 'transparent' }`, and `gestureEnabled: false`. Native swipe progress is not connected to shared transitions. Set header options separately.
+
+## `choreographyScreenLayout`
+
+Pass this callback to `screenLayout` on `Stack.Navigator` (React Navigation 7+) or `Stack` (Expo Router). Import it from the adapter for your router. It renders one `ChoreographyScreen` per route with the route name as its screen label and the route key as its instance identity. Mount `ChoreographyProvider` above the stack.
+
+For per-route settings such as `ready` or `keepVisible`, supply a route layout that renders a configured `ChoreographyScreen`, or wrap routes manually. Use one choreography wrapper per route.
+
 ## `useChoreographyNavigation`
 
 Available from `react-native-screen-choreography`.
@@ -69,7 +85,7 @@ See [quick start](../guide/quick-start.md) for the required stack setup.
 Available from `react-native-screen-choreography/expo-router`.
 
 ```ts
-const { push, navigate, back } = useChoreographyRouter(router, currentScreenId);
+const { push, navigate, back } = useChoreographyRouter(router); // Optional second argument: currentScreenId
 
 push(request: ChoreographyRouterRequest<Href>): Promise<void>;
 navigate(request: ChoreographyRouterRequest<Href>): Promise<void>;
@@ -77,7 +93,7 @@ back(options?: ChoreographyNavigationOptions): Promise<void>;
 
 type ChoreographyRouterRequest<Href> = ChoreographyNavigateOptions & {
   href: Href;
-  targetScreenId: string;
+  targetScreenId?: string;
 };
 ```
 
@@ -93,7 +109,9 @@ void push({
 });
 ```
 
-Match `currentScreenId` to the current wrapper and `targetScreenId` to the destination wrapper. `push` adds a route and `navigate` uses the router's navigation behavior; both coordinate shared motion. URLs only need your application's route parameters.
+The hook reads the source route key. The optional `currentScreenId` supplies a fallback label. Omit `targetScreenId` when navigating from the root stack to a file whose declared route name exactly matches the absolute pathname, such as `/artwork/[id]` for `artwork/[id]`. Both string hrefs and objects with a `pathname` are supported. For nested layouts, concrete paths to dynamic routes, or custom screen labels, supply the destination's `screenId`. A request with an unresolved implicit name rejects before navigation.
+
+`push` adds a route and `navigate` uses the router's navigation behavior. URLs only need your application's route parameters.
 
 The returned object and its `push`, `navigate`, and `back` commands keep the same identities while the hook remains mounted. Retained command references use the latest committed router and screen binding.
 

@@ -116,8 +116,15 @@ export function ChoreographyScreen(props: ChoreographyScreenProps) {
   return (
     <ChoreographyScreenBase
       {...props}
+      screenId={props.screenId ?? route.name}
       instanceId={route.key}
       isFocused={isFocused}
     />
   );
+}
+
+export function choreographyScreenLayout({
+  children,
+}: Pick<ChoreographyScreenProps, 'children'>) {
+  return <ChoreographyScreen>{children}</ChoreographyScreen>;
 }

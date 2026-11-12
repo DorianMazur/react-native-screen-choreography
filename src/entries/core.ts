@@ -1,8 +1,10 @@
+export { choreographyStackOptions } from '../core/choreographyStackOptions';
 export { ChoreographyProvider } from '../components/ChoreographyProvider';
 export { ChoreographyOverlay } from '../components/ChoreographyOverlay';
 export {
   SharedElement,
   type SharedElementProps,
+  type SharedElementPressableProps,
   type SharedElementTargetProps,
 } from '../components/SharedElement';
 export { TransitionSurface } from '../standin/TransitionSurface';
@@ -78,6 +80,7 @@ export {
   type DefinedTransition,
   type TransitionDefinition,
   type TransitionElementProps,
+  type TransitionPressableProps,
   type TransitionTargetProps,
   type TransitionRevealProps,
   type SharedMotionRecipe,

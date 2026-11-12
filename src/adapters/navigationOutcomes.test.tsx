@@ -17,7 +17,10 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({}),
   usePreventRemove: jest.fn(),
 }));
-jest.mock('expo-router', () => jest.requireMock('@react-navigation/native'));
+jest.mock('expo-router', () => ({
+  ...jest.requireMock('@react-navigation/native'),
+  useSitemap: jest.fn(),
+}));
 jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: jest.fn(),
 }));
