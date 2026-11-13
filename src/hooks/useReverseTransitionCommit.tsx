@@ -19,6 +19,7 @@ import {
 import { ReverseTransitionController } from '../core/ReverseTransitionController';
 import type { NavigationSessionController } from '../core/NavigationSessionController';
 import type { CommitBackNavigation } from '../core/navigationCommit';
+import type { NativePresentation } from '../core/nativePresentation';
 import { resolveSpringConfig } from '../core/constants';
 import type { ScreenAnimationLifetime } from './useScreenAnimationLifetime';
 import type {
@@ -31,6 +32,8 @@ export interface ReverseCommitRequest {
   token: number;
   navigateBack: CommitBackNavigation;
   options?: InteractiveTransitionSettleOptions;
+  /** Queue a newly prepared Back until its native overlay can present content. */
+  presentation?: NativePresentation;
 }
 
 interface ScreenPresentation {
@@ -132,7 +135,13 @@ export function useReverseTransitionCommit({
 
   const commitReverseTransition = useCallback(
     (request: ReverseCommitRequest): Promise<void> => {
-      const { sessionId, token, navigateBack, options = {} } = request;
+      const {
+        sessionId,
+        token,
+        navigateBack,
+        options = {},
+        presentation,
+      } = request;
       const session = getSession();
       if (
         session?.id !== sessionId ||
@@ -264,6 +273,7 @@ export function useReverseTransitionCommit({
                 : { velocity: -options.velocity }),
             },
             duration: options.duration,
+            presentation,
             timing: session.presentation?.timing,
             handoffOnComplete: false,
             onCompleteUI: markAnimationFinished,
