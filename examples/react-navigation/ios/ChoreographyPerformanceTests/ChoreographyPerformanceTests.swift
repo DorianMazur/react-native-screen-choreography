@@ -93,12 +93,15 @@ final class ChoreographyPerformanceTests: XCTestCase {
     XCTAssertTrue(target.exists || target.waitForExistence(timeout: 15), "Missing fixture control: \(label)")
     XCTAssertTrue(target.isEnabled, "Disabled fixture control: \(label)")
     let frame = target.frame
+    let point = CGPoint(x: frame.minX + frame.width * (leadingQuarter ? 0.25 : 0.5), y: frame.midY)
     recordInput("tap", label, fields: [
-      "x": frame.minX + frame.width * (leadingQuarter ? 0.25 : 0.5),
-      "y": frame.midY, "frame": [frame.minX, frame.minY, frame.width, frame.height],
+      "x": point.x, "y": point.y, "frame": [frame.minX, frame.minY, frame.width, frame.height],
     ])
-    // Coordinates inject a real touch, including for cards behind the toolbar.
-    target.coordinate(withNormalizedOffset: CGVector(dx: leadingQuarter ? 0.25 : 0.5, dy: 0.5)).tap()
+    // Use the point we recorded. A coordinate relative to the queried element
+    // makes XCTest resolve the entire accessibility query again during injection.
+    let origin = app.coordinate(withNormalizedOffset: .zero)
+    let appFrame = app.frame
+    origin.withOffset(CGVector(dx: point.x - appFrame.minX, dy: point.y - appFrame.minY)).tap()
   }
 
   private func scrollTo(_ app: XCUIApplication, _ label: String) {
@@ -128,6 +131,10 @@ final class ChoreographyPerformanceTests: XCTestCase {
       add(history)
     }
     guard app.state == .runningForeground else { return }
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "Failed benchmark screen"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
     let hierarchy = XCTAttachment(string: app.debugDescription)
     hierarchy.name = "Failed benchmark UI hierarchy"
     hierarchy.lifetime = .keepAlways

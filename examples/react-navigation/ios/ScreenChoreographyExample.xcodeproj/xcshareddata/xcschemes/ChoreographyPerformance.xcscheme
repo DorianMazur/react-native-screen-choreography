@@ -26,6 +26,8 @@
       buildConfiguration = "Release"
       selectedDebuggerIdentifier = ""
       selectedLauncherIdentifier = "Xcode.IDEFoundation.Launcher.PosixSpawn"
+      preferredScreenCaptureFormat = "screenshots"
+      systemAttachmentLifetime = "keepNever"
       shouldUseLaunchSchemeArgsEnv = "NO">
       <Testables>
          <TestableReference
