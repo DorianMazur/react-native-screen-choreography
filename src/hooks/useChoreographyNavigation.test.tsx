@@ -4,10 +4,8 @@ import {
   type RenderResult,
 } from '@testing-library/react-native/pure';
 import { Platform } from 'react-native';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { createNativePresentation } from '../core/nativePresentation';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
@@ -101,9 +99,9 @@ test.each([
     let tree!: RenderResult;
     try {
       tree = renderComponent(
-        <ChoreographyContext.Provider value={ctx}>
+        <ChoreographyContextProvider value={ctx}>
           <Caller />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       );
 
       let pending!: Promise<void>;
@@ -188,10 +186,10 @@ test('navigation callers share one provider preparation lock', async () => {
   const pending: Promise<void>[] = [];
   try {
     tree = renderComponent(
-      <ChoreographyContext.Provider value={ctx}>
+      <ChoreographyContextProvider value={ctx}>
         <Caller index={0} />
         <Caller index={1} />
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
 
     await act(async () => {
@@ -269,10 +267,10 @@ test.each([true, false])(
     function render(focused = true) {
       return (
         <IncomingGroupsContext.Provider value={incomingGroups}>
-          <ChoreographyContext.Provider value={ctx}>
+          <ChoreographyContextProvider value={ctx}>
             <Caller screenId="first-route" />
             <Caller screenId="second-route" focused={focused} />
-          </ChoreographyContext.Provider>
+          </ChoreographyContextProvider>
         </IncomingGroupsContext.Provider>
       );
     }
@@ -392,9 +390,9 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
       return null;
     }
     const render = () => (
-      <ChoreographyContext.Provider value={{ ...ctx }}>
+      <ChoreographyContextProvider value={{ ...ctx }}>
         <Caller />
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
     let tree!: RenderResult;
     try {
@@ -496,9 +494,9 @@ describe('Back preparation ownership', () => {
     let tree!: RenderResult;
     try {
       tree = renderComponent(
-        <ChoreographyContext.Provider value={ctx}>
+        <ChoreographyContextProvider value={ctx}>
           <Caller />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       );
 
       await act(async () => navigation.goBack());
@@ -562,9 +560,9 @@ describe('Back preparation ownership', () => {
       let tree!: RenderResult;
 
       tree = renderComponent(
-        <ChoreographyContext.Provider value={ctx}>
+        <ChoreographyContextProvider value={ctx}>
           <Harness />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       );
 
       let pending!: Promise<void>;

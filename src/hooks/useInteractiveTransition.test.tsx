@@ -4,10 +4,8 @@ import {
   type RenderResult,
 } from '@testing-library/react-native/pure';
 import { withTiming } from 'react-native-reanimated';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ScreenIdContext } from '../core/screenIdContext';
@@ -53,11 +51,11 @@ describe('interactive ownership', () => {
 
   function render() {
     return (
-      <ChoreographyContext.Provider value={ctx}>
+      <ChoreographyContextProvider value={ctx}>
         <ScreenIdContext.Provider value="Detail">
           <Harness />
         </ScreenIdContext.Provider>
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
   }
 
@@ -75,6 +73,7 @@ describe('interactive ownership', () => {
     ctx.progressOwnership.setSession(id);
     ctx.navigationController.setActiveSession(session);
     ctx.activeSession = session;
+    tree.rerender(render());
     return session;
   }
 

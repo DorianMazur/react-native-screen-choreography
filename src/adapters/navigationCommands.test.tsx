@@ -6,10 +6,8 @@ import {
 } from '@testing-library/react-native/pure';
 import { useChoreographyNavigation } from './react-navigation';
 import { useChoreographyRouter } from './expo-router';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 
 jest.mock('@react-navigation/native', () => ({
@@ -136,18 +134,18 @@ test.each(['React Navigation', 'Expo push', 'Expo navigate'] as const)(
     const Caller = adapter === 'React Navigation' ? NativeCaller : ExpoCaller;
 
     tree = renderComponent(
-      <ChoreographyContext.Provider value={context}>
+      <ChoreographyContextProvider value={context}>
         <Caller attempt={false} />
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
 
     routeHooks.useIsFocused.mockReturnValue(false);
     routeHooks.useRoute.mockReturnValue({ key: 'source-current' });
     await act(async () =>
       tree!.rerender(
-        <ChoreographyContext.Provider value={context}>
+        <ChoreographyContextProvider value={context}>
           <Caller attempt />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       )
     );
     await expect(pending).resolves.toBeUndefined();

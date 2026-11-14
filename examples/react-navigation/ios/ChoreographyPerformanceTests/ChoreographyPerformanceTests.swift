@@ -1,12 +1,18 @@
 import XCTest
+import notify
 
 /// Same release fixture and real touch/probe sequence as the Android collector.
 final class ChoreographyPerformanceTests: XCTestCase {
   private var activeApp: XCUIApplication?
+  private let touchStateName = "screenchoreography.performance.touch.\(UUID().uuidString)"
+  private var touchStateToken: Int32 = -1
   private var inputHistory: [[String: Any]] = []
 
   override func tearDownWithError() throws {
-    defer { activeApp?.terminate() }
+    defer {
+      activeApp?.terminate()
+      if touchStateToken >= 0 { notify_cancel(touchStateToken) }
+    }
     if let app = activeApp,
        (testRun?.failureCount ?? 0) + (testRun?.unexpectedExceptionCount ?? 0) > 0 {
       preserveFailure(app)
@@ -20,14 +26,27 @@ final class ChoreographyPerformanceTests: XCTestCase {
   func testWalletTray() throws { try runTray("tray-wallet", controls: ["Wallet dynamic tray", "Send money", "Choose recipient", "Alex Morgan", "Back in tray", "Back in tray", "Back in tray", "Close tray"]) }
   func testGalleryTray() throws { try runTray("tray-gallery", controls: ["Gallery dynamic tray", "Explore Plus", "Good to know", "Back in tray", "Back in tray", "Close tray"]) }
 
+  private func launch(_ scenario: String) -> XCUIApplication {
+    XCTAssertEqual(notify_register_check(touchStateName, &touchStateToken), UInt32(NOTIFY_STATUS_OK))
+    let app = XCUIApplication()
+    activeApp = app
+    app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario
+    app.launchEnvironment["PERFORMANCE_TOUCH_STATE"] = touchStateName
+    app.launch()
+    return app
+  }
+
+  private func touchState() -> (sequence: UInt64, cancelled: Bool) {
+    var state: UInt64 = 0
+    XCTAssertEqual(notify_get_state(touchStateToken, &state), UInt32(NOTIFY_STATUS_OK))
+    return (state >> 1, state & 1 == 1)
+  }
+
   private func runTray(_ scenario: String, controls: [String]) throws {
     continueAfterFailure = false
     let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_TRAY_TIMING_CYCLES"] ?? "5") ?? 0
     XCTAssertTrue((1...5).contains(cycles), "PERFORMANCE_TRAY_TIMING_CYCLES must be in 1...5")
-    let app = XCUIApplication()
-    activeApp = app
-    app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario
-    app.launch()
+    let app = launch(scenario)
     awaitMarker(app, "benchmark-ready", timeout: 60)
     for cycle in 0..<cycles {
       for (index, control) in controls.enumerated() {
@@ -57,10 +76,7 @@ final class ChoreographyPerformanceTests: XCTestCase {
     continueAfterFailure = false
     let cycles = Int(ProcessInfo.processInfo.environment["PERFORMANCE_SCREEN_TIMING_CYCLES"] ?? "20") ?? 0
     XCTAssertTrue((1...99).contains(cycles), "PERFORMANCE_SCREEN_TIMING_CYCLES must be in 1...99")
-    let app = XCUIApplication()
-    activeApp = app
-    app.launchEnvironment["PERFORMANCE_SCENARIO"] = scenario
-    app.launch()
+    let app = launch(scenario)
     awaitMarker(app, "benchmark-ready", timeout: 60)
     for _ in 0..<cycles {
       tap(app, open, leadingQuarter: true)
@@ -89,16 +105,30 @@ final class ChoreographyPerformanceTests: XCTestCase {
   }
 
   private func tap(_ app: XCUIApplication, _ label: String, leadingQuarter: Bool = false) {
+    for attempt in 1...2 {
+      let before = touchState().sequence
+      injectTap(app, label, leadingQuarter: leadingQuarter)
+      let after = touchState()
+      guard after.sequence == before + 1 && after.cancelled else { return }
+      recordInput("touch-cancelled", label)
+      XCTAssertEqual(attempt, 1, "UIKit cancelled both touch attempts for \(label)")
+    }
+  }
+
+  private func injectTap(_ app: XCUIApplication, _ label: String, leadingQuarter: Bool) {
     let target = element(app, label)
     XCTAssertTrue(target.exists || target.waitForExistence(timeout: 15), "Missing fixture control: \(label)")
     XCTAssertTrue(target.isEnabled, "Disabled fixture control: \(label)")
     let frame = target.frame
+    let point = CGPoint(x: frame.minX + frame.width * (leadingQuarter ? 0.25 : 0.5), y: frame.midY)
     recordInput("tap", label, fields: [
-      "x": frame.minX + frame.width * (leadingQuarter ? 0.25 : 0.5),
-      "y": frame.midY, "frame": [frame.minX, frame.minY, frame.width, frame.height],
+      "x": point.x, "y": point.y, "frame": [frame.minX, frame.minY, frame.width, frame.height],
     ])
-    // Coordinates inject a real touch, including for cards behind the toolbar.
-    target.coordinate(withNormalizedOffset: CGVector(dx: leadingQuarter ? 0.25 : 0.5, dy: 0.5)).tap()
+    // Use the point we recorded. A coordinate relative to the queried element
+    // makes XCTest resolve the entire accessibility query again during injection.
+    let origin = app.coordinate(withNormalizedOffset: .zero)
+    let appFrame = app.frame
+    origin.withOffset(CGVector(dx: point.x - appFrame.minX, dy: point.y - appFrame.minY)).tap()
   }
 
   private func scrollTo(_ app: XCUIApplication, _ label: String) {
@@ -128,13 +158,16 @@ final class ChoreographyPerformanceTests: XCTestCase {
       add(history)
     }
     guard app.state == .runningForeground else { return }
+    let screenshot = XCTAttachment(screenshot: app.screenshot())
+    screenshot.name = "Failed benchmark screen"
+    screenshot.lifetime = .keepAlways
+    add(screenshot)
     let hierarchy = XCTAttachment(string: app.debugDescription)
     hierarchy.name = "Failed benchmark UI hierarchy"
     hierarchy.lifetime = .keepAlways
     add(hierarchy)
     // A lost tap never starts a request, so the fixture's request timeout cannot
-    // export it. Preserve the partial run before terminating, without retrying
-    // the failed action or replacing the original XCTest failure.
+    // export it. Preserve the partial run and original XCTest failure.
     let export = element(app, "benchmark-end")
     guard export.exists, export.isEnabled,
           !element(app, "benchmark-export-complete").exists else { return }

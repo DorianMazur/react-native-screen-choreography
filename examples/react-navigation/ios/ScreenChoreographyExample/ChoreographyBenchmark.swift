@@ -1,6 +1,7 @@
 import Foundation
 import React
 import UIKit
+import notify
 
 /// Only benchmark launches use this application. Record input across all app
 /// windows, with event and acknowledgement timestamps using iOS uptime.
@@ -17,6 +18,15 @@ private enum BenchmarkRecorder {
   static var touches: [[String: Any]] = []
   static var touchEvents: [[String: Any]] = []
   static var acknowledgements: [[String: Any]] = []
+  // Publish the sequence and outcome of each finished physical touch. XCTest
+  // can retry a single cancellation without retrying a completed app action.
+  private static let touchToken: Int32? = {
+    guard let name = ProcessInfo.processInfo.environment["PERFORMANCE_TOUCH_STATE"] else { return nil }
+    var token: Int32 = -1
+    guard notify_register_check(name, &token) == NOTIFY_STATUS_OK else { return nil }
+    return token
+  }()
+  private static var finishedTouches: UInt64 = 0
   static var droppedSamples = 0
   static var now: Double { ProcessInfo.processInfo.systemUptime * 1000 }
 
@@ -27,6 +37,11 @@ private enum BenchmarkRecorder {
       "eventUptimeMs": touch.timestamp * 1000,
       "dispatchUptimeMs": now, "x": point.x, "y": point.y,
     ]
+    if touch.phase != .began, let token = touchToken {
+      finishedTouches += 1
+      let cancelled: UInt64 = touch.phase == .cancelled ? 1 : 0
+      notify_set_state(token, (finishedTouches << 1) | cancelled)
+    }
     if touch.phase == .ended {
       // Preserve the ended-touch stream used to validate probe timing.
       touches.append(sample.merging(["kind": "window-touch-ended"]) { _, value in value })

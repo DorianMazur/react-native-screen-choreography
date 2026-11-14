@@ -46,6 +46,7 @@ const native = () =>
 
 const FixtureContext = createContext<{
   trace: TrayBenchmarkCollector;
+  clearSettlementTimer: () => void;
   request: SharedValue<MotionRequest | null>;
   probe: (state: TrayStackState | null) => void;
   finish: () => void;
@@ -76,6 +77,8 @@ function Probe({
   const ready = trace.ready(state);
   useLayoutEffect(() => {
     trace.committed(state);
+    // XCTest and UI Automator own the wait for the next real input.
+    if (ready) fixture.clearSettlementTimer();
   });
   return (
     <View style={[styles.probe, home && styles.homeProbe]}>
@@ -271,6 +274,7 @@ export default function TrayPerformanceApp({
   const fixture = useMemo(
     () => ({
       trace,
+      clearSettlementTimer: clearTimer,
       request,
       ack,
       exported,
@@ -281,7 +285,6 @@ export default function TrayPerformanceApp({
         const id = trace.probe(state);
         if (id) {
           native().acknowledgeInput(id);
-          clearTimer();
           setAck(trace.current()!.id);
         }
       },

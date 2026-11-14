@@ -3,10 +3,8 @@ import {
   render as renderComponent,
   type RenderResult,
 } from '@testing-library/react-native/pure';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { useChoreographyNavigation } from './react-navigation';
 import { useChoreographyRouter } from './expo-router';
@@ -57,9 +55,9 @@ test.each(['react-navigation', 'expo-push', 'expo-navigate'] as const)(
     let tree!: RenderResult;
     try {
       tree = renderComponent(
-        <ChoreographyContext.Provider value={context}>
+        <ChoreographyContextProvider value={context}>
           <Caller />
-        </ChoreographyContext.Provider>
+        </ChoreographyContextProvider>
       );
 
       await act(async () => {

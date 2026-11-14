@@ -4,6 +4,7 @@ import type {
 } from '../types';
 import type { PreparationTrace } from './preparationTrace';
 import type { PresentationFailureDetails } from './nativePresentation';
+import { debugLog } from '../debug/logger';
 import { NavigationRequestObserver } from './NavigationRequestObserver';
 
 export interface PendingNavigationRequest {
@@ -62,6 +63,64 @@ export class NavigationSessionController {
   private activeSession: TransitionSessionData | null = null;
   private requests = new Set<NavigationRequestObserver>();
   private overlayHandoffSessionId: string | null = null;
+
+  private navigationListeners = new Set<() => void>();
+
+  subscribeToNavigationState(listener: () => void): () => void {
+    this.navigationListeners.add(listener);
+    listener();
+    return () => {
+      this.navigationListeners.delete(listener);
+    };
+  }
+
+  notifyNavigationStateChanged(): void {
+    this.navigationListeners.forEach((listener) => listener());
+  }
+
+  subscribeToQueuedNavigation({
+    screenId,
+    replayWindow,
+    waitForFrame,
+    navigate,
+  }: {
+    screenId: string;
+    replayWindow: () => 'blocked' | 'after-frame' | 'interrupt';
+    waitForFrame: () => Promise<void>;
+    navigate: (request: PendingNavigationRequest) => Promise<void>;
+  }): () => void {
+    let version = 0;
+    const unsubscribe = this.subscribeToNavigationState(() => {
+      const attempt = ++version;
+      const request = this.pendingRequest;
+      if (!request || request.sourceScreenId !== screenId) return;
+      const window = replayWindow();
+      if (window === 'blocked') return;
+      const replay = async () => {
+        // Give the navigator its removal commit unless the return is already interruptible.
+        if (window === 'after-frame') await waitForFrame();
+        if (
+          attempt !== version ||
+          this.pendingRequest !== request ||
+          replayWindow() === 'blocked'
+        )
+          return;
+        this.takeQueuedNavigation();
+        await navigate(request);
+      };
+      replay().catch((error) => {
+        request.observer?.emit({ status: 'failed', finished: true, error });
+        debugLog(
+          () =>
+            `[Navigation:${screenId}] replay error target=${request.targetScreenId} error=${String(error)}`
+        );
+      });
+    });
+    return () => {
+      ++version;
+      unsubscribe();
+    };
+  }
 
   setActiveSession(
     session: TransitionSessionData | null,

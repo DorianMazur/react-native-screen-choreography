@@ -9,10 +9,8 @@ import {
   animateOwnedProgress,
   setOwnedProgress,
 } from '../core/ProgressOwnership';
-import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyNavigationContext } from '../core/ChoreographyNavigationContext';
 import type { ChoreographyNavigationOptions } from '../types';
 import { DEFAULT_SPRING, FAST_SPRING } from '../core/constants';
 import { debugLog, isDebugEnabled } from '../debug/logger';
@@ -53,8 +51,8 @@ export function useChoreographyNavigator({
   goBack: navigateBack,
 }: ChoreographyNavigatorBinding) {
   const incomingGroups = useContext(IncomingGroupsContext);
-  const ctx = useContext(ChoreographyContext) as ChoreographyContextType;
-  if (!ctx) {
+  const bindings = useContext(ChoreographyNavigationContext);
+  if (!bindings) {
     throw new Error(
       'useChoreographyNavigation must be used within a <ChoreographyProvider>'
     );
@@ -64,18 +62,11 @@ export function useChoreographyNavigator({
     progress,
     progressOwnership,
     navigationController: controller,
-    captureSourceGroup,
-    startTransition,
-    cancelTransition,
     completeTransition,
+    cancelTransition,
     reverseController,
-    setPendingTargetScreen,
-    setNavigationLineage,
-    getNavigationLineage,
-    resolveScreenId,
-    waitForOverlayReady,
-    waitForScreenReady,
-  } = ctx;
+    getContext,
+  } = bindings;
 
   const logNavigation = useCallback(
     (message: string | (() => string)) => {
@@ -109,6 +100,7 @@ export function useChoreographyNavigator({
 
   const getNavigationBlockReasons = useCallback(
     (skipSessionBlock: boolean) => {
+      const { activeSession, pendingTargetScreenId } = getContext();
       const reasons: string[] = [];
 
       if (!isFocused) {
@@ -119,17 +111,17 @@ export function useChoreographyNavigator({
         reasons.push('navigate-lock');
       }
 
-      if (!skipSessionBlock && ctx.activeSession) {
-        reasons.push(`active-session=${describeSession(ctx.activeSession)}`);
+      if (!skipSessionBlock && activeSession) {
+        reasons.push(`active-session=${describeSession(activeSession)}`);
       }
 
-      if (ctx.pendingTargetScreenId) {
-        reasons.push(`pending-target=${ctx.pendingTargetScreenId}`);
+      if (pendingTargetScreenId) {
+        reasons.push(`pending-target=${pendingTargetScreenId}`);
       }
 
       return reasons.length > 0 ? reasons.join(', ') : 'none';
     },
-    [controller, ctx.activeSession, ctx.pendingTargetScreenId, isFocused]
+    [controller, getContext, isFocused]
   );
 
   const waitForNextFrame = useCallback(
@@ -162,13 +154,13 @@ export function useChoreographyNavigator({
           session.sourceScreenId === currentScreenId) ||
           (session.direction === 'backward' &&
             session.targetScreenId === currentScreenId)) &&
-        !ctx.pendingTargetScreenId
+        !getContext().pendingTargetScreenId
       ),
-    [ctx.pendingTargetScreenId, currentScreenId, isFocused, reverseController]
+    [getContext, currentScreenId, isFocused, reverseController]
   );
 
   const interruptReturnTransition = useCallback(async () => {
-    const session = ctx.activeSession;
+    const session = getContext().activeSession;
     if (!session || !progressOwnership.isSession(session.id)) {
       return;
     }
@@ -204,7 +196,7 @@ export function useChoreographyNavigator({
     );
   }, [
     cancelTransition,
-    ctx.activeSession,
+    getContext,
     currentScreenId,
     completeTransition,
     logNavigation,
@@ -248,6 +240,7 @@ export function useChoreographyNavigator({
 
   const choreographyNavigate = useCallback(
     async (request: PendingNavigationRequest, allowQueue: boolean = true) => {
+      const ctx = getContext();
       const tapStartedAt = nowMs();
       const { targetScreenId, dispatchNavigation, options } = request;
       const groupId = options?.transitionConfig?.group;
@@ -297,11 +290,12 @@ export function useChoreographyNavigator({
         );
       }
 
+      const { activeSession, pendingTargetScreenId } = getContext();
       const isBlocked = Boolean(
         !isFocused ||
         controller.isNavigationLocked() ||
-        (!interruptedSettlingReturn && ctx.activeSession) ||
-        ctx.pendingTargetScreenId
+        (!interruptedSettlingReturn && activeSession) ||
+        pendingTargetScreenId
       );
 
       if (isBlocked) {
@@ -340,6 +334,15 @@ export function useChoreographyNavigator({
       const preparationVersion = progressOwnership.version;
       observer?.emit({ status: 'started', finished: false });
 
+      const {
+        captureSourceGroup,
+        setPendingTargetScreen,
+        resolveScreenId,
+        waitForScreenReady,
+        startTransition,
+        setNavigationLineage,
+        waitForOverlayReady,
+      } = ctx;
       try {
         const session = await controller.prepareForwardTransition({
           observer,
@@ -458,12 +461,8 @@ export function useChoreographyNavigator({
       }
     },
     [
-      ctx.activeSession,
-      ctx.pendingTargetScreenId,
-      ctx.onPreparationTrace,
+      getContext,
       incomingGroups,
-      ctx.isOverlayPresented,
-      resolveScreenId,
       controller,
       cancelTransition,
       completeTransition,
@@ -478,118 +477,40 @@ export function useChoreographyNavigator({
       logNavigation,
       progress,
       progressOwnership,
-      captureSourceGroup,
-      setNavigationLineage,
-      setPendingTargetScreen,
-      startTransition,
-      waitForOverlayReady,
-      waitForScreenReady,
       waitForNextFrame,
     ]
   );
 
-  useEffect(() => {
-    const canInterruptActiveReturn = canInterruptReturnToCurrentScreen(
-      ctx.activeSession
-    );
-    const isBlocked = Boolean(
-      !isFocused ||
-      (!canInterruptActiveReturn && controller.isNavigationLocked()) ||
-      (!canInterruptActiveReturn && ctx.activeSession) ||
-      ctx.pendingTargetScreenId
-    );
-
-    if (isBlocked) {
-      return;
-    }
-
-    const pendingRequest = controller.peekQueuedNavigation();
-    if (!pendingRequest || pendingRequest.sourceScreenId !== currentScreenId) {
-      return;
-    }
-
-    logNavigation(
-      () =>
-        `replay candidate target=${pendingRequest.targetScreenId} session=${describeSession(ctx.activeSession)}`
-    );
-
-    let cancelled = false;
-
-    const replayPendingNavigation = async () => {
-      if (!canInterruptActiveReturn) {
-        logNavigation(
-          () => `replay waiting target=${pendingRequest.targetScreenId}`
-        );
-        await waitForReplayWindow();
-      }
-
-      if (cancelled || controller.peekQueuedNavigation() !== pendingRequest) {
-        logNavigation(
-          () => `replay cancelled target=${pendingRequest.targetScreenId}`
-        );
-        return;
-      }
-
-      const canInterruptLatestReturn = canInterruptReturnToCurrentScreen(
-        ctx.activeSession
-      );
-
-      const blockedAgain = Boolean(
-        !isFocused ||
-        (!canInterruptLatestReturn && controller.isNavigationLocked()) ||
-        (!canInterruptLatestReturn && ctx.activeSession) ||
-        ctx.pendingTargetScreenId
-      );
-
-      if (blockedAgain) {
-        const reasons = getNavigationBlockReasons(canInterruptLatestReturn);
-        logNavigation(
-          () =>
-            `replay blocked target=${pendingRequest.targetScreenId} reasons=${reasons} -> requeued`
-        );
-        return;
-      }
-
-      logNavigation(
-        () => `replay launching target=${pendingRequest.targetScreenId}`
-      );
-
-      controller.takeQueuedNavigation();
-      await choreographyNavigate(pendingRequest, false);
-    };
-
-    replayPendingNavigation().catch((error) => {
-      pendingRequest.observer?.emit({
-        status: 'failed',
-        finished: true,
-        error,
-      });
-      logNavigation(
-        () =>
-          `replay error target=${pendingRequest.targetScreenId} error=${error instanceof Error ? error.message : String(error)}`
-      );
-    });
-
-    return () => {
-      cancelled = true;
-    };
-  }, [
-    canInterruptReturnToCurrentScreen,
-    choreographyNavigate,
-    controller,
-    ctx.activeSession,
-    ctx.interruptibleReturnSessionId,
-    ctx.overlayHandoffSessionId,
-    ctx.pendingTargetScreenId,
-    currentScreenId,
-    getNavigationBlockReasons,
-    isFocused,
-    logNavigation,
-    waitForReplayWindow,
-  ]);
+  useEffect(
+    () =>
+      controller.subscribeToQueuedNavigation({
+        screenId: currentScreenId,
+        replayWindow: () => {
+          const { activeSession, pendingTargetScreenId } = getContext();
+          if (!isFocused || pendingTargetScreenId) return 'blocked';
+          if (canInterruptReturnToCurrentScreen(activeSession))
+            return 'interrupt';
+          return activeSession || controller.isNavigationLocked()
+            ? 'blocked'
+            : 'after-frame';
+        },
+        waitForFrame: waitForReplayWindow,
+        navigate: (request) => choreographyNavigate(request, false),
+      }),
+    [
+      canInterruptReturnToCurrentScreen,
+      choreographyNavigate,
+      controller,
+      currentScreenId,
+      getContext,
+      isFocused,
+      waitForReplayWindow,
+    ]
+  );
 
   const choreographyGoBack = useCallback(
     async (options?: ChoreographyNavigationOptions) => {
+      const ctx = getContext();
       const goBackStartedAt = nowMs();
       const session = ctx.activeSession;
 
@@ -612,7 +533,7 @@ export function useChoreographyNavigator({
             : session.sourceScreenId;
         const springConfig =
           options?.spring ??
-          getNavigationLineage(detailScreenId)?.spring ??
+          ctx.getNavigationLineage(detailScreenId)?.spring ??
           FAST_SPRING;
         if (session.direction === 'forward') {
           logNavigation(
@@ -637,10 +558,9 @@ export function useChoreographyNavigator({
       }
     },
     [
-      ctx,
+      getContext,
       currentScreenId,
       reverseController,
-      getNavigationLineage,
       logNavigation,
       navigateBack,
     ]
