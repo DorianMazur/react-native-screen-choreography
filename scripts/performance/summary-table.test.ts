@@ -2,12 +2,10 @@ import assert from 'node:assert/strict';
 import { test } from 'node:test';
 import {
   compatible,
-  environmentChanges,
   metricCompatible,
   summaryTable,
 } from './summary-table.mts';
 import type { InputRecord } from './types.ts';
-import { selectBaselineRun } from './post-comment.mts';
 import { metricDefinition } from './metric-definitions.mts';
 
 function report() {
@@ -155,35 +153,6 @@ test('does not display nonnumeric metrics or compare invalid collections', () =>
   assert.equal(compatible(current, { ...report(), valid: false }), false);
 });
 
-test('selects the latest successful main push or manual run, never a PR or other branch', () => {
-  const good = {
-    id: 10,
-    event: 'push',
-    status: 'completed',
-    conclusion: 'success',
-    head_sha: 'base',
-    head_branch: 'main',
-    repository: { full_name: 'owner/repo' },
-  };
-  for (const changed of [
-    { event: 'pull_request' },
-    { head_branch: 'other' },
-    { conclusion: 'failure' },
-    { repository: { full_name: 'fork/repo' } },
-  ]) {
-    assert.equal(
-      selectBaselineRun([{ ...good, ...changed, id: 20 }, good], 'owner/repo'),
-      good
-    );
-  }
-  assert.equal(selectBaselineRun([], 'owner/repo'), undefined);
-  const latest = { ...good, head_sha: 'newer', id: 30 };
-  assert.equal(selectBaselineRun([good, latest], 'owner/repo'), latest);
-  assert.equal(selectBaselineRun([good, latest], 'owner/repo', 30), good);
-  const manual = { ...latest, event: 'workflow_dispatch' };
-  assert.equal(selectBaselineRun([good, manual], 'owner/repo'), manual);
-});
-
 test('explicit definitions survive implementation changes and compare each metric independently', () => {
   const base: InputRecord = report();
   base.metricDefinitions = Object.fromEntries(
@@ -200,7 +169,6 @@ test('explicit definitions survive implementation changes and compare each metri
   current.metadata.reanimatedVersion = 'next';
   current.metadata.workletsVersion = 'next';
   assert.equal(compatible(current, base), true);
-  assert.match(environmentChanges(current, base), /workletsVersion/);
   assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
   current.metricDefinitions['gallery.forward.tapToMotion'].version++;
   assert.match(summaryTable(current, base), /— \| 40 \| —/);

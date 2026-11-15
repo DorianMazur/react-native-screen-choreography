@@ -86,17 +86,36 @@ export function compatible(current: InputRecord, base?: InputRecord): boolean {
   );
 }
 
-export function environmentChanges(current: InputRecord, base?: InputRecord) {
-  if (!base) return '';
-  const changes = [
-    'reactNativeVersion',
-    'reanimatedVersion',
-    'workletsVersion',
-    'nodeVersion',
-  ].filter((key) => current.metadata?.[key] !== base?.metadata?.[key]);
-  return changes.length
-    ? `Environment versions differ (${changes.join(', ')}); deltas include those environment changes.`
-    : '';
+/**
+ * The base sources measured in the same session as `report`, when usable.
+ * Report fields are untrusted in the comment workflow; the note is built only
+ * from validated values.
+ */
+export function sameRunnerBase(report: InputRecord | undefined) {
+  const info = report?.sameRunner;
+  const base = info?.base;
+  if (!base || typeof base !== 'object' || !compatible(report!, base))
+    return undefined;
+  const revision = /^[0-9a-f]{7,40}$/.test(info.baseRevision)
+    ? info.baseRevision.slice(0, 7)
+    : 'unknown revision';
+  const rounds = Number.isInteger(info.rounds) ? `${info.rounds} ` : '';
+  return {
+    base: base as InputRecord,
+    note: `Base library sources (${revision}) measured on this runner in ${rounds}alternating rounds; samples are pooled per side. "Rounds agreeing" counts the rounds whose own medians moved in the direction of the pooled change.`,
+  };
+}
+
+function roundsAgreeing(pairs: unknown, delta: number | null) {
+  if (delta === null || !Array.isArray(pairs) || !pairs.length) return '—';
+  const agreeing = pairs.filter(
+    (pair) =>
+      Array.isArray(pair) &&
+      typeof pair[0] === 'number' &&
+      typeof pair[1] === 'number' &&
+      Math.sign(pair[1] - pair[0]) === Math.sign(delta)
+  ).length;
+  return `${agreeing}/${pairs.length}`;
 }
 
 export function headlineMetrics() {
@@ -166,6 +185,11 @@ export function summaryTable(
   base?: InputRecord,
   minChangePercent = 0
 ) {
+  // Per-round medians describe only the base they were measured against.
+  const roundMedians =
+    base && base === report.sameRunner?.base
+      ? report.sameRunner.roundMedians
+      : undefined;
   const rows = headlineMetrics().flatMap(({ key, label, scale, unit }) => {
     const current = value(report, key, scale);
     const previous =
@@ -182,14 +206,14 @@ export function summaryTable(
     const delta =
       current !== null && previous !== null ? current - previous : null;
     return [
-      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |`,
+      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |${roundMedians ? ` ${roundsAgreeing(roundMedians[key], delta)} |` : ''}`,
     ];
   });
   if (!rows.length)
     return `No measurements to show at the ${minChangePercent}% change threshold.`;
   return [
-    '| Metric | Base | PR / current | Change |',
-    '| --- | ---: | ---: | ---: |',
+    `| Metric | Base | PR / current | Change |${roundMedians ? ' Rounds agreeing |' : ''}`,
+    `| --- | ---: | ---: | ---: |${roundMedians ? ' ---: |' : ''}`,
     ...rows,
   ].join('\n');
 }

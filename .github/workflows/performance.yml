@@ -9,7 +9,6 @@ on:
 
 permissions:
   contents: read
-  actions: read
 
 concurrency:
   group: performance-${{ github.workflow }}-${{ github.ref }}
@@ -32,11 +31,17 @@ jobs:
   android:
     needs: collectors
     runs-on: ubuntu-24.04
-    timeout-minutes: 60
+    # Base and current library sources are measured in alternating rounds.
+    timeout-minutes: 90
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/android-native-release
+      # Cycles for a single run, used when library sources match the base.
+      # A/B rounds use the launcher's per-round counts.
       PERFORMANCE_SCREEN_TIMING_CYCLES: '20'
       PERFORMANCE_TRAY_TIMING_CYCLES: '5'
+      # A pull request's merge commit has its target branch as first parent;
+      # on other events the base is the previous commit.
+      PERFORMANCE_AB_BASE: HEAD^1
       PERFORMANCE_ABI: x86_64
       # Standard hosted runners have no dedicated GPU. Keep the host GL backend explicit.
       LIBGL_ALWAYS_SOFTWARE: '1'
@@ -46,6 +51,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: ./.github/actions/setup
       - uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -69,7 +75,7 @@ jobs:
           done
           xdpyinfo -display "$DISPLAY" >/dev/null
           glxinfo -B
-      - name: Build once and measure screens and trays
+      - name: Build and measure screens and trays
         uses: reactivecircus/android-emulator-runner@a421e43855164a8197daf9d8d40fe71c6996bb0d # v2.38.0
         with:
           api-level: 35
@@ -84,12 +90,12 @@ jobs:
           emulator-options: -no-window -gpu host -no-snapshot -noaudio -no-boot-anim -camera-back none
           script: |
             adb shell dumpsys SurfaceFlinger | grep -F llvmpipe
-            bash scripts/performance/run-android.sh native-release
+            bash scripts/performance/run-ab.sh android native-release
       - name: Add timing summary
         if: always()
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-transform-types scripts/performance/workflow-summary.mts
+        run: |
+          cat "$PERFORMANCE_OUTPUT/report/summary.md" >> "$GITHUB_STEP_SUMMARY" ||
+            echo 'Performance collection did not produce a readable report. See build/test logs.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compact summary for PR comment
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
@@ -110,11 +116,17 @@ jobs:
   ios:
     needs: collectors
     runs-on: macos-15
-    timeout-minutes: 60
+    # Base and current library sources are measured in alternating rounds.
+    timeout-minutes: 90
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-native-release
+      # Cycles for a single run, used when library sources match the base.
+      # A/B rounds use the launcher's per-round counts.
       PERFORMANCE_SCREEN_TIMING_CYCLES: '20'
       PERFORMANCE_TRAY_TIMING_CYCLES: '5'
+      # A pull request's merge commit has its target branch as first parent;
+      # on other events the base is the previous commit.
+      PERFORMANCE_AB_BASE: HEAD^1
       PERFORMANCE_IOS_RUNTIME: com.apple.CoreSimulator.SimRuntime.iOS-26-2
       RCT_USE_RN_DEP: '1'
       RCT_USE_PREBUILT_RNCORE: '1'
@@ -126,6 +138,7 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
+          fetch-depth: 2
       - uses: ./.github/actions/setup
       - name: Select Xcode
         uses: maxim-lobanov/setup-xcode@ed7a3b1fda3918c0306d1b724322adc0b8cc0a90 # v1.7.0
@@ -167,8 +180,8 @@ jobs:
         run: bundle exec pod install --repo-update --project-directory=ios
       - name: Reset compiler cache statistics
         run: ccache --zero-stats
-      - name: Build once and measure screens and trays
-        run: bash scripts/performance/run-ios.sh native-release
+      - name: Build and measure screens and trays
+        run: bash scripts/performance/run-ab.sh ios native-release
       - name: Report compiler cache statistics
         if: always() && steps.ccache-setup.outcome == 'success'
         run: |
@@ -187,9 +200,9 @@ jobs:
           key: ${{ steps.ccache-restore.outputs.cache-primary-key }}
       - name: Add timing summary
         if: always()
-        env:
-          GITHUB_TOKEN: ${{ github.token }}
-        run: node --experimental-transform-types scripts/performance/workflow-summary.mts
+        run: |
+          cat "$PERFORMANCE_OUTPUT/report/summary.md" >> "$GITHUB_STEP_SUMMARY" ||
+            echo 'Performance collection did not produce a readable report. See build/test logs.' >> "$GITHUB_STEP_SUMMARY"
       - name: Upload compact summary for PR comment
         if: always()
         uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1

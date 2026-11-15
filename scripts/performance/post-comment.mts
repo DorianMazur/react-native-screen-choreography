@@ -1,17 +1,8 @@
 import {
-  compatible,
-  environmentChanges,
+  sameRunnerBase,
   summaryTable,
   renderCountsTable,
 } from './summary-table.mts';
-import {
-  readLatestHistory,
-  newerRun,
-  isMainRun,
-  MAIN_BRANCH,
-  SUMMARY_ARTIFACTS,
-  type SavedRun,
-} from './history.mts';
 import type { InputRecord } from './types.ts';
 import { Buffer } from 'node:buffer';
 import { readFile, writeFile, mkdtemp, rm } from 'node:fs/promises';
@@ -21,7 +12,10 @@ import path from 'node:path';
 import { pathToFileURL } from 'node:url';
 
 export const COMMENT_MARKER = '<!-- choreography-performance -->';
-const ARTIFACTS = SUMMARY_ARTIFACTS;
+const ARTIFACTS = [
+  'performance-summary-android-native-release',
+  'performance-summary-ios-native-release',
+];
 
 const safe = (value: unknown) =>
   String(value)
@@ -99,8 +93,7 @@ function collectionStatus(
 
 export function renderComment(
   run: InputRecord,
-  reports: Record<string, InputRecord>,
-  baseline?: SavedRun
+  reports: Record<string, InputRecord>
 ) {
   const lines = [
     COMMENT_MARKER,
@@ -145,15 +138,16 @@ export function renderComment(
       lines.push('</details>', '');
       continue;
     }
-    const base = baseline?.reports[artifactName];
+    // The only base is the one measured in the same job; a report from
+    // another host is never substituted.
+    const base = sameRunnerBase(report);
     lines.push(
-      compatible(report, base)
-        ? baselineNote(baseline!, report)
-        : 'No compatible baseline in the latest successful main report. Current readings remain available; older runs are not substituted.',
+      base?.note ??
+        'No same-runner comparison: the library sources match the base, or the base could not be measured with the current fixture. Current readings remain available.',
       ''
     );
-    lines.push(summaryTable(report, base, 1), '');
-    const renders = renderCountsTable(report, base, 1);
+    lines.push(summaryTable(report, base?.base, 1), '');
+    const renders = renderCountsTable(report, base?.base, 1);
     if (renders)
       lines.push(
         '<details><summary>Optional committed-render diagnostics</summary>',
@@ -166,27 +160,11 @@ export function renderComment(
     lines.push('</details>', '');
   }
   lines.push(
-    'Informational emulator/simulator results · medians · tap handler to UI motion, motion to endpoint, then UI input handoff (ms). Render changes are counts. Rows with an absolute change below 1% are hidden; measurements without a comparable baseline remain visible. [Full reports and measurements](' +
+    'Informational emulator/simulator results · medians · tap handler to UI motion, motion to endpoint, then UI input handoff (ms). Render changes are counts. Rows with an absolute change below 1% are hidden; measurements without a comparable base remain visible. [Full reports and measurements](' +
       run.html_url +
       ').'
   );
   return lines.join('\n');
-}
-
-export function selectBaselineRun(
-  runs: InputRecord[],
-  repository: string,
-  excludeRunId?: number
-) {
-  return runs
-    .filter(
-      (candidate) =>
-        isMainRun(candidate, repository) &&
-        candidate.conclusion === 'success' &&
-        candidate.id !== excludeRunId &&
-        Number.isSafeInteger(candidate.id)
-    )
-    .sort((a, b) => b.id - a.id)[0];
 }
 
 export function createGitHubApi(repository: string, token: string) {
@@ -265,53 +243,6 @@ export async function loadReports(
   return reports;
 }
 
-export async function findBaseline(
-  api: ReturnType<typeof createGitHubApi>,
-  workflowId: number | string,
-  repository: string,
-  excludeRunId?: number
-) {
-  let baseline: SavedRun | undefined;
-  try {
-    baseline = await readLatestHistory(api, repository);
-    if (baseline?.run.id === excludeRunId) baseline = undefined;
-  } catch (error) {
-    console.warn(`Performance history unavailable: ${String(error)}`);
-  }
-  try {
-    const query = new URLSearchParams({
-      status: 'success',
-      branch: MAIN_BRANCH,
-      per_page: '100',
-    });
-    const response = await (
-      await api(`/actions/workflows/${workflowId}/runs?${query}`)
-    ).json();
-    const baseRun = selectBaselineRun(
-      response.workflow_runs ?? [],
-      repository,
-      excludeRunId
-    );
-    if (baseRun && newerRun(baseRun, baseline?.run)) {
-      baseline = { run: baseRun, reports: {} };
-      baseline.reports = await loadReports(api, baseRun.id);
-    }
-  } catch (error) {
-    console.warn(
-      `Baseline unavailable: ${error instanceof Error ? error.message : String(error)}`
-    );
-  }
-  return baseline;
-}
-
-export function baselineNote(baseline: SavedRun, report: InputRecord) {
-  const { run } = baseline;
-  const url =
-    baseline.reportUrl ??
-    `https://github.com/${safe(run.repository.full_name)}/actions/runs/${run.id}`;
-  return `Latest successful ${safe(run.head_branch)} report: [${safe(run.head_sha.slice(0, 7))}](${url}). ${environmentChanges(report, baseline.reports[`performance-summary-${report.platform}-${report.mode}`])}`.trim();
-}
-
 async function main() {
   const event = JSON.parse(
     await readFile(process.env.GITHUB_EVENT_PATH ?? '', 'utf8')
@@ -359,9 +290,8 @@ async function main() {
     latestRun.status !== 'completed'
   )
     return;
+  const body = renderComment(run, reports);
   for (const pr of current) {
-    const baseline = await findBaseline(api, run.workflow_id, repository);
-    const body = renderComment(run, reports, baseline);
     // Both heads must still match after fetching artifacts.
     const latest = await (await api(`/pulls/${pr.number}`)).json();
     if (
