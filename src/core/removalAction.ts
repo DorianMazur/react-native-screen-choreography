@@ -1,3 +1,5 @@
+import { isOnFocusedRoutePath, type NavigationRoute } from './focusedRoute';
+
 interface RemovalAction {
   type: string;
   source?: string;
@@ -8,7 +10,7 @@ interface RemovalAction {
 interface RemovalState {
   key: string;
   index: number;
-  routes: readonly { key: string; name: string }[];
+  routes: readonly NavigationRoute[];
 }
 
 export function isSingleRouteBack(
@@ -31,7 +33,7 @@ export function isSingleRouteBack(
     state.index > 0 &&
     state.routes[state.index]?.key === routeKey &&
     (sourceRouteKey
-      ? state.routes[state.index - 1]?.key === sourceRouteKey
+      ? isOnFocusedRoutePath(state.routes[state.index - 1], sourceRouteKey)
       : state.routes[state.index - 1]?.name === sourceScreenId) &&
     (!action.source || action.source === routeKey) &&
     (!action.target || action.target === state.key)
