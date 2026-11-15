@@ -625,7 +625,7 @@ export function summarize(
 export function markdown(
   summary: InputRecord,
   base?: InputRecord,
-  baselineNote = 'No baseline supplied. Local runs do not fetch baselines.'
+  baselineNote = 'No base comparison. `yarn perf:ab` measures a base commit in the same session.'
 ) {
   const renders = renderCountsTable(summary, base);
   const presentationRows = Object.entries(summary.metrics ?? {}).flatMap(
