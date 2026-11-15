@@ -2,10 +2,14 @@ import React from 'react';
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
-  interpolate,
   type SharedValue,
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
+import {
+  prepareBorderGeometry,
+  interpolateBorder,
+  type BorderGeometry,
+} from './borderGeometry';
 import {
   transitionGeometryStyle,
   transitionLayoutStyle,
@@ -19,7 +23,9 @@ interface TransitionFrameProps {
   direction?: 'forward' | 'backward';
   /** Custom z-index for layering */
   zIndex?: number;
-  /** Optional border radius interpolation */
+  sourceStyle?: BorderGeometry;
+  targetStyle?: BorderGeometry;
+  /** A uniform radius overrides this endpoint's individual corners. */
   sourceBorderRadius?: number;
   targetBorderRadius?: number;
 }
@@ -31,18 +37,22 @@ export function TransitionFrame({
   children,
   direction = 'forward',
   zIndex = 1,
+  sourceStyle,
+  targetStyle,
   sourceBorderRadius,
   targetBorderRadius,
 }: TransitionFrameProps) {
-  const hasRadius =
-    sourceBorderRadius !== undefined || targetBorderRadius !== undefined;
-  const sRadius = sourceBorderRadius ?? 0;
-  const tRadius = targetBorderRadius ?? 0;
+  const { radii, border } = prepareBorderGeometry(
+    sourceStyle,
+    targetStyle,
+    sourceBorderRadius,
+    targetBorderRadius
+  );
 
   const baseStyle = {
     ...transitionLayoutStyle(),
     zIndex,
-    ...(hasRadius ? { overflow: 'hidden' as const } : {}),
+    ...(radii.length ? { overflow: 'hidden' as const } : {}),
   };
 
   const t = useDerivedValue(() =>
@@ -51,16 +61,7 @@ export function TransitionFrame({
 
   const animatedStyle = useAnimatedStyle(() => ({
     ...transitionGeometryStyle(sourceMetrics, targetMetrics, t.value),
-    ...(hasRadius
-      ? {
-          borderRadius: interpolate(
-            t.value,
-            [0, 1],
-            [sRadius, tRadius],
-            'clamp'
-          ),
-        }
-      : {}),
+    ...interpolateBorder(border, t.value),
   }));
 
   return (

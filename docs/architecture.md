@@ -100,8 +100,9 @@ library-owned portal-host child to each custom renderer. Keeping this child
 mounted and rendering it exactly once preserves the single retained subtree
 throughout the handoff.
 
-`TransitionFrame` interpolates window bounds and optional radius.
-`TransitionSurface` adds background and radius interpolation, plus a static
+`TransitionFrame` interpolates window bounds, physical corner radii, and
+border widths from the frozen styles. `TransitionSurface` uses the same
+border geometry and adds background interpolation, plus a static
 expanded shadow layer whose opacity changes. This keeps Android shadow
 parameters fixed, avoiding drawable recreation on every animation frame.
 

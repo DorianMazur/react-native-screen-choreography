@@ -163,7 +163,22 @@ function defineTransition(definition) {
 
 function resolveSurfaceStyle(style, fallback) {
   const flat = StyleSheet.flatten(style) ?? {};
+  const border = {};
+  for (const key of [
+    'borderTopLeftRadius',
+    'borderTopRightRadius',
+    'borderBottomRightRadius',
+    'borderBottomLeftRadius',
+    'borderWidth',
+    'borderTopWidth',
+    'borderRightWidth',
+    'borderBottomWidth',
+    'borderLeftWidth',
+  ]) {
+    if (typeof flat[key] === 'number') border[key] = flat[key];
+  }
   return {
+    ...border,
     backgroundColor:
       typeof flat.backgroundColor === 'string'
         ? flat.backgroundColor

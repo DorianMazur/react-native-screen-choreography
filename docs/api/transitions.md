@@ -102,35 +102,37 @@ Use anchors to position one shared element relative to another. They contain geo
 
 ## `TransitionFrame`
 
-An absolute animated frame for position, size, and optional corner radius. Pass the renderer's `children` inside it.
+An absolute animated frame for position, size, corner radii, and border widths. Pass the renderer's `children` inside it.
 
-| Prop                                       | Type                      | Default                                                        |
-| ------------------------------------------ | ------------------------- | -------------------------------------------------------------- |
-| `progress`                                 | `SharedValue<number>`     | Required expansion progress                                    |
-| `sourceMetrics`, `targetMetrics`           | `ElementMetrics`          | Required endpoint rectangles                                   |
-| `direction`                                | `'forward' \| 'backward'` | `'forward'`                                                    |
-| `sourceBorderRadius`, `targetBorderRadius` | `number`                  | Omitted; missing side resolves to `0` if the other is supplied |
-| `zIndex`                                   | `number`                  | `1`                                                            |
-| `children`                                 | `ReactNode`               | Optional                                                       |
+| Prop                                       | Type                                                | Default                                            |
+| ------------------------------------------ | --------------------------------------------------- | -------------------------------------------------- |
+| `progress`                                 | `SharedValue<number>`                               | Required expansion progress                        |
+| `sourceMetrics`, `targetMetrics`           | `ElementMetrics`                                    | Required endpoint rectangles                       |
+| `direction`                                | `'forward' \| 'backward'`                           | `'forward'`                                        |
+| `sourceStyle`, `targetStyle`               | Numeric border fields from `SurfaceTransitionStyle` | Optional                                           |
+| `sourceBorderRadius`, `targetBorderRadius` | `number`                                            | Optional uniform radius override for that endpoint |
+| `zIndex`                                   | `number`                                            | `1`                                                |
+| `children`                                 | `ReactNode`                                         | Optional                                           |
 
 Metrics contain `pageX`, `pageY`, `width`, and `height`. The frame interpolates source-to-target geometry with direction handling built in. It interpolates width and height and positions the frame with `translateX` and `translateY` while layout `left` and `top` remain `0`. Content keeps its natural size and reflows within the changing frame.
 
-Supplying a radius enables clipping. The frame does not paint a background or shadow and uses `pointerEvents="none"` during overlay presentation.
+Supplying a radius enables clipping. Each physical corner or edge uses its own numeric value, falling back to that endpoint's `borderRadius` or `borderWidth`, then to `0`. A recipe's `radius` tuple overrides all four corners. The frame uses `pointerEvents="none"` during overlay presentation.
 
 ## `TransitionSurface`
 
-Adds interpolated background color and corner radius around a live host, with an expanded-side shadow.
+Adds an interpolated background and an expanded-side shadow to the same border geometry as `TransitionFrame`.
 
 Uses the same required `progress`, `sourceMetrics`, and `targetMetrics` as `TransitionFrame`, plus:
 
-| Prop                         | Type                      | Default     |
-| ---------------------------- | ------------------------- | ----------- |
-| `direction`                  | `'forward' \| 'backward'` | `'forward'` |
-| `sourceStyle`, `targetStyle` | `SurfaceTransitionStyle`  | `{}`        |
-| `zIndex`                     | `number`                  | `0`         |
-| `children`                   | `ReactNode`               | Optional    |
+| Prop                                       | Type                      | Default                          |
+| ------------------------------------------ | ------------------------- | -------------------------------- |
+| `direction`                                | `'forward' \| 'backward'` | `'forward'`                      |
+| `sourceStyle`, `targetStyle`               | `SurfaceTransitionStyle`  | `{}`                             |
+| `sourceBorderRadius`, `targetBorderRadius` | `number`                  | Optional uniform radius override |
+| `zIndex`                                   | `number`                  | `0`                              |
+| `children`                                 | `ReactNode`               | Optional                         |
 
-Missing background colors become transparent and missing radii become `0`. The surface clips its content. Its shadow uses the expanded endpoint's static `boxShadow` and animates opacity, fading near the endpoints. It does not interpolate shadow parameters each frame. Dimensions and position follow `TransitionFrame`.
+Missing background colors become transparent. The surface clips its content to the interpolated corners and paints border widths on the content layer. Its shadow follows those corners and fades near the endpoints using the expanded endpoint's static `boxShadow`.
 
 ## `resolveSurfaceStyle`
 
@@ -145,11 +147,20 @@ resolveSurfaceStyle(
 interface SurfaceTransitionStyle {
   backgroundColor?: string;
   borderRadius?: number;
+  borderTopLeftRadius?: number;
+  borderTopRightRadius?: number;
+  borderBottomLeftRadius?: number;
+  borderBottomRightRadius?: number;
+  borderWidth?: number;
+  borderTopWidth?: number;
+  borderRightWidth?: number;
+  borderBottomWidth?: number;
+  borderLeftWidth?: number;
   boxShadow?: BoxShadowEntry[];
 }
 ```
 
-Recognizes string background colors, numeric corner radius, and `boxShadow`. It does not convert legacy `shadowColor`, `shadowOffset`, or Android `elevation`. Prefer object-array shadows with numeric offsets, blur, spread, and a string color. String shadow parsing is limited; it is not a general CSS parser.
+Recognizes string background colors, the numeric border geometry above, and `boxShadow`. It does not convert legacy `shadowColor`, `shadowOffset`, or Android `elevation`. Prefer object-array shadows with numeric offsets, blur, spread, and a string color. String shadow parsing is limited; it is not a general CSS parser.
 
 ## `Springs`
 

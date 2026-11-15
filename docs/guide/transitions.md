@@ -32,12 +32,12 @@ export const artwork = defineTransition({
 });
 ```
 
-| Recipe    | Use it for                                                                          |
-| --------- | ----------------------------------------------------------------------------------- |
-| `bounds`  | Position, size, and optional corner radius around retained content                  |
-| `surface` | Position and size plus background color, corner radius, and an expanded-side shadow |
-| `enter`   | Destination content that fades and translates in as the screen expands              |
-| `exit`    | Source content that fades and translates out as the screen expands                  |
+| Recipe    | Use it for                                                              |
+| --------- | ----------------------------------------------------------------------- |
+| `bounds`  | Position, size, corner radii, and border widths around retained content |
+| `surface` | Bounds and borders plus background color and an expanded-side shadow    |
+| `enter`   | Destination content that fades and translates in as the screen expands  |
+| `exit`    | Source content that fades and translates out as the screen expands      |
 
 The `radius` tuple always means **collapsed, expanded**, including on back. Without it, recipes read the endpoint styles.
 
@@ -184,8 +184,8 @@ function HeroRenderer({
       progress={progress}
       direction={direction}
       zIndex={zIndex}
-      sourceBorderRadius={resolveSurfaceStyle(source.style).borderRadius}
-      targetBorderRadius={resolveSurfaceStyle(target.style).borderRadius}
+      sourceStyle={resolveSurfaceStyle(source.style)}
+      targetStyle={resolveSurfaceStyle(target.style)}
     >
       {children}
     </TransitionFrame>

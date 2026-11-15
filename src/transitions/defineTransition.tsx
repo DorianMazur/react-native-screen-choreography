@@ -100,42 +100,22 @@ function sharedMotion(recipe: SharedMotionRecipe | Transition): Transition {
     zIndex,
     children,
   }: TransitionRendererProps) {
-    const sourceSurface = resolveSurfaceStyle(source.style);
-    const targetSurface = resolveSurfaceStyle(target.style);
     const backward = direction === 'backward';
-    const sourceRadius =
-      radius?.[backward ? 1 : 0] ?? sourceSurface.borderRadius;
-    const targetRadius =
-      radius?.[backward ? 0 : 1] ?? targetSurface.borderRadius;
-    const props = {
-      sourceMetrics: source.metrics,
-      targetMetrics: target.metrics,
-      progress,
-      direction,
-      zIndex,
-    };
-    return kind === 'surface' ? (
-      <TransitionSurface
-        {...props}
-        sourceStyle={{
-          ...sourceSurface,
-          ...(sourceRadius === undefined ? {} : { borderRadius: sourceRadius }),
-        }}
-        targetStyle={{
-          ...targetSurface,
-          ...(targetRadius === undefined ? {} : { borderRadius: targetRadius }),
-        }}
+    const Primitive = kind === 'surface' ? TransitionSurface : TransitionFrame;
+    return (
+      <Primitive
+        sourceMetrics={source.metrics}
+        targetMetrics={target.metrics}
+        sourceStyle={resolveSurfaceStyle(source.style)}
+        targetStyle={resolveSurfaceStyle(target.style)}
+        sourceBorderRadius={radius?.[backward ? 1 : 0]}
+        targetBorderRadius={radius?.[backward ? 0 : 1]}
+        progress={progress}
+        direction={direction}
+        zIndex={zIndex}
       >
         {children}
-      </TransitionSurface>
-    ) : (
-      <TransitionFrame
-        {...props}
-        sourceBorderRadius={sourceRadius}
-        targetBorderRadius={targetRadius}
-      >
-        {children}
-      </TransitionFrame>
+      </Primitive>
     );
   }
   return makeTransition({ renderer: Renderer, zIndex: recipe.zIndex });
