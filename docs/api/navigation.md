@@ -39,7 +39,7 @@ navigate(
 goBack(options?: ChoreographyNavigationOptions): Promise<void>;
 ```
 
-Pass the current screen's React Navigation `navigation` object. `navigate` uses `navigation.navigate` to open the destination and coordinates the shared transition.
+Pass the current screen's React Navigation `navigation` object. `navigate` uses `navigation.navigate` to open the destination and coordinates the shared transition. A list inside a tab can use its own navigation object to open a detail route declared on the parent stack. Back pairs the detail with the original list while that tab remains selected.
 
 The returned object and its commands keep the same identities while the hook remains mounted. Retained command references use the latest committed navigation and screen binding, so they can be passed through context or used in event handlers without a ref wrapper.
 

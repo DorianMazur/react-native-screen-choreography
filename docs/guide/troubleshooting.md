@@ -25,6 +25,8 @@ For Expo Router, an explicit `targetScreenId` must match the destination wrapper
 
 When a deep link opens the destination without a source owner, render fallback content there. An empty target alone does not create content.
 
+If the source screen freezes on blur, its shared element can become unavailable during forward preparation or when Back tries to return to it. Set `freezeOnBlur: false` on the screen that the navigator freezes to keep its endpoint available.
+
 ## “No valid pairs found”
 
 The library could not find matching elements with usable layout. Inspect the group and element IDs first, then the target size. A virtualized item outside the rendered window is not a usable endpoint. Keep the returning source item mounted and visible enough to measure.
@@ -47,6 +49,12 @@ options={{
 The overlay presents the shared element above the stack. A simultaneous navigator animation can expose a second moving screen. An opaque route presentation can cover the underlying content during preparation.
 
 Also check that you mounted only one owner plus an empty target. A second copy of the artwork on the destination defeats the retained-content model.
+
+## The shared element jumps during navigation
+
+**The keyboard opens.** If focusing a destination input moves the target, for example inside a `KeyboardAvoidingView`, the shared element can change course mid-flight. Defer focus until the forward request's [`onNavigationEvent`](../api/navigation.md#choreographynavigationevent) reports `completed`. For arrivals without a shared transition, focus when the destination appears.
+
+**The list is still moving.** A card in a `FlatList` or `ScrollView` can keep moving between source capture and the overlay's first frame. Wait for dragging, momentum, and edge rebound to finish before starting shared navigation, including from a button outside the list. Android's edge stretch can still be visible when the reported scroll offset is zero.
 
 ## Content arrives in the wrong size
 
