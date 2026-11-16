@@ -62,22 +62,38 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
 NODE
 
 derived_data="${PERFORMANCE_DERIVED_DATA:-$repo_root/examples/react-navigation/ios/build/performance}"
-# This directory belongs to this benchmark scheme. Keep native build products for
-# incremental local runs, but remove old test manifests before creating a new one.
-mkdir -p "$derived_data/Build/Products"
-rm -f "$derived_data"/Build/Products/ChoreographyPerformance_*.xctestrun
+# Products saved by an earlier run of the same sources. Reusing them skips a
+# rebuild that takes minutes even when nothing changed.
+saved_products="${PERFORMANCE_IOS_PRODUCTS:-}"
+products="$derived_data/Build/Products"
 status=0
-xcodebuild build-for-testing \
-  -showBuildTimingSummary \
-  -workspace examples/react-navigation/ios/ScreenChoreographyExample.xcworkspace \
-  -scheme ChoreographyPerformance -configuration Release \
-  -destination "platform=iOS Simulator,id=$udid" \
-  -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
-  SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
-  > >(tee "$output/build.log") 2>&1 || status=$?
+if [[ -n "$saved_products" ]] && compgen -G "$saved_products/ChoreographyPerformance_*.xctestrun" >/dev/null; then
+  products="$saved_products"
+  echo "Reusing build products: $products" | tee "$output/build.log"
+else
+  # This directory belongs to this benchmark scheme. Keep native build products for
+  # incremental local runs, but remove old test manifests before creating a new one.
+  mkdir -p "$products"
+  rm -f "$products"/ChoreographyPerformance_*.xctestrun
+  xcodebuild build-for-testing \
+    -showBuildTimingSummary \
+    -workspace examples/react-navigation/ios/ScreenChoreographyExample.xcworkspace \
+    -scheme ChoreographyPerformance -configuration Release \
+    -destination "platform=iOS Simulator,id=$udid" \
+    -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
+    SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
+    > >(tee "$output/build.log") 2>&1 || status=$?
+  if [[ "$status" -eq 0 && -n "$saved_products" ]]; then
+    # The test manifest refers to its products relative to its own directory.
+    rm -rf "$saved_products"
+    mkdir -p "$(dirname "$saved_products")"
+    cp -R "$products" "$saved_products"
+    products="$saved_products"
+  fi
+fi
 if [[ "$status" -eq 0 ]]; then
   # Pass both cycle counts explicitly to XCTest; shell env is not forwarded.
-  test_run="$(python3 - "$derived_data/Build/Products" "$screen_cycles" "$tray_cycles" <<'PY'
+  test_run="$(python3 - "$products" "$screen_cycles" "$tray_cycles" <<'PY'
 import pathlib, plistlib, sys
 files = list(pathlib.Path(sys.argv[1]).glob('ChoreographyPerformance_*.xctestrun'))
 if len(files) != 1: raise SystemExit('Expected exactly one xctestrun')

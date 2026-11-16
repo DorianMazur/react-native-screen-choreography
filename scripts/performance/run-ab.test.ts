@@ -45,7 +45,7 @@ test('A/B launcher alternates library sources, restores them and tolerates a fai
       'scripts/performance/run-ios.sh',
       `#!/bin/bash
 side="$(cat src/value)"
-echo "$(basename "$PERFORMANCE_OUTPUT") $side $(ls src | tr '\\n' ' ')\${PERFORMANCE_SCREEN_TIMING_CYCLES:-unset}/\${PERFORMANCE_TRAY_TIMING_CYCLES:-unset}" >> "$AB_LOG"
+echo "$(basename "$PERFORMANCE_OUTPUT") $side $(ls src | tr '\\n' ' ')\${PERFORMANCE_SCREEN_TIMING_CYCLES:-unset}/\${PERFORMANCE_TRAY_TIMING_CYCLES:-unset} products=\${PERFORMANCE_IOS_PRODUCTS##*/}" >> "$AB_LOG"
 if [[ "$side" == base ]]; then exit "$BASE_EXIT_STATUS"; fi
 `
     );
@@ -93,10 +93,10 @@ appendFileSync(process.env.AB_LOG, 'report ' + process.argv.slice(2).join(' ') +
     const paired = run('paired', {});
     assert.equal(paired.status, 0, paired.stderr);
     assert.deepEqual(paired.log.slice(0, 4), [
-      'base-1 base base-only value 10/3',
-      'head-1 head head-only value 10/3',
-      'head-2 head head-only value 10/3',
-      'base-2 base base-only value 10/3',
+      'base-1 base base-only value 10/3 products=base',
+      'head-1 head head-only value 10/3 products=head',
+      'head-2 head head-only value 10/3 products=head',
+      'base-2 base base-only value 10/3 products=base',
     ]);
     assert.match(
       paired.log[4]!,
@@ -120,7 +120,7 @@ appendFileSync(process.env.AB_LOG, 'report ' + process.argv.slice(2).join(' ') +
     const unchanged = run('unchanged', { PERFORMANCE_AB_BASE: 'HEAD' });
     assert.equal(unchanged.status, 0, unchanged.stderr);
     assert.deepEqual(unchanged.log, [
-      'unchanged head head-only value unset/unset',
+      'unchanged head head-only value unset/unset products=',
     ]);
 
     write('src/value', 'uncommitted');

@@ -154,7 +154,7 @@ test('MR notes filter small changes in timings and render counts', () => {
   assert.doesNotMatch(body, /\| Gallery · (open|return) preparation/);
   assert.doesNotMatch(body, /\| Gallery · forward · hero/);
   assert.match(body, /backward · hero · rerenders \| 20 \| 100 \| 99 \| -1/);
-  assert.match(body, /absolute change below 1% are hidden/);
+  assert.match(body, /within run-to-run noise or below 1% are hidden/);
   const unchanged = renderComment(run, {
     [artifact]: withBase(base, structuredClone(base)),
   });

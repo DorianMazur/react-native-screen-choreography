@@ -160,7 +160,7 @@ export function renderComment(
     lines.push('</details>', '');
   }
   lines.push(
-    'Informational emulator/simulator results · medians · tap handler to UI motion, motion to endpoint, then UI input handoff (ms). Render changes are counts. Rows with an absolute change below 1% are hidden; measurements without a comparable base remain visible. [Full reports and measurements](' +
+    'Informational emulator/simulator results · medians · tap handler to UI motion, motion to endpoint, then UI input handoff (ms). Render changes are counts. Rows whose change is within run-to-run noise or below 1% are hidden; measurements without a comparable base remain visible. [Full reports and measurements](' +
       run.html_url +
       ').'
   );
