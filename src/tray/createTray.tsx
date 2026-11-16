@@ -336,6 +336,7 @@ function TrayHost<P extends TrayParamList>({
   topInset = 0,
   bottomInset = 0,
   horizontalInset = 16,
+  keyboardInset = 12,
   backgroundColor = '#ffffff',
   textColor = '#18181b',
   renderHeader: stackRenderHeader,
@@ -442,19 +443,18 @@ function TrayHost<P extends TrayParamList>({
   const availableHeight = Math.max(0, height - keyboard.layoutHeight);
   const safeBottomInset = keyboard.layoutHeight > 0 ? 0 : bottomInset;
   const margin = appearance === 'floating' ? horizontalInset : 0;
-  const gap = appearance === 'floating' ? safeBottomInset + 12 : 0;
+  const floatingBottomInset = appearance === 'floating' ? bottomInset : 0;
+  const keyboardGap = appearance === 'floating' ? keyboardInset : 0;
+  // Below a compact card: the bottom inset, or the keyboard gap while typing.
+  const compactBottomInset =
+    keyboard.layoutHeight > 0 ? keyboardGap : bottomInset;
   const paddingBottom = fullScreen || appearance === 'sheet' ? bottomInset : 0;
   const maxHeightFor = (expanded: boolean, chromeHeight: number) =>
     expanded
       ? Math.max(0, availableHeight - topInset - safeBottomInset - chromeHeight)
       : Math.max(
           80,
-          availableHeight -
-            topInset -
-            gap -
-            (appearance === 'sheet' ? safeBottomInset : 0) -
-            chromeHeight -
-            6
+          availableHeight - topInset - compactBottomInset - chromeHeight - 6
         );
   const { screenId, origins } = useTrayGeometry();
   const pageHeights = useRef(new Map<string, number>());
@@ -600,8 +600,9 @@ function TrayHost<P extends TrayParamList>({
   const cardHeight = useDerivedValue(() => {
     if (!hasMeasured) return -1;
     const expanded = Math.max(0, Math.min(1, visualExpansion.value));
-    const liveBottomInset = bottomInset * (1 - keyboardProgress.value);
-    const liveGap = appearance === 'floating' ? liveBottomInset + 12 : 0;
+    const liveGap =
+      floatingBottomInset * (1 - keyboardProgress.value) +
+      keyboardGap * keyboardProgress.value;
     const liveAvailableHeight = Math.max(0, height - keyboardHeight.value);
     const keyboardCorrection =
       -keyboardHeight.value * expanded -
@@ -629,29 +630,21 @@ function TrayHost<P extends TrayParamList>({
   );
   // Full-screen endpoints keep their own size during tray navigation, but
   // their viewport must follow keyboard frames alongside the outer card.
-  const fullScreenSpace = useDerivedValue(
+  const viewportSpace = useDerivedValue(
     () =>
       height -
       keyboardHeight.value -
       topInset -
       bottomInset * (1 - keyboardProgress.value)
   );
-  const compactSpace = useDerivedValue(() => {
-    const liveBottomInset = bottomInset * (1 - keyboardProgress.value);
-    const liveGap = appearance === 'floating' ? liveBottomInset + 12 : 0;
-    return (
-      height -
-      keyboardHeight.value -
-      topInset -
-      liveGap -
-      (appearance === 'sheet' ? liveBottomInset : 0) -
-      6
-    );
-  });
+  const compactSpace = useDerivedValue(
+    () => viewportSpace.value - keyboardGap * keyboardProgress.value - 6
+  );
   const cardGeometry = useAnimatedStyle(() => {
     const expanded = Math.max(0, Math.min(1, visualExpansion.value));
-    const liveBottomInset = bottomInset * (1 - keyboardProgress.value);
-    const liveGap = appearance === 'floating' ? liveBottomInset + 12 : 0;
+    const liveGap =
+      floatingBottomInset * (1 - keyboardProgress.value) +
+      keyboardGap * keyboardProgress.value;
     return {
       // A settled compact page owns its height through Yoga. Reflecting its
       // animated layout through onLayout and another spring clips the growing
@@ -931,21 +924,11 @@ function TrayHost<P extends TrayParamList>({
                     direction={state.transition?.direction ?? 1}
                     slide={slide}
                     onPageLayout={(pageHeight) => {
-                      const entryPadding =
-                        entryFullScreen || appearance === 'sheet'
-                          ? safeBottomInset
-                          : 0;
-                      const entryCardHeight = entryFullScreen
-                        ? availableHeight
-                        : pageHeight + entryHeaderHeight + entryPadding;
                       origins.set(screenId(entry.key), {
                         x: entryFullScreen ? 0 : margin,
-                        y:
-                          availableHeight -
-                          entryCardHeight -
-                          (entryFullScreen ? 0 : gap) +
-                          (entryFullScreen ? topInset : 0) +
-                          entryHeaderHeight,
+                        y: entryFullScreen
+                          ? topInset + entryHeaderHeight
+                          : availableHeight - compactBottomInset - pageHeight,
                       });
                       if (pageHeights.current.get(entry.key) !== pageHeight) {
                         pageHeights.current.set(entry.key, pageHeight);
@@ -964,8 +947,8 @@ function TrayHost<P extends TrayParamList>({
                     maxHeight={maxHeightFor(entryFullScreen, entryHeaderHeight)}
                     fullScreen={entryFullScreen}
                     intrinsic={intrinsic && entry.key === active.key}
+                    viewportSpace={viewportSpace}
                     compactSpace={compactSpace}
-                    fullScreenSpace={fullScreenSpace}
                     headerHeight={entryHeaderHeight}
                     anchor={screens[entry.name]?.anchor ?? anchor}
                     contentTop={contentTop}
@@ -1156,8 +1139,8 @@ function TrayPage({
   maxHeight,
   fullScreen,
   intrinsic,
+  viewportSpace,
   compactSpace,
-  fullScreenSpace,
   headerHeight,
   anchor,
   contentTop,
@@ -1185,8 +1168,8 @@ function TrayPage({
   maxHeight: number;
   fullScreen: boolean;
   intrinsic: boolean;
+  viewportSpace: SharedValue<number>;
   compactSpace: SharedValue<number>;
-  fullScreenSpace: SharedValue<number>;
   headerHeight: number;
   anchor: 'top' | 'bottom';
   contentTop: SharedValue<number>;
@@ -1281,7 +1264,7 @@ function TrayPage({
           top: anchor === 'top' ? 0 : undefined,
           bottom: anchor === 'bottom' ? 0 : undefined,
           height: fullScreen
-            ? Math.max(0, fullScreenSpace.value - headerHeight)
+            ? Math.max(0, viewportSpace.value - headerHeight)
             : maxHeight,
           paddingTop: 0,
           paddingBottom: 0,

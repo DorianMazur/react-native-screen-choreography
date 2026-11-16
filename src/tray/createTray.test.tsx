@@ -2591,6 +2591,7 @@ test.each([
       layoutPage(renderer, Form, 200);
       act(() => sheet(renderer).props.onSettle(1));
       flushUI();
+      expect(cardStyle(renderer).marginBottom).toBe(0);
       const input = renderer.UNSAFE_root.findByType(TextInput);
       act(() => input.props.onChangeText('retained through layout handoff'));
       const expectInFlow = (component: React.ElementType) => {
@@ -2907,7 +2908,8 @@ test.each([
           Dimensions.get('window').height -
             height -
             50 -
-            (appearance === 'floating' ? bottom + 12 : bottom) -
+            bottom -
+            (appearance === 'floating' ? 12 * (height / 300) : 0) -
             6 -
             70
         );
@@ -3240,6 +3242,7 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
             appearance={mode === 'sheet' ? 'sheet' : 'floating'}
             topInset={50}
             bottomInset={20}
+            keyboardInset={8}
           >
             <Tray.Screen
               name="form"
@@ -3260,9 +3263,9 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
         mode === 'fullScreen' ? 660 : mode === 'sheet' ? 110 : 130
       );
       const event = { height: 300, progress: 1, duration: 250, target: 1 };
-      expect(card().marginBottom).toBe(mode === 'floating' ? 32 : 0);
+      expect(card().marginBottom).toBe(mode === 'floating' ? 20 : 0);
       act(() => mockKeyboardHandlers.onEnd!(event));
-      expect(card().marginBottom).toBe(mode === 'floating' ? 12 : 0);
+      expect(card().marginBottom).toBe(mode === 'floating' ? 8 : 0);
       expect(sheet(renderer).props.style.bottom).toBe(300);
       expect(card().height).toBe(mode === 'fullScreen' ? 500 : 'auto');
       if (mode === 'fullScreen')
@@ -3271,7 +3274,7 @@ test.each(['floating', 'sheet', 'fullScreen'] as const)(
       act(() =>
         mockKeyboardHandlers.onEnd!({ ...event, height: 0, progress: 0 })
       );
-      expect(card().marginBottom).toBe(mode === 'floating' ? 32 : 0);
+      expect(card().marginBottom).toBe(mode === 'floating' ? 20 : 0);
       expect(card().height).toBe(mode === 'fullScreen' ? 800 : 'auto');
       if (mode !== 'fullScreen')
         expectIntrinsicLayout(renderer, Form, 70, mode === 'sheet' ? 20 : 0);
@@ -3358,7 +3361,7 @@ test.each([
     expect(card()).toMatchObject({
       height: 'auto',
       marginHorizontal: appearance === 'floating' ? 16 : 0,
-      marginBottom: appearance === 'floating' ? 32 : 0,
+      marginBottom: appearance === 'floating' ? 20 : 0,
       borderRadius: 30,
     });
     act(() => renderer.unmount());
@@ -3481,7 +3484,7 @@ test('presents a full-screen root and shrinks for a pushed content-sized page', 
   expect(cardStyle(renderer)).toMatchObject({
     height: 'auto',
     marginHorizontal: 16,
-    marginBottom: 32,
+    marginBottom: 20,
   });
   act(() => navigation.back());
   layoutPage(

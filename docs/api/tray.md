@@ -25,8 +25,9 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 | `appearance`           | `'floating'`    | Inset `'floating'` card or bottom-attached `'sheet'`.                              |
 | `anchor`               | `'bottom'`      | Keep screen content aligned to the `'top'` or `'bottom'` while resizing.           |
 | `topInset`             | `0`             | Space above the tray; content inset for full-screen views.                         |
-| `bottomInset`          | `0`             | Bottom safe area; floating cards add 12 points of spacing.                         |
+| `bottomInset`          | `0`             | Space below floating cards or bottom padding inside sheets and full-screen views.  |
 | `horizontalInset`      | `16`            | Side spacing for floating cards.                                                   |
+| `keyboardInset`        | `12`            | Space between floating cards and the open keyboard.                                |
 | `backgroundColor`      | `'#ffffff'`     | Card background.                                                                   |
 | `textColor`            | `'#18181b'`     | Header title and icons.                                                            |
 | `renderHeader`         | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`.            |

@@ -146,6 +146,8 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   topInset?: number;
   bottomInset?: number;
   horizontalInset?: number;
+  /** Space between a floating card and the open keyboard. Defaults to 12. */
+  keyboardInset?: number;
   backgroundColor?: ColorValue;
   textColor?: ColorValue;
   /** Replace the entire header, including its buttons. Return null for no header. */
