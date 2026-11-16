@@ -50,6 +50,46 @@ export function pool(rounds: InputRecord[]): InputRecord {
   };
 }
 
+const RESAMPLES = 2000;
+
+/**
+ * A 99% range for the change in medians (current minus base), from resampling
+ * each side's samples. Samples scatter widely within one run, so a range that
+ * includes zero cannot be told apart from that scatter. Seeded by the metric
+ * so a report is reproducible from its samples.
+ */
+export function changeInterval(
+  base: number[],
+  head: number[],
+  seed: string
+): [number, number] | null {
+  if (base.length < 2 || head.length < 2) return null;
+  // A linear congruential generator; every product stays below 2^53.
+  const modulus = 4294967296;
+  let state = 0;
+  for (const character of seed)
+    state = (state * 31 + character.charCodeAt(0)) % modulus;
+  const random = () => {
+    state = (state * 1664525 + 1013904223) % modulus;
+    return state / modulus;
+  };
+  const resampledMedian = (values: number[]) => {
+    const draw = values
+      .map(() => values[Math.floor(random() * values.length)]!)
+      .sort((a, b) => a - b);
+    const middle = (draw.length - 1) / 2;
+    return (draw[Math.floor(middle)]! + draw[Math.ceil(middle)]!) / 2;
+  };
+  const changes = Array.from(
+    { length: RESAMPLES },
+    () => resampledMedian(head) - resampledMedian(base)
+  ).sort((a, b) => a - b);
+  return [
+    changes[Math.floor(RESAMPLES * 0.005)]!,
+    changes[Math.ceil(RESAMPLES * 0.995) - 1]!,
+  ];
+}
+
 /**
  * The current side's pooled report, carrying the base side measured in the same
  * session. A base that could not be measured leaves the report itself intact.
@@ -93,17 +133,14 @@ export function combine(
   // Raw base samples stay in each round's own report.
   const { samples, sources, ...pooledBase } = pool(base);
   sameRunner.base = pooledBase;
-  sameRunner.roundMedians = Object.fromEntries(
+  sameRunner.changeIntervals = Object.fromEntries(
     Object.keys(summary.metrics).flatMap((key) => {
-      const pairs = head.map((round, index) => [
-        base[index]!.metrics?.[key]?.median,
-        round.metrics?.[key]?.median,
-      ]);
-      return pairs.every((pair) =>
-        pair.every((median) => typeof median === 'number')
-      )
-        ? [[key, pairs]]
-        : [];
+      const interval = changeInterval(
+        samples[key] ?? [],
+        summary.samples[key] ?? [],
+        key
+      );
+      return interval ? [[key, interval]] : [];
     })
   );
   return summary;

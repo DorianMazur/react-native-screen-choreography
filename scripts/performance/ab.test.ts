@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { combine } from './ab.mts';
+import { changeInterval, combine } from './ab.mts';
 import { renderComment } from './post-comment.mts';
 import { distribution } from './report.mts';
 import { sameRunnerBase, summaryTable } from './summary-table.mts';
@@ -60,7 +60,7 @@ function round(
 const base = () => [round([40, 44], [20, 20]), round([42, 46], [20, 20])];
 const head = () => [round([30, 34], [24, 24]), round([32, 36], [18, 18])];
 
-test('pools each side and shows how many rounds agree with the pooled change', () => {
+test('pools each side and reports whether a change stands out from the noise', () => {
   const summary = combine(head(), base(), info);
   assert.equal(summary.valid, true);
   assert.deepEqual(summary.samples[forward], [30, 34, 32, 36]);
@@ -76,18 +76,37 @@ test('pools each side and shows how many rounds agree with the pooled change', (
   const comparison = sameRunnerBase(summary)!;
   assert.match(comparison.note, /\(0123456\) .* 2 alternating rounds/);
   const table = summaryTable(summary, comparison.base);
-  assert.match(table, /Change \| Rounds agreeing \|/);
-  assert.match(table, /tap to motion \(ms\) \| 43 \| 33 \| -10 ms \| 2\/2 \|/);
-  // Slower in one round and faster in the other: the pooled change is noise.
+  assert.match(table, /Change \| 99% range \|/);
+  // Every current sample is faster than every base sample.
   assert.match(
     table,
-    /back tap to motion \(ms\) \| 20 \| 21 \| \+1 ms \| 1\/2 \|/
+    /tap to motion \(ms\) \| 43 \| 33 \| -10 ms \| -[\d.]+ to -[\d.]+ ms \|/
   );
-  // Round medians describe only the base they were measured against.
+  // Slower in one round and faster in the other: the range spans zero.
+  assert.match(
+    table,
+    /back tap to motion \(ms\) \| 20 \| 21 \| \+1 ms \| -2 to \+4 ms \|/
+  );
+  // The filtered table lists only what stands out, and says what it left out.
+  const filtered = summaryTable(summary, comparison.base, 1);
+  assert.match(filtered, /Gallery · tap to motion/);
+  assert.doesNotMatch(filtered, /back tap to motion/);
+  assert.match(filtered, /Within run-to-run noise and not listed: 1\./);
+  // Ranges describe only the base they were measured against.
   assert.doesNotMatch(
     summaryTable(summary, structuredClone(comparison.base)),
-    /Rounds agreeing/
+    /99% range/
   );
+});
+
+test('change ranges are reproducible and need samples on both sides', () => {
+  const range = changeInterval([40, 42, 44, 46], [30, 32, 34, 36], forward);
+  assert.deepEqual(
+    range,
+    changeInterval([40, 42, 44, 46], [30, 32, 34, 36], forward)
+  );
+  assert.ok(range![0] <= range![1] && range![1] < 0);
+  assert.equal(changeInterval([40], [30, 32], forward), null);
 });
 
 test('PR comments compare against the same-runner base and never render its raw fields', () => {
@@ -100,7 +119,7 @@ test('PR comments compare against the same-runner base and never render its raw 
     { 'performance-summary-android-native-release': summary }
   );
   assert.match(body, /Base library sources \(unknown revision\) measured/);
-  assert.match(body, /\| 43 \| 33 \| -10 ms \| 2\/2 \|/);
+  assert.match(body, /\| 43 \| 33 \| -10 ms \| -[\d.]+ to -[\d.]+ ms \|/);
   assert.doesNotMatch(body, /<img/);
 });
 

@@ -102,20 +102,18 @@ export function sameRunnerBase(report: InputRecord | undefined) {
   const rounds = Number.isInteger(info.rounds) ? `${info.rounds} ` : '';
   return {
     base: base as InputRecord,
-    note: `Base library sources (${revision}) measured on this runner in ${rounds}alternating rounds; samples are pooled per side. "Rounds agreeing" counts the rounds whose own medians moved in the direction of the pooled change.`,
+    note: `Base library sources (${revision}) measured on this runner in ${rounds}alternating rounds; samples are pooled per side. "99% range" is where the change in medians falls when both sides are resampled; a range that includes zero is within run-to-run noise.`,
   };
 }
 
-function roundsAgreeing(pairs: unknown, delta: number | null) {
-  if (delta === null || !Array.isArray(pairs) || !pairs.length) return '—';
-  const agreeing = pairs.filter(
-    (pair) =>
-      Array.isArray(pair) &&
-      typeof pair[0] === 'number' &&
-      typeof pair[1] === 'number' &&
-      Math.sign(pair[1] - pair[0]) === Math.sign(delta)
-  ).length;
-  return `${agreeing}/${pairs.length}`;
+/** The resampled range of a change, when the report carries a valid one. */
+function changeRange(intervals: unknown, key: string, scale: number) {
+  const range = (intervals as InputRecord | undefined)?.[key];
+  return Array.isArray(range) &&
+    range.length === 2 &&
+    range.every((bound) => typeof bound === 'number' && Number.isFinite(bound))
+    ? ([range[0] * scale, range[1] * scale] as [number, number])
+    : null;
 }
 
 export function headlineMetrics() {
@@ -185,11 +183,12 @@ export function summaryTable(
   base?: InputRecord,
   minChangePercent = 0
 ) {
-  // Per-round medians describe only the base they were measured against.
-  const roundMedians =
+  // Resampled ranges describe only the base they were measured against.
+  const intervals =
     base && base === report.sameRunner?.base
-      ? report.sameRunner.roundMedians
+      ? report.sameRunner.changeIntervals
       : undefined;
+  let withinNoise = 0;
   const rows = headlineMetrics().flatMap(({ key, label, scale, unit }) => {
     const current = value(report, key, scale);
     const previous =
@@ -205,16 +204,30 @@ export function summaryTable(
       return [];
     const delta =
       current !== null && previous !== null ? current - previous : null;
+    const signed = (n: number) => `${n > 0 ? '+' : ''}${format(n)}`;
+    const range = delta === null ? null : changeRange(intervals, key, scale);
+    // A filtered table lists only changes that stand out from the noise.
+    if (minChangePercent > 0 && range && range[0] <= 0 && range[1] >= 0) {
+      withinNoise++;
+      return [];
+    }
     return [
-      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |${roundMedians ? ` ${roundsAgreeing(roundMedians[key], delta)} |` : ''}`,
+      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${signed(delta)} ${unit}`} |${intervals ? ` ${range ? `${signed(range[0])} to ${signed(range[1])} ${unit}` : '—'} |` : ''}`,
     ];
   });
+  const hidden = withinNoise
+    ? `Within run-to-run noise and not listed: ${withinNoise}.`
+    : '';
   if (!rows.length)
-    return `No measurements to show at the ${minChangePercent}% change threshold.`;
+    return (
+      hidden ||
+      `No measurements to show at the ${minChangePercent}% change threshold.`
+    );
   return [
-    `| Metric | Base | PR / current | Change |${roundMedians ? ' Rounds agreeing |' : ''}`,
-    `| --- | ---: | ---: | ---: |${roundMedians ? ' ---: |' : ''}`,
+    `| Metric | Base | PR / current | Change |${intervals ? ' 99% range |' : ''}`,
+    `| --- | ---: | ---: | ---: |${intervals ? ' ---: |' : ''}`,
     ...rows,
+    ...(hidden ? ['', hidden] : []),
   ].join('\n');
 }
 

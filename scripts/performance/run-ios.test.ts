@@ -166,6 +166,45 @@ fi
         );
       }
     }
+    // Saved products are built once and reused by later runs of the same sources.
+    const products = path.join(root, 'saved products');
+    for (const [index, builds] of [1, 0].entries()) {
+      const output = path.join(root, `reuse-${index}`);
+      const result = spawnSync(
+        'bash',
+        [path.join(root, 'scripts/performance/run-ios.sh')],
+        {
+          encoding: 'utf8',
+          timeout: 15000,
+          env: {
+            ...process.env,
+            PATH: `${root}/bin:${process.env.PATH}`,
+            USE_CCACHE: '0',
+            PERFORMANCE_OUTPUT: output,
+            PERFORMANCE_DERIVED_DATA: path.join(root, 'derived'),
+            PERFORMANCE_IOS_PRODUCTS: products,
+            BUILD_EXIT_STATUS: '0',
+            TEST_EXIT_STATUS: '0',
+            REPORT_EXIT_STATUS: '0',
+          },
+        }
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const argumentsList = readFileSync(
+        path.join(output, 'xcode-arguments'),
+        'utf8'
+      ).split('\n');
+      assert.equal(
+        argumentsList.filter((arg) => arg === 'build-for-testing').length,
+        builds
+      );
+      assert.ok(
+        argumentsList.includes(
+          path.join(products, 'ChoreographyPerformance_fixture.xctestrun')
+        )
+      );
+      assert.ok(existsSync(path.join(output, 'test-environment.json')));
+    }
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

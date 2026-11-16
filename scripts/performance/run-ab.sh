@@ -29,6 +29,11 @@ output="$(cd "$output" && pwd)"
 export PERFORMANCE_SCREEN_TIMING_CYCLES="${PERFORMANCE_AB_SCREEN_TIMING_CYCLES:-10}"
 export PERFORMANCE_TRAY_TIMING_CYCLES="${PERFORMANCE_AB_TRAY_TIMING_CYCLES:-3}"
 
+# Each side's sources are fixed for the whole run, so iOS builds a side once
+# and later rounds reuse its products. Never reuse products from another run.
+side_products="$repo_root/examples/react-navigation/ios/build/performance-ab"
+rm -rf "$side_products"
+
 # Staging keeps the index in step, so files that exist on one side only are
 # removed again when the other side is restored.
 use() { git restore --source="$1" --staged --worktree -- "${library[@]}"; }
@@ -48,7 +53,8 @@ for ((round = 1; round <= rounds; round++)); do
     fi
     printf '\nA/B round %s of %s: %s sources\n' "$round" "$rounds" "$side"
     status=0
-    PERFORMANCE_OUTPUT="$output/$side-$round" bash "scripts/performance/run-$platform.sh" "$mode" || status=$?
+    PERFORMANCE_OUTPUT="$output/$side-$round" PERFORMANCE_IOS_PRODUCTS="$side_products/$side" \
+      bash "scripts/performance/run-$platform.sh" "$mode" || status=$?
     if [[ "$status" -ne 0 ]]; then
       # The current fixture may not build or validate against older sources.
       # That removes the comparison; it is not a failure of this change.
