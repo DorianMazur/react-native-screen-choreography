@@ -8,7 +8,8 @@ import type { ElementMetrics } from '../types';
 import {
   prepareBorderGeometry,
   interpolateBorder,
-  type BorderGeometry,
+  interpolateBorderColors,
+  type BorderStyle,
 } from './borderGeometry';
 import {
   transitionGeometryStyle,
@@ -23,8 +24,8 @@ interface TransitionFrameProps {
   direction?: 'forward' | 'backward';
   /** Custom z-index for layering */
   zIndex?: number;
-  sourceStyle?: BorderGeometry;
-  targetStyle?: BorderGeometry;
+  sourceStyle?: BorderStyle;
+  targetStyle?: BorderStyle;
   /** A uniform radius overrides this endpoint's individual corners. */
   sourceBorderRadius?: number;
   targetBorderRadius?: number;
@@ -42,7 +43,7 @@ export function TransitionFrame({
   sourceBorderRadius,
   targetBorderRadius,
 }: TransitionFrameProps) {
-  const { radii, border } = prepareBorderGeometry(
+  const { radii, border, colors } = prepareBorderGeometry(
     sourceStyle,
     targetStyle,
     sourceBorderRadius,
@@ -53,6 +54,7 @@ export function TransitionFrame({
     ...transitionLayoutStyle(),
     zIndex,
     ...(radii.length ? { overflow: 'hidden' as const } : {}),
+    ...colors.fixed,
   };
 
   const t = useDerivedValue(() =>
@@ -62,6 +64,7 @@ export function TransitionFrame({
   const animatedStyle = useAnimatedStyle(() => ({
     ...transitionGeometryStyle(sourceMetrics, targetMetrics, t.value),
     ...interpolateBorder(border, t.value),
+    ...interpolateBorderColors(colors.ranges, t.value),
   }));
 
   return (

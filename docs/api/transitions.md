@@ -104,19 +104,19 @@ Use anchors to position one shared element relative to another. They contain geo
 
 An absolute animated frame for position, size, corner radii, and border widths. Pass the renderer's `children` inside it.
 
-| Prop                                       | Type                                                | Default                                            |
-| ------------------------------------------ | --------------------------------------------------- | -------------------------------------------------- |
-| `progress`                                 | `SharedValue<number>`                               | Required expansion progress                        |
-| `sourceMetrics`, `targetMetrics`           | `ElementMetrics`                                    | Required endpoint rectangles                       |
-| `direction`                                | `'forward' \| 'backward'`                           | `'forward'`                                        |
-| `sourceStyle`, `targetStyle`               | Numeric border fields from `SurfaceTransitionStyle` | Optional                                           |
-| `sourceBorderRadius`, `targetBorderRadius` | `number`                                            | Optional uniform radius override for that endpoint |
-| `zIndex`                                   | `number`                                            | `1`                                                |
-| `children`                                 | `ReactNode`                                         | Optional                                           |
+| Prop                                       | Type                                        | Default                                            |
+| ------------------------------------------ | ------------------------------------------- | -------------------------------------------------- |
+| `progress`                                 | `SharedValue<number>`                       | Required expansion progress                        |
+| `sourceMetrics`, `targetMetrics`           | `ElementMetrics`                            | Required endpoint rectangles                       |
+| `direction`                                | `'forward' \| 'backward'`                   | `'forward'`                                        |
+| `sourceStyle`, `targetStyle`               | Border fields from `SurfaceTransitionStyle` | Optional                                           |
+| `sourceBorderRadius`, `targetBorderRadius` | `number`                                    | Optional uniform radius override for that endpoint |
+| `zIndex`                                   | `number`                                    | `1`                                                |
+| `children`                                 | `ReactNode`                                 | Optional                                           |
 
 Metrics contain `pageX`, `pageY`, `width`, and `height`. The frame interpolates source-to-target geometry with direction handling built in. It interpolates width and height and positions the frame with `translateX` and `translateY` while layout `left` and `top` remain `0`. Content keeps its natural size and reflows within the changing frame.
 
-Supplying a radius enables clipping. Each physical corner or edge uses its own numeric value, falling back to that endpoint's `borderRadius` or `borderWidth`, then to `0`. A recipe's `radius` tuple overrides all four corners. The frame uses `pointerEvents="none"` during overlay presentation.
+Supplying a radius enables clipping. Each physical corner or edge uses its own numeric value, falling back to that endpoint's `borderRadius` or `borderWidth`, then to `0`. A recipe's `radius` tuple overrides all four corners. Border colors interpolate between the endpoints' string `borderColor` and physical edge colors; an endpoint without a color uses the other endpoint's. The frame uses `pointerEvents="none"` during overlay presentation.
 
 ## `TransitionSurface`
 
@@ -156,11 +156,16 @@ interface SurfaceTransitionStyle {
   borderRightWidth?: number;
   borderBottomWidth?: number;
   borderLeftWidth?: number;
+  borderColor?: string;
+  borderTopColor?: string;
+  borderRightColor?: string;
+  borderBottomColor?: string;
+  borderLeftColor?: string;
   boxShadow?: BoxShadowEntry[];
 }
 ```
 
-Recognizes string background colors, the numeric border geometry above, and `boxShadow`. It does not convert legacy `shadowColor`, `shadowOffset`, or Android `elevation`. Prefer object-array shadows with numeric offsets, blur, spread, and a string color. String shadow parsing is limited; it is not a general CSS parser.
+Recognizes string background and border colors, the numeric border geometry above, and `boxShadow`. It does not convert legacy `shadowColor`, `shadowOffset`, or Android `elevation`. Prefer object-array shadows with numeric offsets, blur, spread, and a string color. String shadow parsing is limited; it is not a general CSS parser.
 
 ## `Springs`
 

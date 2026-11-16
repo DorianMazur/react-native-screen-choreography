@@ -9,7 +9,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
 import type { SurfaceTransitionStyle } from './resolveSurfaceStyle';
-import { prepareBorderGeometry, interpolateBorder } from './borderGeometry';
+import {
+  prepareBorderGeometry,
+  interpolateBorder,
+  interpolateBorderColors,
+} from './borderGeometry';
 export function transitionLayoutStyle(): ViewStyle {
   return {
     position: 'absolute',
@@ -78,7 +82,7 @@ export function TransitionSurface({
   children,
   zIndex = 0,
 }: TransitionSurfaceProps) {
-  const { radii, border } = prepareBorderGeometry(
+  const { radii, border, colors } = prepareBorderGeometry(
     sourceStyle,
     targetStyle,
     sourceBorderRadius,
@@ -120,6 +124,7 @@ export function TransitionSurface({
             [sourceColor, targetColor]
           ),
     ...interpolateBorder(border, t.value),
+    ...interpolateBorderColors(colors.ranges, t.value),
   }));
 
   return (
@@ -136,7 +141,9 @@ export function TransitionSurface({
           ]}
         />
       )}
-      <Animated.View style={[styles.contentHost, contentShapeStyle]}>
+      <Animated.View
+        style={[styles.contentHost, colors.fixed, contentShapeStyle]}
+      >
         {children}
       </Animated.View>
     </Animated.View>

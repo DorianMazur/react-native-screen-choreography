@@ -1,5 +1,11 @@
 import { StyleSheet, type ViewStyle } from 'react-native';
-import { cornerRadii, edgeWidths, type BorderGeometry } from './borderGeometry';
+import {
+  cornerRadii,
+  edgeColors,
+  edgeWidths,
+  type BorderColors,
+  type BorderGeometry,
+} from './borderGeometry';
 
 export interface BoxShadowEntry {
   offsetX: number;
@@ -9,7 +15,7 @@ export interface BoxShadowEntry {
   color: string;
 }
 
-export interface SurfaceTransitionStyle extends BorderGeometry {
+export interface SurfaceTransitionStyle extends BorderGeometry, BorderColors {
   backgroundColor?: string;
   boxShadow?: BoxShadowEntry[];
 }
@@ -92,9 +98,15 @@ export function resolveSurfaceStyle(
     const value = flat[key];
     if (typeof value === 'number') border[key] = value;
   }
+  const colors: BorderColors = {};
+  for (const key of ['borderColor', ...edgeColors] as const) {
+    const value = flat[key];
+    if (typeof value === 'string') colors[key] = value;
+  }
 
   return {
     ...border,
+    ...colors,
     backgroundColor:
       typeof flat.backgroundColor === 'string'
         ? flat.backgroundColor

@@ -275,6 +275,69 @@ test.each(['bounds', 'surface'] as const)(
   }
 );
 
+test.each(['bounds', 'surface'] as const)(
+  '%s paints borders in the endpoint colors, never the platform default',
+  async (kind) => {
+    const definition = defineTransition({ shared: { card: { kind } } });
+    const owner = await mount(
+      <definition.Element name="card">Card</definition.Element>
+    );
+    const { renderer: Renderer }: Transition = owner.UNSAFE_root.findByType(
+      'Owner' as React.ElementType
+    ).props.transition;
+    const metrics = { pageX: 0, pageY: 0, width: 100, height: 100 };
+    const render = async (
+      direction: 'forward' | 'backward',
+      small: object,
+      big: object
+    ) => {
+      const endpoints = [
+        { screenId: 'list', metrics, style: small },
+        { screenId: 'detail', metrics, style: big },
+      ];
+      if (direction === 'backward') endpoints.reverse();
+      const tree = await mount(
+        <Renderer
+          id="card"
+          groupId="cards"
+          progress={mockProgress}
+          direction={direction}
+          zIndex={1}
+          source={endpoints[0]!}
+          target={endpoints[1]!}
+        />
+      );
+      return StyleSheet.flatten(
+        tree.UNSAFE_root.findAllByType('Animated.View' as React.ElementType).at(
+          -1
+        )!.props.style
+      );
+    };
+    for (const direction of ['forward', 'backward'] as const) {
+      // A border growing from nothing keeps the one color that exists.
+      expect(
+        await render(
+          direction,
+          { borderRadius: 8 },
+          { borderWidth: 2, borderColor: 'red', borderTopColor: 'green' }
+        )
+      ).toMatchObject({ borderColor: 'red', borderTopColor: 'green' });
+      // The mocked interpolation returns its first color: the session source.
+      const source = direction === 'forward' ? 'blue' : 'red';
+      expect(
+        await render(
+          direction,
+          { borderWidth: 1, borderColor: 'blue' },
+          { borderWidth: 2, borderColor: 'red', borderTopColor: 'green' }
+        )
+      ).toMatchObject({
+        borderColor: source,
+        borderTopColor: direction === 'forward' ? 'blue' : 'green',
+      });
+    }
+  }
+);
+
 test('configuration is captured and custom live renderers remain usable', async () => {
   const recipe = {
     kind: 'bounds' as const,
