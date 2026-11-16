@@ -453,8 +453,10 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
         : 'collapsed'
       : settledSide.current;
   const transitioning = participates && !reducedMotion && !preparing;
+  // Reanimated subscribes to every captured shared value, even behind a guard.
+  const activeProgress = transitioning ? progress : null;
   const presentationProgress = useDerivedValue(() =>
-    transitioning ? progress.value : settled === 'expanded' ? 1 : 0
+    activeProgress ? activeProgress.value : settled === 'expanded' ? 1 : 0
   );
   const collapsed = endpoints.current?.collapsed ?? initial;
   const expanded = endpoints.current?.expanded ?? initial;
@@ -463,8 +465,6 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   const frameEndpoints = reducedMotion ? null : activeEndpoints;
   const collapsedMetrics = frameEndpoints?.collapsed.metrics;
   const expandedMetrics = frameEndpoints?.expanded.metrics;
-  // Reanimated subscribes to every captured shared value, even behind a guard.
-  // Idle owners must not capture the provider clock for their frame mapper.
   const frameProgress = frameEndpoints ? progress : null;
   const frame = useDerivedValue(() =>
     collapsedMetrics && expandedMetrics && frameProgress
