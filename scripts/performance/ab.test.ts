@@ -123,21 +123,50 @@ test('PR comments compare against the same-runner base and never render its raw 
   assert.doesNotMatch(body, /<img/);
 });
 
-test('an unmeasurable base leaves the current report intact without a comparison', () => {
-  const failedBase = base();
-  failedBase[1]!.valid = false;
-  const summary = combine(head(), failedBase, info);
+test('a base round that failed is left out of both sides', () => {
+  const partialBase = base();
+  partialBase[1]!.valid = false;
+  const summary = combine(head(), partialBase, {
+    ...info,
+    retried: ['base-2', '<img src=x>'],
+  });
   assert.equal(summary.valid, true);
-  assert.match(summary.sameRunner.unavailable, /base sources/);
-  assert.equal(sameRunnerBase(summary), undefined);
-  assert.equal(
-    sameRunnerBase(combine(head(), base().slice(1), info)),
-    undefined
+  assert.deepEqual(summary.samples[forward], [30, 34]);
+  assert.equal(summary.metadata.screenTimingCycles, 2);
+  const comparison = sameRunnerBase(summary)!;
+  assert.match(comparison.note, /in 1 of 2 alternating rounds, the only ones/);
+  assert.match(comparison.note, /Repeated after a failed run: base round 2\./);
+  assert.match(
+    summaryTable(summary, comparison.base),
+    /tap to motion \(ms\) \| 42 \| 32 \| -10 ms \|/
+  );
+  // A round that left no base report is skipped the same way.
+  assert.deepEqual(
+    combine(head(), [undefined, base()[1]], info).samples[forward],
+    [32, 36]
   );
 });
 
+test('a base that never passes leaves the current report intact without a comparison', () => {
+  const failedBase = base().map((report) => ({ ...report, valid: false }));
+  const summary = combine(head(), failedBase, info);
+  assert.equal(summary.valid, true);
+  assert.equal(summary.metrics[forward].count, 4);
+  assert.match(summary.sameRunner.unavailable, /base sources/);
+  assert.equal(sameRunnerBase(summary), undefined);
+  assert.equal(sameRunnerBase(combine(head(), [], info)), undefined);
+  // The comment says which of the two reasons applies.
+  const comment = (report: InputRecord) =>
+    renderComment(
+      { id: 1, conclusion: 'success', head_sha: 'abc', html_url: 'https://x' },
+      { 'performance-summary-android-native-release': report }
+    );
+  assert.match(comment(summary), /base sources did not pass collection/);
+  assert.match(comment(head()[0]!), /library sources match the base/);
+});
+
 test('a missing current round fails collection', () => {
-  const summary = combine(head().slice(1), base(), info);
+  const summary = combine([undefined, head()[1]], base(), info);
   assert.equal(summary.valid, false);
   assert.match(summary.errors.at(-1), /Only 1 of 2 A\/B rounds/);
   assert.equal(sameRunnerBase(summary), undefined);

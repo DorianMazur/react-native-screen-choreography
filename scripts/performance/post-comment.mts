@@ -1,4 +1,5 @@
 import {
+  missingBaseNote,
   sameRunnerBase,
   summaryTable,
   renderCountsTable,
@@ -141,11 +142,7 @@ export function renderComment(
     // The only base is the one measured in the same job; a report from
     // another host is never substituted.
     const base = sameRunnerBase(report);
-    lines.push(
-      base?.note ??
-        'No same-runner comparison: the library sources match the base, or the base could not be measured with the current fixture. Current readings remain available.',
-      ''
-    );
+    lines.push(base?.note ?? missingBaseNote(report), '');
     lines.push(summaryTable(report, base?.base, 1), '');
     const renders = renderCountsTable(report, base?.base, 1);
     if (renders)

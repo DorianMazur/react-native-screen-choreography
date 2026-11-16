@@ -92,14 +92,22 @@ export function changeInterval(
 
 /**
  * The current side's pooled report, carrying the base side measured in the same
- * session. A base that could not be measured leaves the report itself intact.
+ * session. Both arguments hold one entry per round, empty where a run left no
+ * report. A base that could not be measured leaves the report itself intact.
  */
 export function combine(
-  head: InputRecord[],
-  base: InputRecord[],
-  info: { platform: string; mode: string; rounds: number; baseRevision: string }
+  head: (InputRecord | undefined)[],
+  base: (InputRecord | undefined)[],
+  info: {
+    platform: string;
+    mode: string;
+    rounds: number;
+    baseRevision: string;
+    retried?: string[];
+  }
 ): InputRecord {
-  if (!head.length)
+  const measured = head.filter((round) => round !== undefined);
+  if (!measured.length)
     return {
       schemaVersion: 1,
       platform: info.platform,
@@ -108,30 +116,37 @@ export function combine(
       metrics: {},
       errors: ['No A/B round produced a report for the current sources.'],
     };
-  const summary = pool(head);
-  if (head.length < info.rounds) {
+  let summary = pool(measured);
+  if (measured.length < info.rounds) {
     summary.valid = false;
     summary.errors.push(
-      `Only ${head.length} of ${info.rounds} A/B rounds produced a report for the current sources.`
+      `Only ${measured.length} of ${info.rounds} A/B rounds produced a report for the current sources.`
     );
   }
+  // A base round that failed leaves the rounds it passed comparable. Both
+  // sides then pool the same rounds, so their sample counts still match.
+  const compared = summary.valid
+    ? head.flatMap((_, round) => (base[round]?.valid === true ? [round] : []))
+    : [];
+  if (compared.length && compared.length < measured.length)
+    summary = pool(compared.map((round) => head[round]!));
   const sameRunner: InputRecord = {
     baseRevision: info.baseRevision,
     rounds: info.rounds,
+    comparedRounds: compared.length,
+    retried: info.retried ?? [],
   };
   summary.sameRunner = sameRunner;
-  if (
-    !summary.valid ||
-    base.length < info.rounds ||
-    !base.every((round) => round.valid === true)
-  ) {
+  if (!compared.length) {
     sameRunner.unavailable = !summary.valid
       ? 'The current sources did not pass collection in every round.'
-      : 'The base sources did not pass collection in every round with the current fixture.';
+      : 'The base sources did not pass collection in any round with the current fixture.';
     return summary;
   }
   // Raw base samples stay in each round's own report.
-  const { samples, sources, ...pooledBase } = pool(base);
+  const { samples, sources, ...pooledBase } = pool(
+    compared.map((round) => base[round]!)
+  );
   sameRunner.base = pooledBase;
   sameRunner.changeIntervals = Object.fromEntries(
     Object.keys(summary.metrics).flatMap((key) => {
@@ -158,34 +173,30 @@ async function main() {
   const rounds = Number(args.rounds);
   if (!args.input || !args.output || !Number.isInteger(rounds) || rounds < 1)
     throw new Error('--input, --output and --rounds are required');
-  const read = async (side: string) => {
-    const reports: InputRecord[] = [];
-    for (let round = 1; round <= rounds; round++) {
-      try {
-        reports.push(
-          JSON.parse(
-            await readFile(
-              path.join(
-                args.input,
-                `${side}-${round}`,
-                'report',
-                'summary.json'
-              ),
-              'utf8'
-            )
-          )
-        );
-      } catch {
-        // A side that failed before reporting has no summary for that round.
-      }
-    }
-    return reports;
-  };
+  const read = (side: string) =>
+    Promise.all(
+      Array.from({ length: rounds }, (_, round) =>
+        readFile(
+          path.join(
+            args.input,
+            `${side}-${round + 1}`,
+            'report',
+            'summary.json'
+          ),
+          'utf8'
+        ).then(
+          (text) => JSON.parse(text) as InputRecord,
+          // A side that failed before reporting has no summary for that round.
+          () => undefined
+        )
+      )
+    );
   const summary = combine(await read('head'), await read('base'), {
     platform: args.platform,
     mode: args.mode,
     rounds,
     baseRevision: args.base,
+    retried: (args.retried ?? '').split(',').filter(Boolean),
   });
   const comparison = sameRunnerBase(summary);
   await mkdir(args.output, { recursive: true });

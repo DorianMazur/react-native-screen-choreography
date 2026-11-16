@@ -99,11 +99,37 @@ export function sameRunnerBase(report: InputRecord | undefined) {
   const revision = /^[0-9a-f]{7,40}$/.test(info.baseRevision)
     ? info.baseRevision.slice(0, 7)
     : 'unknown revision';
-  const rounds = Number.isInteger(info.rounds) ? `${info.rounds} ` : '';
+  const count = (field: unknown) =>
+    Number.isInteger(field) && (field as number) > 0 ? (field as number) : null;
+  const rounds = count(info.rounds);
+  const compared = count(info.comparedRounds);
+  const measured =
+    rounds === null
+      ? 'alternating rounds; samples are pooled per side'
+      : compared !== null && compared < rounds
+        ? `${compared} of ${rounds} alternating rounds, the only ones the base passed; both sides pool those rounds' samples`
+        : `${rounds} alternating rounds; samples are pooled per side`;
+  const retried = (Array.isArray(info.retried) ? info.retried : []).flatMap(
+    (run: unknown) => {
+      const match = /^(head|base)-([1-9])$/.exec(String(run));
+      return match
+        ? [`${match[1] === 'head' ? 'current' : 'base'} round ${match[2]}`]
+        : [];
+    }
+  );
   return {
     base: base as InputRecord,
-    note: `Base library sources (${revision}) measured on this runner in ${rounds}alternating rounds; samples are pooled per side. "99% range" is where the change in medians falls when both sides are resampled; a range that includes zero is within run-to-run noise.`,
+    note: `Base library sources (${revision}) measured on this runner in ${measured}.${retried.length ? ` Repeated after a failed run: ${retried.join(', ')}.` : ''} "99% range" is where the change in medians falls when both sides are resampled; a range that includes zero is within run-to-run noise.`,
   };
+}
+
+/** Why a valid report has no same-job base, from validated fields only. */
+export function missingBaseNote(report: InputRecord | undefined) {
+  return `No same-runner comparison: ${
+    report?.sameRunner
+      ? 'the base sources did not pass collection with the current fixture'
+      : 'the library sources match the base, so they were measured once'
+  }. Current readings remain available.`;
 }
 
 /** The resampled range of a change, when the report carries a valid one. */
