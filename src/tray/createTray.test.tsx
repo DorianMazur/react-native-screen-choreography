@@ -93,6 +93,13 @@ jest.mock('../native/NativeOverlay', () => ({
 
 type Routes = { form: undefined; preview: { label: string } };
 const Tray = createTray<Routes>();
+
+test('the packaged mock exposes every tray component and hook', () => {
+  const mock =
+    require('react-native-screen-choreography/mock/tray').createTray();
+  expect(Object.keys(mock).sort()).toEqual(Object.keys(Tray).sort());
+});
+
 export function checkDeclarationTypes() {
   // @ts-expect-error Unknown route names are rejected.
   <Tray.Screen name="missing" component={Form} />;

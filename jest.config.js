@@ -23,6 +23,7 @@ module.exports = {
     '^react-native-screen-choreography/core$': '<rootDir>/src/entries/core.ts',
     '^react-native-screen-choreography/expo-router$':
       '<rootDir>/src/entries/expo-router.ts',
+    '^react-native-screen-choreography/tray$': '<rootDir>/src/entries/tray.ts',
     '^react-native-reanimated$':
       '<rootDir>/__mocks__/react-native-reanimated.js',
   },

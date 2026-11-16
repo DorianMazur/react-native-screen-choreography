@@ -130,6 +130,9 @@ jest.mock('react-native-screen-choreography/core', () =>
 jest.mock('react-native-screen-choreography/expo-router', () =>
   require('react-native-screen-choreography/mock/expo-router')
 );
+jest.mock('react-native-screen-choreography/tray', () =>
+  require('react-native-screen-choreography/mock/tray')
+);
 ```
 
 Register that file in your existing Jest configuration:
@@ -143,4 +146,6 @@ module.exports = {
 
 The mocks render shared owners in place, leave targets empty, and show companion content immediately. Progress reports an idle session; `useSharedElementPresentation` reports a collapsed owner with null metrics. Navigation commands forward to the navigator or router you pass in, without transition options. Interactive `beginBack()` resolves to `null`, and gesture lifecycle callbacks are inactive.
 
-These CommonJS entries load only React and React Native. Keep any mocks required by your application's own Reanimated, router, or other native imports. The separate `/tray` entry is not mocked here. Use device tests to verify layout capture, portal handoff, gestures, and animation timing.
+The tray mock renders declared screens in place. You can present a tray, navigate its stack, and assert on screen content and `useTrayState` in the same test. Transitions settle immediately and `useKeyboard()` reports a hidden keyboard.
+
+These CommonJS entries load only React and React Native. Keep any mocks required by your application's own Reanimated, router, or other native imports. Use device tests to verify layout capture, portal handoff, gestures, and animation timing.
