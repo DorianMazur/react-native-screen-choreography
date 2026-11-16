@@ -2,10 +2,15 @@ import React from 'react';
 import Animated, {
   useAnimatedStyle,
   useDerivedValue,
-  interpolate,
   type SharedValue,
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
+import {
+  prepareBorderGeometry,
+  interpolateBorder,
+  interpolateBorderColors,
+  type BorderStyle,
+} from './borderGeometry';
 import {
   transitionGeometryStyle,
   transitionLayoutStyle,
@@ -19,7 +24,9 @@ interface TransitionFrameProps {
   direction?: 'forward' | 'backward';
   /** Custom z-index for layering */
   zIndex?: number;
-  /** Optional border radius interpolation */
+  sourceStyle?: BorderStyle;
+  targetStyle?: BorderStyle;
+  /** A uniform radius overrides this endpoint's individual corners. */
   sourceBorderRadius?: number;
   targetBorderRadius?: number;
 }
@@ -31,18 +38,23 @@ export function TransitionFrame({
   children,
   direction = 'forward',
   zIndex = 1,
+  sourceStyle,
+  targetStyle,
   sourceBorderRadius,
   targetBorderRadius,
 }: TransitionFrameProps) {
-  const hasRadius =
-    sourceBorderRadius !== undefined || targetBorderRadius !== undefined;
-  const sRadius = sourceBorderRadius ?? 0;
-  const tRadius = targetBorderRadius ?? 0;
+  const { radii, border, colors } = prepareBorderGeometry(
+    sourceStyle,
+    targetStyle,
+    sourceBorderRadius,
+    targetBorderRadius
+  );
 
   const baseStyle = {
     ...transitionLayoutStyle(),
     zIndex,
-    ...(hasRadius ? { overflow: 'hidden' as const } : {}),
+    ...(radii.length ? { overflow: 'hidden' as const } : {}),
+    ...colors.fixed,
   };
 
   const t = useDerivedValue(() =>
@@ -51,16 +63,8 @@ export function TransitionFrame({
 
   const animatedStyle = useAnimatedStyle(() => ({
     ...transitionGeometryStyle(sourceMetrics, targetMetrics, t.value),
-    ...(hasRadius
-      ? {
-          borderRadius: interpolate(
-            t.value,
-            [0, 1],
-            [sRadius, tRadius],
-            'clamp'
-          ),
-        }
-      : {}),
+    ...interpolateBorder(border, t.value),
+    ...interpolateBorderColors(colors.ranges, t.value),
   }));
 
   return (

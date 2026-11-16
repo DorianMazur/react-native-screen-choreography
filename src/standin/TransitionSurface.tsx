@@ -9,6 +9,11 @@ import Animated, {
 } from 'react-native-reanimated';
 import type { ElementMetrics } from '../types';
 import type { SurfaceTransitionStyle } from './resolveSurfaceStyle';
+import {
+  prepareBorderGeometry,
+  interpolateBorder,
+  interpolateBorderColors,
+} from './borderGeometry';
 export function transitionLayoutStyle(): ViewStyle {
   return {
     position: 'absolute',
@@ -55,12 +60,14 @@ interface TransitionSurfaceProps {
   direction?: 'forward' | 'backward';
   sourceStyle?: SurfaceTransitionStyle;
   targetStyle?: SurfaceTransitionStyle;
+  sourceBorderRadius?: number;
+  targetBorderRadius?: number;
   children?: React.ReactNode;
   zIndex?: number;
 }
 
 /**
- * Interpolates bounds, color, and radius around a live transition host.
+ * Interpolates bounds, background, corners, and border widths around a live host.
  * Fades the expanded endpoint's shadow out at both handoffs to avoid doubling it.
  */
 export function TransitionSurface({
@@ -70,11 +77,17 @@ export function TransitionSurface({
   direction = 'forward',
   sourceStyle = {},
   targetStyle = {},
+  sourceBorderRadius,
+  targetBorderRadius,
   children,
   zIndex = 0,
 }: TransitionSurfaceProps) {
-  const sourceRadius = sourceStyle.borderRadius ?? 0;
-  const targetRadius = targetStyle.borderRadius ?? 0;
+  const { radii, border, colors } = prepareBorderGeometry(
+    sourceStyle,
+    targetStyle,
+    sourceBorderRadius,
+    targetBorderRadius
+  );
   const sourceColor = sourceStyle.backgroundColor ?? 'transparent';
   const targetColor = targetStyle.backgroundColor ?? 'transparent';
   const expandedStyle = direction === 'backward' ? sourceStyle : targetStyle;
@@ -92,12 +105,7 @@ export function TransitionSurface({
   );
 
   const shadowStyle = useAnimatedStyle(() => ({
-    borderRadius: interpolate(
-      t.value,
-      [0, 1],
-      [sourceRadius, targetRadius],
-      'clamp'
-    ),
+    ...interpolateBorder(radii, t.value),
     opacity: interpolate(
       progress.value,
       [0, 0.08, 0.92, 1],
@@ -115,12 +123,8 @@ export function TransitionSurface({
             [0, 1],
             [sourceColor, targetColor]
           ),
-    borderRadius: interpolate(
-      t.value,
-      [0, 1],
-      [sourceRadius, targetRadius],
-      'clamp'
-    ),
+    ...interpolateBorder(border, t.value),
+    ...interpolateBorderColors(colors.ranges, t.value),
   }));
 
   return (
@@ -137,7 +141,9 @@ export function TransitionSurface({
           ]}
         />
       )}
-      <Animated.View style={[styles.contentHost, contentShapeStyle]}>
+      <Animated.View
+        style={[styles.contentHost, colors.fixed, contentShapeStyle]}
+      >
         {children}
       </Animated.View>
     </Animated.View>

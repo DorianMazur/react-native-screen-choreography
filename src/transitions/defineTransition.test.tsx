@@ -142,10 +142,12 @@ test.each(['bounds', 'surface'] as const)(
     const small = {
       screenId: 'list',
       metrics: { pageX: 10, pageY: 100, width: 80, height: 100 },
+      style: { borderBottomLeftRadius: 30, borderWidth: 2 },
     };
     const big = {
       screenId: 'detail',
       metrics: { pageX: 0, pageY: 0, width: 300, height: 400 },
+      style: { borderRadius: 20, borderTopRightRadius: 11 },
     };
     const Renderer = transition.renderer;
     const render = (direction: 'forward' | 'backward') => {
@@ -177,17 +179,161 @@ test.each(['bounds', 'surface'] as const)(
       expect(primitive.props.targetMetrics).toBe(
         direction === 'forward' ? big.metrics : small.metrics
       );
-      const radii =
-        kind === 'bounds'
-          ? [
-              primitive.props.sourceBorderRadius,
-              primitive.props.targetBorderRadius,
-            ]
-          : [
-              primitive.props.sourceStyle.borderRadius,
-              primitive.props.targetStyle.borderRadius,
-            ];
-      expect(radii).toEqual(direction === 'forward' ? [8, 0] : [0, 8]);
+      const shape = tree.UNSAFE_root.findAllByType(
+        'Animated.View' as React.ElementType
+      ).at(-1)!;
+      const style = StyleSheet.flatten(shape.props.style);
+      // Expansion progress zero is the collapsed shape in either direction.
+      expect(style).toMatchObject({ borderRadius: 8, borderWidth: 2 });
+      expect(style.borderBottomLeftRadius).toBeUndefined();
+      expect(style.borderTopRightRadius).toBeUndefined();
+    }
+  }
+);
+
+test.each(['bounds', 'surface'] as const)(
+  '%s interpolates frozen corners and edge widths in both directions',
+  async (kind) => {
+    const definition = defineTransition({ shared: { card: { kind } } });
+    const owner = await mount(
+      <definition.Element name="card">Card</definition.Element>
+    );
+    const { renderer: Renderer }: Transition = owner.UNSAFE_root.findByType(
+      'Owner' as React.ElementType
+    ).props.transition;
+    const metrics = { pageX: 0, pageY: 0, width: 100, height: 100 };
+    const small = {
+      screenId: 'list',
+      metrics,
+      style: {
+        borderRadius: 8,
+        borderTopLeftRadius: 0,
+        borderBottomLeftRadius: 24,
+        borderTopWidth: 8,
+        borderLeftWidth: 4,
+      },
+    };
+    const boxShadow = [
+      {
+        offsetX: 1,
+        offsetY: 2,
+        blurRadius: 8,
+        spreadDistance: 0,
+        color: 'black',
+      },
+    ];
+    const big = {
+      screenId: 'detail',
+      metrics,
+      style: {
+        borderRadius: 16,
+        borderTopRightRadius: 4,
+        borderBottomRightRadius: 0,
+        borderWidth: 4,
+        borderBottomWidth: 12,
+        borderRightWidth: 0,
+        boxShadow,
+      },
+    };
+    mockProgress.value = 0.25;
+    for (const direction of ['forward', 'backward'] as const) {
+      const tree = await mount(
+        <Renderer
+          id="card"
+          groupId="cards"
+          progress={mockProgress}
+          direction={direction}
+          zIndex={1}
+          source={direction === 'forward' ? small : big}
+          target={direction === 'forward' ? big : small}
+        />
+      );
+      const layers = tree.UNSAFE_root.findAllByType(
+        'Animated.View' as React.ElementType
+      ).map((node) => StyleSheet.flatten(node.props.style));
+      const corners = {
+        borderTopLeftRadius: 4,
+        borderTopRightRadius: 7,
+        borderBottomLeftRadius: 22,
+        borderBottomRightRadius: 6,
+      };
+      expect(layers.at(-1)).toMatchObject({
+        ...corners,
+        overflow: 'hidden',
+        borderWidth: 1,
+        borderTopWidth: 7,
+        borderRightWidth: 0,
+        borderBottomWidth: 3,
+        borderLeftWidth: 4,
+      });
+      if (kind === 'surface') {
+        const shadow = layers.find((layer) => layer.boxShadow);
+        expect(shadow).toMatchObject({ ...corners, boxShadow });
+        expect(shadow.borderWidth).toBeUndefined();
+      }
+    }
+  }
+);
+
+test.each(['bounds', 'surface'] as const)(
+  '%s paints borders in the endpoint colors, never the platform default',
+  async (kind) => {
+    const definition = defineTransition({ shared: { card: { kind } } });
+    const owner = await mount(
+      <definition.Element name="card">Card</definition.Element>
+    );
+    const { renderer: Renderer }: Transition = owner.UNSAFE_root.findByType(
+      'Owner' as React.ElementType
+    ).props.transition;
+    const metrics = { pageX: 0, pageY: 0, width: 100, height: 100 };
+    const render = async (
+      direction: 'forward' | 'backward',
+      small: object,
+      big: object
+    ) => {
+      const endpoints = [
+        { screenId: 'list', metrics, style: small },
+        { screenId: 'detail', metrics, style: big },
+      ];
+      if (direction === 'backward') endpoints.reverse();
+      const tree = await mount(
+        <Renderer
+          id="card"
+          groupId="cards"
+          progress={mockProgress}
+          direction={direction}
+          zIndex={1}
+          source={endpoints[0]!}
+          target={endpoints[1]!}
+        />
+      );
+      return StyleSheet.flatten(
+        tree.UNSAFE_root.findAllByType('Animated.View' as React.ElementType).at(
+          -1
+        )!.props.style
+      );
+    };
+    for (const direction of ['forward', 'backward'] as const) {
+      // A border growing from nothing keeps the one color that exists.
+      expect(
+        await render(
+          direction,
+          { borderRadius: 8 },
+          { borderWidth: 2, borderColor: 'red', borderTopColor: 'green' }
+        )
+      ).toMatchObject({ borderColor: 'red', borderTopColor: 'green' });
+      // The mocked interpolation returns its first color: the session source.
+      const source = direction === 'forward' ? 'blue' : 'red';
+      expect(
+        await render(
+          direction,
+          { borderWidth: 1, borderColor: 'blue' },
+          { borderWidth: 2, borderColor: 'red', borderTopColor: 'green' }
+        )
+      ).toMatchObject({
+        borderColor: source,
+        borderTopColor: direction === 'forward' ? 'blue' : 'green',
+      });
     }
   }
 );
