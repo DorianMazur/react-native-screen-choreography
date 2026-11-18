@@ -153,6 +153,42 @@ test('returns an already mounted native batch synchronously and releases waiters
   expect(unsubscribe).toHaveBeenCalledTimes(1);
   expect(jest.getTimerCount()).toBe(0);
 });
+test('only an opted-in source can consume matching mounted geometry across a commit', async () => {
+  let matches = false;
+  reader.mockImplementation((mode?: boolean | string) => {
+    if (mode === true) return true;
+    return mode === 'mounted-source' && matches ? [metrics, metrics] : null;
+  });
+  const onResult = jest.fn();
+  const request = {
+    entries,
+    isCurrent: () => true,
+    cancellers: new Set<() => void>(),
+  };
+  const source = requestFabricLayout({
+    ...request,
+    acceptMatchingMountedSource: true,
+    onResult,
+  });
+  notifyMount();
+  expect(onResult).not.toHaveBeenCalled();
+  matches = true;
+  notifyMount();
+  expect((await source)?.metrics.size).toBe(2);
+  expect(onResult).toHaveBeenCalledWith(
+    expect.objectContaining({
+      usedMountedSource: true,
+      readAt: 'mount',
+      notifications: 2,
+    })
+  );
+  reader.mockClear();
+  const target = requestFabricLayout(request);
+  notifyMount();
+  await jest.runAllTimersAsync();
+  expect(await target).toBeNull();
+  expect(reader).not.toHaveBeenCalledWith('mounted-source');
+});
 test('a capture timeout reports native state before cancellation, even if the observer throws', async () => {
   let cancelled = false;
   reader.mockImplementation((mode?: boolean | string) => {
@@ -187,22 +223,39 @@ test('a capture timeout reports native state before cancellation, even if the ob
 });
 test('consumes a completed native batch when the deadline precedes its mount notification', async () => {
   const onFailure = jest.fn();
+  const onResult = jest.fn();
   const cancellers = new Set<() => void>();
   const pending = requestFabricLayout({
     entries,
     isCurrent: () => true,
     cancellers,
     onFailure,
+    onResult,
   });
+  notifyMount();
   await jest.advanceTimersByTimeAsync(999);
-  reader.mockImplementation((mode?: boolean) =>
-    mode === true ? true : mode === false ? undefined : [metrics, metrics]
+  reader.mockImplementation((mode?: boolean | string) =>
+    mode === 'diagnostics'
+      ? { capturedRevision: 7 }
+      : mode === true
+        ? true
+        : mode === false
+          ? undefined
+          : [metrics, metrics]
   );
   await jest.advanceTimersByTimeAsync(1);
   const snapshot = await pending;
   expect([...snapshot!.metrics.values()]).toEqual([metrics, metrics]);
   expect(snapshot!.validateNative()).toBe(true);
   expect(onFailure).not.toHaveBeenCalled();
+  expect(onResult).toHaveBeenCalledTimes(1);
+  expect(onResult).toHaveBeenCalledWith({
+    ready: true,
+    readAt: 'deadline',
+    notifications: 1,
+    usedMountedSource: false,
+    capturedRevision: 7,
+  });
   expect(reader).not.toHaveBeenCalledWith(false);
   const calls = reader.mock.calls.length;
   notifyMount();

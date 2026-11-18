@@ -7,6 +7,7 @@ import {
   prepareFabricLayout,
   type FabricLayoutEntry,
   type FabricLayoutSnapshot,
+  type SourceCaptureOptions,
 } from './fabricLayout';
 import type { ScreenGeometry } from './ScreenGeometryContext';
 import type { PreparationTrace } from './preparationTrace';
@@ -255,7 +256,11 @@ export class TransitionCoordinator {
     }
   }
 
-  async captureSourceGroup(groupId: string, screenId: string): Promise<void> {
+  async captureSourceGroup(
+    groupId: string,
+    screenId: string,
+    options?: SourceCaptureOptions
+  ): Promise<void> {
     this.sourceCaptures.clear();
     const captureGeneration = ++this.sourceCaptureGeneration;
     const generation = this.operationGeneration;
@@ -270,6 +275,7 @@ export class TransitionCoordinator {
           this.sourceCaptureGeneration === captureGeneration &&
           this.elementsAreCurrent(elements),
         cancellers: this.preparationCancellers,
+        ...options,
       }),
       elements
     );

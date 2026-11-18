@@ -5,6 +5,7 @@ import type { ElementMetrics, NodeHandleRef } from '../types';
 type FabricCapture = (screenTags: number[], viewTags: number[]) => unknown;
 interface NativeCaptureReader {
   (): ElementMetrics[] | null;
+  (mode: 'mounted-source'): ElementMetrics[] | null;
   (validate: true): boolean;
   (cancel: false): void;
   (diagnostics: 'diagnostics'): Record<string, string | number | boolean>;
@@ -120,12 +121,21 @@ export function captureFabricLayout(
   }
 }
 
-interface FabricLayoutRequest {
+type CaptureDiagnosticsObserver = (
+  details: Record<string, string | number | boolean>
+) => void;
+
+export interface SourceCaptureOptions {
+  acceptMatchingMountedSource?: boolean;
+  onResult?: CaptureDiagnosticsObserver;
+}
+
+interface FabricLayoutRequest extends SourceCaptureOptions {
   entries: FabricLayoutEntry[];
   isCurrent: () => boolean;
   cancellers: Set<() => void>;
   timeoutMs?: number;
-  onFailure?: (details: Record<string, string | number | boolean>) => void;
+  onFailure?: CaptureDiagnosticsObserver;
 }
 
 export function requestFabricLayout(
@@ -141,6 +151,8 @@ export function prepareFabricLayout({
   cancellers,
   timeoutMs = 1000,
   onFailure,
+  onResult,
+  acceptMatchingMountedSource = false,
 }: FabricLayoutRequest):
   | NativeLayoutSnapshot
   | null
@@ -156,6 +168,9 @@ export function prepareFabricLayout({
     let unsubscribe: (() => void) | undefined;
     let deadline: ReturnType<typeof setTimeout> | undefined;
     let settled = false;
+    let readAt: 'initial' | 'mount' | 'deadline' = 'initial';
+    let notifications = 0;
+    let usedMountedSource = false;
     const cleanup = (cancelNative = true) => {
       settled = true;
       if (deadline !== undefined) clearTimeout(deadline);
@@ -177,6 +192,20 @@ export function prepareFabricLayout({
       reason = 'invalid'
     ) => {
       if (settled) return;
+      if (onResult) {
+        try {
+          onResult({
+            ...reader?.('diagnostics'),
+            ready: snapshot !== null,
+            readAt,
+            notifications,
+            usedMountedSource,
+            ...(snapshot ? {} : { reason }),
+          });
+        } catch {
+          // An optional trace must not change the outcome of a capture.
+        }
+      }
       if (snapshot === null && onFailure) {
         try {
           onFailure({ ...reader?.('diagnostics'), reason });
@@ -227,7 +256,11 @@ export function prepareFabricLayout({
             finish(null, 'native-identity-invalid');
             return;
           }
-          const batch = reader();
+          let batch = reader();
+          if (batch === null && acceptMatchingMountedSource) {
+            batch = reader('mounted-source');
+            usedMountedSource = batch != null;
+          }
           if (batch === null) return;
           if (
             !Array.isArray(batch) ||
@@ -260,7 +293,11 @@ export function prepareFabricLayout({
         }
       };
       cancellers.add(cancel);
-      unsubscribe = subscribe(attempt);
+      unsubscribe = subscribe(() => {
+        notifications++;
+        readAt = 'mount';
+        attempt();
+      });
       reader = prepare(screenTags as number[], tags as number[]);
       if (!reader) {
         finish(null, 'native-request-unavailable');
@@ -270,9 +307,11 @@ export function prepareFabricLayout({
         // Native may have completed the batch before its coalesced mount
         // notification reaches JS. Check once before declaring it unavailable;
         // this uses the same ownership, identity and mounted-root validation.
+        readAt = 'deadline';
         attempt();
         finish(null, 'timeout');
       }, timeoutMs);
+      readAt = 'initial';
       attempt();
     } catch {
       finish(null, 'native-request-failed');

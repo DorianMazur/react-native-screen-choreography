@@ -44,6 +44,9 @@ struct NativeCaptureRequest {
   std::vector<CapturedFrame> frames;
   const char *captureStatus{"awaiting-mount"};
   size_t mountAttempts{0};
+  size_t completedBatches{0};
+  ShadowTreeRevision::Number capturedRevision{0};
+  const char *lastReadMiss{"none"};
 };
 
 class MountedLayouts;
@@ -168,8 +171,10 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
             return jsi::Value::undefined();
           }
           std::lock_guard lock(owner->mutex);
-          if (count == 1 && args[0].isString() && args[0].asString(rt).utf8(rt) == "diagnostics") {
-            return owner->owner ? owner->owner->captureDiagnostics(rt, request) : jsi::Value::null();
+          if (count == 1 && args[0].isString() && owner->owner) {
+            const auto mode = args[0].asString(rt).utf8(rt);
+            if (mode == "diagnostics") return owner->owner->captureDiagnostics(rt, request);
+            if (mode == "mounted-source") return owner->owner->readNativeCapture(rt, request, true);
           }
           if (validateOnly) return jsi::Value(owner->owner && owner->owner->validateNativeCapture(request));
           if (!owner->owner || count != 0) return jsi::Value::null();
@@ -294,12 +299,15 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
       frames.push_back({static_cast<double>(frame.origin.x), static_cast<double>(frame.origin.y),
           static_cast<double>(frame.size.width), static_cast<double>(frame.size.height)});
     }
-    if (!isCurrent(root)) {
+    ShadowTreeRevision::Number revision;
+    if (!isCurrent(root, &revision)) {
       request->captureStatus = "commit-during-capture";
       return;
     }
     request->frames = std::move(frames);
     request->mountedRoot = root;
+    request->capturedRevision = revision;
+    ++request->completedBatches;
     request->captureStatus = "captured";
   }
 
@@ -311,6 +319,10 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
       std::lock_guard lock(request->mutex);
       result.setProperty(runtime, "captureStatus", request->captureStatus);
       result.setProperty(runtime, "mountAttempts", static_cast<double>(request->mountAttempts));
+      result.setProperty(runtime, "completedBatches", static_cast<double>(request->completedBatches));
+      result.setProperty(runtime, "capturedRevision", static_cast<double>(request->capturedRevision));
+      result.setProperty(runtime, "lastReadMiss", request->lastReadMiss);
+      result.setProperty(runtime, "consumed", request->consumed.load());
       result.setProperty(runtime, "capturedFrames", static_cast<double>(request->frames.size()));
       result.setProperty(runtime, "endpointCount", static_cast<double>(request->tags.size()));
       result.setProperty(runtime, "invalidated", request->invalidated);
@@ -337,17 +349,28 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
     return result;
   }
 
-  jsi::Value readNativeCapture(jsi::Runtime &runtime, const std::shared_ptr<NativeCaptureRequest> &request) {
+  jsi::Value readNativeCapture(jsi::Runtime &runtime, const std::shared_ptr<NativeCaptureRequest> &request,
+      bool mountedSource = false) {
     if (invalidated_.load()) return jsi::Value::null();
     RootShadowNode::Shared root;
     std::vector<CapturedFrame> frames;
+    ShadowTreeRevision::Number capturedRevision;
     {
       std::lock_guard lock(request->mutex);
       if (request->invalidated || request->consumed.load()) return jsi::Value::null();
       root = request->mountedRoot.lock();
+      if (request->frames.size() != request->tags.size() || !root) {
+        request->lastReadMiss = request->frames.empty() ? request->captureStatus : "root-expired";
+        return jsi::Value::null();
+      }
       frames = request->frames;
+      capturedRevision = request->capturedRevision;
     }
-    if (!root || frames.size() != request->tags.size() || !isCurrent(root)) return jsi::Value::null();
+    if (!mountedSource && !isCurrent(root)) {
+      std::lock_guard lock(request->mutex);
+      request->lastReadMiss = "root-not-current";
+      return jsi::Value::null();
+    }
     jsi::Array result(runtime, frames.size());
     for (size_t i = 0; i < frames.size(); ++i) {
       const auto &frame = frames[i];
@@ -358,9 +381,23 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
       item.setProperty(runtime, "height", frame.height);
       result.setValueAtIndex(runtime, i, std::move(item));
     }
-    if (invalidated_.load() || !isCurrent(root)) return jsi::Value::null();
+    // A tray source is frozen before navigation. An unrelated commit can advance
+    // the root between the mount hook and JS delivery. Return only the numeric
+    // batch from that completed mount, after checking its identities and bounds.
+    if (invalidated_.load() ||
+        (mountedSource ? !validateNativeCapture(request, &frames) : !isCurrent(root))) {
+      std::lock_guard lock(request->mutex);
+      request->lastReadMiss = mountedSource ? "source-changed" : "commit-during-read";
+      return jsi::Value::null();
+    }
     {
       std::lock_guard lock(request->mutex);
+      if (mountedSource) {
+        std::lock_guard observedLock(mutex_);
+        const auto observed = roots_.find(request->surface);
+        if (observed == roots_.end() || observed->second.lock() != root || request->frames.empty() ||
+            request->capturedRevision != capturedRevision) return jsi::Value::null();
+      }
       if (request->invalidated || request->consumed.exchange(true)) return jsi::Value::null();
       request->mountedRoot.reset();
       request->frames.clear();
@@ -368,19 +405,20 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
     return result;
   }
 
-  bool validateNativeCapture(const std::shared_ptr<NativeCaptureRequest> &request) const {
+  bool validateNativeCapture(const std::shared_ptr<NativeCaptureRequest> &request,
+      const std::vector<CapturedFrame> *sourceFrames = nullptr) const {
     if (invalidated_.load()) return false;
     {
       std::lock_guard lock(request->mutex);
       if (request->invalidated) return false;
     }
-    bool valid = false;
+    bool matches = false;
     // Identity is what matters here. A commit landing mid-check (for example an
     // animated prop update) re-checks the newer revision; identities confirmed on
     // a committed revision stay valid, and presentation validates again later.
     for (int attempt = 0; attempt < kCommitRaceAttempts; ++attempt) {
       bool advanced = false;
-      valid = false;
+      matches = false;
       manager_.getShadowTreeRegistry().visit(request->surface, [&](const ShadowTree &tree) {
         const auto root = tree.getCurrentRevision().rootShadowNode;
         if (!root || root->getSurfaceId() != request->surface) return;
@@ -392,14 +430,25 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
           const auto node = screen ? find(*screen, request->tags[i]) : nullptr;
           if (!screen || !node || &screen->getFamily() != expectedScreen.get() ||
               &node->getFamily() != expectedNode.get()) return;
+          if (sourceFrames) {
+            const auto screenMetrics = LayoutableShadowNode::computeRelativeLayoutMetrics(screen->getFamily(), *root, {});
+            const auto metrics = LayoutableShadowNode::computeRelativeLayoutMetrics(node->getFamily(), *root, {});
+            const auto &frame = (*sourceFrames)[i];
+            if (!valid(screenMetrics) || !valid(metrics) ||
+                metrics.frame.origin.x != frame.pageX || metrics.frame.origin.y != frame.pageY ||
+                metrics.frame.size.width != frame.width || metrics.frame.size.height != frame.height) return;
+          }
         }
-        valid = true;
+        // If a third revision is being mounted, matching the latest commit
+        // alone does not establish which geometry is about to be displayed.
+        if (sourceFrames && tree.getMountingCoordinator()->getBaseRevision().rootShadowNode != root) return;
         advanced = tree.getCurrentRevision().rootShadowNode != root;
+        matches = !sourceFrames || !advanced;
       });
-      if (!valid || !advanced) break;
+      if (!advanced) break;
     }
     std::lock_guard lock(request->mutex);
-    return valid && !invalidated_.load() && !request->invalidated;
+    return matches && !invalidated_.load() && !request->invalidated;
   }
 
   void notifyMount() noexcept {
@@ -422,13 +471,14 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
     });
   }
 
-  bool isCurrent(const RootShadowNode::Shared &root) const {
+  bool isCurrent(const RootShadowNode::Shared &root, ShadowTreeRevision::Number *revision = nullptr) const {
     bool current = false;
     manager_.getShadowTreeRegistry().visit(root->getSurfaceId(), [&](const ShadowTree &tree) {
       const auto &mounting = tree.getMountingCoordinator();
-      current = !mounting->hasPendingTransactions() &&
-          mounting->getBaseRevision().rootShadowNode == root &&
-          tree.getCurrentRevision().rootShadowNode == root;
+      if (mounting->hasPendingTransactions()) return;
+      const auto base = mounting->getBaseRevision();
+      current = base.rootShadowNode == root && tree.getCurrentRevision().rootShadowNode == root;
+      if (current && revision) *revision = base.number;
     });
     return current;
   }
