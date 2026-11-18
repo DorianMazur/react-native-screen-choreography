@@ -26,31 +26,39 @@ import {
   useChoreographyNavigation,
   useInteractiveTransition,
 } from 'react-native-screen-choreography';
-import { GalleryListScreen } from '../../../shared/gallery/GalleryListScreen';
-import { GalleryDetailScreen } from '../../../shared/gallery/GalleryDetailScreen';
+import {
+  GalleryListScreen,
+  GalleryDetailScreen,
+} from '@screen-choreography/example-shared/gallery';
 import {
   TripsListScreen,
   TripsDetailScreen,
-} from '../../../shared/trips/TripsScreens';
-import { TokenListScreen } from '../../../shared/wallet/TokenListScreen';
-import { TokenDetailScreen } from '../../../shared/wallet/TokenDetailScreen';
-import { TOKENS } from '../../../shared/wallet/data';
-import { tokenLogoUri } from '../../../shared/wallet/TokenLogo';
-import type { ExampleObservation } from '../../../shared/ExampleObservation';
+} from '@screen-choreography/example-shared/trips';
+import {
+  TokenListScreen,
+  TokenDetailScreen,
+  TOKENS,
+  tokenLogoUri,
+} from '@screen-choreography/example-shared/wallet';
+import {
+  ExampleBindings,
+  theme,
+  type ExampleObservation,
+} from '@screen-choreography/example-shared';
 import type { ExampleStackParams } from '../ExampleScreen';
-import { ExampleBindings } from '../../../shared/runtime';
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
-import { SCENARIOS } from './scenarios';
+import {
+  SCREEN_SCENARIOS as SCENARIOS,
+  type ScreenPerformanceScenario,
+} from './scenarios';
 import { useSharedValue } from 'react-native-reanimated';
 import { MotionObserver } from './MotionObserver';
 import type { MotionRequest } from './motion';
 import { ChoreographyContext } from '../../../../src/core/ChoreographyContext';
 
-import { theme } from '../../../shared/theme';
 import {
   BenchmarkCollector,
   type JourneyDirection,
-  type PerformanceScenario,
   type ProbeScreen,
 } from './collector';
 
@@ -58,7 +66,7 @@ import {
 declare const performance: { now: () => number };
 
 export interface PerformanceLaunchProps {
-  performanceScenario: PerformanceScenario;
+  performanceScenario: ScreenPerformanceScenario;
 }
 
 const Stack = createNativeStackNavigator<ExampleStackParams>();
@@ -78,7 +86,7 @@ function nativeBenchmark(): BenchmarkNativeModule | undefined {
 }
 
 interface FixtureActions {
-  collector: BenchmarkCollector;
+  collector: BenchmarkCollector<ScreenPerformanceScenario>;
   ready: () => void;
   request: (direction: JourneyDirection) => boolean;
   probe: (screen: ProbeScreen) => void;
@@ -361,7 +369,10 @@ export default function PerformanceApp(props: PerformanceLaunchProps) {
         }
       },
       request: (direction) => {
-        if (!collector.request(direction)) return false;
+        if (!collector.request(direction)) {
+          collector.note('navigation-request-rejected', { direction });
+          return false;
+        }
         motionRequest.value = collector.currentRequest();
         setProbeAck(null);
         setExported(false);

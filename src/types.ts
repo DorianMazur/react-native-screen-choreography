@@ -127,9 +127,9 @@ export interface ElementTransitionPair {
   sourceMetrics: ElementMetrics;
   targetMetrics: ElementMetrics;
   transition: SharedElementTransition;
-  /** Frozen source renderer input captured when the session became active. */
+  /** Frozen source renderer input captured before native layout preparation. */
   sourcePresentation: ElementPresentation;
-  /** Frozen target renderer input captured when the session became active. */
+  /** Frozen target renderer input captured before native layout preparation. */
   targetPresentation: ElementPresentation;
 }
 
@@ -290,7 +290,7 @@ export type ChoreographyDebugCategory =
 
 /**
  * `true` is shorthand for `{ level: 'info' }`. Use `{ level: 'trace' }`
- * for per-frame measurement traces.
+ * for detailed readiness and lifecycle logs.
  */
 export type ChoreographyDebugConfig =
   | boolean

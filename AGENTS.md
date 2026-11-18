@@ -35,6 +35,7 @@ Use these files as the source of truth:
 - `src/debug/`: logger
 - `examples/react-navigation/`: bare React Native example app
 - `examples/expo-router/`: Expo Router development-build example app
+- `examples/shared/`: private `@screen-choreography/example-shared` workspace package; both apps import its declared entry points. Keep runtime dependencies as peers so Metro uses each app's versions.
 - `docs/`: Markdown documentation and a VitePress site in a Yarn workspace; custom theme in `docs/.vitepress/`
 - `__tests__/`: Jest coverage for core utilities and infrastructure
 - `android/` and `ios/`: native transition host implementation
@@ -42,7 +43,9 @@ Use these files as the source of truth:
 
 ## Public API Surface
 
-Check `src/entries/index.ts`, `src/entries/core.ts`, and `src/entries/expo-router.ts` before documenting or changing exports. Keep both integration entries re-exporting the shared API from `core.ts`; keep navigation dependencies confined to their adapters.
+Check the public source entries listed in `package.json` before documenting or changing exports. Keep both navigation integrations re-exporting the shared API from `core.ts` and keep navigation dependencies confined to their adapters.
+
+Every public runtime entry needs a packaged Jest mock (`/mock` or `/mock/<subpath>`), matching types, and a Jest setup example. When changing exports or factory members, update the mock and its consumer tests in the same change. Mocks should load only React, React Native, and local mock helpers.
 
 Current important exports include:
 
@@ -89,7 +92,9 @@ Current important exports include:
 
 ## Working Conventions
 
-- keep docs aligned with the actual exported API in `src/entries/index.ts`, `src/entries/core.ts`, and `src/entries/expo-router.ts`
+- Name branches `feat/<short-kebab-case-description>`, `fix/<short-kebab-case-description>`, or `chore/<short-kebab-case-description>` according to the purpose of the work.
+- Use Conventional Commits for commit messages and merge request titles. Choose the type for each commit based on its change and the MR type based on the overall change. Use a lowercase imperative description, an optional scope, and `!` for breaking changes. Follow the [Conventional Commits Cheatsheet](https://gist.github.com/qoomon/5dfcdf8eec66a051ecd85625518cfd13).
+- keep docs aligned with the public entries in `src/entries/`
 - prefer library-level abstractions for transition lifecycle behavior instead of example-only screen code
 - when moving behavior out of the example app, expose a focused reusable API rather than copying helper logic into another file
 - document current behavior, not abandoned plans or speculative architecture
@@ -120,13 +125,20 @@ Run these from the repository root unless noted otherwise:
 
 When changing preparation, presentation, navigation, or retained-content ownership, cover rapid forward interruption, repeated Back/return, interactive cancellation, queued navigation after confirmed removal, missing endpoints, and layout changes. Check both iOS attachment gating and Android content presentation. Include removed/recycled endpoints and stale callbacks where the change affects asynchronous ownership.
 
+- Add tests only for a concrete regression or observable contract. Check existing coverage first and prefer extending a relevant test. Avoid tests that mirror implementation details, trivial checks, and duplicate coverage across layers unless they catch distinct failures.
+- Keep fixtures and validation proportional to the change. Run focused checks; rerun native benchmarks only when a change can affect native behavior or benchmark execution.
+
 ## Performance Benchmarks
 
 - Native presentation timing is compiled out by default. The performance runners opt in with Android's `-PscreenChoreographyTracePresentation=true` and iOS's `SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1` build setting. Keep this independent of React prop delivery so startup timestamps cannot be missed.
 - Pin the emulator build, Xcode and iOS runtime in `.github/workflows/performance.yml`. Android uses `ubuntu-24.04`, KVM, and `-gpu host` with Xvfb/Mesa llvmpipe (software rendering). Keep snapshots disabled and animations enabled.
-- Wait 10 seconds after simulator/emulator boot before starting the suite. Each scenario runs 20 measured round trips. Include every journey in the same measured set, without warm-up cycles or a separate first visit. Validate input and presentation for every journey; keep all raw samples.
-- Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, and system image before showing baseline deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
-- PR performance comments hide timing and render-count rows with an absolute change below 1%, using unrounded values and compatible baselines. Keep changes of 1% or more and measurements without comparable baselines visible; full reports retain all measurements.
+- Wait 10 seconds after simulator/emulator boot before starting the suite. Configure screen and tray round trips independently with `PERFORMANCE_SCREEN_TIMING_CYCLES` (default 20, range 1..99) and `PERFORMANCE_TRAY_TIMING_CYCLES` (default 5, range 1..5). Record both counts separately and compare matching counts per metric. Include every journey in the same measured set, without warm-up cycles or a separate first visit. Validate input and presentation for every journey; keep all raw samples.
+- Keep metadata in `run-android.sh` and `run-ios.sh`. Compare device, emulator, and system image before showing base deltas. Runner image, CPU, and renderer metadata are informational and do not gate comparisons. Run `yarn test:performance`, `yarn typecheck`, and `yarn lint` after reporting changes; runner behavior still needs CI validation.
+- Every comparison is an A/B measured in one job: `scripts/performance/run-ab.sh` (`PERFORMANCE_AB_BASE=<commit> yarn perf:ab <ios|android>` locally) swaps only `src`, `cpp`, `ios` and `android` between the base and the current commit, alternates which side runs first, and pools each side's rounds. The fixture, example and dependencies stay current. Never compare against a report from another host or session. iOS builds each side once and later rounds reuse its saved products. Each side may repeat one failed run; keep the failed attempt and name the repeated run in the report. A base round that still fails is left out of both sides, so matching counts are compared. If the base passes no round with the current fixture, or the library sources match the base, report current readings without a comparison.
+- Each comparison carries a 99% range for the change in medians, from resampling both sides' samples in `ab.mts`. PR performance comments hide timing rows whose range includes zero, and timing and render-count rows with an absolute change below 1%, using unrounded values and the same-job base. Keep other changes and measurements without a comparable base visible; full reports retain all measurements.
+- Current runners set `lifecycleValidation: 2` and require all three screen scenarios plus both tray scenarios. `scripts/performance/validate-lifecycle.mts` checks shared transition telemetry; `validate-tray-lifecycle.mts` also checks native sheet settlement, route order, plain transitions, retained content, and real input after each step. Missing telemetry, duplicate/stale sessions, overlapping journeys, empty pairs, or inconsistent timestamps fail collection. Keep timing thresholds informational; these checks do not establish pixel-perfect rendering or smoothness.
+- Record the native build/test exit status in runner metadata. A complete fixture export must not mask a later native test failure; report validation must preserve the original native failure status.
+- Keep tracing opt-in and collectors in the benchmark fixture. Run screens and trays together with one app build per run.
 
 ### Headless performance checks
 
@@ -148,6 +160,9 @@ When debugging or extending behavior, start here:
 
 ## Documentation Expectations
 
+- Keep documentation edits small and limited to changed behavior. Avoid speculative detail, unnecessary abstractions, and lengthy change descriptions.
+- update docs only when a change affects the public API, developer-visible behavior, setup, or makes an existing architectural explanation inaccurate. A bug fix that restores documented behavior does not automatically need a docs change.
+- make the smallest correction in the relevant existing section, using plain language. Avoid unnecessary new sections, repeated explanations across guides/API/architecture, and implementation or debugging narratives; keep those details in code comments, tests, or the PR description unless readers need them to understand the library.
 - write guides and API reference for application developers: use task-oriented headings, concrete examples, and observable behavior
 - keep source-file maps, repository change constraints, and regression checklists in `AGENTS.md`; `docs/architecture.md` is a human contributor reference that explains current runtime design, purpose, and extension points
 - avoid narrating current APIs as "now", "legacy", or "removed" outside an explicit migration section

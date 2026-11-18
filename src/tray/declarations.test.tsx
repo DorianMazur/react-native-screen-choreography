@@ -7,7 +7,7 @@ import type {
 } from './types';
 
 type Routes = { form: undefined; preview: { label: string } };
-const Stack = (_props: TrayStackProps) => null;
+const Stack = (_props: TrayStackProps<Routes>) => null;
 function Screen<N extends keyof Routes>(
   _props: TrayScreenDeclarationProps<Routes, N>
 ) {

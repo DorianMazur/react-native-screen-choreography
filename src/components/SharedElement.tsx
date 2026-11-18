@@ -2,6 +2,7 @@ import { SharedElementPresentationContext } from '../core/SharedElementPresentat
 import type { SharedElementEndpoint } from '../core/SharedElementPresentation';
 import {
   type ReactNode,
+  type RefObject,
   useRef,
   useEffect,
   useLayoutEffect,
@@ -9,12 +10,22 @@ import {
   useMemo,
   useContext,
   useReducer,
+  useSyncExternalStore,
   memo,
 } from 'react';
-import { type StyleProp, type ViewStyle, StyleSheet, View } from 'react-native';
+import {
+  type StyleProp,
+  type ViewStyle,
+  type PressableProps,
+  type GestureResponderEvent,
+  Pressable,
+  StyleSheet,
+  View,
+} from 'react-native';
 import Animated, { useDerivedValue } from 'react-native-reanimated';
 import { Portal, PortalHost } from 'react-native-teleport';
 import type {
+  ChoreographyNavigateOptions,
   ElementPresentation,
   Transition,
   SharedElementTransition,
@@ -26,6 +37,7 @@ import {
   ChoreographyContext,
   PreparingSessionContext,
 } from '../core/ChoreographyContext';
+import { IncomingGroupsContext } from '../core/incomingGroups';
 import { useScreenId } from '../core/screenIdContext';
 import {
   getLiveContentMarkerId,
@@ -54,7 +66,19 @@ export interface SharedElementProps {
   metadata?: unknown;
 }
 
+export type SharedElementPressableProps = SharedElementProps &
+  Omit<PressableProps, 'children' | 'style' | 'onPress'> & {
+    groupId: string;
+    pressableStyle?: PressableProps['style'];
+    onPress: (
+      options: ChoreographyNavigateOptions,
+      event: GestureResponderEvent
+    ) => void;
+  };
+
 export interface SharedElementTargetProps {
+  /** Receive the group carried to this route by forward navigation. */
+  fromSource?: boolean;
   id: string;
   groupId?: string;
   /** Route-owned companion content. Keeps the route mounted through return motion. */
@@ -79,12 +103,6 @@ interface SharedElementRegistrationProps {
   metadata?: unknown;
 }
 
-/**
- * Wraps content participating in a shared transition. Registration is
- * stable per `(id, groupId, screenId)`; the coordinator captures a frozen
- * `ElementPresentation` via `getPresentation()` at session start, so re-renders or
- * prop changes never affect an in-flight overlay.
- */
 function SharedElementRegistration({
   id,
   groupId,
@@ -109,8 +127,7 @@ function SharedElementRegistration({
     () => (style ? (StyleSheet.flatten(style) as ViewStyle) : undefined),
     [style]
   );
-  // Latest-value refs mutated during render so getPresentation() always
-  // reflects current props without forcing re-registration.
+  // Read current presentation props at capture time without re-registering.
   const transitionRef = useRef<SharedElementTransition>(transition);
   transitionRef.current = transition;
   const styleRef = useRef<ViewStyle | undefined>(flattenedStyle);
@@ -132,7 +149,6 @@ function SharedElementRegistration({
     viewNodeRef.current = node;
   }, []);
 
-  // Stable registration. Effect deps are all stable identities.
   useEffect(() => {
     registerElement({
       id,
@@ -174,6 +190,11 @@ function LiveSharedElement(props: SharedElementProps) {
   const choreography = useContext(ChoreographyContext);
   const actions = useContext(ChoreographyActionsContext);
   const screenId = useScreenId();
+  // A target can become the source of the next transition while this owner
+  // remains mounted on its original screen. Select before the memo boundary.
+  const settledTargetScreenIdRef = useRef<string | null>(null);
+  const participatingScreenId = settledTargetScreenIdRef.current ?? screenId;
+  const participatingSessionIdRef = useRef<string | null>(null);
   if (!choreography || !actions) {
     throw new Error(
       'SharedElement must be used within a <ChoreographyProvider>'
@@ -184,10 +205,13 @@ function LiveSharedElement(props: SharedElementProps) {
   const preparing = session?.state === 'preparing';
   const pair = selectPresentationPair(
     session,
-    screenId,
+    participatingScreenId,
     props.groupId,
-    props.id
+    props.id,
+    participatingSessionIdRef.current
   );
+
+  participatingSessionIdRef.current = pair ? session!.id : null;
 
   const reducedMotion = pair ? session!.reducedMotion : false;
   const direction = pair ? session!.direction : null;
@@ -203,6 +227,7 @@ function LiveSharedElement(props: SharedElementProps) {
       <LiveSharedElementContent
         {...props}
         screenId={screenId}
+        settledTargetScreenIdRef={settledTargetScreenIdRef}
         pair={pair}
         preparing={Boolean(pair && preparing)}
         reducedMotion={reducedMotion}
@@ -239,6 +264,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   portalStyle,
   metadata,
   screenId,
+  settledTargetScreenIdRef,
   pair,
   preparing,
   reducedMotion,
@@ -250,6 +276,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   subscribeToScreenRemoval,
 }: SharedElementProps & {
   screenId: string;
+  settledTargetScreenIdRef: RefObject<string | null>;
   pair: ElementTransitionPair | null;
   /** Paired while native attaches the overlay; content stays where it rests. */
   preparing: boolean;
@@ -270,16 +297,28 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
     collapsed: SharedElementEndpoint;
     expanded: SharedElementEndpoint;
   } | null>(null);
-  const settledTargetScreenIdRef = useRef<string | null>(null);
+  const settledSide = useRef<'collapsed' | 'expanded'>('collapsed');
+  const homeMetrics = useRef<SharedElementEndpoint['metrics']>(null);
+  const destinations = useRef<
+    Array<{
+      screenId: string;
+      endpoint: SharedElementEndpoint;
+    }>
+  >([]);
+  const lastEndpoints = useRef<{
+    collapsed: SharedElementEndpoint;
+    expanded: SharedElementEndpoint;
+    collapsedScreenId: string;
+    expandedScreenId: string;
+  } | null>(null);
   const participates = pair !== null;
   const activeEndpoints = useMemo(() => {
     if (!pair) return null;
     return pairEndpoints(pair, direction!);
   }, [pair, direction]);
 
-  // The endpoint wrapper is never hidden for live pairs, so the single Fabric
-  // commit that unmounts the overlay host and retargets this portal lands the
-  // view in a visible host at the same window bounds — no gap frame.
+  // Retarget in the session-settlement render so content and presentation
+  // settle together. Android removes the emptied overlay hosts afterward.
   let hostName: string | undefined;
   const restingHostName = () =>
     settledTargetScreenIdRef.current
@@ -291,10 +330,13 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       : undefined;
   if (participates) {
     wasParticipatingRef.current = true;
+    lastEndpoints.current = activeEndpoints;
+    if (pair.source.screenId === screenId)
+      homeMetrics.current = pair.sourceMetrics;
+    else if (pair.target.screenId === screenId)
+      homeMetrics.current = pair.targetMetrics;
     // Retain presentation data only, never a popped screen's registration/ref.
     if (!preparing) endpoints.current = activeEndpoints;
-    // The session commit that ends preparation moves every pair at once, into
-    // hosts native has already attached.
     hostName = preparing
       ? restingHostName()
       : reducedMotion
@@ -310,50 +352,100 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   } else {
     if (wasParticipatingRef.current) {
       wasParticipatingRef.current = false;
-      const settledScreenId = getSettledScreenId();
+      const settledScreenId =
+        getSettledScreenId() ?? settledTargetScreenIdRef.current ?? screenId;
       settledTargetScreenIdRef.current =
         settledScreenId !== screenId ? settledScreenId : null;
+      const captured = lastEndpoints.current;
+      if (
+        captured &&
+        (settledScreenId === captured.collapsedScreenId ||
+          settledScreenId === captured.expandedScreenId)
+      ) {
+        endpoints.current = {
+          collapsed: captured.collapsed,
+          expanded: captured.expanded,
+        };
+        settledSide.current =
+          settledScreenId === captured.collapsedScreenId
+            ? 'collapsed'
+            : 'expanded';
+        const index = destinations.current.findIndex(
+          (destination) => destination.screenId === settledScreenId
+        );
+        destinations.current = settledTargetScreenIdRef.current
+          ? [
+              ...(index < 0
+                ? destinations.current
+                : destinations.current.slice(0, index)),
+              {
+                screenId: settledScreenId,
+                endpoint: captured[settledSide.current],
+              },
+            ]
+          : [];
+      }
+      lastEndpoints.current = null;
     }
     hostName = restingHostName();
   }
 
-  // The destination host unmounts with its screen, returning content to this portal.
-  const settledTargetScreenId = settledTargetScreenIdRef.current;
+  // If a host disappears without a shared Back session, return to the last
+  // surviving destination. Retain only frozen presentation data, never nodes.
+  const retainedDestinations = destinations.current;
   useLayoutEffect(() => {
-    if (!settledTargetScreenId) return;
-    return subscribeToScreenRemoval(settledTargetScreenId, () => {
-      if (settledTargetScreenIdRef.current !== settledTargetScreenId) return;
-      settledTargetScreenIdRef.current = null;
-      returnHome();
-    });
-  }, [settledTargetScreenId, subscribeToScreenRemoval]);
+    let subscribed = true;
+    const unsubscribe = retainedDestinations.map((destination) =>
+      subscribeToScreenRemoval(destination.screenId, () => {
+        if (!subscribed || !destinations.current.includes(destination)) return;
+        destinations.current = destinations.current.filter(
+          (entry) => entry !== destination
+        );
+        if (settledTargetScreenIdRef.current === destination.screenId) {
+          const previous = destinations.current.at(-1);
+          settledTargetScreenIdRef.current = previous?.screenId ?? null;
+          endpoints.current = previous
+            ? { collapsed: previous.endpoint, expanded: previous.endpoint }
+            : null;
+          settledSide.current = 'collapsed';
+        }
+        returnHome();
+      })
+    );
+    return () => {
+      subscribed = false;
+      unsubscribe.forEach((remove) => remove());
+    };
+  }, [
+    retainedDestinations,
+    settledTargetScreenIdRef,
+    subscribeToScreenRemoval,
+  ]);
 
   const ownerStyle = useMemo(() => StyleSheet.flatten(style), [style]);
   const initial = useMemo(
     () => ({ metrics: null, metadata, style: ownerStyle ?? undefined }),
     [metadata, ownerStyle]
   );
-  const settled = (
-    participates && reducedMotion
-      ? targetScreenId !== screenId
-      : settledTargetScreenIdRef.current
-  )
-    ? ('expanded' as const)
-    : ('collapsed' as const);
+  const settled =
+    participates && reducedMotion && !preparing
+      ? direction === 'forward'
+        ? 'expanded'
+        : 'collapsed'
+      : settledSide.current;
   const transitioning = participates && !reducedMotion && !preparing;
+  // Reanimated subscribes to every captured shared value, even behind a guard.
+  const activeProgress = transitioning ? progress : null;
   const presentationProgress = useDerivedValue(() =>
-    transitioning ? progress.value : settled === 'expanded' ? 1 : 0
+    activeProgress ? activeProgress.value : settled === 'expanded' ? 1 : 0
   );
   const collapsed = endpoints.current?.collapsed ?? initial;
   const expanded = endpoints.current?.expanded ?? initial;
-  // Paired from preparation, while progress rests at the session's start: the
-  // mapper is live before content enters the overlay and progress moves. Both
-  // directions run collapsed → expanded on `progress`, matching `TransitionFrame`.
+  // Prepare the mapper before content enters the overlay. In both directions,
+  // progress is 0 at collapsed and 1 at expanded, matching TransitionFrame.
   const frameEndpoints = reducedMotion ? null : activeEndpoints;
   const collapsedMetrics = frameEndpoints?.collapsed.metrics;
   const expandedMetrics = frameEndpoints?.expanded.metrics;
-  // Reanimated subscribes to every captured shared value, even behind a guard.
-  // Idle owners must not capture the provider clock for their frame mapper.
   const frameProgress = frameEndpoints ? progress : null;
   const frame = useDerivedValue(() =>
     collapsedMetrics && expandedMetrics && frameProgress
@@ -387,9 +479,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
       settled,
     ]
   );
-  const reservedMetrics = hostName
-    ? endpoints.current?.collapsed.metrics
-    : null;
+  const reservedMetrics = hostName ? homeMetrics.current : null;
   const flexibleHeight =
     (ownerStyle?.flex ?? 0) > 0 || (ownerStyle?.flexGrow ?? 0) > 0;
   return (
@@ -438,9 +528,13 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   );
 });
 
+// Explicit targets have no dependency on incoming navigation requests.
+const skipSubscription = () => () => {};
+
 function LiveSharedElementTarget({
   id,
-  groupId,
+  groupId: explicitGroup,
+  fromSource,
   style,
   transition = defaultTransition,
   hostStyle,
@@ -448,6 +542,31 @@ function LiveSharedElementTarget({
   children,
 }: SharedElementTargetProps) {
   const screenId = useScreenId();
+  const incomingGroups = useContext(IncomingGroupsContext);
+  const inferGroup = fromSource && explicitGroup === undefined;
+  const groups = inferGroup ? incomingGroups : null;
+  const getGroup = () => explicitGroup ?? groups?.get(screenId);
+  const groupId = useSyncExternalStore(
+    groups?.subscribe ?? skipSubscription,
+    getGroup,
+    getGroup
+  );
+  if (inferGroup && !incomingGroups)
+    throw new Error('fromSource requires a ChoreographyProvider.');
+  const unbound = inferGroup && groupId === undefined;
+  const content = children != null && children !== false && (
+    <SharedElementTargetContent
+      id={id}
+      groupId={groupId}
+      unbound={unbound}
+      style={style}
+      metadata={metadata}
+    >
+      {children}
+    </SharedElementTargetContent>
+  );
+  // Direct entry has route content but no receiving host or registration.
+  if (unbound) return <View style={style}>{content}</View>;
   return (
     <SharedElementRegistration
       id={id}
@@ -460,22 +579,48 @@ function LiveSharedElementTarget({
         name={getLiveDestinationHostName(screenId, id, groupId)}
         style={[styles.liveHost, hostStyle]}
       />
-      {children != null && children !== false && (
-        <SharedElementTargetContent
-          id={id}
-          groupId={groupId}
-          style={style}
-          metadata={metadata}
-        >
-          {children}
-        </SharedElementTargetContent>
-      )}
+      {content}
     </SharedElementRegistration>
+  );
+}
+
+function PressableOwner({
+  id,
+  groupId,
+  style,
+  portalStyle,
+  metadata,
+  transition,
+  children,
+  onPress,
+  pressableStyle,
+  ...pressableProps
+}: SharedElementPressableProps) {
+  return (
+    <Pressable
+      {...pressableProps}
+      style={pressableStyle}
+      onPress={(event) =>
+        onPress({ transitionConfig: { group: groupId } }, event)
+      }
+    >
+      <LiveSharedElement
+        id={id}
+        groupId={groupId}
+        style={style}
+        portalStyle={portalStyle}
+        metadata={metadata}
+        transition={transition}
+      >
+        {children}
+      </LiveSharedElement>
+    </Pressable>
   );
 }
 
 export const SharedElement = Object.assign(LiveSharedElement, {
   Target: LiveSharedElementTarget,
+  Pressable: PressableOwner,
 });
 
 const styles = StyleSheet.create({

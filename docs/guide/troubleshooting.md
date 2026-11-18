@@ -15,15 +15,17 @@ Interactive `beginBack()` returns `null` in this mode. Keep a Back button or sys
 
 Check these connections in order:
 
-1. Navigation uses the choreography adapter and includes `transitionConfig: { group }`.
+1. Navigation uses the choreography adapter and receives the options from the pressed source or an explicit `transitionConfig: { group }`.
 2. The source owner and destination target share the same `id` (or named role) and `groupId`.
-3. Both routes are wrapped in the integration's `ChoreographyScreen` with stable, explicit IDs.
+3. Both routes use the integration’s `choreographyScreenLayout` or a manual `ChoreographyScreen`.
 4. Both endpoints are mounted and measure to nonzero width and height.
 5. The provider remains mounted above the navigator.
 
-For Expo Router, `targetScreenId` must match the destination wrapper's `screenId`. For React Navigation, use a `screenId` matching the route name.
+For Expo Router, an explicit `targetScreenId` must match the destination wrapper's `screenId`. For React Navigation, use a `screenId` matching the route name.
 
 When a deep link opens the destination without a source owner, render fallback content there. An empty target alone does not create content.
+
+If the source screen freezes on blur, its shared element can become unavailable during forward preparation or when Back tries to return to it. Set `freezeOnBlur: false` on the screen that the navigator freezes to keep its endpoint available.
 
 ## “No valid pairs found”
 
@@ -47,6 +49,12 @@ options={{
 The overlay presents the shared element above the stack. A simultaneous navigator animation can expose a second moving screen. An opaque route presentation can cover the underlying content during preparation.
 
 Also check that you mounted only one owner plus its target. Target children may supply distinct companion content. A second copy of the artwork on the destination defeats the retained-content model.
+
+## The shared element jumps during navigation
+
+**The keyboard opens.** If focusing a destination input moves the target, for example inside a `KeyboardAvoidingView`, the shared element can change course mid-flight. Defer focus until the forward request's [`onNavigationEvent`](../api/navigation.md#choreographynavigationevent) reports `completed`. For arrivals without a shared transition, focus when the destination appears.
+
+**The list is still moving.** A card in a `FlatList` or `ScrollView` can keep moving between source capture and the overlay's first frame. Wait for dragging, momentum, and edge rebound to finish before starting shared navigation, including from a button outside the list. Android's edge stretch can still be visible when the reported scroll offset is zero.
 
 ## Content arrives in the wrong size
 

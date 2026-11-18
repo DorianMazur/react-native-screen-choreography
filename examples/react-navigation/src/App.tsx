@@ -8,24 +8,28 @@ import {
 import { ChoreographyProvider } from 'react-native-screen-choreography';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { withExampleScreen, type ExampleStackParams } from './ExampleScreen';
-import { LandingScreen } from '../../shared/LandingScreen';
-import { GalleryListScreen } from '../../shared/gallery/GalleryListScreen';
-import { GalleryDetailScreen } from '../../shared/gallery/GalleryDetailScreen';
-import { theme as palette } from '../../shared/theme';
-import { TokenListScreen } from '../../shared/wallet/TokenListScreen';
-import { TokenDetailScreen } from '../../shared/wallet/TokenDetailScreen';
-import { TrayDemoProvider } from '../../shared/tray/TrayDemo';
-import { JSStressMenu } from '../../shared/performance/JSStressMenu';
+import { LandingScreen } from '@screen-choreography/example-shared/landing';
+import {
+  GalleryListScreen,
+  GalleryDetailScreen,
+} from '@screen-choreography/example-shared/gallery';
+import { theme as palette } from '@screen-choreography/example-shared';
+import {
+  TokenListScreen,
+  TokenDetailScreen,
+} from '@screen-choreography/example-shared/wallet';
+import { DemoTraysProvider } from '@screen-choreography/example-shared/tray';
+import { JSStressMenu } from '@screen-choreography/example-shared/performance';
 
 import {
   TripsListScreen,
   TripsDetailScreen,
-} from '../../shared/trips/TripsScreens';
+} from '@screen-choreography/example-shared/trips';
 
 import {
   JournalScreen,
   JournalDetailScreen,
-} from '../../shared/journal/JournalScreens';
+} from '@screen-choreography/example-shared/journal';
 
 const JournalListRoute = withExampleScreen('JournalList', JournalScreen, {
   keepVisible: true,
@@ -96,7 +100,7 @@ export default function App() {
     <KeyboardProvider>
       <SafeAreaProvider>
         <ChoreographyProvider debug={false}>
-          <TrayDemoProvider>
+          <DemoTraysProvider>
             <NavigationContainer theme={navTheme}>
               <Stack.Navigator
                 screenOptions={{
@@ -135,8 +139,8 @@ export default function App() {
                 />
               </Stack.Navigator>
             </NavigationContainer>
-          </TrayDemoProvider>
-          {__DEV__ && <JSStressMenu />}
+          </DemoTraysProvider>
+          {__DEV__ && false && <JSStressMenu />}
         </ChoreographyProvider>
       </SafeAreaProvider>
     </KeyboardProvider>

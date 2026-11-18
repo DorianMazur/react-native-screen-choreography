@@ -11,7 +11,7 @@ These hooks are available from `/core` and both integration entries, and require
 | ------------------------------------------------------------ | ------------------------------ | ------------------------------------------------------------------------ |
 | Animate a screen's backdrop or supporting content            | `useChoreographyProgress`      | Beneath `ChoreographyScreen`                                             |
 | Finish motion when the user starts scrolling or interacting  | `useChoreographyControls`      | Beneath `ChoreographyScreen`                                             |
-| Adapt a shared component to its source and destination sizes | `useSharedElementPresentation` | Inside the `SharedElement` owner                                         |
+| Adapt a shared component to its source and destination sizes | `useSharedElementPresentation` | Inside the owner or target children                                      |
 | Wait for a child to finish loading or layout                 | `useChoreographyBlocker`       | Beneath `ChoreographyScreen`                                             |
 | Delay rendering an expensive supporting section              | `useLatchedReveal`             | Beneath `ChoreographyScreen`                                             |
 | Fade or move content that is already mounted                 | `useRevealStyle`               | Beneath `ChoreographyScreen`, or inside an owner with presentation scope |
@@ -97,7 +97,7 @@ Use `presentationProgress` for animations inside shared content. It follows this
 | `presentationProgress`  | Read-only progress for this element: `0` at the source, `1` at the destination; back moves from `1` to `0`                           |
 | `frame`                 | UI-thread width and height matching `TransitionFrame`, from preparation through motion; `null` when unpaired or using reduced motion |
 | `progress`              | Expansion clock (screen-protected for target children), which can also be driven by other elements or groups                         |
-| `collapsed`, `expanded` | Original source and expanded destination geometry, styles, and metadata, regardless of navigation direction                          |
+| `collapsed`, `expanded` | Collapsed and expanded geometry, styles, and metadata for the latest participating pair, regardless of navigation direction          |
 | `transitioning`         | `true` during this element's paired motion; `false` during preparation and at rest                                                   |
 | `direction`             | This element's participating navigation direction; `null` during preparation or when it does not participate                         |
 | `settled`               | The endpoint where the content rests after motion                                                                                    |
@@ -108,7 +108,9 @@ Target children start at the expanded presentation when unpaired. During prepara
 
 Read `frame.value` in an animated style or derived value when hosted content needs explicit dimensions. It uses clamped, linear endpoint interpolation; a custom renderer's geometry may differ.
 
-Cancellation returns progress to the endpoint where the content settles. If the destination unmounts through a navigation reset or another removal without a completed return, the content returns to its source and progress holds at `0`.
+Cancellation returns progress to the endpoint where the content settles. In an A → B → C flow, the endpoints change from A/B to B/C when the second transition presents; returning to B settles at the collapsed endpoint of B/C. Read both endpoints when adapting labels or other content.
+
+If the current host unmounts without a completed return, the content moves to its previous surviving host, or the original owner if none remain. Both endpoints then describe that resting presentation and progress holds at `0`.
 
 The retained component keeps its original source context. Use this hook for its visual adaptation and transition direction. `direction` describes navigation intent, so changing drag direction does not change it. `transitioning` becomes true when content moves into the overlay, which can happen after preparation has started; use it when coordinating visibility with that transfer. With reduced motion, content moves directly to its endpoint and `transitioning` stays false.
 

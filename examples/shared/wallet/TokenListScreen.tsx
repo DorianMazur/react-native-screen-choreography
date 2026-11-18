@@ -65,7 +65,7 @@ export function TokenListScreen({
           <>
             <View style={styles.overview}>
               <View style={styles.balanceHeading}>
-                <Text style={styles.eyebrow}>DEMO PORTFOLIO</Text>
+                <Text style={styles.eyebrow}>Total balance</Text>
                 <WalletIconButton
                   icon={balanceVisible ? 'eye' : 'eyeOff'}
                   label={
@@ -106,8 +106,8 @@ export function TokenListScreen({
                 ))}
               </View>
               <View style={styles.allocationLabels}>
-                <Text style={styles.secondary}>6 assets</Text>
-                <Text style={styles.secondary}>100% crypto</Text>
+                <Text style={styles.secondary}>{TOKENS.length} assets</Text>
+                <Text style={styles.secondary}>Demo portfolio</Text>
               </View>
             </View>
             <View style={styles.sectionHeader}>
@@ -139,8 +139,8 @@ export function TokenListScreen({
               </View>
             </View>
             <View style={styles.columnLabels}>
-              <Text style={styles.eyebrow}>ASSET</Text>
-              <Text style={styles.eyebrow}>PRICE / 24H</Text>
+              <Text style={styles.eyebrow}>Asset</Text>
+              <Text style={styles.eyebrow}>Price / 24h</Text>
             </View>
           </>
         }
@@ -188,11 +188,13 @@ const styles = StyleSheet.create({
   },
   list: { paddingBottom: 32 },
   overview: {
+    marginHorizontal: 16,
+    marginTop: 16,
     paddingHorizontal: 24,
     paddingTop: 12,
-    paddingBottom: 28,
-    borderBottomWidth: 1,
-    borderBottomColor: theme.border,
+    paddingBottom: 24,
+    borderRadius: 24,
+    backgroundColor: theme.surface,
   },
   balanceHeading: {
     flexDirection: 'row',
@@ -201,14 +203,17 @@ const styles = StyleSheet.create({
   },
   eyebrow: {
     fontFamily: theme.font,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '600',
     color: theme.secondary,
     letterSpacing: 0,
   },
   balance: {
-    fontFamily: theme.numbers,
-    fontSize: 36,
+    fontFamily: theme.font,
+    fontVariant: ['tabular-nums'],
+    fontWeight: '500',
+    letterSpacing: -1.5,
+    fontSize: 40,
     color: theme.text,
     lineHeight: 48,
   },
@@ -219,7 +224,12 @@ const styles = StyleSheet.create({
     gap: 8,
     marginTop: 8,
   },
-  gain: { fontFamily: theme.numbers, fontSize: 12, color: theme.accent },
+  gain: {
+    fontFamily: theme.font,
+    fontVariant: ['tabular-nums'],
+    fontSize: 14,
+    color: theme.accent,
+  },
   secondary: { fontFamily: theme.font, fontSize: 12, color: theme.secondary },
   allocation: {
     height: 5,
@@ -236,7 +246,7 @@ const styles = StyleSheet.create({
   },
   sectionHeader: {
     paddingHorizontal: 24,
-    marginTop: 22,
+    marginTop: 28,
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
@@ -260,7 +270,7 @@ const styles = StyleSheet.create({
   filterTextSelected: { color: theme.accent },
   columnLabels: {
     marginHorizontal: 24,
-    marginTop: 22,
+    marginTop: 28,
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingBottom: 6,

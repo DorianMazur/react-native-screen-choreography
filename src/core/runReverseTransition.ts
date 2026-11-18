@@ -13,7 +13,6 @@ import type {
 } from '../types';
 import { debugLog } from '../debug/logger';
 
-/** Reverse the current animation for either application or Android Back. */
 export function reverseActiveSession({
   ctx,
   session,
@@ -63,17 +62,14 @@ export function reverseActiveSession({
 
 export interface RunReverseTransitionArgs {
   ctx: ChoreographyContextType;
-  /** Shared element group ID from provider lineage or legacy route params. */
   groupId: string;
-  /** Screen we are returning TO (the original forward source). */
+  /** Destination of this Back navigation (the original forward source). */
   sourceScreenId: string;
-  /** Screen we are leaving (the original forward target). */
   currentScreenId: string;
-  /** Pop the route. Always invoked, even on failure, so the user is not stuck. */
+  /** Also used when preparation fails, provided the request still owns navigation. */
   popAction: CommitBackNavigation;
   isRouteRemoved?: () => boolean;
   canContinue?: () => boolean;
-  /** Spring config. Defaults to {@link FAST_SPRING}. */
   spring?: SpringConfig;
 }
 

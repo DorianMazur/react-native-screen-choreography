@@ -1,5 +1,9 @@
 import { createContext, useContext, useState } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { SharedElement } from './SharedElement';
 import { makeMutable } from 'react-native-reanimated';
 import {
@@ -11,6 +15,7 @@ import {
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import { ScreenIdContext } from '../core/screenIdContext';
+import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
 import {
   useSharedElementPresentation,
   type SharedElementPresentation,
@@ -26,7 +31,8 @@ const RouteContext = createContext('source');
 const small = { pageX: 40, pageY: 300, width: 72, height: 72 };
 const large = { pageX: 0, pageY: 24, width: 400, height: 800 };
 
-async function harness() {
+async function harness(fromSource = false) {
+  const groups = new IncomingGroups();
   const progress = makeMutable(0);
   const screenProgress = makeMutable(0);
   const controls = { progress: screenProgress, settleTransition: jest.fn() };
@@ -51,7 +57,7 @@ async function harness() {
     return null;
   }
   const content = <Content label="first" />;
-  let tree: ReactTestRenderer;
+  let tree: RenderResult;
   const render = async (
     session: TransitionSessionData | null,
     options: {
@@ -67,33 +73,36 @@ async function harness() {
       pendingTargetScreenId: options.pending,
     } as unknown as ChoreographyContextType;
     const app = (
-      <ChoreographyActionsContext.Provider value={actions}>
-        <ChoreographyContext.Provider value={context}>
-          <PreparingSessionContext.Provider
-            value={session?.state === 'preparing' ? session : null}
-          >
-            <ChoreographyControlsContext.Provider value={controls}>
-              <ScreenIdContext.Provider value="detail">
-                <RouteContext.Provider value="destination">
-                  <SharedElement.Target
-                    id="app"
-                    groupId={options.group ?? 'group'}
-                  >
-                    {options.child === false
-                      ? null
-                      : (options.children ?? content)}
-                  </SharedElement.Target>
-                </RouteContext.Provider>
-              </ScreenIdContext.Provider>
-            </ChoreographyControlsContext.Provider>
-          </PreparingSessionContext.Provider>
-        </ChoreographyContext.Provider>
-      </ChoreographyActionsContext.Provider>
+      <IncomingGroupsContext.Provider value={groups}>
+        <ChoreographyActionsContext.Provider value={actions}>
+          <ChoreographyContext.Provider value={context}>
+            <PreparingSessionContext.Provider
+              value={session?.state === 'preparing' ? session : null}
+            >
+              <ChoreographyControlsContext.Provider value={controls}>
+                <ScreenIdContext.Provider value="detail">
+                  <RouteContext.Provider value="destination">
+                    <SharedElement.Target
+                      id="app"
+                      fromSource={fromSource}
+                      groupId={
+                        fromSource ? undefined : (options.group ?? 'group')
+                      }
+                    >
+                      {options.child === false
+                        ? null
+                        : (options.children ?? content)}
+                    </SharedElement.Target>
+                  </RouteContext.Provider>
+                </ScreenIdContext.Provider>
+              </ChoreographyControlsContext.Provider>
+            </PreparingSessionContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      </IncomingGroupsContext.Provider>
     );
-    await act(async () => {
-      if (tree) tree.update(app);
-      else tree = create(app);
-    });
+    if (tree) tree.rerender(app);
+    else tree = renderComponent(app);
   };
   const session = (
     direction: 'forward' | 'backward' = 'forward',
@@ -127,6 +136,7 @@ async function harness() {
   return {
     render,
     session,
+    groups,
     actions,
     renderContent,
     releaseContent,
@@ -191,6 +201,58 @@ test('target content is route-owned, prepared before activation, and keeps its s
     await h.unmount();
   }
   expect(h.releaseContent).toHaveBeenCalledTimes(1);
+});
+
+test('a fromSource target displays its companion on direct entry and pairs once its route receives a group', async () => {
+  const h = await harness(true);
+  try {
+    expect(h.presentation.presentationProgress.value).toBe(1);
+    expect(h.presentation.expanded.metrics).toBeNull();
+    expect(h.actions.registerElement).not.toHaveBeenCalled();
+    expect(h.actions.registerTargetContent).not.toHaveBeenCalled();
+    await act(async () => {
+      h.groups.bind('detail', 'group');
+    });
+    await h.render(h.session());
+    expect(h.presentation.expanded.metrics).toEqual(large);
+    expect(h.actions.registerTargetContent).toHaveBeenCalledWith(
+      'detail',
+      'group',
+      'app'
+    );
+  } finally {
+    await h.unmount();
+  }
+});
+
+test('a destination that becomes the next source settles at the endpoint of its latest pair', async () => {
+  const h = await harness();
+  try {
+    await h.render(h.session());
+    await h.render(null);
+    const next = h.session();
+    const pair = next.pairs[0]!;
+    await h.render({
+      ...next,
+      id: 'detail-to-next',
+      sourceScreenId: 'detail',
+      targetScreenId: 'next',
+      pairs: [
+        {
+          ...pair,
+          source: { ...pair.source, screenId: 'detail' },
+          target: { ...pair.target, screenId: 'next' },
+        },
+      ],
+    });
+    // Cancelling this push returns to the collapsed side of detail/next.
+    h.settle('detail');
+    await h.render(null);
+    expect(h.presentation.settled).toBe('collapsed');
+    expect(h.presentation.presentationProgress.value).toBe(0);
+  } finally {
+    await h.unmount();
+  }
 });
 
 test('unrelated sessions and pending screens stay outside the presentation boundary; application updates still work', async () => {

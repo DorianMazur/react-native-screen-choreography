@@ -1,6 +1,12 @@
 import { summaryTable, renderCountsTable } from './summary-table.mts';
 import { metricDefinition, presentationStages } from './metric-definitions.mts';
-import { SCENARIO_IDS } from '../../examples/react-navigation/src/performance/scenarios.ts';
+import {
+  SCENARIO_IDS,
+  PERFORMANCE_SCENARIO_IDS,
+  TRAY_SCENARIOS,
+} from '../../examples/react-navigation/src/performance/scenarios.ts';
+import { validateLifecycle } from './validate-lifecycle.mts';
+import { validateTrayLifecycle } from './validate-tray-lifecycle.mts';
 import type {
   InputRecord,
   MetricSamples,
@@ -168,8 +174,7 @@ function readPreparationTrace(
     if (stageStart < start || stageStart + duration > end + 0.001) {
       throw new Error('Preparation stage extends beyond its trace');
     }
-    // One sample per journey, even when a stage repeats (for example a target
-    // measurement poll). Nested parent/child stages remain separate metrics.
+    // Repeated stages contribute one sample per journey; nested stages stay separate.
     durations.set(stage.name, (durations.get(stage.name) ?? 0) + duration);
   }
   add(metrics, `${prefix}.overlayReadinessTimeout`, acknowledged ? 0 : 1);
@@ -188,7 +193,7 @@ function readFixture(
   if (report.schemaVersion !== 1 || ![5, 6].includes(report.fixtureVersion)) {
     throw new Error('Unsupported fixture schema/version');
   }
-  if (!SCENARIO_IDS.includes(report.scenario))
+  if (!PERFORMANCE_SCENARIO_IDS.includes(report.scenario))
     throw new Error('Unknown fixture scenario');
   if (report.clock !== 'js-performance-now')
     throw new Error('Unknown JS clock domain');
@@ -339,13 +344,23 @@ function readFixture(
     throw new Error('Missing forward or backward journey');
   finite(report.payloadMounts, 'payloadMounts');
   finite(report.payloadUnmounts, 'payloadUnmounts');
-  if (report.payloadMounts !== 1 || report.payloadUnmounts !== 0)
+  const tray = report.scenario in TRAY_SCENARIOS;
+  const expectedMounts = tray ? report.journeys.length / 2 : 1;
+  if (
+    report.payloadMounts !== expectedMounts ||
+    report.payloadUnmounts !== (tray ? expectedMounts : 0)
+  )
     throw new Error('Live payload owner must stay mounted');
   readNativeInput(report, platform);
 }
 
 function readNativeInput(report: InputRecord, platform: string) {
   const native = report.native;
+  const probes = report.trayTracing
+    ? report.trayTracing.steps.map(
+        (step: InputRecord) => `tray-${step.id}-${step.route}`
+      )
+    : report.journeys.map((journey: InputRecord) => journey.probe.screen);
   if (
     !native ||
     native.platform !== platform ||
@@ -359,7 +374,7 @@ function readNativeInput(report: InputRecord, platform: string) {
     throw new Error('Native recorder lost telemetry samples');
   if (
     !Array.isArray(native.inputAcknowledgements) ||
-    native.inputAcknowledgements.length !== report.journeys.length
+    native.inputAcknowledgements.length !== probes.length
   ) {
     throw new Error(
       'Native input acknowledgement count must match journey count'
@@ -374,7 +389,7 @@ function readNativeInput(report: InputRecord, platform: string) {
   const usedTouches = new Set<number>();
   let previousAck = -1;
   for (const [index, ack] of native.inputAcknowledgements.entries()) {
-    if (ack.probe !== report.journeys[index].probe.screen) {
+    if (ack.probe !== probes[index]) {
       throw new Error(
         'Native input probe order must match journey destinations'
       );
@@ -420,15 +435,15 @@ function readNativeInput(report: InputRecord, platform: string) {
   }
 }
 
-function expectedCount(value: unknown, label: string) {
+function expectedCount(value: unknown, label: string, maximum = 99) {
   if (value === undefined) return undefined;
   if (
     typeof value !== 'number' ||
     !Number.isInteger(value) ||
     value < 1 ||
-    value > 99
+    value > maximum
   ) {
-    throw new Error(`${label} must be an integer between 1 and 99`);
+    throw new Error(`${label} must be an integer between 1 and ${maximum}`);
   }
   return value;
 }
@@ -446,16 +461,33 @@ export function summarize(
   if (!MODES.includes(mode)) throw new Error('Unknown build mode');
   const metrics: MetricSamples = {};
   const errors = [];
+  if (metadata.runnerExitCode !== undefined && metadata.runnerExitCode !== 0)
+    errors.push(
+      `Native build/test runner failed with exit code ${metadata.runnerExitCode}; see test logs`
+    );
   const fixtures = new Set<string>();
   const sources = [];
   const runIds = new Set<string>();
   const instrumentation = new Map<string, string>();
-  let expectedCycles;
+  let expectedScreenCycles;
+  let expectedTrayCycles;
   try {
-    expectedCycles = expectedCount(
-      metadata.timingCycles,
-      'Expected timing cycles'
+    if (
+      metadata.lifecycleValidation !== undefined &&
+      ![1, 2].includes(metadata.lifecycleValidation as number)
+    )
+      throw new Error('Unknown lifecycle validation version');
+    expectedScreenCycles = expectedCount(
+      metadata.screenTimingCycles === undefined
+        ? metadata.timingCycles
+        : metadata.screenTimingCycles,
+      'Expected screen cycles'
     );
+    // Older exports used one count for both screen and tray scenarios.
+    expectedTrayCycles =
+      metadata.trayTimingCycles === undefined
+        ? expectedScreenCycles
+        : expectedCount(metadata.trayTimingCycles, 'Expected tray cycles', 5);
   } catch (error) {
     errors.push(
       `metadata: ${error instanceof Error ? error.message : String(error)}`
@@ -472,6 +504,12 @@ export function summarize(
           throw new Error('Duplicate run ID would double-count timings');
         if (fixtures.has(data.scenario))
           throw new Error('Duplicate scenario would double-count timings');
+        const tray = data.scenario in TRAY_SCENARIOS;
+        const expectedCycles = tray ? expectedTrayCycles : expectedScreenCycles;
+        if (metadata.lifecycleValidation || tray) validateLifecycle(data);
+        if (tray) Object.assign(documentMetrics, validateTrayLifecycle(data));
+        else if (data.trayTracing)
+          throw new Error('Tray telemetry on a screen scenario');
         readFixture(data, documentMetrics, platform);
         if (
           expectedCycles !== undefined &&
@@ -497,7 +535,8 @@ export function summarize(
             (data.motionTracing
               ? `+ui-motion-v${data.motionTracing.version}`
               : '') +
-            (data.presentationTracing ? '+presentation-startup' : '')
+            (data.presentationTracing ? '+presentation-startup' : '') +
+            (tray ? '+tray-lifecycle-v1' : '')
         );
         fixtures.add(data.scenario);
         sources.push(file);
@@ -506,12 +545,21 @@ export function summarize(
         (metrics[name] ??= []).push(...values);
       }
     } catch (error) {
-      errors.push(
-        `${file}: ${error instanceof Error ? error.message : String(error)}`
-      );
+      const message = error instanceof Error ? error.message : String(error);
+      // Structural validation can fail before readFixture reaches the original
+      // rejection. Keep that cause visible alongside the incomplete telemetry.
+      const fixtureErrors =
+        Array.isArray(data.errors) &&
+        data.errors.length &&
+        !message.startsWith('Fixture did not complete:')
+          ? `; fixture errors: ${JSON.stringify(data.errors)}`
+          : '';
+      errors.push(`${file}: ${message}${fixtureErrors}`);
     }
   }
-  for (const scenario of SCENARIO_IDS) {
+  for (const scenario of metadata.lifecycleValidation === 2
+    ? PERFORMANCE_SCENARIO_IDS
+    : SCENARIO_IDS) {
     if (!fixtures.has(scenario))
       errors.push(`Missing valid ${scenario} fixture run`);
   }
@@ -577,13 +625,13 @@ export function summarize(
 export function markdown(
   summary: InputRecord,
   base?: InputRecord,
-  baselineNote = 'No baseline supplied. Local runs do not fetch baselines.'
+  baselineNote = 'No base comparison. `yarn perf:ab` measures a base commit in the same session.'
 ) {
   const renders = renderCountsTable(summary, base);
   const presentationRows = Object.entries(summary.metrics ?? {}).flatMap(
     ([key, value]) => {
       const match = key.match(
-        /^(gallery|trips|wallet)\.(forward|backward)\.presentation\.([a-z-]+)Ms$/
+        /^([a-z-]+)\.(forward|backward)\.presentation\.([a-z-]+)Ms$/
       );
       if (!match) return [];
       const metric = value as InputRecord;
@@ -644,6 +692,58 @@ async function readDocuments(
   return documents;
 }
 
+// AGP saves logcat for the entire test, including failures that Android treats
+// as nonfatal. A successful probe must not turn a corrupted view tree green.
+export function androidMountErrors(log: string, pids: Set<number>): string[] {
+  const failures = new Map<number, string>();
+  for (const line of log.split('\n')) {
+    const match = line.match(
+      /^\S+\s+\S+\s+(\d+)\s+\d+\s+E\s+(?:unknown:)?(?:SurfaceMountingManager(?::[^\s]+)?|MountItemDispatcher|FabricUIManager):\s+(.*)$/
+    );
+    if (!match || !pids.has(Number(match[1]))) continue;
+    const pid = Number(match[1]);
+    const message = match[2]!.trim();
+    if (message.startsWith('at ') || message.startsWith('...')) continue;
+    if (!failures.has(pid) || failures.get(pid) === 'Unhandled SoftException')
+      failures.set(pid, message);
+  }
+  return [...failures].map(
+    ([pid, message]) =>
+      `Android native mounting failure (pid ${pid}): ${message}`
+  );
+}
+
+async function readAndroidMountErrors(
+  directory: string,
+  documents: MeasurementDocument[]
+): Promise<string[]> {
+  const fixtures = documents.filter(
+    ({ data }) => data.fixtureVersion !== undefined
+  );
+  if (
+    fixtures.some(
+      ({ data }) => !Number.isInteger(data.native?.pid) || data.native.pid <= 0
+    )
+  )
+    throw new Error('Missing Android app PID for native log validation');
+  const pids = new Set<number>(fixtures.map(({ data }) => data.native.pid));
+  const seenPids = new Set<number>();
+  const errors = new Set<string>();
+  const entries = await readdir(directory, { recursive: true });
+  for (const entry of entries) {
+    if (!path.basename(entry).startsWith('logcat-') || !entry.endsWith('.txt'))
+      continue;
+    const log = await readFile(path.join(directory, entry), 'utf8');
+    for (const match of log.matchAll(/^\S+\s+\S+\s+(\d+)\s+\d+\s+[VDIWEF]\s/gm))
+      seenPids.add(Number(match[1]));
+    for (const error of androidMountErrors(log, pids)) errors.add(error);
+  }
+  for (const pid of pids)
+    if (!seenPids.has(pid))
+      errors.add(`Missing Android test logcat for app pid ${pid}`);
+  return [...errors];
+}
+
 async function main() {
   const args = Object.fromEntries(
     process.argv.slice(2).map((arg) => {
@@ -685,6 +785,21 @@ async function main() {
         : {}),
     },
   });
+  if (args.platform === 'android' && args['android-test-results']) {
+    try {
+      summary.errors.push(
+        ...(await readAndroidMountErrors(
+          args['android-test-results'],
+          documents
+        ))
+      );
+    } catch (error) {
+      summary.errors.push(
+        `Cannot check Android native mounting logs: ${String(error)}`
+      );
+    }
+    summary.valid = summary.valid && summary.errors.length === 0;
+  }
   await mkdir(args.output, { recursive: true });
   await writeFile(
     path.join(args.output, 'summary.json'),

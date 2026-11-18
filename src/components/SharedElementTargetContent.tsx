@@ -30,10 +30,11 @@ import type { SharedElementTargetProps } from './SharedElement';
 export function SharedElementTargetContent({
   id,
   groupId,
+  unbound,
   style,
   metadata,
   children,
-}: SharedElementTargetProps) {
+}: SharedElementTargetProps & { unbound?: boolean }) {
   const choreography = useContext(ChoreographyContext)!;
   const controls = useContext(ChoreographyControlsContext);
   const actions = useContext(ChoreographyActionsContext)!;
@@ -43,8 +44,8 @@ export function SharedElementTargetContent({
   const pair = selectPresentationPair(session, screenId, groupId, id);
   const { registerTargetContent, getSettledScreenId } = actions;
   useEffect(
-    () => registerTargetContent(screenId, groupId, id),
-    [registerTargetContent, screenId, groupId, id]
+    () => (unbound ? undefined : registerTargetContent(screenId, groupId, id)),
+    [unbound, registerTargetContent, screenId, groupId, id]
   );
   const initial = useMemo(
     () => ({
@@ -62,7 +63,6 @@ export function SharedElementTargetContent({
       direction={pair ? session!.direction : null}
       reducedMotion={Boolean(pair && session?.reducedMotion)}
       progress={controls?.progress ?? choreography.progress}
-      screenId={screenId}
       getSettledScreenId={getSettledScreenId}
       initial={initial}
     >
@@ -77,7 +77,6 @@ const TargetPresentation = memo(function TargetPresentation({
   direction,
   reducedMotion,
   progress,
-  screenId,
   getSettledScreenId,
   initial,
   children,
@@ -87,7 +86,6 @@ const TargetPresentation = memo(function TargetPresentation({
   direction: TransitionSessionData['direction'] | null;
   reducedMotion: boolean;
   progress: SharedValue<number>;
-  screenId: string;
   getSettledScreenId: () => string | null;
   initial: SharedElementEndpoint;
   children: ReactNode;
@@ -108,14 +106,16 @@ const TargetPresentation = memo(function TargetPresentation({
     retained.current.participating = false;
     const settledScreen = getSettledScreenId();
     retained.current.settled =
-      settledScreen && settledScreen !== screenId ? 'collapsed' : 'expanded';
+      settledScreen === retained.current.endpoints?.collapsedScreenId
+        ? 'collapsed'
+        : 'expanded';
   }
   const endpoints = activeEndpoints ?? retained.current.endpoints;
   const collapsed = endpoints?.collapsed ?? initial;
   const expanded = endpoints?.expanded ?? initial;
   const settled =
     reducedMotion && pair
-      ? pair.target.screenId === screenId
+      ? direction === 'forward'
         ? 'expanded'
         : 'collapsed'
       : retained.current.settled;

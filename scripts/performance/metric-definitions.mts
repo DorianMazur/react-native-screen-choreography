@@ -30,6 +30,17 @@ export function metricDefinition(key: string, instrumentation: string) {
   const scenario = SCENARIOS[key.split('.')[0] as PerformanceScenario];
   if (!scenario) throw new Error('Unknown metric workload');
   const metric = key.split('.').at(-1)!;
+  if (metric === 'requestToSettledMs')
+    return {
+      version: 1,
+      workload: scenario.workload,
+      unit: 'ms',
+      clock: 'js-performance-now',
+      start: 'tray-navigation-request',
+      end: 'tray-runtime-settlement',
+      aggregation: 'one-sample-per-step-per-cycle',
+      instrumentation,
+    };
   if (presentation) {
     const [start, end] = presentationStages[presentation];
     return {

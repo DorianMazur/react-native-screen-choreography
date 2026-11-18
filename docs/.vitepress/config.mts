@@ -16,6 +16,7 @@ export default defineConfig({
   lang: 'en-US',
   base,
   cleanUrls: false,
+  appearance: 'dark',
   lastUpdated: false,
   srcExclude: ['MAINTAINING.md', 'node_modules/**'],
   sitemap: { hostname: `${origin}${base}` },
@@ -24,7 +25,7 @@ export default defineConfig({
       'link',
       { rel: 'icon', type: 'image/svg+xml', href: `${base}favicon.svg` },
     ],
-    ['meta', { name: 'theme-color', content: '#f8f7f4' }],
+    ['meta', { name: 'theme-color', content: '#101211' }],
     ['meta', { property: 'og:type', content: 'website' }],
     ['meta', { property: 'og:title', content: 'Screen Choreography' }],
     [

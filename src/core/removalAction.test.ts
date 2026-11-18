@@ -37,6 +37,36 @@ describe('removal action classification', () => {
     ).toBe(false);
   });
 
+  test.each([
+    ['list-1', true],
+    ['list-2', false],
+    ['removed-list', false],
+  ] as const)(
+    'checks the selected tab by route key on Back to %s',
+    (source, expected) => {
+      const tabs = {
+        key: 'tabs',
+        name: 'Tabs',
+        state: {
+          index: 1,
+          routes: [
+            { key: 'list-2', name: 'List' },
+            { key: 'list-1', name: 'List' },
+          ],
+        },
+      };
+      expect(
+        isSingleRouteBack(
+          { type: 'GO_BACK' },
+          { ...state, routes: [tabs, { key: 'detail-1', name: 'Detail' }] },
+          'detail-1',
+          'List',
+          source
+        )
+      ).toBe(expected);
+    }
+  );
+
   test('uses route identity when Expo route names differ from screen IDs', () => {
     expect(
       isSingleRouteBack(

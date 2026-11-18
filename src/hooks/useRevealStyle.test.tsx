@@ -1,7 +1,11 @@
 import { useState, type ReactNode } from 'react';
 import { StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyContext,
   ChoreographyControlsContext,
@@ -37,7 +41,7 @@ const controls = {
 };
 let session: TransitionSessionData | null;
 let pending: string | null;
-const trees: ReactTestRenderer[] = [];
+const trees: RenderResult[] = [];
 beforeEach(() => {
   controls.progress.value = 0;
   pending = null;
@@ -99,17 +103,17 @@ function Item({
   return <Animated.View style={style} />;
 }
 async function mount(element: React.ReactElement) {
-  let tree!: ReactTestRenderer;
-  await act(async () => {
-    tree = create(element);
-  });
+  let tree!: RenderResult;
+
+  tree = renderComponent(element);
+
   trees.push(tree);
   return tree;
 }
-function styles(tree: ReactTestRenderer) {
-  return tree.root
-    .findAllByType('Animated.View' as React.ElementType)
-    .map((node) => StyleSheet.flatten(node.props.style));
+function styles(tree: RenderResult) {
+  return tree.UNSAFE_root.findAllByType(
+    'Animated.View' as React.ElementType
+  ).map((node) => StyleSheet.flatten(node.props.style));
 }
 
 test.each([
@@ -198,7 +202,7 @@ test('screen content is visible on standalone entry and after settlement', async
   const tree = await mount(render());
   expect(styles(tree).map((style) => style.opacity)).toEqual([1, 1]);
   controls.progress.value = 1;
-  await act(async () => tree.update(render()));
+  await act(async () => tree.rerender(render()));
   expect(styles(tree).map((style) => style.opacity)).toEqual([1, 1]);
 });
 
@@ -249,19 +253,19 @@ test('presentation reveals follow only their owner, including collapsed and expa
   const tree = await mount(render());
   for (const progress of [1, 0.5, 0]) {
     controls.progress.value = progress;
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     expect(styles(tree).map((style) => style.opacity)).toEqual([0, 1]);
   }
   for (const amount of [0.5, 1, 0.5, 0, 1]) {
     (presentationProgress as { value: number }).value = amount;
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     expect(styles(tree).map((style) => style.opacity)).toEqual([
       amount,
       1 - amount,
     ]);
   }
   session = null;
-  await act(async () => tree.update(render()));
+  await act(async () => tree.rerender(render()));
   expect(styles(tree).map((style) => style.opacity)).toEqual([1, 0]);
 });
 
@@ -306,7 +310,7 @@ test.each(['hook', 'component'] as const)(
     const tree = await mount(render([]));
     for (const ids of [['a'], ['a', 'b', 'c'], ['c', 'a'], [], ['d']]) {
       const previous = new Map(instances);
-      await act(async () => tree.update(render(ids)));
+      await act(async () => tree.rerender(render(ids)));
       expect(styles(tree)).toHaveLength(ids.length);
       for (const id of ids)
         if (previous.has(id)) expect(instances.get(id)).toBe(previous.get(id));
@@ -335,7 +339,7 @@ test('stagger starts items in order and all items finish inside the group interv
   expect(amounts[2]).toBeCloseTo(0);
   for (const progress of [0.8, 0.2, 0.8]) {
     controls.progress.value = progress;
-    await act(async () => tree.update(render(100)));
+    await act(async () => tree.rerender(render(100)));
     expect(
       styles(tree).every(
         (style) => style.opacity === (progress === 0.8 ? 1 : 0)

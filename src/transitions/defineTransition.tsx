@@ -4,6 +4,7 @@ import Animated from 'react-native-reanimated';
 import {
   SharedElement,
   type SharedElementProps,
+  type SharedElementPressableProps,
   type SharedElementTargetProps,
 } from '../components/SharedElement';
 import { useRevealStyle } from '../hooks/useRevealStyle';
@@ -47,6 +48,10 @@ export type TransitionElementProps<Name extends string = string> = Omit<
   SharedElementProps,
   'id' | 'transition'
 > & { name: Name };
+export type TransitionPressableProps<Name extends string = string> = Omit<
+  SharedElementPressableProps,
+  'id' | 'transition'
+> & { name: Name };
 export type TransitionTargetProps<Name extends string = string> = Omit<
   SharedElementTargetProps,
   'id' | 'transition'
@@ -64,6 +69,7 @@ export interface DefinedTransition<
   Exit extends string,
 > {
   Element: ComponentType<TransitionElementProps<Shared>> & {
+    Pressable: ComponentType<TransitionPressableProps<Shared>>;
     Target: ComponentType<TransitionTargetProps<Shared>>;
   };
   Enter: ComponentType<TransitionRevealProps<Enter>>;
@@ -203,7 +209,24 @@ export function defineTransition<
       <SharedElement.Target {...props} id={name} transition={resolve(name)} />
     );
   }
+  function Pressable({
+    name,
+    onPress,
+    ...props
+  }: TransitionPressableProps<Name>) {
+    return (
+      <SharedElement.Pressable
+        {...props}
+        id={name}
+        transition={resolve(name)}
+        onPress={(options, event) =>
+          onPress({ ...navigationOptions, ...options }, event)
+        }
+      />
+    );
+  }
   Element.Target = Target;
+  Element.Pressable = Pressable;
   return Object.freeze({
     Element,
     Enter: revealComponent<Extract<keyof Enter, string>>(

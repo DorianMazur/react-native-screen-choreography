@@ -1,5 +1,9 @@
 import { useContext, useEffect, type ReactNode } from 'react';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import {
   ChoreographyContext,
   ChoreographyControlsContext,
@@ -68,7 +72,7 @@ const mounts = jest.fn();
 const unmounts = jest.fn();
 let visible: boolean;
 let observedState: unknown;
-let tree: ReactTestRenderer | undefined;
+let tree: RenderResult | undefined;
 
 function ExpensiveSection() {
   useEffect(() => {
@@ -140,10 +144,9 @@ async function render(options: RenderOptions = {}) {
       <Content config={options.config} />
     </Harness>
   );
-  await act(async () => {
-    if (tree) tree.update(element);
-    else tree = create(element);
-  });
+
+  if (tree) tree.rerender(element);
+  else tree = renderComponent(element);
 }
 
 async function runRN() {

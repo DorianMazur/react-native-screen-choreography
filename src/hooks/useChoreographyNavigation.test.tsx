@@ -1,11 +1,14 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { Platform } from 'react-native';
 import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
+import { Platform } from 'react-native';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { createNativePresentation } from '../core/nativePresentation';
 import { ProgressOwnership } from '../core/ProgressOwnership';
+import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ReverseTransitionController } from '../core/ReverseTransitionController';
 import { useChoreographyNavigator } from './useChoreographyNavigation';
@@ -93,15 +96,14 @@ test.each([
       });
       return null;
     }
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={ctx}>
-            <Caller />
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContextProvider value={ctx}>
+          <Caller />
+        </ChoreographyContextProvider>
+      );
+
       let pending!: Promise<void>;
       const dispatchNavigation = jest.fn();
       const spring = { duration: 800, dampingRatio: 1 };
@@ -180,17 +182,16 @@ test('navigation callers share one provider preparation lock', async () => {
     });
     return null;
   }
-  let tree!: ReactTestRenderer;
+  let tree!: RenderResult;
   const pending: Promise<void>[] = [];
   try {
-    await act(async () => {
-      tree = create(
-        <ChoreographyContext.Provider value={ctx}>
-          <Caller index={0} />
-          <Caller index={1} />
-        </ChoreographyContext.Provider>
-      );
-    });
+    tree = renderComponent(
+      <ChoreographyContextProvider value={ctx}>
+        <Caller index={0} />
+        <Caller index={1} />
+      </ChoreographyContextProvider>
+    );
+
     await act(async () => {
       for (const caller of callers) {
         pending.push(
@@ -211,83 +212,106 @@ test('navigation callers share one provider preparation lock', async () => {
   }
 });
 
-test('queued replay survives focus changes and only its source instance dispatches it', async () => {
-  const frames: Array<(timestamp: number) => void> = [];
-  const raf = jest
-    .spyOn(global, 'requestAnimationFrame')
-    .mockImplementation((callback) => {
-      frames.push(callback);
-      return frames.length;
-    });
-  const progress = { value: 0 } as ChoreographyContextType['progress'];
-  const progressOwnership = new ProgressOwnership(
-    { value: 0 } as ChoreographyContextType['progress'],
-    progress
-  );
-  const controller = new NavigationSessionController();
-  const dispatchNavigation = jest.fn();
-  const captureSourceGroup = jest.fn(async () => {});
-  const request = {
-    sourceScreenId: 'second-route',
-    targetScreenId: 'Detail',
-    dispatchNavigation,
-    options: { transitionConfig: { group: 'group' } },
-  };
-  controller.queueNavigation(request);
-  const ctx = {
-    progress,
-    progressOwnership,
-    navigationController: controller,
-    activeSession: null,
-    pendingTargetScreenId: null,
-    captureSourceGroup,
-    setPendingTargetScreen: jest.fn(),
-    waitForScreenReady: jest.fn(async () => false),
-  } as unknown as ChoreographyContextType;
-  function Caller({
-    screenId,
-    focused = true,
-  }: {
-    screenId: string;
-    focused?: boolean;
-  }) {
-    useChoreographyNavigator({
-      currentScreenId: screenId,
-      isFocused: focused,
-      goBack: () => {},
-    });
-    return null;
-  }
-  function render(focused = true) {
-    return (
-      <ChoreographyContext.Provider value={ctx}>
-        <Caller screenId="first-route" />
-        <Caller screenId="second-route" focused={focused} />
-      </ChoreographyContext.Provider>
-    );
-  }
-  let tree!: ReactTestRenderer;
-  try {
-    await act(async () => {
-      tree = create(render());
-    });
-    await act(async () => tree.update(render(false)));
-    await act(async () => tree.update(render()));
-    while (frames.length) {
-      const frameBatch = frames.splice(0);
-      await act(async () => {
-        frameBatch.forEach((frame) => frame(0));
+test.each([true, false])(
+  'queued replay preserves its group through focus changes (destination wrapped=%s)',
+  async (wrapped) => {
+    const frames: Array<(timestamp: number) => void> = [];
+    const raf = jest
+      .spyOn(global, 'requestAnimationFrame')
+      .mockImplementation((callback) => {
+        frames.push(callback);
+        return frames.length;
       });
+    const progress = { value: 0 } as ChoreographyContextType['progress'];
+    const progressOwnership = new ProgressOwnership(
+      { value: 0 } as ChoreographyContextType['progress'],
+      progress
+    );
+    const controller = new NavigationSessionController();
+    const dispatchNavigation = jest.fn();
+    const captureSourceGroup = jest.fn(async () => {});
+    const incomingGroups = new IncomingGroups();
+    const request = {
+      resolveTargetScreenId: async () => 'detail-instance',
+      targetScreenId: 'Detail',
+      dispatchNavigation,
+      options: { transitionConfig: { group: 'group' } },
+    };
+    let command!: ReturnType<typeof useChoreographyNavigator>;
+    const ctx = {
+      progress,
+      progressOwnership,
+      navigationController: controller,
+      activeSession: null,
+      pendingTargetScreenId: null,
+      captureSourceGroup,
+      setPendingTargetScreen: jest.fn(),
+      waitForScreenReady: jest.fn(async () => false),
+      resolveScreenId: () => (wrapped ? 'detail-instance' : null),
+    } as unknown as ChoreographyContextType;
+    function Caller({
+      screenId,
+      focused = true,
+    }: {
+      screenId: string;
+      focused?: boolean;
+    }) {
+      const navigation = useChoreographyNavigator({
+        currentScreenId: screenId,
+        isFocused: focused,
+        goBack: () => {},
+      });
+      if (screenId === 'second-route') command = navigation;
+      return null;
     }
-    expect(dispatchNavigation).toHaveBeenCalledTimes(1);
-    expect(captureSourceGroup).toHaveBeenCalledWith('group', 'second-route');
-    expect(captureSourceGroup).toHaveBeenCalledTimes(1);
-    expect(controller.peekQueuedNavigation()).toBeNull();
-  } finally {
-    await act(async () => tree?.unmount());
-    raf.mockRestore();
+    function render(focused = true) {
+      return (
+        <IncomingGroupsContext.Provider value={incomingGroups}>
+          <ChoreographyContextProvider value={ctx}>
+            <Caller screenId="first-route" />
+            <Caller screenId="second-route" focused={focused} />
+          </ChoreographyContextProvider>
+        </IncomingGroupsContext.Provider>
+      );
+    }
+    let tree!: RenderResult;
+    try {
+      tree = renderComponent(render(false));
+      const superseded = jest.fn();
+      await act(async () => {
+        await command.navigate({
+          ...request,
+          dispatchNavigation: superseded,
+          options: { transitionConfig: { group: 'old' } },
+        });
+        await command.navigate(request);
+      });
+      expect(incomingGroups.get('detail-instance')).toBeUndefined();
+      await act(async () => tree.rerender(render()));
+
+      await act(async () => tree.rerender(render(false)));
+      await act(async () => tree.rerender(render()));
+      while (frames.length) {
+        const frameBatch = frames.splice(0);
+        await act(async () => {
+          frameBatch.forEach((frame) => frame(0));
+        });
+      }
+      expect(superseded).not.toHaveBeenCalled();
+      expect(dispatchNavigation).toHaveBeenCalledTimes(1);
+      expect(incomingGroups.get('detail-instance')).toBe(
+        wrapped ? 'group' : undefined
+      );
+      expect(incomingGroups.get('Detail')).toBeUndefined();
+      expect(captureSourceGroup).toHaveBeenCalledWith('group', 'second-route');
+      expect(captureSourceGroup).toHaveBeenCalledTimes(1);
+      expect(controller.peekQueuedNavigation()).toBeNull();
+    } finally {
+      await act(async () => tree?.unmount());
+      raf.mockRestore();
+    }
   }
-});
+);
 
 test.each(['none', 'before-frame', 'after-frame'] as const)(
   'a tap queued during removal survives native settlement (%s)',
@@ -330,7 +354,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
           controller.beginOverlayHandoff('return');
           ctx.activeSession = null;
           ctx.overlayHandoffSessionId = 'return';
-          tree.update(render());
+          tree.rerender(render());
         }
       },
       isCurrent: () => ownership.isSession('return'),
@@ -366,15 +390,14 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
       return null;
     }
     const render = () => (
-      <ChoreographyContext.Provider value={{ ...ctx }}>
+      <ChoreographyContextProvider value={{ ...ctx }}>
         <Caller />
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(render());
-      });
+      tree = renderComponent(render());
+
       await act(async () =>
         navigation.navigate({
           targetScreenId: 'detail',
@@ -390,7 +413,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
       expect(controller.isNavigationLocked()).toBe(true);
       await act(async () => {
         ctx.interruptibleReturnSessionId = 'return';
-        tree.update(render());
+        tree.rerender(render());
       });
       const acknowledge = async () => {
         expect(dispatchNavigation).not.toHaveBeenCalled();
@@ -398,7 +421,7 @@ test.each(['none', 'before-frame', 'after-frame'] as const)(
         await act(async () => {
           controller.completeOverlayHandoff('return');
           ctx.overlayHandoffSessionId = null;
-          tree.update(render());
+          tree.rerender(render());
         });
       };
       if (acknowledgment === 'before-frame') await acknowledge();
@@ -468,15 +491,14 @@ describe('Back preparation ownership', () => {
       });
       return null;
     }
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={ctx}>
-            <Caller />
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContextProvider value={ctx}>
+          <Caller />
+        </ChoreographyContextProvider>
+      );
+
       await act(async () => navigation.goBack());
       expect(goBack).toHaveBeenCalledTimes(1);
       expect(progressOwnership.version).toBe(version);
@@ -535,14 +557,14 @@ describe('Back preparation ownership', () => {
         });
         return null;
       }
-      let tree!: ReactTestRenderer;
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={ctx}>
-            <Harness />
-          </ChoreographyContext.Provider>
-        );
-      });
+      let tree!: RenderResult;
+
+      tree = renderComponent(
+        <ChoreographyContextProvider value={ctx}>
+          <Harness />
+        </ChoreographyContextProvider>
+      );
+
       let pending!: Promise<void>;
       await act(async () => {
         pending = navigation.goBack();

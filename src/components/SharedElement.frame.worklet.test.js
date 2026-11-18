@@ -1,8 +1,9 @@
-const path = require('path');
-const vm = require('vm');
-const { transformFileSync } = require('@babel/core');
+const { loadWorkletModule, captures } = require('../../__fixtures__/worklets');
 const React = require('react');
-const { act, create } = require('react-test-renderer');
+const {
+  act,
+  render: renderComponent,
+} = require('@testing-library/react-native/pure');
 const {
   ChoreographyActionsContext,
   ChoreographyContext,
@@ -35,33 +36,10 @@ jest.mock('react-native-reanimated', () => ({
 
 // Compile the real component with Worklets: Reanimated subscribes to captured
 // shared values even when the updater returns early without reading them.
-const { code } = transformFileSync(
-  path.resolve(__dirname, 'SharedElement.tsx'),
-  {
-    configFile: false,
-    babelrc: false,
-    plugins: [
-      ['@babel/plugin-transform-typescript', { isTSX: true }],
-      ['@babel/plugin-transform-react-jsx', { runtime: 'automatic' }],
-      '@babel/plugin-transform-modules-commonjs',
-      'react-native-worklets/plugin',
-    ],
-  }
+const { SharedElement } = loadWorkletModule(
+  require.resolve('./SharedElement'),
+  require
 );
-const compiled = { exports: {} };
-vm.runInNewContext(code, {
-  require,
-  module: compiled,
-  exports: compiled.exports,
-  global: { Error },
-});
-const { SharedElement } = compiled.exports;
-
-function captures(value, input) {
-  if (value === input) return true;
-  if (!value || typeof value !== 'object') return false;
-  return Object.values(value).some((child) => captures(child, input));
-}
 
 test('only paired frames subscribe to progress among 300 mounted owners', async () => {
   const progress = { value: 0 };
@@ -116,14 +94,15 @@ test('only paired frames subscribe to progress among 300 mounted owners', async 
     presentations.filter((p) => captures(p.frame.closure, progress));
   let tree;
   try {
-    await act(async () => {
-      tree = create(render(null));
-    });
+    tree = renderComponent(render(null));
+
     expect(subscribed()).toHaveLength(0);
-    await act(async () => tree.update(render(session)));
+    await act(async () => tree.rerender(render(session)));
     expect(subscribed()).toEqual([presentations[0]]);
     expect(presentations[0].frame.value).toEqual({ width: 100, height: 50 });
-    await act(async () => tree.update(render({ ...session, state: 'active' })));
+    await act(async () =>
+      tree.rerender(render({ ...session, state: 'active' }))
+    );
     expect(subscribed()).toEqual([presentations[0]]);
     renderContent.mockClear();
     for (const [value, width, height] of [
@@ -135,11 +114,13 @@ test('only paired frames subscribe to progress among 300 mounted owners', async 
       expect(presentations[0].frame.value).toEqual({ width, height });
     }
     expect(renderContent).not.toHaveBeenCalled();
-    await act(async () => tree.update(render(null)));
+    await act(async () => tree.rerender(render(null)));
     expect(subscribed()).toHaveLength(0);
     expect(presentations.every((p) => p.frame.value === null)).toBe(true);
     await act(async () =>
-      tree.update(render({ ...session, state: 'active', reducedMotion: true }))
+      tree.rerender(
+        render({ ...session, state: 'active', reducedMotion: true })
+      )
     );
     expect(subscribed()).toHaveLength(0);
   } finally {

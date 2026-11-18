@@ -1,5 +1,5 @@
 import { useLocalSearchParams } from 'expo-router';
-import { JournalDetailScreen } from '../../../../shared/journal/JournalScreens';
+import { JournalDetailScreen } from '@screen-choreography/example-shared/journal';
 import { withExampleScreen } from '../../ExampleScreen';
 
 function JournalDetailRoute() {

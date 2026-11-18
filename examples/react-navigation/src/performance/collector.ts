@@ -75,7 +75,9 @@ const MAX_SAMPLES = 4096;
 const MAX_JOURNEYS = 200;
 
 /** No bridge calls or React state updates occur while collecting observations. */
-export class BenchmarkCollector {
+export class BenchmarkCollector<
+  S extends PerformanceScenario = PerformanceScenario,
+> {
   private samples: BenchmarkSample[] = [];
   private journeys: JourneyObservation[] = [];
   private errors: string[] = [];
@@ -86,10 +88,11 @@ export class BenchmarkCollector {
   private payloadUnmounts = 0;
   private current: JourneyObservation | null = null;
   private observedRenderComponents = new Set<RenderComponent>();
+  private readonly sampleLimit: number;
 
   constructor(
     readonly runId: string,
-    readonly scenario: PerformanceScenario,
+    readonly scenario: S,
     private readonly now: () => number,
     private readonly options: {
       preparationTracing?: boolean;
@@ -97,7 +100,9 @@ export class BenchmarkCollector {
       motionTracing?: boolean;
       presentationTracing?: boolean;
     } = {}
-  ) {}
+  ) {
+    this.sampleLimit = scenario.startsWith('tray-') ? 16384 : MAX_SAMPLES;
+  }
 
   private timestamp() {
     const value = this.now();
@@ -108,7 +113,9 @@ export class BenchmarkCollector {
   }
 
   note(kind: string, fields: Record<string, unknown> = {}) {
-    this.record(kind, this.timestamp(), fields);
+    const at = this.timestamp();
+    this.record(kind, at, fields);
+    return at;
   }
 
   private record(
@@ -116,7 +123,7 @@ export class BenchmarkCollector {
     timestamp: number,
     fields: Record<string, unknown> = {}
   ) {
-    if (this.samples.length >= MAX_SAMPLES) {
+    if (this.samples.length >= this.sampleLimit) {
       this.droppedSamples += 1;
       return;
     }
@@ -264,6 +271,7 @@ export class BenchmarkCollector {
         journey.sessionId !== null && journey.sessionId === trace.sessionId
     );
     if (!request || request.direction !== trace.direction) {
+      this.note('unmatched-preparation-trace', { trace });
       this.fail('preparation-trace-without-matching-session');
       return;
     }
@@ -424,7 +432,12 @@ export class BenchmarkCollector {
       errors.push('missing-presentation-timing');
     if (this.options.renderCounting && this.observedRenderComponents.size !== 3)
       errors.push('missing-render-observations');
-    if (this.payloadMounts !== 1 || this.payloadUnmounts !== 0) {
+    const tray = this.scenario.startsWith('tray-');
+    const expectedMounts = tray ? this.journeys.length / 2 : 1;
+    if (
+      this.payloadMounts !== expectedMounts ||
+      this.payloadUnmounts !== (tray ? expectedMounts : 0)
+    ) {
       errors.push('live-payload-owner-not-retained');
     }
     return {

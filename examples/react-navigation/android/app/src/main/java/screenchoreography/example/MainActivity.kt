@@ -61,22 +61,14 @@ class MainActivity : ReactActivity() {
     return super.dispatchTouchEvent(event)
   }
 
-  /**
-   * Returns the name of the main component registered from JavaScript. This is used to schedule
-   * rendering of the component.
-   */
   override fun getMainComponentName(): String = "ScreenChoreographyExample"
 
-  /**
-   * Returns the instance of the [ReactActivityDelegate]. We use [DefaultReactActivityDelegate]
-   * which allows you to enable New Architecture with a single boolean flags [fabricEnabled]
-   */
   override fun createReactActivityDelegate(): ReactActivityDelegate =
       object : DefaultReactActivityDelegate(this, mainComponentName, fabricEnabled) {
         override fun getLaunchOptions(): Bundle? {
           if (!BuildConfig.PERFORMANCE_BENCHMARK) return null
           val scenario = intent.getStringExtra("performanceScenario")
-          if (scenario !in listOf("gallery", "trips", "wallet")) return null
+          if (scenario !in listOf("gallery", "trips", "wallet", "tray-wallet", "tray-gallery")) return null
           return Bundle().apply {
             putString("performanceScenario", scenario)
           }

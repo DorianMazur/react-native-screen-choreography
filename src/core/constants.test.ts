@@ -3,10 +3,8 @@ import { FAST_SPRING, resolveSpringConfig } from './constants';
 it('preserves a duration spring without adding physics-only defaults', () => {
   const spring = { duration: 2000, dampingRatio: 1 };
   const result = resolveSpringConfig(spring);
-  expect(result).toEqual(spring);
+  expect(result).toStrictEqual(spring);
   expect(result).not.toBe(spring);
-  expect(result).not.toHaveProperty('stiffness');
-  expect(result).not.toHaveProperty('damping');
 });
 
 it('also supports a damping-ratio spring using Reanimated’s default duration', () => {

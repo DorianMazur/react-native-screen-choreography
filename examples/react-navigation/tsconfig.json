@@ -12,11 +12,6 @@
     },
     "types": ["jest", "node"]
   },
-  "include": [
-    "src/**/*.ts",
-    "src/**/*.tsx",
-    "../shared/**/*.ts",
-    "../shared/**/*.tsx"
-  ],
+  "include": ["src/**/*.ts", "src/**/*.tsx"],
   "exclude": ["node_modules", "ios/Pods"]
 }

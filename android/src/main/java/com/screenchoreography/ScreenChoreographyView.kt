@@ -258,8 +258,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
       acknowledgeAttachmentIfReady()
       if (!attachmentAcknowledged && SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
     }
-    // Never paint a partially populated renderer: hosts are attached empty and
-    // receive their content in a later commit.
+    // Gate the first draw on every host's content so partial transfers never paint.
     if (prepared && active && !presentationAcknowledged && !transitionHostsAreReady(true)) {
       if (SystemClock.uptimeMillis() < attachmentDeadline) postInvalidateOnAnimation()
       return
@@ -347,12 +346,8 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
 
     presentationRequestId += 1
     pendingPresentationSessionId = sessionId
-    // Deterministic path: ack from the first dispatchDraw after activation,
-    // so the JS handshake observes a frame that actually painted the overlay.
     pendingPresentationAck = true
     invalidate()
-
-    // If drawing is delayed, the provider's one-second timeout is the safety net.
   }
 
   private fun transitionHostsAreReady(requireContent: Boolean): Boolean {

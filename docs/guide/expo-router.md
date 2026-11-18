@@ -14,21 +14,21 @@ Use a native development build and complete [installation](./installation.md#exp
 ```tsx
 // src/app/_layout.tsx
 import { Stack } from 'expo-router';
-import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
+import {
+  ChoreographyProvider,
+  choreographyScreenLayout,
+  choreographyStackOptions,
+} from 'react-native-screen-choreography/expo-router';
 
 export default function RootLayout() {
   return (
     <ChoreographyProvider>
-      <Stack screenOptions={{ headerShown: false, animation: 'none' }}>
+      <Stack
+        screenOptions={{ headerShown: false }}
+        screenLayout={choreographyScreenLayout}
+      >
         <Stack.Screen name="index" />
-        <Stack.Screen
-          name="artwork/[id]"
-          options={{
-            presentation: 'containedTransparentModal',
-            contentStyle: { backgroundColor: 'transparent' },
-            gestureEnabled: false,
-          }}
-        />
+        <Stack.Screen name="artwork/[id]" options={choreographyStackOptions} />
       </Stack>
     </ChoreographyProvider>
   );
@@ -39,47 +39,42 @@ The detail route uses a transparent native presentation so the overlay can remai
 
 ## Declare the source owner
 
-This small example uses the default bounds transition. Both endpoints use the same element ID and a group derived from the selected artwork.
+This small example uses the default bounds transition. The pressed owner supplies the group for its navigation request.
 
 ```tsx
 // src/app/index.tsx
 import { useRouter } from 'expo-router';
-import { Pressable, Text, View } from 'react-native';
+import { Text, View } from 'react-native';
 import {
-  ChoreographyScreen,
   SharedElement,
   useChoreographyRouter,
 } from 'react-native-screen-choreography/expo-router';
 
 export default function Collection() {
   const router = useRouter();
-  const { push } = useChoreographyRouter(router, 'Collection');
+  const { push } = useChoreographyRouter(router);
   const id = 'sunrise';
 
   return (
-    <ChoreographyScreen screenId="Collection">
-      <View style={{ flex: 1, padding: 24, paddingTop: 72 }}>
-        <Pressable
-          onPress={() => {
-            void push({
-              href: { pathname: '/artwork/[id]', params: { id } },
-              targetScreenId: 'ArtworkDetail',
-              transitionConfig: { group: `artwork.${id}` },
-            });
-          }}
-        >
-          <SharedElement
-            id="hero"
-            groupId={`artwork.${id}`}
-            style={{ height: 220 }}
-          >
-            <View style={{ flex: 1, backgroundColor: '#D4DFBC', padding: 24 }}>
-              <Text style={{ fontSize: 32 }}>Sunrise</Text>
-            </View>
-          </SharedElement>
-        </Pressable>
-      </View>
-    </ChoreographyScreen>
+    <View style={{ flex: 1, padding: 24, paddingTop: 72 }}>
+      <SharedElement.Pressable
+        id="hero"
+        groupId={`artwork.${id}`}
+        style={{ height: 220 }}
+        accessibilityRole="button"
+        accessibilityLabel="Open Sunrise artwork"
+        onPress={(options) =>
+          push({
+            href: { pathname: '/artwork/[id]', params: { id } },
+            ...options,
+          })
+        }
+      >
+        <View style={{ flex: 1, backgroundColor: '#D4DFBC', padding: 24 }}>
+          <Text style={{ fontSize: 32 }}>Sunrise</Text>
+        </View>
+      </SharedElement.Pressable>
+    </View>
   );
 }
 ```
@@ -88,47 +83,39 @@ export default function Collection() {
 
 ```tsx
 // src/app/artwork/[id].tsx
-import { useLocalSearchParams, useRouter } from 'expo-router';
+import { useRouter } from 'expo-router';
 import { Button, View } from 'react-native';
 import {
-  ChoreographyScreen,
   SharedElement,
   useChoreographyRouter,
 } from 'react-native-screen-choreography/expo-router';
 
 export default function ArtworkDetail() {
-  const { id } = useLocalSearchParams<{ id: string }>();
   const router = useRouter();
-  const { back } = useChoreographyRouter(router, 'ArtworkDetail');
+  const { back } = useChoreographyRouter(router);
 
   return (
-    <ChoreographyScreen screenId="ArtworkDetail">
-      <View
-        style={{
-          flex: 1,
-          backgroundColor: '#F5F2EC',
-          padding: 24,
-          paddingTop: 72,
+    <View
+      style={{
+        flex: 1,
+        backgroundColor: '#F5F2EC',
+        padding: 24,
+        paddingTop: 72,
+      }}
+    >
+      <Button
+        title="Back"
+        onPress={() => {
+          void back();
         }}
-      >
-        <Button
-          title="Back"
-          onPress={() => {
-            void back();
-          }}
-        />
-        <SharedElement.Target
-          id="hero"
-          groupId={`artwork.${id}`}
-          style={{ height: 380 }}
-        />
-      </View>
-    </ChoreographyScreen>
+      />
+      <SharedElement.Target id="hero" fromSource style={{ height: 380 }} />
+    </View>
   );
 }
 ```
 
-`targetScreenId` must match the destination wrapper's `screenId`. It identifies the screen for choreography; `href` identifies the URL to open. No additional transition parameters are needed in the URL.
+The root stack declares `artwork/[id]`, which exactly matches the request's pathname after the leading slash. For a concrete URL such as `/artwork/sunrise`, a nested layout, or a custom screen label, pass `targetScreenId` explicitly. Use the destination's route name or its explicit `screenId`. The group stays out of the URL.
 
 ## Push, navigate, and back
 

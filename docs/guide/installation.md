@@ -1,6 +1,6 @@
 ---
 title: Installation
-description: Install Screen Choreography for React Navigation or an Expo Router development build.
+description: Install Screen Choreography for React Navigation, Expo Router, or independent dynamic trays.
 ---
 
 # Installation
@@ -18,7 +18,7 @@ These are the package's declared peer ranges, not a guarantee that every combina
 | Reanimated                             | `>= 4`                                   |
 | React Native Worklets                  | `>= 0.8`                                 |
 | React Native Teleport                  | `>= 1.2.2`                               |
-| React Navigation native + native stack | `>= 6`, when using that integration      |
+| React Navigation native + native stack | `>= 7`, when using that integration      |
 | Expo Router                            | `>= 56.1.1`, when using that integration |
 
 The bare example uses **React Native 0.83**; the Expo Router example uses **Expo SDK 57** (React Native 0.86.3). Both use React 19 and Reanimated 4. Check the [Reanimated compatibility table](https://docs.swmansion.com/react-native-reanimated/docs/guides/compatibility/) when selecting versions for an existing app.
@@ -84,12 +84,68 @@ npx expo run:ios
 
 Continue to the [Expo Router guide](./expo-router.md).
 
-## Choose one integration entry
+## Dynamic trays without a router
+
+Trays manage their own screen stack. An app using only trays does not need React Navigation or Expo Router:
+
+```bash
+npm install react-native-screen-choreography
+npm install react-native-reanimated react-native-worklets react-native-teleport
+npm install @swmansion/react-native-bottom-sheet@0.16.2 react-native-keyboard-controller@^1.22.7
+```
+
+For a bare React Native app, add `react-native-worklets/plugin` last in your Babel plugins as shown above, install iOS pods, and rebuild. For Expo, preserve `babel-preset-expo`, use `npx expo install` for Reanimated and Worklets, and create a development build. Expo Go is not supported.
+
+Wrap your tray provider in `KeyboardProvider` from `react-native-keyboard-controller`. The [dynamic tray guide](./dynamic-trays.md) shows the complete setup. Its example also uses `react-native-safe-area-context` to supply insets; install that package if your app does not already use it. The tray manages its own bottom-sheet provider.
+
+The sheet and keyboard packages are optional peers required only by `/tray`. Apps using other entries without trays do not need them.
+
+## Choose an entry
 
 | Import path                                    | Use it for                                                          |
 | ---------------------------------------------- | ------------------------------------------------------------------- |
 | `react-native-screen-choreography`             | React Navigation screens and hooks                                  |
 | `react-native-screen-choreography/expo-router` | Expo Router screens and hooks                                       |
 | `react-native-screen-choreography/core`        | Shared, navigator-independent components and transition definitions |
+| `react-native-screen-choreography/tray`        | Independent dynamic trays and their typed screen stacks             |
 
 Both integration entries re-export the shared API. Keep `ChoreographyScreen` and navigation hooks on the entry matching your router. The `/core` entry does not include a screen wrapper or navigation adapter.
+
+Use `/tray` for tray components and hooks, and `/core` for shared elements inside trays. Neither entry requires a navigation library. Trays can also run alongside either navigation integration.
+
+## Jest setup
+
+Use the packaged mocks for component tests that do not need native transitions. Add the matching entries to your Jest setup file:
+
+```js
+// jest.setup.js
+jest.mock('react-native-screen-choreography', () =>
+  require('react-native-screen-choreography/mock')
+);
+
+// Include these when your app imports the corresponding subpaths.
+jest.mock('react-native-screen-choreography/core', () =>
+  require('react-native-screen-choreography/mock/core')
+);
+jest.mock('react-native-screen-choreography/expo-router', () =>
+  require('react-native-screen-choreography/mock/expo-router')
+);
+jest.mock('react-native-screen-choreography/tray', () =>
+  require('react-native-screen-choreography/mock/tray')
+);
+```
+
+Register that file in your existing Jest configuration:
+
+```js
+module.exports = {
+  preset: 'react-native',
+  setupFilesAfterEnv: ['<rootDir>/jest.setup.js'],
+};
+```
+
+The mocks render shared owners in place and show companion content immediately. Progress reports an idle session. `useSharedElementPresentation` reports null metrics and a collapsed owner or expanded target. Navigation commands forward to the navigator or router you pass in, without transition options. Interactive `beginBack()` resolves to `null`, and gesture lifecycle callbacks are inactive.
+
+The tray mock renders declared screens in place. You can present a tray, navigate its stack, and assert on screen content and `useTrayState` in the same test. Transitions settle immediately and `useKeyboard()` reports a hidden keyboard.
+
+These CommonJS entries load only React and React Native. Keep any mocks required by your application's own Reanimated, router, or other native imports. Use device tests to verify layout capture, portal handoff, gestures, and animation timing.

@@ -19,16 +19,23 @@ import type {
   NodeHandleRef,
 } from '../types';
 import type { ElementRegistry } from './ElementRegistry';
-import { debugLog, debugTrace, debugWarn } from '../debug/logger';
+import {
+  debugLog,
+  debugTrace,
+  debugWarn,
+  isDebugEnabled,
+} from '../debug/logger';
 
 let sessionCounter = 0;
 
-function nowMs(): number {
-  return Date.now();
+function nowMs(): number | undefined {
+  return isDebugEnabled() ? Date.now() : undefined;
 }
 
-function elapsedMs(startedAt: number): string {
-  return `${Date.now() - startedAt}ms`;
+function elapsedMs(startedAt: number | undefined): string {
+  return startedAt !== undefined && isDebugEnabled()
+    ? `${Date.now() - startedAt}ms`
+    : 'unmeasured';
 }
 
 type SourceCapture = {
@@ -343,7 +350,14 @@ export class TransitionCoordinator {
       if (readyCount > 0 && readyCount === requiredIds.length) {
         return true;
       }
-      return !requireAll && readyCount > 0;
+      // A ready screen may intentionally share only part of the source group.
+      // Its absent elements are not pending registrations. Keep the bounded
+      // wait when no matching target exists yet (or readiness is unknown).
+      return (
+        readyCount > 0 &&
+        (!requireAll ||
+          this.nativeReadiness?.isScreenReady(targetScreenId) === true)
+      );
     };
 
     if (isSatisfied()) {
@@ -353,8 +367,6 @@ export class TransitionCoordinator {
       return undefined;
     }
 
-    // Event-driven: resolve as soon as the registry mutation that satisfies
-    // the predicate lands, instead of polling on a 16ms timer.
     return new Promise<void>((resolve) => {
       let settled = false;
       let unsubscribe = () => {};
@@ -533,7 +545,7 @@ export class TransitionCoordinator {
     }));
     const endCaptureStage = config.trace?.start('fabric-mounted-capture');
     let captureEnded = false;
-    const endCapture = (details: { ready: boolean }) => {
+    const endCapture = (details: Record<string, string | number | boolean>) => {
       if (captureEnded) return;
       captureEnded = true;
       endCaptureStage?.(details);
@@ -542,6 +554,9 @@ export class TransitionCoordinator {
       entries,
       isCurrent,
       cancellers: this.preparationCancellers,
+      onFailure: config.trace
+        ? (details) => endCapture({ ...details, ready: false })
+        : undefined,
     });
     const snapshot = this.normalizeLayout(
       capture instanceof Promise ? await capture : capture,
@@ -574,8 +589,7 @@ export class TransitionCoordinator {
       }
       const endpoint = direction === 'forward' ? 1 : 0;
       this.progress.value = config.reducedMotion ? endpoint : 1 - endpoint;
-      // Content moves only in the commit that activates the session, after the
-      // overlay hosts are attached; preparing renders empty, hidden hosts.
+      // Attachment-gated hosts must mount empty before content can move into them.
       const gated =
         !config.reducedMotion &&
         (typeof this.nativeReadiness?.waitsForAttachment === 'function'

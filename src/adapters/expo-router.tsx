@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useIsFocused, useNavigation, useRoute } from 'expo-router';
+import { useIsFocused, useNavigation, useRoute, useSitemap } from 'expo-router';
 import { usePreventRemove } from 'expo-router/react-navigation';
 import {
   ChoreographyScreenBase,
@@ -16,6 +16,7 @@ import {
 import { useChoreographyNavigator } from '../hooks/useChoreographyNavigation';
 import { useChoreographyScreenRemoval } from '../hooks/useChoreographyScreenRemoval';
 import { useInteractiveTransitionNavigator } from '../hooks/useInteractiveTransition';
+import { useStableCallback } from '../hooks/useStableCallback';
 import type { ChoreographyNavigateOptions } from '../types';
 
 export interface ExpoRouterLike<Href> {
@@ -26,8 +27,8 @@ export interface ExpoRouterLike<Href> {
 
 export type ChoreographyRouterRequest<Href> = ChoreographyNavigateOptions & {
   href: Href;
-  /** Must match the destination ChoreographyScreen's screenId. */
-  targetScreenId: string;
+  /** Required unless href names a file directly in the root stack. */
+  targetScreenId?: string;
 };
 
 /**
@@ -36,13 +37,15 @@ export type ChoreographyRouterRequest<Href> = ChoreographyNavigateOptions & {
  */
 export function useChoreographyRouter<Href>(
   router: ExpoRouterLike<Href>,
-  currentScreenId: string
+  currentScreenId?: string
 ) {
   const isFocused = useIsFocused();
   const route = useRoute();
   const navigation = useNavigation();
+  const rootNavigation = useNavigation('/');
+  const sitemap = useSitemap();
   const choreography = useChoreographyNavigator({
-    currentScreenId: route.key ?? currentScreenId,
+    currentScreenId: route.key ?? currentScreenId ?? route.name,
     currentRouteKey: route.key,
     isFocused,
     goBack: createBackCommit(
@@ -52,35 +55,62 @@ export function useChoreographyRouter<Href>(
     ),
   });
 
-  const push = useCallback(
-    (request: ChoreographyRouterRequest<Href>) => {
-      const { href, targetScreenId, ...options } = request;
-      return choreography.navigate({
-        targetScreenId,
-        options,
-        dispatchNavigation: () => router.push(href),
-        resolveTargetScreenId: () =>
-          waitForNavigationTarget(navigation, route.key),
-      });
-    },
-    [choreography, navigation, route.key, router]
-  );
+  function inferRootScreenName(href: Href): string | undefined {
+    if (navigation !== rootNavigation) return;
+    const pathname =
+      href && typeof href === 'object' && 'pathname' in href
+        ? href.pathname
+        : href;
+    if (typeof pathname !== 'string' || !pathname.startsWith('/')) return;
+    const name = pathname.slice(1) || 'index';
+    const state = navigation.getState();
+    if (state?.type !== 'stack' || !state.routeNames.includes(name)) return;
+    // A nested layout can itself have a matching name in the root stack.
+    const isFile = sitemap?.children.some(
+      (file) =>
+        file.children.length === 0 &&
+        file.filename.replace(
+          /(?:\.(?:ios|android|native|web))?\.[jt]sx?$/,
+          ''
+        ) === name
+    );
+    return isFile ? name : undefined;
+  }
 
-  const navigate = useCallback(
-    (request: ChoreographyRouterRequest<Href>) => {
-      const { href, targetScreenId, ...options } = request;
-      return choreography.navigate({
-        targetScreenId,
-        options,
-        dispatchNavigation: () => router.navigate(href),
-        resolveTargetScreenId: () =>
-          waitForNavigationTarget(navigation, route.key),
-      });
-    },
-    [choreography, navigation, route.key, router]
-  );
+  function open(
+    method: 'push' | 'navigate',
+    request: ChoreographyRouterRequest<Href>
+  ) {
+    const { href, targetScreenId, ...options } = request;
+    const name = targetScreenId ?? inferRootScreenName(href);
+    if (name === undefined) {
+      return Promise.reject(
+        new Error(
+          'Pass targetScreenId for this href. Automatic screen identity requires an exact file route in the root Stack.'
+        )
+      );
+    }
+    return choreography.navigate({
+      targetScreenId: name,
+      options,
+      dispatchNavigation: () => router[method](href),
+      resolveTargetScreenId: () =>
+        targetScreenId !== undefined
+          ? waitForNavigationTarget(navigation, route.key)
+          : waitForNavigationTarget(navigation, route.key, name),
+    });
+  }
 
-  return { push, navigate, back: choreography.goBack };
+  const push = useStableCallback((request: ChoreographyRouterRequest<Href>) =>
+    open('push', request)
+  );
+  const navigate = useStableCallback(
+    (request: ChoreographyRouterRequest<Href>) => open('navigate', request)
+  );
+  const back = useStableCallback(choreography.goBack);
+
+  const [commands] = useState(() => ({ push, navigate, back }));
+  return commands;
 }
 
 export function useInteractiveTransition() {
@@ -170,8 +200,15 @@ export function ChoreographyScreen(
   return (
     <ChoreographyScreenBase
       {...props}
+      screenId={props.screenId ?? route.name}
       instanceId={route.key}
       isFocused={isFocused}
     />
   );
+}
+
+export function choreographyScreenLayout({
+  children,
+}: Pick<ChoreographyScreenProps, 'children'>) {
+  return <ChoreographyScreen>{children}</ChoreographyScreen>;
 }

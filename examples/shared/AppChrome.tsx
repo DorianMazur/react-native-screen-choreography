@@ -111,7 +111,7 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     paddingHorizontal: 14,
-    paddingVertical: 6,
+    paddingVertical: 8,
   },
   title: {
     flex: 1,
@@ -119,6 +119,6 @@ const styles = StyleSheet.create({
     fontSize: 20,
     fontWeight: '600',
     color: theme.text,
-    marginLeft: 4,
+    marginLeft: 8,
   },
 });

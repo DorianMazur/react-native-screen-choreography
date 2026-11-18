@@ -10,7 +10,7 @@ import {
   type DemoScreenId,
   type DemoListScreenId,
   type DemoDetailDestination,
-} from '../../shared/runtime';
+} from '@screen-choreography/example-shared';
 
 const listRoutes = {
   GalleryList: '/gallery',

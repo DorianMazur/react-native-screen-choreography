@@ -1,6 +1,6 @@
 import { useLocalSearchParams } from 'expo-router';
 import { withExampleScreen } from '../../ExampleScreen';
-import { GalleryDetailScreen } from '../../../../shared/gallery/GalleryDetailScreen';
+import { GalleryDetailScreen } from '@screen-choreography/example-shared/gallery';
 
 function GalleryDetailRoute() {
   const { photoId } = useLocalSearchParams<{ photoId: string }>();

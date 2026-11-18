@@ -6,7 +6,10 @@ import {
   useInteractiveTransition,
   useChoreographyNavigation,
 } from 'react-native-screen-choreography';
-import { ExampleBindings, type DemoScreenId } from '../../shared/runtime';
+import {
+  ExampleBindings,
+  type DemoScreenId,
+} from '@screen-choreography/example-shared';
 
 export type ExampleStackParams = {
   Landing: undefined;

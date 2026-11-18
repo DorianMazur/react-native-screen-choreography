@@ -1,17 +1,24 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { withTiming } from 'react-native-reanimated';
 import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
+import { withTiming } from 'react-native-reanimated';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ScreenIdContext } from '../core/screenIdContext';
-import { useInteractiveTransitionNavigator } from './useInteractiveTransition';
 import type {
   InteractiveTransitionHandle,
   TransitionSessionData,
 } from '../types';
+
+const { loadWorkletModule, onUI } = require('../../__fixtures__/worklets');
+const { useInteractiveTransitionNavigator } = loadWorkletModule(
+  require.resolve('./useInteractiveTransition'),
+  require
+) as typeof import('./useInteractiveTransition');
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -37,7 +44,7 @@ function deferred<T>() {
 }
 
 describe('interactive ownership', () => {
-  let tree: ReactTestRenderer;
+  let tree: RenderResult;
   let interactive: Interactive;
   let ctx: ChoreographyContextType;
   let navigateBack: jest.Mock;
@@ -49,11 +56,11 @@ describe('interactive ownership', () => {
 
   function render() {
     return (
-      <ChoreographyContext.Provider value={ctx}>
+      <ChoreographyContextProvider value={ctx}>
         <ScreenIdContext.Provider value="Detail">
           <Harness />
         </ScreenIdContext.Provider>
-      </ChoreographyContext.Provider>
+      </ChoreographyContextProvider>
     );
   }
 
@@ -71,6 +78,7 @@ describe('interactive ownership', () => {
     ctx.progressOwnership.setSession(id);
     ctx.navigationController.setActiveSession(session);
     ctx.activeSession = session;
+    tree.rerender(render());
     return session;
   }
 
@@ -120,9 +128,8 @@ describe('interactive ownership', () => {
         ctx.activeSession = null;
       }),
     } as unknown as ChoreographyContextType;
-    await act(async () => {
-      tree = create(render());
-    });
+
+    tree = renderComponent(render());
   });
 
   afterEach(async () => {
@@ -145,7 +152,7 @@ describe('interactive ownership', () => {
       undefined,
       true
     );
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     expect(await interactive.beginBack()).toBeNull();
     expect(ctx.captureSourceGroup).not.toHaveBeenCalled();
     expect(ctx.startTransition).not.toHaveBeenCalled();
@@ -183,7 +190,7 @@ describe('interactive ownership', () => {
   test('grabbing an opening preserves its progress, presentations and overlay identity', async () => {
     const opening = publishOpening();
     const previousOwner = ctx.progressOwnership.version;
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     await act(async () => {
       const handle = await interactive.beginBack();
       expect(handle?.id).toBe(opening.id);
@@ -204,10 +211,10 @@ describe('interactive ownership', () => {
 
   test('finishing an interrupted opening reverses the same session across unmount', async () => {
     publishOpening();
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     await act(async () => {
       const handle = await interactive.beginBack();
-      handle!.setProgress(0.6);
+      onUI(handle!.setProgress, ctx, ctx.progressOwnership)(0.6);
       handle!.finish({ duration: 100 });
       handle!.cancel();
       handle!.setProgress(0.9);
@@ -226,7 +233,7 @@ describe('interactive ownership', () => {
 
   test('cancelling an interrupted opening completes toward the detail screen', async () => {
     publishOpening();
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     await act(async () => {
       const handle = await interactive.beginBack();
       handle!.setProgress(0.6);
@@ -247,7 +254,7 @@ describe('interactive ownership', () => {
     async (options) => {
       const opening = publishOpening();
       const owner = ctx.progressOwnership.version;
-      await act(async () => tree.update(render()));
+      await act(async () => tree.rerender(render()));
       expect(await interactive.beginBack(options)).toBeNull();
       expect(ctx.progressOwnership.version).toBe(owner);
       expect(ctx.navigationController.getActiveSession()).toBe(opening);
@@ -260,7 +267,7 @@ describe('interactive ownership', () => {
     const ready = deferred<boolean>();
     const abort = new AbortController();
     ctx.waitForOverlayReady = jest.fn(() => ready.promise);
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     let pending!: ReturnType<Interactive['beginBack']>;
     await act(async () => {
       pending = interactive.beginBack({ signal: abort.signal });
@@ -299,7 +306,7 @@ describe('interactive ownership', () => {
           ready = resolve;
         })
     );
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     let pending!: ReturnType<Interactive['beginBack']>;
     await act(async () => {
       pending = interactive.beginBack();
@@ -394,7 +401,7 @@ describe('interactive ownership', () => {
       ...ctx,
       activeSession: { id: 'B' } as ChoreographyContextType['activeSession'],
     };
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     ctx.progress.value = 0.65;
     oldSetProgress(0.9);
     expect(ctx.progress.value).toBe(0.65);
@@ -408,7 +415,7 @@ describe('interactive ownership', () => {
           resolveMeasurement = resolve;
         })
     );
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     let preparation!: Promise<unknown>;
     await act(async () => {
       preparation = interactive.beginBack();
@@ -426,7 +433,7 @@ describe('interactive ownership', () => {
     await act(async () => {
       const handle = await interactive.beginBack();
       expect(handle).not.toBeNull();
-      previousSetProgress(0.6);
+      onUI(previousSetProgress, ctx, ctx.progressOwnership)(0.6);
       expect(ctx.progress.value).toBe(1);
       handle!.setProgress(0.6);
       expect(ctx.progress.value).toBeCloseTo(0.4);
@@ -453,7 +460,7 @@ describe('interactive ownership', () => {
       handle = (await interactive.beginBack())!;
     });
     publishSession('B');
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     const replacementToken = ctx.progressOwnership.version;
     ctx.progress.value = 0.65;
     await act(async () => {
@@ -496,7 +503,7 @@ describe('interactive ownership', () => {
           return true;
         });
       }
-      await act(async () => tree.update(render()));
+      await act(async () => tree.rerender(render()));
       let pending!: ReturnType<Interactive['beginBack']>;
       await act(async () => {
         pending = interactive.beginBack({ signal: controller.signal });
@@ -528,7 +535,7 @@ describe('interactive ownership', () => {
       .fn()
       .mockImplementationOnce(() => first.promise)
       .mockImplementationOnce(() => second.promise);
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     let oldRequest!: ReturnType<Interactive['beginBack']>;
     let newRequest!: ReturnType<Interactive['beginBack']>;
     await act(async () => {
@@ -561,7 +568,7 @@ describe('interactive ownership', () => {
         return session;
       })
       .mockImplementationOnce(async () => publishSession('B'));
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     let oldRequest!: ReturnType<Interactive['beginBack']>;
     let replacement!: InteractiveTransitionHandle;
     await act(async () => {
@@ -591,11 +598,11 @@ describe('interactive ownership', () => {
       handle = (await interactive.beginBack())!;
     });
     ctx.cancelTransition('A');
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     const gate = deferred<void>();
     ctx.captureSourceGroup = jest.fn(() => gate.promise);
     ctx.startTransition = jest.fn(async () => publishSession('B'));
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     let pending!: ReturnType<Interactive['beginBack']>;
     await act(async () => {
       pending = interactive.beginBack();
@@ -623,7 +630,7 @@ describe('interactive ownership', () => {
           throw error;
         });
       }
-      await act(async () => tree.update(render()));
+      await act(async () => tree.rerender(render()));
       await act(async () => {
         await expect(interactive.beginBack()).rejects.toBe(error);
       });
@@ -653,7 +660,7 @@ describe('interactive ownership', () => {
     const controller = new AbortController();
     const gate = deferred<boolean>();
     ctx.waitForOverlayReady = jest.fn(() => gate.promise);
-    await act(async () => tree.update(render()));
+    await act(async () => tree.rerender(render()));
     let pending!: ReturnType<Interactive['beginBack']>;
     await act(async () => {
       pending = interactive.beginBack({ signal: controller.signal });

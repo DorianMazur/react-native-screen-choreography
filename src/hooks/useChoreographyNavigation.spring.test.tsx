@@ -1,9 +1,11 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
-import { withSpring } from 'react-native-reanimated';
 import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
+import { withSpring } from 'react-native-reanimated';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { FAST_SPRING } from '../core/constants';
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
@@ -69,7 +71,7 @@ function createContext() {
   return context;
 }
 
-let tree: ReactTestRenderer | undefined;
+let tree: RenderResult | undefined;
 
 async function mount(context: ChoreographyContextType, screenId: string) {
   let navigation!: ReturnType<typeof useChoreographyNavigator>;
@@ -84,13 +86,13 @@ async function mount(context: ChoreographyContextType, screenId: string) {
     removal = useChoreographyScreenRemoval({ screenId });
     return null;
   }
-  await act(async () => {
-    tree = create(
-      <ChoreographyContext.Provider value={context}>
-        <Harness />
-      </ChoreographyContext.Provider>
-    );
-  });
+
+  tree = renderComponent(
+    <ChoreographyContextProvider value={context}>
+      <Harness />
+    </ChoreographyContextProvider>
+  );
+
   return { navigation, removal, goBack };
 }
 

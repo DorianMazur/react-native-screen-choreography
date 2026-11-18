@@ -51,6 +51,10 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
     view?.setForegroundLayer(foreground)
   }
 
+  // Android foreground content already belongs to the Activity's view hierarchy.
+  @ReactProp(name = "modal", defaultBoolean = false)
+  override fun setModal(view: ScreenChoreographyView?, modal: Boolean) = Unit
+
   // iOS routes hits around native-stack wrappers. Android uses its normal dispatch.
   @ReactProp(name = "inputTarget")
   override fun setInputTarget(view: ScreenChoreographyView?, inputTarget: String?) = Unit

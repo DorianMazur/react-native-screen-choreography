@@ -45,8 +45,11 @@ instances of the same logical screen label distinct. Latest-value refs provide
 current presentation metadata while registration remains stable. The provider separates lifecycle actions in
 `ChoreographyActionsContext` from active-session state in `ChoreographyContext`.
 
-Each owner selects its participating pair before a memoized presentation
-boundary. Unrelated elements, groups, and pending screens therefore do not
+Each owner selects its participating pair by its current resting screen before a
+memoized presentation boundary. A destination can therefore become the source
+of another transition while the original owner remains mounted. The selected
+session identity keeps the owner participating if that resting screen is removed
+during motion. Unrelated elements, groups, and pending screens therefore do not
 update that owner's retained presentation. Application prop changes and direct
 subscriptions to screen-wide progress still update normally. A participating
 pair can receive refreshed bounds. Settlement retargets its portal when the
@@ -78,7 +81,11 @@ protocol below.
 An owner remains settled at its destination only while that screen is mounted.
 A fallback Back completes its session on the returned screen. If the destination
 is removed through another route operation, its receiving host disappears and
-the owner returns home, collapsed.
+the owner returns to the previous surviving destination, or home if none remain.
+The destination history contains screen identities and frozen presentation data,
+never registrations or native refs; removal subscriptions discard departed
+hosts and reject stale callbacks. Collapsed/expanded state follows the latest
+participating pair rather than distance from the original owner.
 
 ### Destination-owned target content
 
@@ -139,7 +146,9 @@ When no source capture is available, preparation reads source and target
 together from one mounted root.
 
 Both transition directions wait for screen readiness and matching
-registrations, freeze presentations, and issue one native request. That request
+registrations, freeze presentations, and issue one native request. A ready
+destination can share a subset of the source group without waiting for absent
+elements; when no target matches yet, registration has a bounded wait. That request
 binds weak node-family identities and gathers geometry from completed mounts.
 JavaScript consumes the batch immediately when ready, or after a coalesced mount
 notification, within a one-second deadline. Ready endpoints can publish a
@@ -388,10 +397,25 @@ declarations during render; screens mount only when opened. Definitions must
 remain available while used by a live view or queued command.
 
 Software Mansion handles dragging, scrolling, the backdrop, and native sheet
-settlement. Reanimated handles page crossfades and card resizing. Content measures
-in a fixed destination viewport so intermediate animated heights cannot feed back
-into layout. Full-screen views use the available window and keep safe-area padding
-inside the card. Stack options control icons and resize motion.
+settlement. Reanimated handles page crossfades, optional full-screen slides, and card resizing during navigation.
+A settled compact page sizes the card directly through native layout. Transitioning
+and retained pages measure in fixed destination viewports so intermediate animated
+heights cannot feed back into layout. Each page's viewport and content anchor to
+the card's bottom through native layout by default; top anchoring places them
+below the header. Bottom alignment does not depend on estimated header heights or
+delayed page measurements. During navigation, the card resizes from the active
+page and header's measured heights. Each viewport
+wraps its page's Fabric capture root, preserving page-relative shared-element
+coordinates. The header stays above the moving content. Full-screen views use the
+available window and keep safe-area padding
+inside the card. Stack options control headers, handle visibility, and resize
+motion; screens can override the header and handle. The current and outgoing
+headers crossfade on the shared stack timeline. The outgoing instance remains
+mounted until settlement, with touch and accessibility disabled. The active
+header's local layout height sizes the card and content viewport, while
+retained entries keep their header height for page-origin mapping. Shared startup
+waits for the active custom header's layout. Header heights are released with their
+entries and never replace Fabric endpoint capture.
 
 Each presented tray owns an isolated choreography provider. A shared push captures
 its source before committing the destination. The coordinator captures each page
@@ -403,18 +427,48 @@ the pushed entry; retained pages are released after the shared host settles.
 On iOS, a transition host nested inside a foreground overlay presents above that
 owning overlay while unrelated foreground overlays retain their ordering.
 
+iOS trays stay in the anchor's window, so overlays added to that window later,
+such as toasts or a lock screen, still cover them. The tray layer owns a view
+controller that is never added to the controller hierarchy: UIKit menus and
+React Native modals find it, and it forwards each presentation to the topmost
+controller above the anchor, including when the tray opens above an existing
+native modal. Status bar, orientation and key window stay with the app. Android
+keeps the tray in its existing Activity view hierarchy.
+
 Each entry has one live React instance. Previous entries stay mounted for Back;
 popped or replaced entries remain until their transition finishes. Native sheet
-settlement releases the whole stack. Navigation requests run in order, dismissal
-clears pending requests, and reopening waits for closure. Session and transition
-IDs reject callbacks from earlier operations.
+settlement releases the whole stack. Pushes normally require an open, idle stack.
+During a transition, the incoming screen's first bound push waits for transition
+completion and any shared host handoff; later pushes are rejected. Other
+navigation requests can also wait for a transition. Dismissal clears pending requests,
+and reopening waits for closure. Session and transition IDs reject callbacks from
+earlier operations.
 
 Navigation actions use a stable context. The reducer runs in a provider-owned
 store; the provider subscribes to the stack, while `useTrayState` subscribes to
 selected public state. Screen content is memoized with its component, route, and
-actions; layout and transition state stay outside that boundary. Retained screens
-still receive local state, context, and subscribed
-store updates without changing their effect lifecycle.
+stable navigation factory; custom header content is memoized with its renderer and
+header props.
+The store records tray lifecycle and navigation events with their routes in dispatch order, and the provider
+delivers them after React commits. This preserves events when opening, closing,
+and queued reopening are batched. Each session records its first native open
+settlement separately from the requested detent, so a drag, content resize, or
+duplicate acknowledgement cannot repeat `onPresent`. Closing intent emits
+`onWillDismiss`; native closed settlement releases content and emits `onDismiss`.
+Layout, keyboard, and transition state stay outside these boundaries. Retained
+screens still receive local state, context, and subscribed store updates without
+changing their effect lifecycle.
+
+Each factory also supplies a stable route-key context around screen content and
+custom header components. Their navigation actions bind pushes to that key; the
+reducer atomically rejects pushes from an inactive source and duplicate requests.
+The bound key distinguishes an incoming screen's next action from stale callbacks
+in the outgoing screen. A deferred push is checked again when replayed.
+`useFocusEffect` selects whether that key matches the store's current route and
+uses a React effect to balance setup and cleanup.
+Focus therefore follows route changes during navigation, while dismissal retains
+focus until native settlement removes the screen. Provider boundaries reset the
+route scope, so nested providers cannot inherit an outer screen's identity.
 
 ## Diagnostics
 

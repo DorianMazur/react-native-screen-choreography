@@ -1,11 +1,28 @@
+import { isOnFocusedRoutePath, type NavigationRoute } from './focusedRoute';
+
 interface NavigationTargetSource {
   getState: () =>
     | {
         index?: number;
-        routes: readonly { key: string; name: string }[];
+        routeNames?: readonly string[];
+        routes: readonly (NavigationRoute & { key: string })[];
       }
     | undefined;
   addListener: (event: 'state', listener: () => void) => () => void;
+  getParent?: () => NavigationTargetSource | undefined;
+}
+
+// React Navigation bubbles a named action past navigators that don't own it.
+// Observe the state of the same navigator that can handle that action.
+function targetNavigator(
+  navigation: NavigationTargetSource,
+  name?: string
+): NavigationTargetSource {
+  if (!name) return navigation;
+  const names = navigation.getState()?.routeNames;
+  if (!names || names.includes(name)) return navigation;
+  const parent = navigation.getParent?.();
+  return parent ? targetNavigator(parent, name) : navigation;
 }
 
 export function waitForNavigationTarget(
@@ -13,6 +30,7 @@ export function waitForNavigationTarget(
   sourceRouteKey: string,
   targetRouteName?: string
 ): Promise<string | null> {
+  const owner = targetNavigator(navigation, targetRouteName);
   return new Promise((resolve) => {
     let settled = false;
     let unsubscribe = () => {};
@@ -24,18 +42,18 @@ export function waitForNavigationTarget(
       resolve(routeKey);
     };
     const check = () => {
-      const state = navigation.getState();
+      const state = owner.getState();
       const route = state?.routes[state.index ?? state.routes.length - 1];
       if (
         route &&
-        route.key !== sourceRouteKey &&
+        !isOnFocusedRoutePath(route, sourceRouteKey) &&
         (!targetRouteName || route.name === targetRouteName)
       ) {
         finish(route.key);
       }
     };
     const timeout = setTimeout(() => finish(null), 700);
-    unsubscribe = navigation.addListener('state', check);
+    unsubscribe = owner.addListener('state', check);
     check();
   });
 }

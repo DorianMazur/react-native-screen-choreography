@@ -145,15 +145,15 @@ const styles = StyleSheet.create({
   sectionTitle: {
     fontFamily: theme.font,
     color: theme.text,
-    fontSize: 16,
+    fontSize: 18,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 12,
   },
   body: {
     fontFamily: theme.font,
     color: theme.textSecondary,
     fontSize: 15,
-    lineHeight: 22,
+    lineHeight: 25,
   },
   exifRow: {
     flexDirection: 'row',
@@ -166,7 +166,7 @@ const styles = StyleSheet.create({
   exifLabel: {
     fontFamily: theme.font,
     color: theme.textSecondary,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '500',
     letterSpacing: 0,
     textTransform: 'uppercase',
@@ -188,8 +188,8 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     justifyContent: 'center',
     gap: 10,
-    backgroundColor: theme.accent,
-    borderRadius: theme.radius.sm,
+    backgroundColor: theme.gallery.accent,
+    borderRadius: theme.radius.md,
     paddingVertical: 14,
     alignItems: 'center',
   },

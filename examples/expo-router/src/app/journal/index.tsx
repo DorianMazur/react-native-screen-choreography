@@ -1,4 +1,4 @@
-import { JournalScreen } from '../../../../shared/journal/JournalScreens';
+import { JournalScreen } from '@screen-choreography/example-shared/journal';
 import { withExampleScreen } from '../../ExampleScreen';
 export default withExampleScreen('JournalList', JournalScreen, {
   keepVisible: true,

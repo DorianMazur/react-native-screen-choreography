@@ -1,8 +1,10 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
 import {
-  ChoreographyContext,
-  type ChoreographyContextType,
-} from '../core/ChoreographyContext';
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
+import type { ChoreographyContextType } from '../core/ChoreographyContext';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { useChoreographyNavigation } from './react-navigation';
 import { useChoreographyRouter } from './expo-router';
@@ -13,7 +15,10 @@ jest.mock('@react-navigation/native', () => ({
   useNavigation: () => ({}),
   usePreventRemove: jest.fn(),
 }));
-jest.mock('expo-router', () => jest.requireMock('@react-navigation/native'));
+jest.mock('expo-router', () => ({
+  ...jest.requireMock('@react-navigation/native'),
+  useSitemap: jest.fn(),
+}));
 jest.mock('expo-router/react-navigation', () => ({
   usePreventRemove: jest.fn(),
 }));
@@ -47,15 +52,14 @@ test.each(['react-navigation', 'expo-push', 'expo-navigate'] as const)(
             });
       return null;
     }
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyContext.Provider value={context}>
-            <Caller />
-          </ChoreographyContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyContextProvider value={context}>
+          <Caller />
+        </ChoreographyContextProvider>
+      );
+
       await act(async () => {
         expect(await navigate()).toBeUndefined();
       });

@@ -288,7 +288,7 @@ describe('runReverseTransition ownership', () => {
     async (interruption) => {
       jest.useFakeTimers();
       const { ctx, coordinator, registry } = createCoordinatorContext();
-      // Exercise a real registration wait; an empty group now falls back immediately.
+      // An empty group falls back immediately, so register a source to exercise the wait.
       registerPendingSource(registry, 'detail', 'group');
       registerPendingSource(registry, 'list', 'replacement');
       const popAction = jest.fn();

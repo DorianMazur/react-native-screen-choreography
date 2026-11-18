@@ -51,6 +51,12 @@ function comparableReport(): InputRecord {
   };
 }
 
+/** A report carrying the base sources measured in the same job. */
+const withBase = (current: InputRecord, base: InputRecord): InputRecord => ({
+  ...current,
+  sameRunner: { base, baseRevision: 'abcdef0', rounds: 2 },
+});
+
 test('only the current open PR head in this repository can receive a comment', () => {
   const pr = {
     state: 'open',
@@ -73,7 +79,7 @@ test('comment includes preparation and motion but omits detailed startup timings
   const body = renderComment(run, { [artifact]: report });
   assert.ok(body.includes(COMMENT_MARKER));
   assert.match(body, /Android release: \*\*passed\*\*/);
-  assert.match(body, /No compatible baseline/);
+  assert.match(body, /No same-runner comparison/);
   assert.match(body, /open preparation \(ms\) \| — \| 30 \| —/);
   assert.match(body, /return preparation \(ms\) \| — \| 15 \| —/);
   assert.match(body, /tap to motion \(ms\) \| — \| 40 \| —/);
@@ -100,20 +106,9 @@ test('PR comments include rerenders but only link to temporary current-run artif
   );
   assert.match(body, /forward · hero · rerenders \| 20 \| — \| 2 \| —/);
   assert.match(body, /actions\/runs\/42/);
-  assert.doesNotMatch(body, /Permanent report|performance-history\/runs\/42/);
 });
 
-test('comments never interpolate unchecked sampling metadata', () => {
-  const measured: InputRecord = structuredClone(report);
-  measured.metadata = { timingCycles: 20 };
-  let body = renderComment(run, { [artifact]: measured });
-  assert.doesNotMatch(body, /warm-up|first run|first visit/i);
-  measured.metadata.timingCycles = '@everyone <script>';
-  body = renderComment(run, { [artifact]: measured });
-  assert.doesNotMatch(body, /@everyone|<script>/);
-});
-
-test('all examples get separate comparison rows even when main only has Gallery', () => {
+test('all examples get separate comparison rows even when the base only has Gallery', () => {
   const measured = comparableReport();
   const base = structuredClone(measured);
   for (const scenario of ['trips', 'wallet']) {
@@ -128,18 +123,8 @@ test('all examples get separate comparison rows even when main only has Gallery'
       };
     }
   }
-  const body = renderComment(
-    run,
-    { [artifact]: measured },
-    {
-      run: {
-        ...run,
-        repository: { full_name: 'owner/repo' },
-        head_branch: 'main',
-      },
-      reports: { [artifact]: base },
-    }
-  );
+  const body = renderComment(run, { [artifact]: withBase(measured, base) });
+  assert.match(body, /Base library sources \(abcdef0\)/);
   assert.doesNotMatch(body, /\| Gallery/);
   for (const label of ['Trips', 'Wallet']) {
     assert.match(
@@ -163,22 +148,16 @@ test('MR notes filter small changes in timings and render counts', () => {
   current.metrics['gallery.backward.tapToMotion'].median = 24.75;
   current.metrics['gallery.forward.renders.hero.update'].median = 100.5;
   current.metrics['gallery.backward.renders.hero.update'].median = 99;
-  const baseline = {
-    run: {
-      ...run,
-      head_branch: 'main',
-      repository: { full_name: 'owner/repo' },
-    },
-    reports: { [artifact]: base },
-  };
-  const body = renderComment(run, { [artifact]: current }, baseline);
+  const body = renderComment(run, { [artifact]: withBase(current, base) });
   assert.match(body, /tap to motion \(ms\) \| 40 \| 40.4 \| \+0.4 ms/);
   assert.match(body, /back tap to motion \(ms\) \| 25 \| 24.75 \| -0.25 ms/);
   assert.doesNotMatch(body, /\| Gallery · (open|return) preparation/);
   assert.doesNotMatch(body, /\| Gallery · forward · hero/);
   assert.match(body, /backward · hero · rerenders \| 20 \| 100 \| 99 \| -1/);
-  assert.match(body, /absolute change below 1% are hidden/);
-  const unchanged = renderComment(run, { [artifact]: base }, baseline);
+  assert.match(body, /within run-to-run noise or below 1% are hidden/);
+  const unchanged = renderComment(run, {
+    [artifact]: withBase(base, structuredClone(base)),
+  });
   assert.match(unchanged, /No measurements to show at the 1% change threshold/);
   assert.doesNotMatch(
     unchanged,

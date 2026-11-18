@@ -68,7 +68,8 @@ private class ChoreographyBenchmarkModule(context: ReactApplicationContext) : Re
       run.put("runId", exportId)
       BenchmarkRecorder.appendTo(run)
       file.writeText(run.toString(2))
-      BenchmarkRecorder.reset()
+      // A failed fixture can export before instrumentation saves diagnostics.
+      // Keep the full run for that re-export; MainActivity resets on launch.
       promise.resolve(file.absolutePath)
     } catch (error: Exception) {
       promise.reject("BENCHMARK_EXPORT_FAILED", error)

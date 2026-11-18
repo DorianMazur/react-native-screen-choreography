@@ -1,6 +1,11 @@
 import { useEffect } from 'react';
 import { Platform, StyleSheet, View, type ViewStyle } from 'react-native';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  fireEvent,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import type {
   ElementTransitionPair,
   Transition,
@@ -15,6 +20,8 @@ import {
   type ChoreographyContextType,
 } from '../core/ChoreographyContext';
 import { ScreenIdContext } from '../core/screenIdContext';
+import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
+import { defineTransition } from '../transitions/defineTransition';
 import { makeTransition } from '../transitions/makeTransition';
 import { SharedElement } from './SharedElement';
 import { createNativePresentation } from '../core/nativePresentation';
@@ -126,28 +133,23 @@ function choreography(
 
 describe('SharedElement live endpoints', () => {
   test.each(
-    (['ios', 'android'] as const).flatMap((platform) =>
-      (
-        [
-          { direction: 'forward', retained: false },
-          { direction: 'backward', retained: false },
-          { direction: 'backward', retained: true },
-        ] as const
-      ).flatMap((scenario) =>
-        (['present', 'cancel', 'fail'] as const).map((outcome) => ({
-          platform,
-          ...scenario,
-          outcome,
-        }))
-      )
+    (
+      [
+        { direction: 'forward', retained: false },
+        { direction: 'backward', retained: false },
+        { direction: 'backward', retained: true },
+      ] as const
+    ).flatMap((scenario) =>
+      (['present', 'cancel', 'fail'] as const).map((outcome) => ({
+        ...scenario,
+        outcome,
+      }))
     )
   )(
-    'moves $platform $direction content only in the activating commit (retained: $retained, $outcome)',
-    async ({ platform, direction, retained, outcome }) => {
-      const originalOS = Platform.OS;
-      Platform.OS = platform;
+    'moves $direction content only in the activating commit (retained: $retained, $outcome)',
+    async ({ direction, retained, outcome }) => {
       const state = makeContexts();
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       let presentation!: SharedElementPresentation;
       const mounted = jest.fn();
       function Content() {
@@ -167,20 +169,19 @@ describe('SharedElement live endpoints', () => {
         </ChoreographyActionsContext.Provider>
       );
       const update = async (active: TransitionSessionData | null) => {
-        await act(async () => tree.update(render(active)));
+        await act(async () => tree.rerender(render(active)));
       };
-      const host = () => tree.root.findByType(Portal).props.hostName;
+      const host = () => tree.UNSAFE_root.findByType(Portal).props.hostName;
       const ownerInput = () =>
-        tree.root.findByType(Portal).parent!.props.pointerEvents;
+        tree.UNSAFE_root.findByType(Portal).parent!.props.pointerEvents;
       const detailHost = getLiveDestinationHostName(
         'detail',
         'player',
         'media'
       );
       try {
-        await act(async () => {
-          tree = create(render(null));
-        });
+        tree = renderComponent(render(null));
+
         if (retained) {
           await update(session('list', 'detail'));
           state.settle('detail');
@@ -234,7 +235,6 @@ describe('SharedElement live endpoints', () => {
         expect(state.actions.unregisterElement).not.toHaveBeenCalled();
       } finally {
         await act(async () => tree?.unmount());
-        Platform.OS = originalOS;
       }
     }
   );
@@ -242,7 +242,7 @@ describe('SharedElement live endpoints', () => {
   test('reduced motion transfers the same content directly to each endpoint, including rejected Back', async () => {
     const state = makeContexts();
     let presentation!: SharedElementPresentation;
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     const mounted = jest.fn();
     function Content() {
       useEffect(mounted, []);
@@ -261,14 +261,13 @@ describe('SharedElement live endpoints', () => {
       </ChoreographyActionsContext.Provider>
     );
     const update = async (active: TransitionSessionData | null) => {
-      await act(async () => tree.update(render(active)));
+      await act(async () => tree.rerender(render(active)));
     };
     try {
-      await act(async () => {
-        tree = create(render(null));
-      });
+      tree = renderComponent(render(null));
+
       await update({ ...session('list', 'detail'), reducedMotion: true });
-      const destination = tree.root.findByType(Portal).props.hostName;
+      const destination = tree.UNSAFE_root.findByType(Portal).props.hostName;
       expect(destination).toContain('destination');
       expect(presentation.presentationProgress.value).toBe(1);
       expect(presentation.transitioning).toBe(false);
@@ -276,17 +275,23 @@ describe('SharedElement live endpoints', () => {
       expect(presentation.frame.value).toBeNull();
       state.settle('detail');
       await update(null);
-      expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+      expect(tree.UNSAFE_root.findByType(Portal).props.hostName).toBe(
+        destination
+      );
 
       await update({
         ...session('detail', 'list', 'backward'),
         reducedMotion: true,
       });
-      expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
+      expect(
+        tree.UNSAFE_root.findByType(Portal).props.hostName
+      ).toBeUndefined();
       expect(presentation.presentationProgress.value).toBe(0);
       state.settle('detail');
       await update(null);
-      expect(tree.root.findByType(Portal).props.hostName).toBe(destination);
+      expect(tree.UNSAFE_root.findByType(Portal).props.hostName).toBe(
+        destination
+      );
       expect(presentation.presentationProgress.value).toBe(1);
 
       await update({
@@ -295,7 +300,9 @@ describe('SharedElement live endpoints', () => {
       });
       state.settle('list');
       await update(null);
-      expect(tree.root.findByType(Portal).props.hostName).toBeUndefined();
+      expect(
+        tree.UNSAFE_root.findByType(Portal).props.hostName
+      ).toBeUndefined();
       expect(presentation.presentationProgress.value).toBe(0);
       expect(mounted).toHaveBeenCalledTimes(1);
       expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
@@ -304,6 +311,216 @@ describe('SharedElement live endpoints', () => {
       await act(async () => tree?.unmount());
     }
   });
+
+  test.each([false, true])(
+    'carries one owner through three screens and repeated Back (reduced motion: %s)',
+    async (reducedMotion) => {
+      const state = makeContexts();
+      let tree!: RenderResult;
+      let presentation!: SharedElementPresentation;
+      const mounted = jest.fn();
+      function Content() {
+        useEffect(mounted, []);
+        presentation = useSharedElementPresentation();
+        return null;
+      }
+      const render = (activeSession: TransitionSessionData | null) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(activeSession)}>
+            <ScreenIdContext.Provider value="list">
+              <SharedElement id="player" groupId="media">
+                <Content />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const host = () => tree.UNSAFE_root.findByType(Portal).props.hostName;
+      const update = async (active: TransitionSessionData | null) => {
+        await act(async () => tree.rerender(render(active)));
+      };
+      const sizes = { list: 100, detail: 200, preview: 300 };
+      type Screen = keyof typeof sizes;
+      const move = async (
+        source: Screen,
+        target: Screen,
+        direction: 'forward' | 'backward',
+        outcome: 'complete' | 'cancel' | 'cancel-preparing' = 'complete'
+      ) => {
+        const active = { ...session(source, target, direction), reducedMotion };
+        const pair = active.pairs[0]!;
+        pair.sourceMetrics = { ...pair.sourceMetrics, width: sizes[source] };
+        pair.targetMetrics = { ...pair.targetMetrics, width: sizes[target] };
+        pair.sourcePresentation = {
+          transition: noopTransition,
+          metadata: source,
+        };
+        pair.targetPresentation = {
+          transition: noopTransition,
+          metadata: target,
+        };
+        const restingHost = host();
+        const restingEndpoint = presentation[presentation.settled].metadata;
+        await update({ ...active, state: 'preparing' });
+        expect(host()).toBe(restingHost);
+        expect(presentation[presentation.settled].metadata).toBe(
+          restingEndpoint
+        );
+        if (outcome !== 'cancel-preparing') {
+          await update(active);
+          expect(host()).toBe(
+            reducedMotion
+              ? target === 'list'
+                ? undefined
+                : getLiveDestinationHostName(target, 'player', 'media')
+              : `screen-choreography:live:overlay:["${source}","${target}","media","player"]`
+          );
+          expect(presentation.collapsed.metadata).toBe(
+            direction === 'forward' ? source : target
+          );
+          expect(presentation.expanded.metadata).toBe(
+            direction === 'forward' ? target : source
+          );
+          if (!reducedMotion) {
+            active.progress.value = 0.5;
+            expect(presentation.frame.value?.width).toBe(
+              (sizes[source] + sizes[target]) / 2
+            );
+          }
+        }
+        const destination = outcome === 'complete' ? target : source;
+        state.settle(destination);
+        await update(null);
+        expect(host()).toBe(
+          destination === 'list'
+            ? undefined
+            : getLiveDestinationHostName(destination, 'player', 'media')
+        );
+        expect(presentation[presentation.settled].metadata).toBe(destination);
+        expect(presentation.presentationProgress.value).toBe(
+          presentation.settled === 'expanded' ? 1 : 0
+        );
+        if (destination !== 'list') {
+          // A later pair must not resize the reserved original owner to screen 2.
+          expect(
+            StyleSheet.flatten(
+              tree.UNSAFE_root.findByType(Portal).parent!.props.style
+            ).width
+          ).toBe(100);
+        }
+      };
+      try {
+        tree = renderComponent(render(null));
+
+        await move('list', 'detail', 'forward');
+        for (let index = 0; index < 3; index++) {
+          await move('detail', 'preview', 'forward', 'cancel-preparing');
+          await move('detail', 'preview', 'forward', 'cancel');
+          await move('detail', 'preview', 'forward');
+          await move('preview', 'detail', 'backward', 'cancel');
+          await move('preview', 'detail', 'backward');
+        }
+        await move('detail', 'list', 'backward');
+        expect(mounted).toHaveBeenCalledTimes(1);
+        expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
+        expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+      } finally {
+        await act(async () => tree?.unmount());
+      }
+    }
+  );
+
+  test.each([false, true])(
+    'returns through surviving hosts and ignores stale removal callbacks (middle removed: %s)',
+    async (removeMiddle) => {
+      const state = makeContexts();
+      const listeners = new Map<string, () => void>();
+      jest
+        .mocked(state.actions.subscribeToScreenRemoval)
+        .mockImplementation((screen, listener) => {
+          listeners.set(screen, listener);
+          return () => {
+            if (listeners.get(screen) === listener) listeners.delete(screen);
+          };
+        });
+      let tree!: RenderResult;
+      let presentation!: SharedElementPresentation;
+      function Content() {
+        presentation = useSharedElementPresentation();
+        return null;
+      }
+      const render = (activeSession: TransitionSessionData | null) => (
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(activeSession)}>
+            <ScreenIdContext.Provider value="list">
+              <SharedElement id="player" groupId="media">
+                <Content />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+      const host = () => tree.UNSAFE_root.findByType(Portal).props.hostName;
+      const move = async (source: string, target: string) => {
+        const active = session(source, target);
+        active.pairs[0]!.targetPresentation = {
+          transition: noopTransition,
+          metadata: target,
+        };
+        await act(async () => tree.rerender(render(active)));
+        state.settle(target);
+        await act(async () => tree.rerender(render(null)));
+      };
+      try {
+        tree = renderComponent(render(null));
+
+        await move('list', 'detail');
+        const staleDetail = listeners.get('detail')!;
+        await move('detail', 'preview');
+        await act(async () => staleDetail());
+        expect(host()).toBe(
+          getLiveDestinationHostName('preview', 'player', 'media')
+        );
+        if (removeMiddle) await act(async () => listeners.get('detail')!());
+        const stalePreview = listeners.get('preview')!;
+        await act(async () => stalePreview());
+        expect(host()).toBe(
+          removeMiddle
+            ? undefined
+            : getLiveDestinationHostName('detail', 'player', 'media')
+        );
+        if (!removeMiddle)
+          expect(presentation[presentation.settled].metadata).toBe('detail');
+        // Reusing a removed screen ID must not revive its old listener.
+        await move(removeMiddle ? 'list' : 'detail', 'preview');
+        await act(async () => stalePreview());
+        expect(host()).toBe(
+          getLiveDestinationHostName('preview', 'player', 'media')
+        );
+        // Removing the previous host during motion must not detach this owner
+        // from its already selected session on the next context update.
+        const active = session('preview', 'final');
+        await act(async () => tree.rerender(render(active)));
+        await act(async () => listeners.get('preview')!());
+        await act(async () => tree.rerender(render({ ...active })));
+        expect(host()).toContain('overlay');
+        expect(presentation.transitioning).toBe(true);
+        state.settle('final');
+        await act(async () => tree.rerender(render(null)));
+        expect(host()).toBe(
+          getLiveDestinationHostName('final', 'player', 'media')
+        );
+        await act(async () => listeners.get('final')!());
+        expect(host()).toBe(
+          removeMiddle
+            ? undefined
+            : getLiveDestinationHostName('detail', 'player', 'media')
+        );
+      } finally {
+        await act(async () => tree?.unmount());
+      }
+    }
+  );
 
   test('retained presentation keeps animating after its departing screen companions suspend', async () => {
     const originalOS = Platform.OS;
@@ -334,29 +551,28 @@ describe('SharedElement live endpoints', () => {
         frames.push(callback);
         return frames.length;
       });
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyActionsContext.Provider value={state.actions}>
-            <ChoreographyContext.Provider value={context}>
-              <ChoreographyControlsContext.Provider
-                value={{
-                  progress: context.progress,
-                  settleTransition: jest.fn(),
-                }}
-              >
-                <ChoreographyScreenBase screenId="detail">
-                  <Companion />
-                  <SharedElement id="player" groupId="media">
-                    <Content />
-                  </SharedElement>
-                </ChoreographyScreenBase>
-              </ChoreographyControlsContext.Provider>
-            </ChoreographyContext.Provider>
-          </ChoreographyActionsContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={context}>
+            <ChoreographyControlsContext.Provider
+              value={{
+                progress: context.progress,
+                settleTransition: jest.fn(),
+              }}
+            >
+              <ChoreographyScreenBase screenId="detail">
+                <Companion />
+                <SharedElement id="player" groupId="media">
+                  <Content />
+                </SharedElement>
+              </ChoreographyScreenBase>
+            </ChoreographyControlsContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
+
       expect(presentation.progress).toBe(context.progress);
       expect(presentation.presentationProgress.value).toBe(0.25);
       const barrier = lifetime.suspend(1);
@@ -376,136 +592,133 @@ describe('SharedElement live endpoints', () => {
     }
   });
 
-  test.each([20, 100, 300])(
-    'only propagates presentation updates to the participating owner among %i owners',
-    async (count) => {
-      const state = makeContexts();
-      const progress = { value: 0 } as ChoreographyContextType['progress'];
-      const renders = Array.from({ length: count }, () => jest.fn());
-      const presentations: SharedElementPresentation[] = [];
-      function Content({ index }: { index: number }) {
-        presentations[index] = useSharedElementPresentation();
-        renders[index]!();
-        return null;
-      }
-      const owners = Array.from({ length: count }, (_, index) => (
-        <SharedElement key={index} id="player" groupId={`group-${index}`}>
-          <Content index={index} />
-        </SharedElement>
-      ));
-      let tree!: ReactTestRenderer;
-      const render = (
-        activeSession: TransitionSessionData | null,
-        pendingTargetScreenId: string | null = null
-      ) => (
-        <ChoreographyActionsContext.Provider value={state.actions}>
-          <ChoreographyContext.Provider
-            value={{
-              ...choreography(activeSession),
-              progress,
-              pendingTargetScreenId,
-            }}
-          >
-            <ScreenIdContext.Provider value="list">
-              {owners}
-            </ScreenIdContext.Provider>
-          </ChoreographyContext.Provider>
-        </ChoreographyActionsContext.Provider>
-      );
-      const active = { ...session('list', 'detail'), groupId: 'group-0' };
-      try {
-        await act(async () => {
-          tree = create(render(null));
-        });
-        const initial = presentations.slice();
-        await act(async () => tree.update(render(null, 'detail')));
-        await act(async () =>
-          tree.update(render({ ...active, state: 'measuring' }, 'detail'))
-        );
-        await act(async () =>
-          tree.update(render({ ...active, state: 'preparing' }, 'detail'))
-        );
-        // Preparing pairs the owner without changing what it presents.
-        expect(presentations).toEqual(initial);
-        renders.forEach((renderCount, index) =>
-          expect(renderCount).toHaveBeenCalledTimes(index === 0 ? 2 : 1)
-        );
-
-        await act(async () => tree.update(render(active, 'detail')));
-        expect(renders[0]).toHaveBeenCalledTimes(3);
-        progress.value = 0.4;
-        expect(presentations[0]!.frame.value).toEqual({
-          width: 180,
-          height: 110,
-        });
-        expect(
-          presentations.slice(1).every((p) => p.frame.value === null)
-        ).toBe(true);
-        const participating = presentations[0];
-        // Pending cleanup and cloned session envelopes do not change the pair.
-        await act(async () => tree.update(render({ ...active })));
-        expect(presentations[0]).toBe(participating);
-        expect(renders[0]).toHaveBeenCalledTimes(3);
-
-        const updated = {
-          ...active,
-          pairs: active.pairs.map((pair) => ({
-            ...pair,
-            targetMetrics: { ...pair.targetMetrics, width: 350 },
-          })),
-        };
-        await act(async () => tree.update(render(updated)));
-        expect(presentations[0]!.expanded.metrics!.width).toBe(350);
-        expect(presentations[0]!.frame.value).toEqual({
-          width: 200,
-          height: 110,
-        });
-        expect(renders[0]).toHaveBeenCalledTimes(4);
-        state.settle('detail');
-        await act(async () => tree.update(render(null)));
-        expect(presentations[0]!.settled).toBe('expanded');
-        expect(presentations[0]!.frame.value).toBeNull();
-        expect(renders[0]).toHaveBeenCalledTimes(5);
-        expect(tree.root.findAllByType(Portal)[0]!.props.hostName).toContain(
-          'destination:'
-        );
-
-        // Matching element/group identifiers on other screens stay isolated.
-        await act(async () =>
-          tree.update(
-            render({
-              ...session('other-list', 'other-detail'),
-              groupId: 'group-1',
-            })
-          )
-        );
-        // Another element in the owner's group does not activate it either.
-        await act(async () =>
-          tree.update(
-            render({
-              ...active,
-              pairs: active.pairs.map((pair) => ({ ...pair, id: 'other' })),
-            })
-          )
-        );
-        expect(renders[0]).toHaveBeenCalledTimes(5);
-        for (let index = 1; index < count; index++) {
-          expect(renders[index]).toHaveBeenCalledTimes(1);
-          expect(presentations[index]).toBe(initial[index]);
-        }
-        expect(state.actions.registerElement).toHaveBeenCalledTimes(count);
-        expect(state.actions.unregisterElement).not.toHaveBeenCalled();
-      } finally {
-        await act(async () => tree?.unmount());
-      }
+  test('only propagates presentation updates to the participating owner among 300 owners', async () => {
+    const count = 300;
+    const state = makeContexts();
+    const progress = { value: 0 } as ChoreographyContextType['progress'];
+    const renders = Array.from({ length: count }, () => jest.fn());
+    const presentations: SharedElementPresentation[] = [];
+    function Content({ index }: { index: number }) {
+      presentations[index] = useSharedElementPresentation();
+      renders[index]!();
+      return null;
     }
-  );
+    const owners = Array.from({ length: count }, (_, index) => (
+      <SharedElement key={index} id="player" groupId={`group-${index}`}>
+        <Content index={index} />
+      </SharedElement>
+    ));
+    let tree!: RenderResult;
+    const render = (
+      activeSession: TransitionSessionData | null,
+      pendingTargetScreenId: string | null = null
+    ) => (
+      <ChoreographyActionsContext.Provider value={state.actions}>
+        <ChoreographyContext.Provider
+          value={{
+            ...choreography(activeSession),
+            progress,
+            pendingTargetScreenId,
+          }}
+        >
+          <ScreenIdContext.Provider value="list">
+            {owners}
+          </ScreenIdContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const active = { ...session('list', 'detail'), groupId: 'group-0' };
+    try {
+      tree = renderComponent(render(null));
+
+      const initial = presentations.slice();
+      await act(async () => tree.rerender(render(null, 'detail')));
+      await act(async () =>
+        tree.rerender(render({ ...active, state: 'measuring' }, 'detail'))
+      );
+      await act(async () =>
+        tree.rerender(render({ ...active, state: 'preparing' }, 'detail'))
+      );
+      // Preparing pairs the owner without changing what it presents.
+      expect(presentations).toEqual(initial);
+      renders.forEach((renderCount, index) =>
+        expect(renderCount).toHaveBeenCalledTimes(index === 0 ? 2 : 1)
+      );
+
+      await act(async () => tree.rerender(render(active, 'detail')));
+      expect(renders[0]).toHaveBeenCalledTimes(3);
+      progress.value = 0.4;
+      expect(presentations[0]!.frame.value).toEqual({
+        width: 180,
+        height: 110,
+      });
+      expect(presentations.slice(1).every((p) => p.frame.value === null)).toBe(
+        true
+      );
+      const participating = presentations[0];
+      // Pending cleanup and cloned session envelopes do not change the pair.
+      await act(async () => tree.rerender(render({ ...active })));
+      expect(presentations[0]).toBe(participating);
+      expect(renders[0]).toHaveBeenCalledTimes(3);
+
+      const updated = {
+        ...active,
+        pairs: active.pairs.map((pair) => ({
+          ...pair,
+          targetMetrics: { ...pair.targetMetrics, width: 350 },
+        })),
+      };
+      await act(async () => tree.rerender(render(updated)));
+      expect(presentations[0]!.expanded.metrics!.width).toBe(350);
+      expect(presentations[0]!.frame.value).toEqual({
+        width: 200,
+        height: 110,
+      });
+      expect(renders[0]).toHaveBeenCalledTimes(4);
+      state.settle('detail');
+      await act(async () => tree.rerender(render(null)));
+      expect(presentations[0]!.settled).toBe('expanded');
+      expect(presentations[0]!.frame.value).toBeNull();
+      expect(renders[0]).toHaveBeenCalledTimes(5);
+      expect(
+        tree.UNSAFE_root.findAllByType(Portal)[0]!.props.hostName
+      ).toContain('destination:');
+
+      // Matching element/group identifiers on other screens stay isolated.
+      await act(async () =>
+        tree.rerender(
+          render({
+            ...session('other-list', 'other-detail'),
+            groupId: 'group-1',
+          })
+        )
+      );
+      // Another element in the owner's group does not activate it either.
+      await act(async () =>
+        tree.rerender(
+          render({
+            ...active,
+            pairs: active.pairs.map((pair) => ({ ...pair, id: 'other' })),
+          })
+        )
+      );
+      expect(renders[0]).toHaveBeenCalledTimes(5);
+      for (let index = 1; index < count; index++) {
+        expect(renders[index]).toHaveBeenCalledTimes(1);
+        expect(presentations[index]).toBe(initial[index]);
+      }
+      expect(state.actions.registerElement).toHaveBeenCalledTimes(count);
+      expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
 
   test('retains owner progress across settlement, cancellation, and unrelated sessions', async () => {
     const state = makeContexts();
     const progress = { value: 0 } as ChoreographyContextType['progress'];
     let presentation!: SharedElementPresentation;
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     function Content() {
       presentation = useSharedElementPresentation();
       return null;
@@ -524,7 +737,7 @@ describe('SharedElement live endpoints', () => {
       </ChoreographyActionsContext.Provider>
     );
     const update = async (active: TransitionSessionData | null) => {
-      await act(async () => tree.update(render(active)));
+      await act(async () => tree.rerender(render(active)));
       // Compatibility: consumers still receive the exact provider clock.
       expect(presentation.progress).toBe(progress);
     };
@@ -536,9 +749,8 @@ describe('SharedElement live endpoints', () => {
     };
 
     try {
-      await act(async () => {
-        tree = create(render(null));
-      });
+      tree = renderComponent(render(null));
+
       expectProgress(0);
       expect(presentation.direction).toBeNull();
       await update(unrelated);
@@ -614,44 +826,42 @@ describe('SharedElement live endpoints', () => {
 
   test('uses the default transition and applies endpoint portal and host styles', async () => {
     const state = makeContexts();
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
 
     try {
-      await act(async () => {
-        tree = create(
-          <ChoreographyActionsContext.Provider value={state.actions}>
-            <ChoreographyContext.Provider value={choreography(null)}>
-              <ScreenIdContext.Provider value="list-instance">
-                <SharedElement
-                  id="player"
-                  groupId="media"
-                  style={{ width: 240, height: 160 }}
-                  portalStyle={{
-                    flex: 0,
-                    width: 320,
-                    height: 200,
-                    backgroundColor: 'red',
-                  }}
-                >
-                  <View testID="player-content" />
-                </SharedElement>
-              </ScreenIdContext.Provider>
-              <ScreenIdContext.Provider value="detail-instance">
-                <SharedElement.Target
-                  id="player"
-                  groupId="media"
-                  style={{ width: 1, height: 1 }}
-                  hostStyle={{
-                    width: 280,
-                    height: 180,
-                    backgroundColor: 'blue',
-                  }}
-                />
-              </ScreenIdContext.Provider>
-            </ChoreographyContext.Provider>
-          </ChoreographyActionsContext.Provider>
-        );
-      });
+      tree = renderComponent(
+        <ChoreographyActionsContext.Provider value={state.actions}>
+          <ChoreographyContext.Provider value={choreography(null)}>
+            <ScreenIdContext.Provider value="list-instance">
+              <SharedElement
+                id="player"
+                groupId="media"
+                style={{ width: 240, height: 160 }}
+                portalStyle={{
+                  flex: 0,
+                  width: 320,
+                  height: 200,
+                  backgroundColor: 'red',
+                }}
+              >
+                <View testID="player-content" />
+              </SharedElement>
+            </ScreenIdContext.Provider>
+            <ScreenIdContext.Provider value="detail-instance">
+              <SharedElement.Target
+                id="player"
+                groupId="media"
+                style={{ width: 1, height: 1 }}
+                hostStyle={{
+                  width: 280,
+                  height: 180,
+                  backgroundColor: 'blue',
+                }}
+              />
+            </ScreenIdContext.Provider>
+          </ChoreographyContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      );
 
       expect(state.registered).toHaveLength(2);
       for (const element of state.registered) {
@@ -660,14 +870,14 @@ describe('SharedElement live endpoints', () => {
         });
       }
       expect(
-        StyleSheet.flatten(tree.root.findByType(Portal).props.style)
+        StyleSheet.flatten(tree.UNSAFE_root.findByType(Portal).props.style)
       ).toMatchObject({
         flex: 0,
         width: 320,
         height: 200,
         backgroundColor: 'red',
       });
-      const host = tree.root.findByType(PortalHost);
+      const host = tree.UNSAFE_root.findByType(PortalHost);
       expect(host.props.name).toBe(
         'screen-choreography:live:destination:["detail-instance","media","player"]'
       );
@@ -678,7 +888,7 @@ describe('SharedElement live endpoints', () => {
         height: 180,
         backgroundColor: 'blue',
       });
-      const wrappers = tree.root.findAllByType(AnimatedView);
+      const wrappers = tree.UNSAFE_root.findAllByType(AnimatedView);
       expect(StyleSheet.flatten(wrappers[0]!.props.style)).toMatchObject({
         width: 240,
         height: 160,
@@ -703,7 +913,7 @@ describe('SharedElement live endpoints', () => {
     'reserves intrinsic owner space without changing presentation %j',
     async (style, reserved) => {
       const state = makeContexts();
-      let tree!: ReactTestRenderer;
+      let tree!: RenderResult;
       const render = (active: TransitionSessionData | null) => (
         <ChoreographyActionsContext.Provider value={state.actions}>
           <ChoreographyContext.Provider value={choreography(active)}>
@@ -716,23 +926,24 @@ describe('SharedElement live endpoints', () => {
         </ChoreographyActionsContext.Provider>
       );
       const layout = () =>
-        StyleSheet.flatten(tree.root.findByType(AnimatedView).props.style);
+        StyleSheet.flatten(
+          tree.UNSAFE_root.findByType(AnimatedView).props.style
+        );
       try {
-        await act(async () => {
-          tree = create(render(null));
-        });
+        tree = renderComponent(render(null));
+
         expect(layout()).toEqual(style);
-        await act(async () => tree.update(render(session('list', 'detail'))));
+        await act(async () => tree.rerender(render(session('list', 'detail'))));
         expect(layout()).toEqual({ ...style, ...reserved });
         expect(state.registered[0]!.getPresentation().style).toEqual(style);
         state.settle('detail');
-        await act(async () => tree.update(render(null)));
+        await act(async () => tree.rerender(render(null)));
         expect(layout()).toEqual({ ...style, ...reserved });
         await act(async () =>
-          tree.update(render(session('detail', 'list', 'backward')))
+          tree.rerender(render(session('detail', 'list', 'backward')))
         );
         state.settle('list');
-        await act(async () => tree.update(render(null)));
+        await act(async () => tree.rerender(render(null)));
         expect(layout()).toEqual(style);
         expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
         expect(state.actions.unregisterElement).not.toHaveBeenCalled();
@@ -742,6 +953,109 @@ describe('SharedElement live endpoints', () => {
     }
   );
 
+  test('the source pressable sends its own group and recipe motion and stays outside the portal', async () => {
+    const { actions } = makeContexts();
+    const artwork = defineTransition({
+      motion: { duration: 350 },
+      shared: { hero: { kind: 'bounds' } },
+    });
+    const onPress = jest.fn();
+    const render = (groupId: string) => (
+      <ChoreographyActionsContext.Provider value={actions}>
+        <ChoreographyContext.Provider value={choreography(null)}>
+          <artwork.Element.Pressable
+            name="hero"
+            groupId={groupId}
+            onPress={onPress}
+            testID="open"
+            accessibilityRole="button"
+          >
+            <View testID="payload" />
+          </artwork.Element.Pressable>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const tree = renderComponent(render('sunrise'));
+    try {
+      fireEvent.press(tree.getByRole('button'));
+      await act(async () => tree.rerender(render('sunset')));
+      fireEvent.press(tree.getByRole('button'));
+      expect(onPress.mock.calls.map(([options]) => options)).toEqual([
+        { transitionConfig: { group: 'sunrise' }, duration: 350 },
+        { transitionConfig: { group: 'sunset' }, duration: 350 },
+      ]);
+      const payload = tree.UNSAFE_root.findByType(Portal);
+      expect(
+        payload.findAllByProps({ testID: 'payload' }).length
+      ).toBeGreaterThan(0);
+      expect(payload.findAllByProps({ testID: 'open' })).toHaveLength(0);
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
+  test('fromSource registers only the resolved route and preserves its registration across prop updates', async () => {
+    const groups = new IncomingGroups();
+    const { actions } = makeContexts();
+    const render = (explicitGroup?: string) => (
+      <IncomingGroupsContext.Provider value={groups}>
+        <ChoreographyActionsContext.Provider value={actions}>
+          <ScreenIdContext.Provider value="detail-first">
+            <SharedElement.Target
+              id="hero"
+              fromSource
+              groupId={explicitGroup}
+              metadata={{ explicitGroup }}
+            />
+          </ScreenIdContext.Provider>
+          <ScreenIdContext.Provider value="detail-second">
+            <SharedElement.Target id="hero" fromSource />
+          </ScreenIdContext.Provider>
+        </ChoreographyActionsContext.Provider>
+      </IncomingGroupsContext.Provider>
+    );
+    const tree = renderComponent(render());
+    try {
+      expect(actions.registerElement).not.toHaveBeenCalled();
+      await act(async () => {
+        groups.bind('detail-first', 'sunrise');
+      });
+      expect(actions.registerElement).toHaveBeenCalledWith(
+        expect.objectContaining({
+          screenId: 'detail-first',
+          id: 'hero',
+          groupId: 'sunrise',
+        })
+      );
+      await act(async () => tree.rerender(render('sunrise')));
+      await act(async () => tree.rerender(render()));
+      await act(async () => {
+        groups.bind('detail-second', 'sunset');
+      });
+      expect(actions.registerElement).toHaveBeenCalledTimes(2);
+      expect(actions.unregisterElement).not.toHaveBeenCalled();
+      expect(
+        tree.UNSAFE_root.findAllByType(PortalHost).map(
+          (host) => host.props.name
+        )
+      ).toEqual([
+        getLiveDestinationHostName('detail-first', 'hero', 'sunrise'),
+        getLiveDestinationHostName('detail-second', 'hero', 'sunset'),
+      ]);
+      await act(async () => groups.remove('detail-first'));
+      expect(actions.unregisterElement).toHaveBeenCalledWith(
+        'hero',
+        'detail-first',
+        'sunrise'
+      );
+      expect(tree.UNSAFE_root.findByType(PortalHost).props.name).toBe(
+        getLiveDestinationHostName('detail-second', 'hero', 'sunset')
+      );
+    } finally {
+      await act(async () => tree.unmount());
+    }
+  });
+
   test('keeps registration stable while renderer and metadata snapshots advance', async () => {
     const state = makeContexts();
     const firstTransition = makeTransition({ renderer: () => null });
@@ -750,7 +1064,7 @@ describe('SharedElement live endpoints', () => {
       renderer: secondRenderer,
       zIndex: 222,
     });
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     const render = (transition: Transition, version: number) => (
       <ChoreographyActionsContext.Provider value={state.actions}>
         <ChoreographyContext.Provider value={choreography(null)}>
@@ -769,31 +1083,27 @@ describe('SharedElement live endpoints', () => {
     );
 
     try {
-      await act(async () => {
-        tree = create(render(firstTransition, 1));
-      });
+      tree = renderComponent(render(firstTransition, 1));
+
       const registration = state.registered[0]!;
-      const initialGetPresentation = registration.getPresentation;
       expect(registration.getPresentation()).toMatchObject({
         transition: firstTransition,
         metadata: { version: 1 },
       });
 
       await act(async () => {
-        tree.update(render(secondTransition, 2));
+        tree.rerender(render(secondTransition, 2));
       });
 
       expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
       expect(state.actions.unregisterElement).not.toHaveBeenCalled();
-      expect(registration.getPresentation).toBe(initialGetPresentation);
       expect(registration.getPresentation()).toMatchObject({
         transition: secondTransition,
         metadata: { version: 2 },
       });
-      expect(registration.getPresentation().transition.renderer).toBe(
-        secondTransition.renderer
-      );
-      expect(tree.root.findByProps({ testID: 'content-2' })).toBeDefined();
+      expect(
+        tree.UNSAFE_root.findByProps({ testID: 'content-2' })
+      ).toBeDefined();
     } finally {
       await act(async () => tree?.unmount());
     }
@@ -801,7 +1111,7 @@ describe('SharedElement live endpoints', () => {
 
   test('routes forward, backward, cancelled, rapid, and repeated sessions without stale hosts', async () => {
     const state = makeContexts();
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     const render = (activeSession: TransitionSessionData | null) => (
       <ChoreographyActionsContext.Provider value={state.actions}>
         <ChoreographyContext.Provider value={choreography(activeSession)}>
@@ -817,60 +1127,59 @@ describe('SharedElement live endpoints', () => {
         </ChoreographyContext.Provider>
       </ChoreographyActionsContext.Provider>
     );
-    const hostName = () => tree.root.findByType(Portal).props.hostName;
+    const hostName = () => tree.UNSAFE_root.findByType(Portal).props.hostName;
 
     try {
-      await act(async () => {
-        tree = create(render(null));
-      });
+      tree = renderComponent(render(null));
+
       expect(hostName()).toBeUndefined();
 
-      await act(async () => tree.update(render(session('list', 'detail'))));
+      await act(async () => tree.rerender(render(session('list', 'detail'))));
       expect(hostName()).toBe(
         'screen-choreography:live:overlay:["list","detail","media","player"]'
       );
 
       // A rapid reversal must immediately use its own pair host.
       await act(async () =>
-        tree.update(render(session('detail', 'list', 'backward')))
+        tree.rerender(render(session('detail', 'list', 'backward')))
       );
       expect(hostName()).toBe(
         'screen-choreography:live:overlay:["detail","list","media","player"]'
       );
       state.settle('list');
-      await act(async () => tree.update(render(null)));
+      await act(async () => tree.rerender(render(null)));
       expect(hostName()).toBeUndefined();
 
       // Repeated forward settlement reparents to the named target host.
-      await act(async () => tree.update(render(session('list', 'detail'))));
+      await act(async () => tree.rerender(render(session('list', 'detail'))));
       state.settle('detail');
-      await act(async () => tree.update(render(null)));
+      await act(async () => tree.rerender(render(null)));
       expect(hostName()).toBe(
         'screen-choreography:live:destination:["detail","media","player"]'
       );
 
       // Backward cancellation stays on detail, its source screen.
       await act(async () =>
-        tree.update(render(session('detail', 'list', 'backward')))
+        tree.rerender(render(session('detail', 'list', 'backward')))
       );
       state.settle('detail');
-      await act(async () => tree.update(render(null)));
+      await act(async () => tree.rerender(render(null)));
       expect(hostName()).toBe(
         'screen-choreography:live:destination:["detail","media","player"]'
       );
 
       // Backward completion returns ownership to the original portal.
       await act(async () =>
-        tree.update(render(session('detail', 'list', 'backward')))
+        tree.rerender(render(session('detail', 'list', 'backward')))
       );
       state.settle('list');
-      await act(async () => tree.update(render(null)));
+      await act(async () => tree.rerender(render(null)));
       expect(hostName()).toBeUndefined();
 
       // Forward cancellation settles on the source and also restores it.
-      await act(async () => tree.update(render(session('list', 'detail'))));
+      await act(async () => tree.rerender(render(session('list', 'detail'))));
       state.settle('list');
-      await act(async () => tree.update(render(null)));
+      await act(async () => tree.rerender(render(null)));
       expect(hostName()).toBeUndefined();
       expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
     } finally {
@@ -880,7 +1189,7 @@ describe('SharedElement live endpoints', () => {
 
   test('marks retained content with its receiving host, including empty content', async () => {
     const state = makeContexts();
-    let tree!: ReactTestRenderer;
+    let tree!: RenderResult;
     const render = (activeSession: TransitionSessionData | null) => (
       <ChoreographyActionsContext.Provider value={state.actions}>
         <ChoreographyContext.Provider value={choreography(activeSession)}>
@@ -896,7 +1205,7 @@ describe('SharedElement live endpoints', () => {
         </ChoreographyContext.Provider>
       </ChoreographyActionsContext.Provider>
     );
-    const portal = () => tree.root.findByType(Portal);
+    const portal = () => tree.UNSAFE_root.findByType(Portal);
     const contentMarker = () =>
       portal().findAll(
         (node) =>
@@ -906,19 +1215,18 @@ describe('SharedElement live endpoints', () => {
       );
 
     try {
-      await act(async () => {
-        tree = create(render(null));
-      });
+      tree = renderComponent(render(null));
+
       expect(contentMarker()).toHaveLength(1);
       expect(contentMarker()[0]!.props.nativeID).toBeUndefined();
 
-      await act(async () => tree.update(render(session('list', 'detail'))));
+      await act(async () => tree.rerender(render(session('list', 'detail'))));
       expect(contentMarker()[0]!.props.nativeID).toBe(
         `${portal().props.hostName}:content`
       );
 
       state.settle('detail');
-      await act(async () => tree.update(render(null)));
+      await act(async () => tree.rerender(render(null)));
       expect(contentMarker()[0]!.props.nativeID).toBe(
         'screen-choreography:live:destination:["detail","media","player"]:content'
       );

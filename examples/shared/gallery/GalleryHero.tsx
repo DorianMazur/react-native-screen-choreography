@@ -62,7 +62,8 @@ export function GalleryHero({
   });
   const titleStyle = useAnimatedStyle(() => {
     const { height, expansion: t } = frame.value;
-    const scale = 0.5 + 0.5 * t;
+    const collapsedScale = from.width > 280 ? 0.75 : 0.5;
+    const scale = collapsedScale + (1 - collapsedScale) * t;
     const subtitleScale = 11 / 15 + (1 - 11 / 15) * t;
     return {
       transform: [

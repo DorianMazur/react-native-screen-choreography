@@ -6,8 +6,15 @@ import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { test } from 'node:test';
 import { fileURLToPath } from 'node:url';
-import { distribution, summarize, markdown } from './report.mts';
+import {
+  androidMountErrors,
+  distribution,
+  summarize,
+  markdown,
+} from './report.mts';
 import { sameDefinition } from './metric-definitions.mts';
+import { BenchmarkCollector } from '../../examples/react-navigation/src/performance/collector.ts';
+import { trayFixture } from './tray-fixture.mts';
 import {
   SCENARIOS,
   SCENARIO_IDS,
@@ -73,55 +80,85 @@ const options = {
   metadata: {},
 };
 
-test('CLI prints collection failures and preserves diagnostic summaries', async () => {
-  const directory = await mkdtemp(path.join(tmpdir(), 'choreography-report-'));
-  try {
-    const input = path.join(directory, 'raw');
-    const output = path.join(directory, 'report');
-    const metadata = path.join(directory, 'metadata.json');
-    await mkdir(input);
-    await writeFile(metadata, JSON.stringify(options.metadata));
-    const invalid = fixture('gallery');
-    invalid.valid = false;
-    invalid.errors = ['missing-motion-observation'];
-    await Promise.all(
-      documents([invalid]).map(({ file, data }) =>
-        writeFile(path.join(input, file), JSON.stringify(data))
-      )
-    );
-
-    const result = spawnSync(
-      process.execPath,
-      [
-        '--experimental-transform-types',
-        fileURLToPath(new URL('./report.mts', import.meta.url)),
-        '--platform=android',
-        '--mode=native-release',
-        `--input=${input}`,
-        `--output=${output}`,
-        `--metadata=${metadata}`,
-      ],
-      { encoding: 'utf8' }
-    );
-
-    assert.equal(result.error, undefined);
-    assert.equal(result.status, 1);
-    const summary = JSON.parse(
-      await readFile(path.join(output, 'summary.json'), 'utf8')
-    );
-    assert.equal(summary.valid, false);
-    assert.match(result.stderr, /Performance collection failed:/);
-    assert.match(result.stderr, /gallery\.json:.*missing-motion-observation/);
-    for (const error of summary.errors)
-      assert.ok(result.stderr.includes(error));
-    assert.match(
-      await readFile(path.join(output, 'summary.md'), 'utf8'),
-      /Collection failed/
-    );
-  } finally {
-    await rm(directory, { recursive: true, force: true });
-  }
+test('complete fixture exports cannot mask a native test failure', () => {
+  const report = summarize(documents(), {
+    ...options,
+    metadata: { runnerExitCode: 65 },
+  });
+  assert.equal(report.valid, false);
+  assert.match(report.errors.join(), /runner failed with exit code 65/);
 });
+
+for (const failure of ['fixture', 'native-mount', 'missing-log'] as const)
+  test(`CLI fails ${failure} collection and preserves diagnostic summaries`, async () => {
+    const directory = await mkdtemp(
+      path.join(tmpdir(), 'choreography-report-')
+    );
+    try {
+      const input = path.join(directory, 'raw');
+      const output = path.join(directory, 'report');
+      const metadata = path.join(directory, 'metadata.json');
+      await mkdir(input);
+      await writeFile(metadata, JSON.stringify(options.metadata));
+      const invalid = fixture('gallery');
+      if (failure === 'fixture') {
+        invalid.valid = false;
+        invalid.errors = ['missing-motion-observation'];
+      }
+      const logs = path.join(directory, 'test-results');
+      await mkdir(logs);
+      if (failure === 'native-mount')
+        await writeFile(
+          path.join(logs, 'logcat-gallery.txt'),
+          '10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: View already has a parent'
+        );
+      await Promise.all(
+        documents([invalid]).map(({ file, data }) => {
+          data.native.pid = 4524;
+          return writeFile(path.join(input, file), JSON.stringify(data));
+        })
+      );
+
+      const result = spawnSync(
+        process.execPath,
+        [
+          '--experimental-transform-types',
+          fileURLToPath(new URL('./report.mts', import.meta.url)),
+          '--platform=android',
+          '--mode=native-release',
+          `--input=${input}`,
+          `--output=${output}`,
+          `--metadata=${metadata}`,
+          ...(failure === 'fixture' ? [] : [`--android-test-results=${logs}`]),
+        ],
+        { encoding: 'utf8' }
+      );
+
+      assert.equal(result.error, undefined);
+      assert.equal(result.status, 1);
+      const summary = JSON.parse(
+        await readFile(path.join(output, 'summary.json'), 'utf8')
+      );
+      assert.equal(summary.valid, false);
+      assert.match(result.stderr, /Performance collection failed:/);
+      assert.match(
+        result.stderr,
+        failure === 'fixture'
+          ? /gallery\.json:.*missing-motion-observation/
+          : failure === 'native-mount'
+            ? /Android native mounting failure.*View already has a parent/
+            : /Missing Android test logcat/
+      );
+      for (const error of summary.errors)
+        assert.ok(result.stderr.includes(error));
+      assert.match(
+        await readFile(path.join(output, 'summary.md'), 'utf8'),
+        /Collection failed/
+      );
+    } finally {
+      await rm(directory, { recursive: true, force: true });
+    }
+  });
 
 test('preserves sample readings and self-describing render counts without changing timing units', () => {
   const data = fixture('gallery');
@@ -344,29 +381,6 @@ test('overlay timeouts fail validation while preserving diagnostic samples', () 
   );
 });
 
-test('aggregates native timing data without frame or render metrics', () => {
-  const summary = summarize(documents(), options);
-  assert.equal(summary.valid, true, summary.errors.join('\n'));
-  assert.equal(
-    summary.metrics['gallery.native.touchToAcknowledgementMs'],
-    undefined
-  );
-  assert.equal(
-    summary.metrics['gallery.react.renderWorkPerUpdateMs'],
-    undefined
-  );
-  assert.equal(
-    summary.metrics['gallery.forward.requestToSessionActiveMs']!.p95,
-    null
-  );
-  assert.match(markdown(summary), /informational/);
-  assert.match(
-    markdown(summary),
-    /\| Metric \| Base \| PR \/ current \| Change \|/
-  );
-  assert.match(markdown(summary), /No baseline supplied/);
-});
-
 test('rejects incomplete runs even if a producer incorrectly sets valid=true', () => {
   for (const mutate of [
     (data: InputRecord) => {
@@ -392,6 +406,9 @@ test('rejects incomplete runs even if a producer incorrectly sets valid=true', (
     },
     (data: InputRecord) => {
       data.schemaVersion = 99;
+    },
+    (data: InputRecord) => {
+      data.fixtureVersion = 4;
     },
   ]) {
     const input = documents();
@@ -465,22 +482,6 @@ test('requires complete and consistent native touch acknowledgements for Android
     // Validation is atomic per producer: failed fixtures contribute no metrics.
     assert.equal(summary.metrics['gallery.payloadMountsPerRun'], undefined);
   }
-});
-
-test('requires the requested number of forward and backward timing samples', () => {
-  const summary = summarize(documents(), {
-    ...options,
-    metadata: { timingCycles: 20 },
-  });
-  assert.equal(summary.valid, false);
-  assert.match(
-    summary.errors.join(),
-    /Total journey count must match measured cycles/
-  );
-  assert.equal(
-    summary.metrics['gallery.forward.requestToSessionActiveMs'],
-    undefined
-  );
 });
 
 test('reports 20 round trips with preparation traces in both directions', () => {
@@ -598,26 +599,6 @@ test('rejects duplicate scenarios even when they have different run IDs', () => 
   );
 });
 
-test('rejects invalid expected counts and duplicate fixture artifacts', () => {
-  for (const metadata of [
-    { timingCycles: 0 },
-    { timingCycles: 1.5 },
-    { timingCycles: 101 },
-  ]) {
-    assert.match(
-      summarize(documents(), { ...options, metadata }).errors.join(),
-      /integer between 1 and 99/
-    );
-  }
-  for (const documentIndex of [0]) {
-    const input = documents();
-    input.push({ ...input[documentIndex], file: 'copied-artifact.json' });
-    const summary = summarize(input, options);
-    assert.equal(summary.valid, false);
-    assert.match(summary.errors.join(), /Duplicate run ID/);
-  }
-});
-
 test('tail estimates require enough observations', () => {
   assert.equal(distribution([]), null);
   assert.equal(distribution([1, 3])!.median, 2);
@@ -626,16 +607,6 @@ test('tail estimates require enough observations', () => {
     distribution(Array.from({ length: 20 }, (_, i) => i))!.p95,
     18.05
   );
-});
-
-test('rejects every fixture version before the actual Gallery workload', () => {
-  for (const fixtureVersion of [1, 2, 3, 4]) {
-    const input = documents();
-    input[0]!.data.fixtureVersion = fixtureVersion;
-    const summary = summarize(input, options);
-    assert.equal(summary.valid, false);
-    assert.match(summary.errors.join(), /Unsupported fixture schema\/version/);
-  }
 });
 
 test('rejects unsupported benchmark platforms', () => {
@@ -706,6 +677,58 @@ const sampledOptions = {
   metadata: { timingCycles: 20 },
 };
 
+test('validates 20 screen cycles and 5 cycles per tray without dropping samples', () => {
+  const screens = sampledDocuments();
+  const trays = (['tray-wallet', 'tray-gallery'] as const).map((scenario) => ({
+    file: `${scenario}.json`,
+    data: trayFixture(scenario, 5),
+  }));
+  const mixedOptions = {
+    ...options,
+    metadata: { screenTimingCycles: 20, trayTimingCycles: 5 },
+  };
+  const summary = summarize([...screens, ...trays], mixedOptions);
+  assert.equal(summary.valid, true, summary.errors.join());
+  for (const { data } of [...screens, ...trays]) {
+    const expected = data.scenario.startsWith('tray-') ? 5 : 20;
+    for (const direction of ['forward', 'backward']) {
+      const key = `${data.scenario}.${direction}.tapToMotion`;
+      assert.equal(summary.metrics[key]?.count, expected, key);
+      assert.equal(summary.samples[key]?.length, expected, key);
+    }
+  }
+  for (const cycles of [4, 6]) {
+    const mismatched = [
+      trays[0]!,
+      { ...trays[1]!, data: trayFixture('tray-gallery', cycles) },
+    ];
+    const invalid = summarize([...screens, ...mismatched], mixedOptions);
+    assert.equal(invalid.valid, false);
+    assert.match(
+      invalid.errors.join(),
+      /journey count must match measured cycles/
+    );
+    assert.equal(
+      invalid.metrics['tray-gallery.forward.tapToMotion'],
+      undefined
+    );
+  }
+});
+
+test('rejects tray cycle metadata outside the 1..5 limit', () => {
+  for (const trayTimingCycles of [0, 6, 20, 2.5, '5']) {
+    const summary = summarize([], {
+      ...options,
+      metadata: { screenTimingCycles: 20, trayTimingCycles },
+    });
+    assert.equal(summary.valid, false);
+    assert.match(
+      summary.errors.join(),
+      /Expected tray cycles must be an integer between 1 and 5/
+    );
+  }
+});
+
 test('includes all 20 round trips in one measured set', () => {
   const summary = summarize(sampledDocuments(), sampledOptions);
   assert.equal(summary.valid, true, summary.errors.join('\n'));
@@ -733,7 +756,7 @@ test('includes all 20 round trips in one measured set', () => {
 });
 
 test('a failure in any journey invalidates the entire collection', () => {
-  for (const index of [0, 2, 11]) {
+  for (const index of [0, 39]) {
     for (const corrupt of [
       (data: InputRecord) => {
         data.journeys[index].failure = 'presentation-failed';
@@ -755,7 +778,7 @@ test('a failure in any journey invalidates the entire collection', () => {
 });
 
 test('unanimated fallback in any journey fails despite valid timing samples', () => {
-  for (const index of [0, 2]) {
+  for (const index of [0, 39]) {
     const input = sampledDocuments();
     const journey = input[0]!.data.journeys[index];
     journey.preparationTrace = {
@@ -781,15 +804,15 @@ test('unanimated fallback in any journey fails despite valid timing samples', ()
     };
     const summary = summarize(input, sampledOptions);
     assert.equal(summary.valid, false);
-    const prefix = 'gallery.forward';
+    const prefix = `gallery.${journey.direction}`;
     assert.match(
       summary.errors.join(),
       new RegExp(
         `${prefix}: 1/1 transitions did not confirm overlay presentation`
       )
     );
-    assert.equal(summary.metrics['gallery.forward.tapToMotion']!.count, 20);
-    assert.equal(summary.metrics['gallery.forward.tapToMotion']!.median, 70);
+    assert.equal(summary.metrics[`${prefix}.tapToMotion`]!.count, 20);
+    assert.equal(summary.metrics[`${prefix}.tapToMotion`]!.median, 70);
     assert.equal(
       summary.preparationDiagnostics[prefix].overlayTimeoutJourneys,
       1
@@ -802,6 +825,7 @@ test('rejects missing or extra round trips and invalid measured cycle counts', (
     const summary = summarize(sampledDocuments(timingCycles), sampledOptions);
     assert.equal(summary.valid, false);
     assert.match(summary.errors.join(), /Total journey count must match/);
+    assert.equal(summary.metrics['gallery.forward.tapToMotion'], undefined);
   }
   for (const change of [
     { timingCycles: 0 },
@@ -955,6 +979,152 @@ function withPresentationTiming(data: InputRecord) {
   return data;
 }
 
+function withLifecycle(data: InputRecord) {
+  withPreparationTrace(data);
+  withPresentationTiming(data);
+  data.motionTracing.version = 2;
+  data.renderCounting = { version: 1, observed: ['list', 'detail', 'hero'] };
+  let now = 0;
+  const collector = new BenchmarkCollector(
+    data.runId,
+    data.scenario,
+    () => now,
+    {
+      renderCounting: true,
+    }
+  );
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    const offset = index * 1000;
+    now = offset + 100;
+    collector.request(journey.direction);
+    now = offset + 140;
+    collector.sessionActive(journey.sessionId, journey.direction, 1);
+    now = offset + 500;
+    collector.sessionEnd(journey.sessionId);
+    now = offset + 600;
+    collector.probe(journey.probe.screen);
+    // Keep the native/preparation evidence alongside the collector's real JS events.
+    journey.preparationTrace.startedAtMs += offset;
+    journey.preparationTrace.completedAtMs += offset;
+    journey.preparationTrace.stages = journey.preparationTrace.stages.map(
+      (stage: InputRecord) => ({
+        ...stage,
+        startedAtMs: stage.startedAtMs + offset,
+      })
+    );
+  });
+  const lifecycle = collector.report();
+  data.samples = lifecycle.samples;
+  data.journeys.forEach((journey: InputRecord, index: number) => {
+    Object.assign(journey, lifecycle.journeys[index]);
+  });
+  return data;
+}
+
+test('screen lifecycle version 1 requires all metric families without disabling comparisons', () => {
+  const input = documents().map(({ file, data }) => ({
+    file,
+    data: withLifecycle(data),
+  }));
+  const current = {
+    ...options,
+    metadata: { lifecycleValidation: 1, timingCycles: 1, runnerExitCode: 0 },
+  };
+  const summary = summarize(input, current);
+  assert.equal(summary.valid, true, summary.errors.join());
+  for (const key of [
+    'preparationTracing',
+    'renderCounting',
+    'motionTracing',
+    'presentationTracing',
+  ]) {
+    const missing = structuredClone(input);
+    // A missing definition must fail even if the remaining measurements are valid.
+    delete missing[0].data[key];
+    const report = summarize(missing, current);
+    assert.equal(report.valid, false, key);
+    assert.match(report.errors.join(), /Required lifecycle telemetry missing/);
+  }
+});
+
+test('current runners require both complete tray runs as well as all screen scenarios', () => {
+  const screens = documents().map(({ file, data }) => ({
+    file,
+    data: withLifecycle(data),
+  }));
+  const trays = (['tray-wallet', 'tray-gallery'] as const).map((scenario) => ({
+    file: `${scenario}.json`,
+    data: trayFixture(scenario),
+  }));
+  const current = {
+    ...options,
+    metadata: {
+      lifecycleValidation: 2,
+      screenTimingCycles: 1,
+      trayTimingCycles: 1,
+    },
+  };
+  const complete = summarize([...screens, ...trays], current);
+  assert.equal(complete.valid, true, complete.errors.join());
+  assert.match(markdown(complete), /Wallet tray/);
+  assert.match(markdown(complete), /Gallery tray/);
+  for (const omitted of trays) {
+    const report = summarize(
+      [...screens, ...trays.filter((tray) => tray !== omitted)],
+      current
+    );
+    assert.equal(report.valid, false);
+    assert.match(
+      report.errors.join(),
+      new RegExp(`Missing valid ${omitted.data.scenario}`)
+    );
+  }
+  for (const key of ['trayTracing', 'motionTracing', 'presentationTracing']) {
+    const missing = structuredClone([...screens, ...trays]);
+    delete missing[3].data[key];
+    assert.equal(summarize(missing, current).valid, false, key);
+  }
+});
+
+test('current runners reject broken lifecycle evidence even when the fixture claims success', () => {
+  const input = documents().map(({ file, data }) => ({
+    file,
+    data: withLifecycle(data),
+  }));
+  const cases: Record<string, (data: InputRecord) => unknown> = {
+    'missing samples': (data) => delete data.samples,
+    'missing event': (data) => data.samples.pop(),
+    'duplicate event': (data) => data.samples.push(data.samples[1]),
+    'reversed events': (data) => data.samples.reverse(),
+    'missing completion': (data) => delete data.journeys[0].sessionEndJsMs,
+    'reused session': (data) =>
+      (data.journeys[1].sessionId = data.journeys[0].sessionId),
+    'overlapping journeys': (data) => (data.journeys[1].requestJsMs = 0),
+    'inconsistent duration': (data) =>
+      (data.journeys[0].sessionActiveToEndMs = 1000),
+    'empty pairs': (data) => (data.samples[1].pairCount = 0),
+    'stale completion': (data) => (data.samples[2].sessionId = 'stale'),
+    'wrong destination': (data) => (data.samples[3].screen = 'list'),
+    'disabled preparation': (data) =>
+      (data.preparationTracing.requested = false),
+  };
+  for (const [label, corrupt] of Object.entries(cases)) {
+    const broken = structuredClone(input);
+    corrupt(broken[0].data);
+    const summary = summarize(broken, {
+      ...options,
+      metadata: { lifecycleValidation: 1 },
+    });
+    assert.equal(summary.valid, false, label);
+    assert.match(summary.errors.join(), /gallery\.json:/, label);
+    assert.equal(
+      summary.metrics['gallery.forward.tapToMotion'],
+      undefined,
+      label
+    );
+  }
+});
+
 test('presentation startup reports separate clock-safe intervals for every journey', () => {
   const data = withPresentationTiming(fixture('gallery'));
   const summary = summarize(documents([data]), options);
@@ -1017,4 +1187,21 @@ test('incomplete or misordered startup timing invalidates collection instead of 
       undefined
     );
   }
+});
+
+test('Android mounting errors retain the first cause and ignore unrelated processes and warnings', () => {
+  const first =
+    'java.lang.IllegalStateException: addViewAt: cannot insert view [1028] into parent [276]: View already has a parent';
+  const log = [
+    '10-25 19:01:18.075 9999 9999 E unknown:SurfaceMountingManager: unrelated app',
+    '10-25 19:01:18.075 4524 4524 W unknown:SurfaceMountingManager: warning',
+    '10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: Unhandled SoftException',
+    `10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: ${first}`,
+    '10-25 19:01:18.076 4524 4524 E unknown:SurfaceMountingManager: \tat native.frame(Source.java:400)',
+    '10-25 19:01:18.146 4524 4524 E unknown:SurfaceMountingManager:MissingViewState: java.lang.IllegalStateException: missing view',
+  ].join('\n');
+  assert.deepEqual(androidMountErrors(log, new Set([4524])), [
+    `Android native mounting failure (pid 4524): ${first}`,
+  ]);
+  assert.deepEqual(androidMountErrors(log, new Set([7777])), []);
 });

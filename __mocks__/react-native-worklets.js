@@ -1,4 +1,3 @@
-// Minimal mock for react-native-worklets in tests
 module.exports = {
   scheduleOnUI: (worklet, ...args) => worklet(...args),
   scheduleOnRN: (fn, ...args) => fn(...args),

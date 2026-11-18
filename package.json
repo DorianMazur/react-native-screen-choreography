@@ -1,6 +1,6 @@
 {
   "name": "react-native-screen-choreography",
-  "version": "0.8.0-alpha.1",
+  "version": "0.9.0",
   "description": "Choreographed shared element transitions for React Native — fluid, multi-element, native-feeling screen transitions",
   "main": "./lib/module/entries/index.js",
   "types": "./lib/typescript/src/entries/index.d.ts",
@@ -25,11 +25,28 @@
       "source": "./src/entries/tray.ts",
       "types": "./lib/typescript/src/entries/tray.d.ts",
       "default": "./lib/module/entries/tray.js"
+    },
+    "./mock": {
+      "types": "./jest/index.d.ts",
+      "default": "./jest/index.js"
+    },
+    "./mock/core": {
+      "types": "./jest/core.d.ts",
+      "default": "./jest/core.js"
+    },
+    "./mock/expo-router": {
+      "types": "./jest/expo-router.d.ts",
+      "default": "./jest/expo-router.js"
+    },
+    "./mock/tray": {
+      "types": "./jest/tray.d.ts",
+      "default": "./jest/tray.js"
     }
   },
   "files": [
     "src",
     "lib",
+    "jest",
     "android",
     "ios",
     "cpp",
@@ -55,6 +72,7 @@
     "perf:fantom": "node scripts/performance/fantom/run.js",
     "perf:ios": "bash scripts/performance/run-ios.sh",
     "perf:android": "bash scripts/performance/run-android.sh",
+    "perf:ab": "bash scripts/performance/run-ab.sh",
     "clean": "del-cli android/build examples/react-navigation/android/build examples/react-navigation/android/app/build examples/react-navigation/ios/build examples/expo-router/android/build examples/expo-router/ios/build lib",
     "prepare": "bob build",
     "prepublishOnly": "yarn clean && yarn lint && yarn typecheck && yarn test --runInBand && yarn prepare",
@@ -94,7 +112,7 @@
   "homepage": "https://screen-choreography.dev",
   "publishConfig": {
     "registry": "https://registry.npmjs.org/",
-    "tag": "alpha"
+    "tag": "latest"
   },
   "devDependencies": {
     "@eslint/compat": "^2.0.3",
@@ -105,6 +123,7 @@
     "@react-navigation/native": "^7.1.0",
     "@react-navigation/native-stack": "^7.3.0",
     "@swmansion/react-native-bottom-sheet": "0.16.2",
+    "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.0",
     "@types/react": "^19.2.0",
     "@types/react-test-renderer": "^19.1.0",
@@ -116,7 +135,6 @@
     "eslint-plugin-prettier": "^5.5.5",
     "expo-router": "^57.0.18",
     "jest": "^29.7.0",
-    "lucide-static": "^1.41.0",
     "prettier": "^3.8.1",
     "react": "19.2.0",
     "react-native": "0.83.0",
@@ -124,14 +142,13 @@
     "react-native-keyboard-controller": "1.22.7",
     "react-native-reanimated": "4.3.4",
     "react-native-teleport": "1.2.2",
-    "react-native-worklets": ">=0.8.0",
+    "react-native-worklets": "0.8.3",
     "react-test-renderer": "19.2.0",
-    "sharp": "^0.35.4",
     "typescript": "^6.0.2"
   },
   "peerDependencies": {
-    "@react-navigation/native": ">=6.0.0",
-    "@react-navigation/native-stack": ">=6.0.0",
+    "@react-navigation/native": ">=7.0.0",
+    "@react-navigation/native-stack": ">=7.0.0",
     "@swmansion/react-native-bottom-sheet": "^0.16.2",
     "expo-router": ">=56.1.1",
     "react": ">=18.0.0",
@@ -139,7 +156,7 @@
     "react-native-keyboard-controller": "^1.22.7",
     "react-native-reanimated": ">=4.0.0",
     "react-native-teleport": ">=1.2.2",
-    "react-native-worklets": ">=0.8.0"
+    "react-native-worklets": ">=0.8.3"
   },
   "peerDependenciesMeta": {
     "@react-navigation/native": {

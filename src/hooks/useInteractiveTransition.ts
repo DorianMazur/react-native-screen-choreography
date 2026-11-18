@@ -4,7 +4,7 @@ import {
   animateOwnedProgress,
   setOwnedProgress,
 } from '../core/ProgressOwnership';
-import { ChoreographyContext } from '../core/ChoreographyContext';
+import { ChoreographyNavigationContext } from '../core/ChoreographyNavigationContext';
 import type { CommitBackNavigation } from '../core/navigationCommit';
 import { debugLog } from '../debug/logger';
 import { resolveSpringConfig } from '../core/constants';
@@ -31,7 +31,7 @@ export function useInteractiveTransitionNavigator({
   currentScreenId,
   routeParams,
 }: InteractiveTransitionNavigatorOptions) {
-  const choreography = useContext(ChoreographyContext);
+  const choreography = useContext(ChoreographyNavigationContext);
   if (!choreography) {
     throw new Error(
       'useInteractiveTransition must be used within a <ChoreographyProvider>'
@@ -41,20 +41,14 @@ export function useInteractiveTransitionNavigator({
   const scopeScreenId = useScreenId();
   const screenId = currentScreenId ?? scopeScreenId;
   const {
-    activeSession,
+    getContext,
     progress,
     progressOwnership,
     navigationController,
     reverseController,
-    commitReverseTransition,
-    captureSourceGroup,
-    startTransition,
-    waitForOverlayReady,
     cancelTransition,
     completeTransition,
     setInteractiveScreen,
-    getNavigationLineage,
-    resolveScreenId,
   } = choreography;
   const sessionIdRef = useRef<string | null>(null);
   const beginTokenRef = useRef(0);
@@ -79,15 +73,19 @@ export function useInteractiveTransitionNavigator({
     [cancelTransition, reverseController, screenId, setInteractiveScreen]
   );
 
-  useEffect(() => {
-    const sessionId = sessionIdRef.current;
-    if (sessionId && activeSession?.id !== sessionId) {
-      sessionIdRef.current = null;
-      setInteractiveScreen(screenId, false);
-      setGestureToken(0);
-      setIsActive(false);
-    }
-  }, [activeSession, screenId, setInteractiveScreen]);
+  useEffect(
+    () =>
+      navigationController.subscribeToNavigationState(() => {
+        const sessionId = sessionIdRef.current;
+        if (sessionId && !progressOwnership.isSession(sessionId)) {
+          sessionIdRef.current = null;
+          setInteractiveScreen(screenId, false);
+          setGestureToken(0);
+          setIsActive(false);
+        }
+      }),
+    [navigationController, progressOwnership, screenId, setInteractiveScreen]
+  );
 
   const gestureProgress = useDerivedValue(() => 1 - progress.value);
 
@@ -147,14 +145,16 @@ export function useInteractiveTransitionNavigator({
         // The provider retains the source and owns completion across route unmount.
         setGestureToken(0);
         setIsActive(false);
-        commitReverseTransition({
-          sessionId,
-          token,
-          navigateBack,
-          options,
-        }).catch((error: unknown) => {
-          debugLog(`[Interactive] reverse commit failed: ${String(error)}`);
-        });
+        getContext()
+          .commitReverseTransition({
+            sessionId,
+            token,
+            navigateBack,
+            options,
+          })
+          .catch((error: unknown) => {
+            debugLog(`[Interactive] reverse commit failed: ${String(error)}`);
+          });
         return;
       }
       const onComplete = cancelOnRN;
@@ -176,7 +176,7 @@ export function useInteractiveTransitionNavigator({
     },
     [
       cancelOnRN,
-      commitReverseTransition,
+      getContext,
       navigateBack,
       progress,
       progressOwnership,
@@ -190,6 +190,13 @@ export function useInteractiveTransitionNavigator({
     async (
       options: InteractiveBackOptions = {}
     ): Promise<InteractiveTransitionHandle | null> => {
+      const {
+        captureSourceGroup,
+        startTransition,
+        waitForOverlayReady,
+        getNavigationLineage,
+        resolveScreenId,
+      } = getContext();
       const { signal } = options;
       if (
         progressOwnership.reducedMotion ||
@@ -401,22 +408,18 @@ export function useInteractiveTransitionNavigator({
     },
     [
       animateSettlement,
+      getContext,
       cancelTransition,
       completeTransition,
       setInteractiveScreen,
-      getNavigationLineage,
       navigationController,
       gestureProgress,
       owner,
-      captureSourceGroup,
       progress,
       progressOwnership,
       reverseController,
       routeParams,
-      resolveScreenId,
       screenId,
-      startTransition,
-      waitForOverlayReady,
     ]
   );
 

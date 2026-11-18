@@ -1,4 +1,4 @@
-import type { RegisteredElement, ElementMetrics } from '../types';
+import type { RegisteredElement } from '../types';
 import { debugLog, debugWarn } from '../debug/logger';
 import { getElementIdentityKey } from './elementIdentity';
 
@@ -14,8 +14,7 @@ export class ElementRegistry {
   }
 
   /**
-   * Subscribe to registry mutations (register / unregister / metrics
-   * updates). Listeners are invoked synchronously after each mutation so
+   * Listeners are invoked synchronously after registration changes so
    * waiters can re-check readiness predicates without polling.
    */
   subscribe(listener: RegistryListener): () => void {
@@ -64,21 +63,12 @@ export class ElementRegistry {
     this.notifyListeners();
   }
 
-  getById(id: string): RegisteredElement[] {
-    return Array.from(this.elements.values()).filter(
-      (element) => element.id === id
-    );
-  }
-
   getByIdAndScreen(
     id: string,
     screenId: string,
-    groupId?: string
+    groupId: string | undefined
   ): RegisteredElement | undefined {
-    if (groupId !== undefined) {
-      return this.elements.get(this.key(id, screenId, groupId));
-    }
-    return this.getById(id).find((element) => element.screenId === screenId);
+    return this.elements.get(this.key(id, screenId, groupId));
   }
 
   getGroupElements(groupId: string, screenId: string): RegisteredElement[] {
@@ -87,40 +77,14 @@ export class ElementRegistry {
     );
   }
 
-  getGroupElementIds(groupId: string, screenId?: string): string[] {
-    const ids = new Set<string>();
+  getGroupElementIds(groupId: string, screenId: string): string[] {
+    const ids: string[] = [];
     for (const element of this.elements.values()) {
-      if (
-        element.groupId === groupId &&
-        (screenId === undefined || element.screenId === screenId)
-      ) {
-        ids.add(element.id);
+      if (element.groupId === groupId && element.screenId === screenId) {
+        ids.push(element.id);
       }
     }
-    return Array.from(ids);
-  }
-
-  updateMetrics(
-    id: string,
-    screenId: string,
-    metrics: ElementMetrics,
-    groupId?: string
-  ): void {
-    let updated = false;
-    for (const [key, element] of this.elements) {
-      if (
-        element.id === id &&
-        element.screenId === screenId &&
-        (groupId === undefined || element.groupId === groupId)
-      ) {
-        this.elements.set(key, { ...element, metrics });
-        updated = true;
-      }
-    }
-
-    if (updated) {
-      this.notifyListeners();
-    }
+    return ids;
   }
 
   get size(): number {
@@ -130,28 +94,5 @@ export class ElementRegistry {
   clear(): void {
     this.elements.clear();
     this.notifyListeners();
-  }
-
-  getDebugSnapshot(): Array<{
-    id: string;
-    screenId: string;
-    groupId: string | undefined;
-    hasMetrics: boolean;
-  }> {
-    const snapshot: Array<{
-      id: string;
-      screenId: string;
-      groupId: string | undefined;
-      hasMetrics: boolean;
-    }> = [];
-    for (const element of this.elements.values()) {
-      snapshot.push({
-        id: element.id,
-        screenId: element.screenId,
-        groupId: element.groupId,
-        hasMetrics: element.metrics !== null,
-      });
-    }
-    return snapshot;
   }
 }

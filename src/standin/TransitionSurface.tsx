@@ -17,7 +17,6 @@ export function transitionLayoutStyle(): ViewStyle {
   };
 }
 
-/** The frame size on `timeline`; the single geometry shared by frames and hosted content. */
 export function transitionFrameSize(
   source: ElementMetrics,
   target: ElementMetrics,
@@ -61,13 +60,8 @@ interface TransitionSurfaceProps {
 }
 
 /**
- * Surface geometry and styling around a live transition host.
- *
- * Shadow strategy: apply the expanded-side boxShadow statically and only animate
- * `opacity` (GPU-composited on Android via View.setAlpha). Animating
- * boxShadow per-frame causes OutsetBoxShadowDrawable re-creation on every
- * call, which flickers. Opacity fades to 0 near the transition endpoints
- * to prevent double-shadow during handoff.
+ * Interpolates bounds, color, and radius around a live transition host.
+ * Fades the expanded endpoint's shadow out at both handoffs to avoid doubling it.
  */
 export function TransitionSurface({
   progress,
@@ -84,6 +78,7 @@ export function TransitionSurface({
   const sourceColor = sourceStyle.backgroundColor ?? 'transparent';
   const targetColor = targetStyle.backgroundColor ?? 'transparent';
   const expandedStyle = direction === 'backward' ? sourceStyle : targetStyle;
+  // Keep boxShadow static: Android recreates its drawable when parameters change.
   const expandedBoxShadow = expandedStyle.boxShadow;
   const shadowColor = expandedStyle.backgroundColor ?? 'transparent';
 

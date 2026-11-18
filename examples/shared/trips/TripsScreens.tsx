@@ -63,7 +63,7 @@ export function TripsListScreen({
             </Text>
             <View style={styles.summary}>
               <Text style={styles.subtitle}>Places to look forward to</Text>
-              <Text style={styles.count}>{TRIPS.length} PLANNED</Text>
+              <Text style={styles.count}>{TRIPS.length} planned</Text>
             </View>
           </View>
         </tripsTransition.Exit>
@@ -130,7 +130,7 @@ export function TripsListScreen({
               <AppIcon name="external" color={theme.trips.accent} size={22} />
             </View>
             <View style={styles.flightInfo}>
-              <Text style={styles.departure}>DEPARTURE</Text>
+              <Text style={styles.departure}>Your departure</Text>
               <Text style={styles.airport}>{selectedTrip.airport}</Text>
               <Text style={styles.flightDate}>
                 {selectedTrip.dates} · 12:30 PM
@@ -198,7 +198,8 @@ const styles = StyleSheet.create({
   intro: { paddingHorizontal: 24, paddingTop: 12, paddingBottom: 24 },
   label: {
     fontFamily: theme.font,
-    fontSize: 30,
+    fontSize: 32,
+    letterSpacing: -1,
     fontWeight: '600',
     color: theme.text,
   },
@@ -211,10 +212,10 @@ const styles = StyleSheet.create({
   },
   subtitle: {
     fontFamily: theme.font,
-    fontSize: 12,
+    fontSize: 14,
     color: theme.textSecondary,
   },
-  count: { fontFamily: theme.numbers, fontSize: 10, color: theme.trips.accent },
+  count: { fontFamily: theme.font, fontSize: 12, color: theme.trips.accent },
   carousel: { paddingHorizontal: 24, gap: 16 },
   card: { flex: 1, borderRadius: theme.radius.lg },
   flight: {
@@ -231,7 +232,7 @@ const styles = StyleSheet.create({
     width: 40,
     height: 40,
     borderRadius: 20,
-    backgroundColor: theme.trips.glow,
+    backgroundColor: theme.surface,
     alignItems: 'center',
     justifyContent: 'center',
   },
@@ -239,20 +240,20 @@ const styles = StyleSheet.create({
   departure: {
     color: theme.trips.accent,
     fontFamily: theme.font,
-    fontSize: 10,
+    fontSize: 12,
     fontWeight: '500',
-    letterSpacing: 1,
+    letterSpacing: 0,
   },
   airport: {
     color: theme.text,
     fontFamily: theme.font,
-    fontSize: 12,
+    fontSize: 16,
     fontWeight: '600',
   },
   flightDate: {
     color: theme.textSecondary,
     fontFamily: theme.font,
-    fontSize: 10,
+    fontSize: 13,
   },
   detail: { flex: 1, backgroundColor: theme.bg },
   pickedUp: { backgroundColor: 'transparent' },

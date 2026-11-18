@@ -16,8 +16,10 @@ import {
   type ScreenOrigin,
 } from '../core/ScreenGeometryContext';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
+import { PreparationTrace } from '../core/preparationTrace';
 import type { TrayAction, TrayStackState } from './stack';
 import type { ResolvedTrayAnimation } from './animation';
+import { TrayDiagnosticsContext } from './diagnostics';
 
 const GeometryContext = createContext<{
   screenId: (key: string) => string;
@@ -25,6 +27,7 @@ const GeometryContext = createContext<{
 } | null>(null);
 
 export function TrayChoreography({ children }: { children: React.ReactNode }) {
+  const diagnostics = useContext(TrayDiagnosticsContext);
   const id = useId();
   const geometry = useMemo(
     () => ({
@@ -40,7 +43,9 @@ export function TrayChoreography({ children }: { children: React.ReactNode }) {
   return (
     <GeometryContext.Provider value={geometry}>
       <ScreenGeometryContext.Provider value={resolve}>
-        <ChoreographyProvider>{children}</ChoreographyProvider>
+        <ChoreographyProvider {...diagnostics?.choreography}>
+          {children}
+        </ChoreographyProvider>
       </ScreenGeometryContext.Provider>
     </GeometryContext.Provider>
   );
@@ -73,6 +78,11 @@ export function useTraySharedTransition({
   const [finished, setFinished] = useState<number>();
   const [started, setStarted] = useState<number>();
   const motionId = useSharedValue<number | undefined>(undefined);
+  const pendingTrace = useRef<{
+    session: number;
+    id: number;
+    trace: PreparationTrace;
+  } | null>(null);
   const preparation = state.preparation;
   const transition = state.transition;
   const groupId = transition?.groupId;
@@ -83,19 +93,50 @@ export function useTraySharedTransition({
   const session = state.session;
   const closing = state.phase === 'closing';
 
+  useEffect(
+    () => () => {
+      pendingTrace.current?.trace.finish('cancelled');
+      pendingTrace.current = null;
+    },
+    [closing]
+  );
+
   useEffect(() => {
     if (!preparation || closing) return;
     let current = true;
     latest.current.onPrepare();
     const { context: ctx } = latest.current;
+    const trace = ctx.onPreparationTrace
+      ? new PreparationTrace(
+          {
+            groupId: preparation.groupId,
+            sourceScreenId: screenId(preparation.from),
+            targetScreenId: '', // Filled with the mounted route by setSession.
+            direction:
+              preparation.command.type === 'back' ||
+              preparation.command.type === 'popToRoot'
+                ? 'backward'
+                : 'forward',
+          },
+          ctx.onPreparationTrace
+        )
+      : undefined;
+    if (trace) pendingTrace.current = { session, id: preparation.id, trace };
+    const endCapture = trace?.start('source-capture');
+    let captured = false;
     const ready = () => {
-      if (current) dispatch({ type: 'prepared', session, id: preparation.id });
+      endCapture?.();
+      if (current) {
+        captured = true;
+        dispatch({ type: 'prepared', session, id: preparation.id });
+      }
     };
     ctx
       .captureSourceGroup(preparation.groupId, screenId(preparation.from))
       .then(ready, ready);
     return () => {
       current = false;
+      if (!captured) trace?.finish('cancelled');
     };
   }, [preparation, closing, session, dispatch, screenId]);
 
@@ -112,7 +153,14 @@ export function useTraySharedTransition({
     let current = true;
     let completed = false;
     const { context: ctx, animation: motion } = latest.current;
+    const pending = pendingTrace.current;
+    const trace =
+      pending?.session === session && pending.id + 1 === id
+        ? pending.trace
+        : undefined;
+    pendingTrace.current = null;
     const fail = () => {
+      trace?.finish('unavailable');
       if (current) {
         ctx.cancelTransition();
         setFallback(id);
@@ -126,20 +174,29 @@ export function useTraySharedTransition({
       setFinished(id);
     };
     const run = async () => {
-      if (!(await ctx.waitForScreenReady(screenId(target))) || !current)
-        return fail();
+      const endReady = trace?.start('screen-ready');
+      const ready = await ctx.waitForScreenReady(screenId(target));
+      endReady?.({ ready });
+      if (!ready || !current) return fail();
+      const endCoordinator = trace?.start('coordinator');
       const prepared = await ctx.startTransition({
         groupId,
         sourceScreenId: screenId(source),
         targetScreenId: screenId(target),
         direction: direction === -1 ? 'backward' : 'forward',
         onUnavailable: fail,
+        ...(trace ? { trace } : {}),
       });
+      endCoordinator?.();
       if (!current) return;
       if (!prepared) return fail();
+      trace?.setSession(prepared.id, screenId(target));
       setStarted(id);
       motionId.value = id;
-      if (prepared.reducedMotion) return finish();
+      if (prepared.reducedMotion) {
+        trace?.finish('unavailable');
+        return finish();
+      }
       const token = ctx.progressOwnership.claim(prepared.id);
       if (token === null) return fail();
       animateOwnedProgress({
@@ -156,16 +213,19 @@ export function useTraySharedTransition({
         presentation: prepared.presentation,
         onComplete: finish,
       });
-      if (
-        !(await ctx.waitForOverlayReady(prepared.id)) &&
-        current &&
-        !completed
-      )
-        fail();
+      const endOverlay = trace?.start('overlay-ready');
+      const overlayReady = await ctx.waitForOverlayReady(prepared.id);
+      const acknowledged = trace
+        ? overlayReady && ctx.isOverlayPresented?.(prepared.id) === true
+        : overlayReady;
+      endOverlay?.({ ready: overlayReady, acknowledged });
+      trace?.finish(acknowledged ? 'overlay-ready' : 'overlay-timeout');
+      if (!overlayReady && current && !completed) fail();
     };
     run().catch(fail);
     return () => {
       current = false;
+      trace?.finish('cancelled');
       ctx.cancelTransition();
     };
   }, [

@@ -1,4 +1,3 @@
-// Minimal mock for react-native-reanimated in tests
 module.exports = {
   __esModule: true,
   useReducedMotion: () => false,

@@ -9,11 +9,14 @@ import android.os.SystemClock
 import android.view.accessibility.AccessibilityNodeInfo
 import androidx.test.platform.app.InstrumentationRegistry
 import androidx.test.uiautomator.By
+import androidx.test.uiautomator.Direction
 import androidx.test.uiautomator.StaleObjectException
 import androidx.test.uiautomator.UiDevice
+import androidx.test.uiautomator.UiObject2
 import androidx.test.uiautomator.Until
 import java.io.ByteArrayOutputStream
 import java.io.File
+import org.json.JSONArray
 import org.json.JSONObject
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -26,11 +29,17 @@ class ChoreographyBenchmarks(private val scenario: String) {
   private val instrumentation = InstrumentationRegistry.getInstrumentation()
   private val arguments = InstrumentationRegistry.getArguments()
   private val device = UiDevice.getInstance(instrumentation)
+  private val interactions = JSONArray()
+  private var scrollEnds = 0
   @Test
   fun repeatedNavigationTimingAndInput() {
-    val cycles = arguments.getString("performanceTimingCycles", "20").toInt().also {
-      require(it in 1..99) { "performanceTimingCycles must be between 1 and 99" }
+    val screenCycles = arguments.getString("performanceScreenTimingCycles", "20").toInt().also {
+      require(it in 1..99) { "performanceScreenTimingCycles must be between 1 and 99" }
     }
+    val trayCycles = arguments.getString("performanceTrayTimingCycles", "5").toInt().also {
+      require(it in 1..5) { "performanceTrayTimingCycles must be between 1 and 5" }
+    }
+    val cycles = if (scenario.startsWith("tray-")) trayCycles else screenCycles
     device.wakeUp()
     device.executeShellCommand("wm dismiss-keyguard")
     check(!instrumentation.context.getSystemService(KeyguardManager::class.java).isDeviceLocked) {
@@ -43,11 +52,17 @@ class ChoreographyBenchmarks(private val scenario: String) {
       val startupTimeout = arguments.getString("performanceStartupTimeoutMs", "$TIMEOUT_MS").toLong()
       require(startupTimeout > 0) { "performanceStartupTimeoutMs must be positive" }
       await("benchmark-ready", startupTimeout)
-      repeat(cycles) { roundTrip() }
+      repeat(cycles) { cycle ->
+        if (scenario.startsWith("tray-")) trayCycle(cycle) else roundTrip()
+      }
     } catch (failure: Throwable) {
       // Preserve the collector's rejection reason and the actual UI before
       // AGP uninstalls the app. Diagnostic failures must not mask the assertion.
       try {
+        writeArtifact("$scenario-failure-input.json", JSONObject().apply {
+          put("error", failure.toString())
+          put("interactions", interactions)
+        }.toString(2))
         val hierarchy = ByteArrayOutputStream()
         device.dumpWindowHierarchy(hierarchy)
         writeArtifact("$scenario-failure-window.xml", hierarchy.toString("UTF-8"))
@@ -79,6 +94,36 @@ class ChoreographyBenchmarks(private val scenario: String) {
     await("benchmark-list-probe-ack")
   }
 
+  private fun trayCycle(cycle: Int) {
+    val controls = when (scenario) {
+      "tray-wallet" -> listOf("Wallet dynamic tray", "Send money", "Choose recipient", "Alex Morgan", "Back in tray", "Back in tray", "Back in tray", "Close tray")
+      "tray-gallery" -> listOf("Gallery dynamic tray", "Explore Plus", "Good to know", "Back in tray", "Back in tray", "Close tray")
+      else -> error("Unknown tray scenario: $scenario")
+    }
+    controls.forEachIndexed { index, control ->
+      val step = cycle * controls.size + index + 1
+      // This link follows the plans and can be below the viewport on small phones.
+      if (scenario == "tray-gallery" && index == 2) scrollTo(control)
+      click(control)
+      await("benchmark-tray-step-$step-settled")
+      click("benchmark-tray-probe")
+      await("benchmark-tray-step-$step-probe-ack")
+      if (scenario == "tray-wallet" && index == 1) {
+        click("Amount")
+        await("4")
+        // Focus-time selection can arrive after the keyboard. Clear explicitly
+        // before tapping a real key so the edit is independent of caret position.
+        device.findObject(By.desc("Amount")).text = ""
+        assertTrue("Draft clear failed", device.wait(Until.hasObject(By.desc("Amount").text("")), TIMEOUT_MS))
+        click("4")
+        assertTrue("Draft edit failed", device.wait(Until.hasObject(By.desc("Amount").text("4")), TIMEOUT_MS))
+      }
+      if (scenario == "tray-wallet" && index == 5) {
+        assertTrue("Back lost the retained draft", device.hasObject(By.desc("Amount").text("4")))
+      }
+    }
+  }
+
   private fun exportRun(diagnostic: Boolean = false) {
     val previousFiles = fixtureFiles()
     if (diagnostic) {
@@ -99,7 +144,14 @@ class ChoreographyBenchmarks(private val scenario: String) {
       click("benchmark-end")
     }
     await("benchmark-export-complete")
-    val exportedFiles = fixtureFiles() - previousFiles
+    // A failed fixture may already display its first export marker. Wait for
+    // this export's file as well, so diagnostic re-exports cannot lose evidence.
+    val exportDeadline = SystemClock.uptimeMillis() + TIMEOUT_MS
+    var exportedFiles = fixtureFiles() - previousFiles
+    while (exportedFiles.isEmpty() && SystemClock.uptimeMillis() < exportDeadline) {
+      SystemClock.sleep(50)
+      exportedFiles = fixtureFiles() - previousFiles
+    }
     check(exportedFiles.size == 1) { "Expected one new fixture export, found $exportedFiles" }
     val filename = exportedFiles.single()
     // executeShellCommand tokenizes arguments; it does not parse shell quotes.
@@ -124,7 +176,39 @@ class ChoreographyBenchmarks(private val scenario: String) {
   }
 
   private fun await(label: String, timeoutMs: Long = TIMEOUT_MS) {
+    interactions.put(JSONObject().put("waitFor", label).put("uptimeMs", SystemClock.uptimeMillis()))
     assertTrue("Missing fixture marker: $label", device.wait(Until.hasObject(By.desc(label)), timeoutMs))
+  }
+
+  private fun scrollTo(label: String) {
+    repeat(5) {
+      val target = device.findObject(By.desc(label))
+      if (target != null && !touchBounds(target).isEmpty) return
+      val scroll = checkNotNull(device.findObject(By.scrollable(true))) {
+        "No scroll container for fixture control: $label"
+      }
+      interactions.put(JSONObject().put("scrollTo", label).put("bounds", scroll.visibleBounds.toShortString())
+        .put("uptimeMs", SystemClock.uptimeMillis()))
+      scroll.setGestureMargin(scroll.visibleBounds.height() / 5)
+      scroll.scroll(Direction.DOWN, 0.6f)
+      // Accessibility can become idle while the native ScrollView still
+      // intercepts taps to stop its fling. Wait for RN's momentum-end event.
+      await("benchmark-tray-scroll-${++scrollEnds}-settled")
+    }
+    val target = device.findObject(By.desc(label))
+    check(target != null && !touchBounds(target).isEmpty) { "Fixture control not visible after scrolling: $label" }
+  }
+
+  private fun touchBounds(target: UiObject2): Rect {
+    val bounds = Rect(target.visibleBounds)
+    var ancestor = target.parent
+    while (ancestor != null) {
+      // UiAutomator 2.3 leaves visibleBounds unchanged when Rect.intersect
+      // finds no overlap. Offscreen scroll children can therefore look visible.
+      if (ancestor.isScrollable && !bounds.intersect(ancestor.visibleBounds)) return Rect()
+      ancestor = ancestor.parent
+    }
+    return bounds
   }
 
   private fun click(label: String, leadingQuarter: Boolean = false) {
@@ -134,7 +218,7 @@ class ChoreographyBenchmarks(private val scenario: String) {
       try {
         val target = device.findObject(By.desc(label))
         if (target != null && target.isEnabled) {
-          val candidate = Rect(target.visibleBounds)
+          val candidate = touchBounds(target)
           if (!candidate.isEmpty) bounds = candidate
         }
       } catch (_: StaleObjectException) {
@@ -146,6 +230,8 @@ class ChoreographyBenchmarks(private val scenario: String) {
     val targetBounds = checkNotNull(bounds) { "Missing fixture control: $label" }
     // Wide example cards can extend behind the benchmark toolbar on the right.
     val x = if (leadingQuarter) targetBounds.left + targetBounds.width() / 4 else targetBounds.centerX()
+    interactions.put(JSONObject().put("tap", label).put("bounds", targetBounds.toShortString())
+      .put("x", x).put("y", targetBounds.centerY()).put("uptimeMs", SystemClock.uptimeMillis()))
     // UiAutomator injects an actual device touch; this never invokes JS onPress directly.
     check(device.click(x, targetBounds.centerY())) { "Touch injection failed: $label" }
   }
@@ -184,6 +270,6 @@ class ChoreographyBenchmarks(private val scenario: String) {
 
     @JvmStatic
     @Parameterized.Parameters(name = "{0}")
-    fun scenarios(): List<Array<String>> = listOf("gallery", "trips", "wallet").map { arrayOf(it) }
+    fun scenarios(): List<Array<String>> = listOf("tray-gallery", "tray-wallet", "gallery", "trips", "wallet").map { arrayOf(it) }
   }
 }

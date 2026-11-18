@@ -23,8 +23,10 @@ import type {
   RegisteredElement,
   TransitionSessionData,
 } from '../types';
+import { IncomingGroups, IncomingGroupsContext } from '../core/incomingGroups';
 import { ElementRegistry } from '../core/ElementRegistry';
 import { ElementVisibilityRegistry } from '../core/ElementVisibilityRegistry';
+import { ChoreographyContextProvider } from '../core/ChoreographyNavigationContext';
 import { ChoreographyProgressProvider } from '../core/ChoreographyProgressContext';
 import { NativeTransitionHost } from '../native/NativeTransitionHost';
 import { hostsReportAttachment } from '../native/attachmentCapability';
@@ -36,7 +38,6 @@ import {
   type OverlayPresentation,
 } from '../core/TransitionOverlay';
 import {
-  ChoreographyContext,
   ChoreographyActionsContext,
   PreparingSessionContext,
   ChoreographyControlsContext,
@@ -45,6 +46,7 @@ import {
 } from '../core/ChoreographyContext';
 import {
   debugTrace,
+  isTraceEnabled,
   setDebugCoalesce,
   setDebugEnabled,
   setDebugLevel,
@@ -89,9 +91,8 @@ function TransitionHostPortal({
 interface ChoreographyProviderProps {
   children: React.ReactNode;
   /**
-   * Enable debug logging. `true` enables info/warn/error. Pass a structured
-   * object for level/category control (e.g. `{ level: 'trace' }` for
-   * per-frame measurement traces).
+   * Enable logging. `true` uses the info level; `{ level: 'trace' }` includes
+   * detailed readiness and lifecycle logs.
    */
   debug?: ChoreographyDebugConfig;
   /** Called when a transition session becomes active with pairs resolved */
@@ -134,6 +135,7 @@ export function ChoreographyProvider({
   onTransitionEnd,
   onPreparationTrace,
 }: ChoreographyProviderProps) {
+  const [incomingGroups] = useState(() => new IncomingGroups());
   const screenGeometry = useContext(ScreenGeometryContext);
   const progress = useSharedValue(0);
   const reducedMotion = useReducedMotion();
@@ -379,10 +381,6 @@ export function ChoreographyProvider({
         }
         onTransitionStartRef.current?.(session);
       }
-
-      // Hiding is driven by handleOverlayReady / handleHostPresentationReady
-      // so reals are hidden the same frame the overlay first paints. Hiding
-      // here would cause a one-frame blank flash at transition start.
     });
   }, [
     navigationController,
@@ -470,6 +468,7 @@ export function ChoreographyProvider({
       navigationController.cancelRequestsForScreen(screenId);
       screenReadinessRef.current.unregister(screenId);
       coordinatorRef.current?.revalidatePresentation(screenId);
+      incomingGroups.remove(screenId);
       screenNamesRef.current.delete(screenId);
       navigationLineageRef.current.delete(screenId);
       if (
@@ -499,7 +498,7 @@ export function ChoreographyProvider({
         [...removalListeners].forEach((listener) => listener());
       }
     },
-    [navigationController, progressOwnership]
+    [incomingGroups, navigationController, progressOwnership]
   );
 
   const subscribeToScreenRemoval = useCallback(
@@ -586,7 +585,7 @@ export function ChoreographyProvider({
       return true;
     }
 
-    const waitStartedAt = Date.now();
+    const waitStartedAt = isTraceEnabled() ? Date.now() : undefined;
 
     debugTrace(
       () => `[Provider] waitForScreenReady start screen="${screenId}"`
@@ -595,7 +594,7 @@ export function ChoreographyProvider({
     const ready = await screenReadinessRef.current.waitForReady(screenId, 700);
     debugTrace(
       () =>
-        `[Provider] waitForScreenReady ${ready ? 'resolved' : 'timeout'} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)} duration=${Date.now() - waitStartedAt}ms`
+        `[Provider] waitForScreenReady ${ready ? 'resolved' : 'timeout'} screen="${screenId}" blockers=${screenReadinessRef.current.getBlockerCount(screenId)} duration=${waitStartedAt === undefined ? 'unmeasured' : `${Date.now() - waitStartedAt}ms`}`
     );
     return ready;
   }, []);
@@ -817,7 +816,6 @@ export function ChoreographyProvider({
   const handleOverlayReady = useCallback(
     (sessionId: string) => {
       const session = activeSessionRef.current;
-      // Ignore stale acks from a previous session's layout effect.
       if (!session || session.id !== sessionId) return;
       if (session.state === 'active' && session.pairs.length > 0) {
         overlayContentReadySessionIdRef.current = sessionId;
@@ -1020,10 +1018,12 @@ export function ChoreographyProvider({
     <PortalProvider>
       <ChoreographyActionsContext.Provider value={actionsValue}>
         <ChoreographyControlsContext.Provider value={controlsValue}>
-          <ChoreographyContext.Provider value={contextValue}>
+          <ChoreographyContextProvider value={contextValue}>
             <PreparingSessionContext.Provider value={preparingSession}>
               <ChoreographyProgressProvider>
-                {children}
+                <IncomingGroupsContext.Provider value={incomingGroups}>
+                  {children}
+                </IncomingGroupsContext.Provider>
                 <TransitionHostPortal
                   active={Boolean(isOverlayActive && overlaySession)}
                 >
@@ -1055,7 +1055,7 @@ export function ChoreographyProvider({
                 </TransitionHostPortal>
               </ChoreographyProgressProvider>
             </PreparingSessionContext.Provider>
-          </ChoreographyContext.Provider>
+          </ChoreographyContextProvider>
         </ChoreographyControlsContext.Provider>
       </ChoreographyActionsContext.Provider>
     </PortalProvider>

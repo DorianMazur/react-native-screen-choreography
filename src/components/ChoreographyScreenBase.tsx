@@ -31,7 +31,7 @@ import {
 } from '../core/screenVisibility';
 
 export interface ChoreographyScreenProps {
-  screenId: string;
+  screenId?: string;
   children: React.ReactNode;
   /** Additional app readiness gate applied after the screen has laid out. */
   ready?: boolean;
@@ -60,7 +60,11 @@ export function ChoreographyScreenBase({
   screenFade,
   keepVisible = false,
   allowInteractionDuringTransition = true,
-}: ChoreographyScreenProps & { instanceId?: string; isFocused?: boolean }) {
+}: ChoreographyScreenProps & {
+  screenId: string;
+  instanceId?: string;
+  isFocused?: boolean;
+}) {
   const screenId = instanceId ?? screenName;
   if (screenFade !== undefined) validateScreenFade(screenFade);
   const choreography = useContext(ChoreographyContext);

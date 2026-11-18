@@ -1,6 +1,10 @@
 import { StyleSheet, Text } from 'react-native';
 import Animated from 'react-native-reanimated';
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { JournalDetailScreen } from '../examples/shared/journal/JournalScreens';
 
 const mockPresentation = {
@@ -34,30 +38,25 @@ jest.mock('../examples/shared/journal/journalTransition', () => ({
   },
 }));
 
-let tree: ReactTestRenderer;
+let tree: RenderResult;
 
 async function render() {
-  await act(async () => {
-    const screen = <JournalDetailScreen collectionId="trails" />;
-    if (tree) tree.update(screen);
-    else tree = create(screen);
-  });
+  const screen = <JournalDetailScreen collectionId="trails" />;
+  if (tree) tree.rerender(screen);
+  else tree = renderComponent(screen);
 }
 
 function cardStyle() {
-  const card = tree.root
-    .findAllByType(Animated.View)
-    .find(
-      (node) => StyleSheet.flatten(node.props.style)?.overflow === 'hidden'
-    );
+  const card = tree.UNSAFE_root.findAllByType(Animated.View).find(
+    (node) => StyleSheet.flatten(node.props.style)?.overflow === 'hidden'
+  );
   return StyleSheet.flatten(card!.props.style);
 }
 
 function count() {
-  return tree.root
-    .findAllByType(Text)
-    .find((node) => node.props.accessibilityLiveRegion === 'polite')?.props
-    .children;
+  return tree.UNSAFE_root.findAllByType(Text).find(
+    (node) => node.props.accessibilityLiveRegion === 'polite'
+  )?.props.children;
 }
 
 afterEach(async () => {
@@ -82,7 +81,7 @@ test('live content exists before opening, uses the same mask in both directions,
   expect(cardStyle().opacity).toBe(1);
   expect(count()).toBe(0);
 
-  const add = tree.root.find(
+  const add = tree.UNSAFE_root.find(
     (node) =>
       node.props.accessibilityLabel === 'Log an observation' &&
       typeof node.props.onPress === 'function'

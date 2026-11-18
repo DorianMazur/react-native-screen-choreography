@@ -1,7 +1,7 @@
 <script setup>
-import gallery from '../../../Gallery_demo_new.gif';
-import trips from '../../../Trips.gif';
-import wallet from '../../../Wallet_demo_new.gif';
+import gallery from '../../../media/gallery.gif';
+import trips from '../../../media/trips.gif';
+import wallet from '../../../media/wallet.gif';
 
 const demos = [
   {
@@ -41,6 +41,8 @@ const demos = [
         <img
           :src="demo.src"
           :alt="`${demo.name} native app recording, showing forward and return shared element transitions`"
+          loading="lazy"
+          decoding="async"
         />
       </div>
       <h2 :id="demo.id">{{ demo.name }}</h2>

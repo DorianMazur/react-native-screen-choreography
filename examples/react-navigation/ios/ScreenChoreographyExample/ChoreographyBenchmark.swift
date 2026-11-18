@@ -1,12 +1,14 @@
 import Foundation
 import React
 import UIKit
+import notify
 
-/// Only benchmark launches install this window. Event and ack times share iOS uptime.
-final class BenchmarkWindow: UIWindow {
+/// Only benchmark launches use this application. Record input across all app
+/// windows, with event and acknowledgement timestamps using iOS uptime.
+final class BenchmarkApplication: UIApplication {
   override func sendEvent(_ event: UIEvent) {
-    for touch in event.allTouches ?? [] where touch.phase == .ended {
-      BenchmarkRecorder.record(touch, in: self)
+    for touch in event.allTouches ?? [] where touch.phase == .began || touch.phase == .ended || touch.phase == .cancelled {
+      if let window = touch.window { BenchmarkRecorder.record(touch, in: window) }
     }
     super.sendEvent(event)
   }
@@ -14,17 +16,52 @@ final class BenchmarkWindow: UIWindow {
 
 private enum BenchmarkRecorder {
   static var touches: [[String: Any]] = []
+  static var touchEvents: [[String: Any]] = []
   static var acknowledgements: [[String: Any]] = []
+  // Publish the sequence and outcome of each finished physical touch. XCTest
+  // can retry a single cancellation without retrying a completed app action.
+  private static let touchToken: Int32? = {
+    guard let name = ProcessInfo.processInfo.environment["PERFORMANCE_TOUCH_STATE"] else { return nil }
+    var token: Int32 = -1
+    guard notify_register_check(name, &token) == NOTIFY_STATUS_OK else { return nil }
+    return token
+  }()
+  private static var finishedTouches: UInt64 = 0
   static var droppedSamples = 0
   static var now: Double { ProcessInfo.processInfo.systemUptime * 1000 }
 
   static func record(_ touch: UITouch, in window: UIWindow) {
-    guard touches.count < 20000 else { droppedSamples += 1; return }
+    guard touchEvents.count < 20000 else { droppedSamples += 1; return }
     let point = touch.location(in: window)
-    touches.append([
-      "kind": "window-touch-ended", "eventUptimeMs": touch.timestamp * 1000,
+    let sample: [String: Any] = [
+      "eventUptimeMs": touch.timestamp * 1000,
       "dispatchUptimeMs": now, "x": point.x, "y": point.y,
-    ])
+    ]
+    if touch.phase != .began, let token = touchToken {
+      finishedTouches += 1
+      let cancelled: UInt64 = touch.phase == .cancelled ? 1 : 0
+      notify_set_state(token, (finishedTouches << 1) | cancelled)
+    }
+    if touch.phase == .ended {
+      // Preserve the ended-touch stream used to validate probe timing.
+      touches.append(sample.merging(["kind": "window-touch-ended"]) { _, value in value })
+    }
+    var path: [[String: Any]] = []
+    var view = touch.view
+    while let current = view {
+      path.append([
+        "class": NSStringFromClass(type(of: current)), "tag": current.tag,
+        "identifier": current.accessibilityIdentifier ?? "",
+        "alpha": current.alpha, "interactive": current.isUserInteractionEnabled,
+      ])
+      view = current.superview
+    }
+    touchEvents.append(sample.merging([
+      "phase": touch.phase == .began ? "began" : touch.phase == .ended ? "ended" : "cancelled",
+      "windowClass": NSStringFromClass(type(of: window)),
+      "windowLevel": window.windowLevel.rawValue,
+      "targetPath": path,
+    ]) { _, value in value })
   }
 }
 
@@ -67,6 +104,7 @@ final class ChoreographyBenchmark: NSObject {
         "exportedAtUptimeMs": BenchmarkRecorder.now,
         "droppedSamples": BenchmarkRecorder.droppedSamples,
         "touches": BenchmarkRecorder.touches,
+        "touchEvents": BenchmarkRecorder.touchEvents,
         "inputAcknowledgements": BenchmarkRecorder.acknowledgements,
       ]
       let file = directory.appendingPathComponent("\(exportID).json")

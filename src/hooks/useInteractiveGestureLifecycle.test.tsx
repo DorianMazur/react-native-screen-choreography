@@ -1,7 +1,16 @@
-import { act, create, type ReactTestRenderer } from 'react-test-renderer';
+import {
+  act,
+  render as renderComponent,
+  type RenderResult,
+} from '@testing-library/react-native/pure';
 import { scheduleOnRN, scheduleOnUI } from 'react-native-worklets';
+import * as Reanimated from 'react-native-reanimated';
 import type { InteractiveTransitionHandle } from '../types';
-import { useInteractiveGestureLifecycle } from './useInteractiveGestureLifecycle';
+const { loadWorkletModule, onUI } = require('../../__fixtures__/worklets');
+const { useInteractiveGestureLifecycle } = loadWorkletModule(
+  require.resolve('./useInteractiveGestureLifecycle'),
+  require
+) as typeof import('./useInteractiveGestureLifecycle');
 
 jest.mock('react-native-reanimated', () => {
   const { useLayoutEffect } = require('react');
@@ -87,7 +96,7 @@ function makeHandle(id = 'session') {
 }
 
 describe('interactive gesture lifecycle', () => {
-  let tree: ReactTestRenderer | undefined;
+  let tree: RenderResult | undefined;
   let lifecycle: Lifecycle;
   let controller: Controller;
   let options: Options;
@@ -110,14 +119,13 @@ describe('interactive gesture lifecycle', () => {
       onFallbackFinish: fallback,
       ...overrides,
     };
-    await act(async () => {
-      tree = create(<Harness />);
-    });
+
+    tree = renderComponent(<Harness />);
   }
 
   async function rerender(overrides: Partial<Options> = {}) {
     options = { ...options, ...overrides };
-    await act(async () => tree!.update(<Harness />));
+    await act(async () => tree!.rerender(<Harness />));
   }
 
   async function unmount() {
@@ -454,18 +462,39 @@ describe('interactive gesture lifecycle', () => {
   );
 
   test('clamps updates on the UI path without scheduling JS work per frame', async () => {
+    const useReaction = Reanimated.useAnimatedReaction;
+    jest
+      .spyOn(Reanimated, 'useAnimatedReaction')
+      .mockImplementation((read, react, deps) =>
+        useReaction(
+          onUI(read, controller, options, handle),
+          onUI(react, controller, options, handle),
+          deps
+        )
+      );
+    (scheduleOnUI as jest.Mock).mockImplementation((worklet, ...args) =>
+      onUI(worklet, controller, options, handle)(...args)
+    );
     await mount();
-    const attempt = await begin();
+    let attempt!: number;
+    await act(async () => {
+      attempt = onUI(lifecycle.begin, controller, options)();
+    });
+    const update = onUI(lifecycle.update, controller, options, handle);
     (scheduleOnRN as jest.Mock).mockClear();
     handle.setProgress.mockClear();
-    lifecycle.update(attempt, -0.5);
+    update(attempt, -0.5);
     expect(handle.setProgress).toHaveBeenLastCalledWith(0);
     for (let frame = 0; frame < 60; frame++) {
-      lifecycle.update(attempt, frame / 60);
+      update(attempt, frame / 60);
     }
-    lifecycle.update(attempt, 1.5);
+    update(attempt, 1.5);
     expect(handle.setProgress).toHaveBeenLastCalledWith(1);
     expect(scheduleOnRN).not.toHaveBeenCalled();
+    await act(async () =>
+      onUI(lifecycle.release, controller, options, handle)(attempt)
+    );
+    expect(handle.finish).toHaveBeenCalledTimes(1);
   });
 
   test.each([

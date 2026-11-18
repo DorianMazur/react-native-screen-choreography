@@ -5,7 +5,8 @@ export function selectPresentationPair(
   session: TransitionSessionData | null,
   screenId: string,
   groupId: string | undefined,
-  id: string
+  id: string,
+  participatingSessionId?: string | null
 ) {
   if (
     !session ||
@@ -17,7 +18,9 @@ export function selectPresentationPair(
     session.pairs.find(
       (pair) =>
         pair.id === id &&
-        (pair.source.screenId === screenId || pair.target.screenId === screenId)
+        (participatingSessionId === session.id ||
+          pair.source.screenId === screenId ||
+          pair.target.screenId === screenId)
     ) ?? null
   );
 }
@@ -38,6 +41,16 @@ export function pairEndpoints(
     style: pair.targetPresentation.style,
   };
   return direction === 'forward'
-    ? { collapsed: source, expanded: target }
-    : { collapsed: target, expanded: source };
+    ? {
+        collapsed: source,
+        expanded: target,
+        collapsedScreenId: pair.source.screenId,
+        expandedScreenId: pair.target.screenId,
+      }
+    : {
+        collapsed: target,
+        expanded: source,
+        collapsedScreenId: pair.target.screenId,
+        expandedScreenId: pair.source.screenId,
+      };
 }

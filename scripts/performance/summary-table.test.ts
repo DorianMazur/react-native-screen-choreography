@@ -1,8 +1,11 @@
 import assert from 'node:assert/strict';
 import { test } from 'node:test';
-import { compatible, summaryTable } from './summary-table.mts';
+import {
+  compatible,
+  metricCompatible,
+  summaryTable,
+} from './summary-table.mts';
 import type { InputRecord } from './types.ts';
-import { selectBaselineRun } from './post-comment.mts';
 import { metricDefinition } from './metric-definitions.mts';
 
 function report() {
@@ -150,35 +153,6 @@ test('does not display nonnumeric metrics or compare invalid collections', () =>
   assert.equal(compatible(current, { ...report(), valid: false }), false);
 });
 
-test('selects the latest successful main push or manual run, never a PR or other branch', () => {
-  const good = {
-    id: 10,
-    event: 'push',
-    status: 'completed',
-    conclusion: 'success',
-    head_sha: 'base',
-    head_branch: 'main',
-    repository: { full_name: 'owner/repo' },
-  };
-  for (const changed of [
-    { event: 'pull_request' },
-    { head_branch: 'other' },
-    { conclusion: 'failure' },
-    { repository: { full_name: 'fork/repo' } },
-  ]) {
-    assert.equal(
-      selectBaselineRun([{ ...good, ...changed, id: 20 }, good], 'owner/repo'),
-      good
-    );
-  }
-  assert.equal(selectBaselineRun([], 'owner/repo'), undefined);
-  const latest = { ...good, head_sha: 'newer', id: 30 };
-  assert.equal(selectBaselineRun([good, latest], 'owner/repo'), latest);
-  assert.equal(selectBaselineRun([good, latest], 'owner/repo', 30), good);
-  const manual = { ...latest, event: 'workflow_dispatch' };
-  assert.equal(selectBaselineRun([good, manual], 'owner/repo'), manual);
-});
-
 test('explicit definitions survive implementation changes and compare each metric independently', () => {
   const base: InputRecord = report();
   base.metricDefinitions = Object.fromEntries(
@@ -193,6 +167,7 @@ test('explicit definitions survive implementation changes and compare each metri
   current.metadata.reactNativeVersion = 'next';
   current.metadata.nodeVersion = 'next';
   current.metadata.reanimatedVersion = 'next';
+  current.metadata.workletsVersion = 'next';
   assert.equal(compatible(current, base), true);
   assert.match(summaryTable(current, base), /40 \| 40 \| 0 ms/);
   current.metricDefinitions['gallery.forward.tapToMotion'].version++;
@@ -237,6 +212,41 @@ test('does not compare rows collected with different sample counts', () => {
     summaryTable(report(), base),
     /tap to motion \(ms\) \| — \| 40 \| —/
   );
+});
+
+test('screen and tray comparisons use their own cycle counts, including older baselines', () => {
+  const screen = 'gallery.forward.tapToMotion';
+  for (const tray of [
+    'tray-wallet.forward.tapToMotion',
+    'tray-gallery.step-3.requestToSettledMs',
+  ]) {
+    const base: InputRecord = report();
+    base.metadata.timingCycles = 20;
+    base.metrics[screen].count = 20;
+    base.metrics[tray] = { count: 20, median: 40 };
+    const current = structuredClone(base);
+    current.metadata.screenTimingCycles = 20;
+    delete current.metadata.timingCycles;
+    current.metadata.trayTimingCycles = 5;
+    current.metrics[tray].count = 5;
+
+    assert.equal(metricCompatible(current, base, screen), true);
+    assert.equal(metricCompatible(current, base, tray), false);
+    assert.match(summaryTable(current, base), /tray · .* \| — \| 40 \| —/);
+
+    base.metadata.trayTimingCycles = 5;
+    base.metrics[tray].count = 5;
+    assert.equal(metricCompatible(current, base, tray), true);
+    assert.match(summaryTable(current, base), /tray · .* \| 40 \| 40 \| 0 ms/);
+
+    base.metadata.timingCycles = 10;
+    assert.equal(metricCompatible(current, base, screen), false);
+    assert.equal(metricCompatible(current, base, tray), true);
+
+    delete base.metadata.trayTimingCycles;
+    base.metadata.timingCycles = 5;
+    assert.equal(metricCompatible(current, base, tray), true);
+  }
 });
 
 test('iOS toolchains and platforms must match for comparisons', () => {

@@ -24,14 +24,14 @@ import {
 import { SafeAreaProvider, SafeAreaView } from 'react-native-safe-area-context';
 import {
   ChoreographyProvider,
-  ChoreographyScreen,
+  choreographyScreenLayout,
+  choreographyStackOptions,
   defineTransition,
   useChoreographyNavigation,
 } from 'react-native-screen-choreography';
 
 type Routes = { Gallery: undefined; Detail: undefined };
 const Stack = createNativeStackNavigator<Routes>();
-const GROUP = 'artwork.sunrise';
 
 // Define once. Both endpoints reuse this definition.
 const artwork = defineTransition({
@@ -45,30 +45,24 @@ function GalleryScreen({
   const { navigate } = useChoreographyNavigation(navigation);
 
   return (
-    <ChoreographyScreen screenId="Gallery">
-      <SafeAreaView style={styles.screen}>
-        <Text style={styles.eyebrow}>THE DAILY COLLECTION</Text>
-        <Text style={styles.title}>A little more light.</Text>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Open Sunrise artwork"
-          onPress={() => {
-            void navigate('Detail', undefined, {
-              transitionConfig: { group: GROUP },
-              ...artwork.navigationOptions,
-            });
-          }}
-        >
-          <artwork.Element name="hero" groupId={GROUP} style={styles.card}>
-            <View style={styles.art}>
-              <View style={styles.sun} />
-              <Text style={styles.artTitle}>Sunrise</Text>
-            </View>
-          </artwork.Element>
-        </Pressable>
-        <Text style={styles.body}>Tap the card to explore.</Text>
-      </SafeAreaView>
-    </ChoreographyScreen>
+    <SafeAreaView style={styles.screen}>
+      <Text style={styles.eyebrow}>THE DAILY COLLECTION</Text>
+      <Text style={styles.title}>A little more light.</Text>
+      <artwork.Element.Pressable
+        name="hero"
+        groupId="artwork.sunrise"
+        style={styles.card}
+        accessibilityRole="button"
+        accessibilityLabel="Open Sunrise artwork"
+        onPress={(options) => navigate('Detail', undefined, options)}
+      >
+        <View style={styles.art}>
+          <View style={styles.sun} />
+          <Text style={styles.artTitle}>Sunrise</Text>
+        </View>
+      </artwork.Element.Pressable>
+      <Text style={styles.body}>Tap the card to explore.</Text>
+    </SafeAreaView>
   );
 }
 
@@ -78,31 +72,25 @@ function DetailScreen({
   const { goBack } = useChoreographyNavigation(navigation);
 
   return (
-    <ChoreographyScreen screenId="Detail">
-      <SafeAreaView style={styles.screen}>
-        <Pressable
-          accessibilityRole="button"
-          accessibilityLabel="Back to gallery"
-          onPress={() => {
-            void goBack();
-          }}
-          style={styles.back}
-        >
-          <Text style={styles.link}>← Gallery</Text>
-        </Pressable>
-        <artwork.Element.Target
-          name="hero"
-          groupId={GROUP}
-          style={styles.hero}
-        />
-        <artwork.Enter name="description">
-          <Text style={styles.title}>Keep the feeling.</Text>
-          <Text style={styles.body}>
-            One live artwork, carried from the collection into a closer view.
-          </Text>
-        </artwork.Enter>
-      </SafeAreaView>
-    </ChoreographyScreen>
+    <SafeAreaView style={styles.screen}>
+      <Pressable
+        accessibilityRole="button"
+        accessibilityLabel="Back to gallery"
+        onPress={() => {
+          void goBack();
+        }}
+        style={styles.back}
+      >
+        <Text style={styles.link}>← Gallery</Text>
+      </Pressable>
+      <artwork.Element.Target name="hero" fromSource style={styles.hero} />
+      <artwork.Enter name="description">
+        <Text style={styles.title}>Keep the feeling.</Text>
+        <Text style={styles.body}>
+          One live artwork, carried from the collection into a closer view.
+        </Text>
+      </artwork.Enter>
+    </SafeAreaView>
   );
 }
 
@@ -112,17 +100,14 @@ export default function App() {
       <ChoreographyProvider>
         <NavigationContainer>
           <Stack.Navigator
-            screenOptions={{ headerShown: false, animation: 'none' }}
+            screenLayout={choreographyScreenLayout}
+            screenOptions={{ headerShown: false }}
           >
             <Stack.Screen name="Gallery" component={GalleryScreen} />
             <Stack.Screen
               name="Detail"
               component={DetailScreen}
-              options={{
-                presentation: 'containedTransparentModal',
-                contentStyle: { backgroundColor: 'transparent' },
-                gestureEnabled: false,
-              }}
+              options={choreographyStackOptions}
             />
           </Stack.Navigator>
         </NavigationContainer>
@@ -168,15 +153,9 @@ const styles = StyleSheet.create({
 
 ## What makes it work
 
-The provider stays mounted above the navigator. Give each route a stable, explicit `screenId` matching its route name.
+The provider stays mounted above the navigator. `screenLayout` wraps each route and uses its route key to distinguish separate visits to Detail. The detail preset gives the overlay a transparent presentation, disables the native animation, and disables the native swipe gesture.
 
-Both endpoints share the role `hero` and the group `artwork.sunrise`. The source `Element` owns the artwork. The empty `Element.Target` defines its destination bounds. Give it an explicit height because it has no content to determine its size before the artwork arrives.
-
-Navigation receives the same group. Without `transitionConfig.group`, the adapter performs ordinary navigation. The detail's `Enter` wrapper follows expansion progress and reverses with the transition.
-
-::: tip Let the overlay own the motion
-Disable the navigator's animation, keep the detail route presentation transparent, and keep the provider mounted between routes. The example disables the native swipe gesture because native swipe progress is not connected to choreography. Add a [custom back gesture](./interactive-back.md) when needed.
-:::
+The pressable registers the `hero` owner and gives its group and motion settings to `navigate`. The matching target receives the group through `fromSource`. Give the empty target a height so it can be measured before the artwork arrives. The detail's `Enter` wrapper follows expansion progress and reverses on Back.
 
 ## Next steps
 

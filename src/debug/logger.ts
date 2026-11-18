@@ -5,11 +5,6 @@ let debugEnabled = false;
 let debugLevel: ChoreographyDebugLevel = 'info';
 let coalesceEnabled = true;
 
-const MAX_LOGS = 200;
-const logs: string[] = new Array(MAX_LOGS);
-let logHead = 0;
-let logCount = 0;
-
 const LEVEL_PRIORITY: Record<ChoreographyDebugLevel, number> = {
   error: 0,
   warn: 1,
@@ -18,8 +13,6 @@ const LEVEL_PRIORITY: Record<ChoreographyDebugLevel, number> = {
 };
 
 let lastMessage: string | null = null;
-let lastEntry: string | null = null;
-let lastRepeatCount = 0;
 
 function shouldEmit(level: ChoreographyDebugLevel): boolean {
   return LEVEL_PRIORITY[level] <= LEVEL_PRIORITY[debugLevel];
@@ -54,29 +47,11 @@ function emit(level: ChoreographyDebugLevel, message: string | (() => string)) {
 
   const text = typeof message === 'function' ? message() : message;
 
-  if (coalesceEnabled && text === lastMessage && lastEntry) {
-    lastRepeatCount += 1;
-    // Update the last log entry in-place to indicate repeats. This keeps
-    // the buffer bounded and the console quieter for chatty traces.
-    const repeatLabel = ` (×${lastRepeatCount + 1})`;
-    const previousIndex = (logHead - 1 + MAX_LOGS) % MAX_LOGS;
-    const updated = `${lastEntry}${repeatLabel}`;
-    logs[previousIndex] = updated;
-    return;
-  }
+  if (coalesceEnabled && text === lastMessage) return;
+  lastMessage = text;
 
   const timestamp = new Date().toISOString().split('T')[1]?.slice(0, 12) ?? '';
   const entry = `${timestamp} ${DEBUG_PREFIX} ${text}`;
-
-  logs[logHead] = entry;
-  logHead = (logHead + 1) % MAX_LOGS;
-  if (logCount < MAX_LOGS) {
-    logCount++;
-  }
-
-  lastMessage = text;
-  lastEntry = entry;
-  lastRepeatCount = 0;
 
   console.log(entry);
 }
@@ -95,20 +70,4 @@ export function debugWarn(message: string | (() => string)) {
 
 export function debugError(message: string | (() => string)) {
   emit('error', message);
-}
-
-export function getDebugLogs(): string[] {
-  if (logCount < MAX_LOGS) {
-    return logs.slice(0, logCount);
-  }
-  // Oldest entries start at logHead, wrap around
-  return [...logs.slice(logHead, MAX_LOGS), ...logs.slice(0, logHead)];
-}
-
-export function clearDebugLogs() {
-  logHead = 0;
-  logCount = 0;
-  lastMessage = null;
-  lastEntry = null;
-  lastRepeatCount = 0;
 }

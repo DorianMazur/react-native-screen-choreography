@@ -34,6 +34,45 @@ describe('NavigationSessionController', () => {
     expect(controller.isNavigationLocked()).toBe(false);
   });
 
+  test('a caller unmounted during the replay frame leaves the tap for its replacement', async () => {
+    const controller = new NavigationSessionController();
+    const request = {
+      sourceScreenId: 'list',
+      targetScreenId: 'detail',
+      dispatchNavigation: jest.fn(),
+    };
+    controller.queueNavigation(request);
+    let finishFrame!: () => void;
+    const frame = new Promise<void>((resolve) => {
+      finishFrame = resolve;
+    });
+    const navigate = jest.fn(async () => {});
+    const unsubscribe = controller.subscribeToQueuedNavigation({
+      screenId: 'list',
+      replayWindow: () => 'after-frame',
+      waitForFrame: () => frame,
+      navigate,
+    });
+    unsubscribe();
+    finishFrame();
+    await frame;
+    expect(navigate).not.toHaveBeenCalled();
+    expect(controller.peekQueuedNavigation()).toBe(request);
+
+    const replacement = jest.fn(async () => {});
+    const detach = controller.subscribeToQueuedNavigation({
+      screenId: 'list',
+      replayWindow: () => 'after-frame',
+      waitForFrame: () => frame,
+      navigate: replacement,
+    });
+    await frame;
+    expect(replacement).toHaveBeenCalledTimes(1);
+    expect(replacement).toHaveBeenCalledWith(request);
+    expect(controller.peekQueuedNavigation()).toBeNull();
+    detach();
+  });
+
   test('preserves the failed presentation phase before session settlement', async () => {
     jest.useFakeTimers();
     try {

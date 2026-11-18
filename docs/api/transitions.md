@@ -47,13 +47,14 @@ At least one role is required. Role names cannot be empty. Radius values must be
 
 The result contains:
 
-| Member              | Props / behavior                                                                     |
-| ------------------- | ------------------------------------------------------------------------------------ |
-| `Element`           | Owner props, with a typed `name` replacing `id` and `transition`                     |
-| `Element.Target`    | Target props, with the same typed `name`                                             |
-| `Enter`             | `{ name, children, style?, index?, count?, scope? }`; reveals as expansion increases |
-| `Exit`              | Same props as `Enter`; disappears as expansion increases                             |
-| `navigationOptions` | Readonly motion options to spread into navigation requests                           |
+| Member              | Props / behavior                                                                             |
+| ------------------- | -------------------------------------------------------------------------------------------- |
+| `Element`           | Owner props, with a typed `name` replacing `id` and `transition`                             |
+| `Element.Pressable` | Pressable owner with the typed role name. Its press options include the definition’s motion. |
+| `Element.Target`    | Target props, with the same typed `name`                                                     |
+| `Enter`             | `{ name, children, style?, index?, count?, scope? }`; reveals as expansion increases         |
+| `Exit`              | Same props as `Enter`; disappears as expansion increases                                     |
+| `navigationOptions` | Readonly motion options to spread into navigation requests                                   |
 
 Default enter interval: `[0.55, 0.9]`. Default exit interval: `[0.1, 0.4]`. Translations default to `0`; hidden scale defaults to `1`. The visible endpoint always has zero translation and scale `1`. Reduced motion disables both translation and scale; opacity remains progress-driven. Shared recipes default to `zIndex: 100` through the transition factory.
 
@@ -71,6 +72,10 @@ Choose `scope` based on where the content lives:
 Reveals animate opacity and transforms only. They keep children mounted and do not change touch or accessibility behavior. They own the wrapper's opacity and transform; put additional transforms on a nested view. For the same behavior on an existing animated view, use [`useRevealStyle`](./hooks.md#userevealstyle).
 
 See [defining motion](../guide/transitions.md) for placement and context guidance.
+
+### `TransitionPressableProps`
+
+The props for `Element.Pressable` use the same typed `name` as `Element`. Pass the press callback's options to the navigation adapter to carry the group and the definition's spring or duration together.
 
 ## `makeTransition`
 

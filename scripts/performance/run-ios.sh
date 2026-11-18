@@ -5,8 +5,11 @@ repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/../.." && pwd)"
 cd "$repo_root"
 mode="${1:-native-release}"
 [[ "$mode" == native-release ]] || { echo 'Only native-release is supported.' >&2; exit 2; }
-cycles="${PERFORMANCE_TIMING_CYCLES:-20}"
-[[ "$cycles" =~ ^[1-9][0-9]*$ && "$cycles" -le 99 ]] || { echo 'Use 1..99 measured round trips.' >&2; exit 2; }
+screen_cycles="${PERFORMANCE_SCREEN_TIMING_CYCLES:-20}"
+tray_cycles="${PERFORMANCE_TRAY_TIMING_CYCLES:-5}"
+[[ "$screen_cycles" =~ ^[1-9][0-9]*$ && "$screen_cycles" -le 99 ]] || { echo 'PERFORMANCE_SCREEN_TIMING_CYCLES must be in 1..99.' >&2; exit 2; }
+[[ "$tray_cycles" =~ ^[1-9]$ && "$tray_cycles" -le 5 ]] || { echo 'PERFORMANCE_TRAY_TIMING_CYCLES must be in 1..5.' >&2; exit 2; }
+printf 'Per scenario: %s screen cycles; %s tray cycles.\n' "$screen_cycles" "$tray_cycles"
 # RN configures CCACHE_BINARY as an Xcode build setting, but compiler processes
 # need it in their environment; otherwise RN's wrappers silently call clang alone.
 if [[ "${USE_CCACHE:-0}" == 1 ]]; then
@@ -40,7 +43,7 @@ xcrun simctl status_bar "$udid" override --time '9:41' --dataNetwork wifi --wifi
 export PERFORMANCE_DEVICE_MODEL="$device_type"
 export PERFORMANCE_OS_VERSION="$(xcrun simctl getenv "$udid" SIMULATOR_RUNTIME_VERSION)"
 export PERFORMANCE_XCODE_VERSION="$(xcodebuild -version | tr '\n' ' ')"
-node - "$output/metadata.json" "$(uname -m)" "$cycles" <<'NODE'
+node - "$output/metadata.json" "$(uname -m)" "$screen_cycles" "$tray_cycles" <<'NODE'
 const fs = require('node:fs');
 fs.writeFileSync(process.argv[2], JSON.stringify({
   deviceModel: process.env.PERFORMANCE_DEVICE_MODEL,
@@ -50,28 +53,47 @@ fs.writeFileSync(process.argv[2], JSON.stringify({
   nodeVersion: process.version, runnerImage: process.env.ImageVersion ?? 'local',
   reactNativeVersion: require('./examples/react-navigation/node_modules/react-native/package.json').version,
   reanimatedVersion: require('./examples/react-navigation/node_modules/react-native-reanimated/package.json').version,
-  abi: process.argv[3], timingCycles: Number(process.argv[4]),
+  workletsVersion: require('./examples/react-navigation/node_modules/react-native-worklets/package.json').version,
+  abi: process.argv[3], screenTimingCycles: Number(process.argv[4]),
+  trayTimingCycles: Number(process.argv[5]),
+  lifecycleValidation: 2,
   hostCpu: require('node:os').cpus()[0]?.model,
 }, null, 2));
 NODE
 
 derived_data="${PERFORMANCE_DERIVED_DATA:-$repo_root/examples/react-navigation/ios/build/performance}"
-# This directory belongs to this benchmark scheme. Keep native build products for
-# incremental local runs, but remove old test manifests before creating a new one.
-mkdir -p "$derived_data/Build/Products"
-rm -f "$derived_data"/Build/Products/ChoreographyPerformance_*.xctestrun
+# Products saved by an earlier run of the same sources. Reusing them skips a
+# rebuild that takes minutes even when nothing changed.
+saved_products="${PERFORMANCE_IOS_PRODUCTS:-}"
+products="$derived_data/Build/Products"
 status=0
-xcodebuild build-for-testing \
-  -showBuildTimingSummary \
-  -workspace examples/react-navigation/ios/ScreenChoreographyExample.xcworkspace \
-  -scheme ChoreographyPerformance -configuration Release \
-  -destination "platform=iOS Simulator,id=$udid" \
-  -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
-  SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
-  > >(tee "$output/build.log") 2>&1 || status=$?
+if [[ -n "$saved_products" ]] && compgen -G "$saved_products/ChoreographyPerformance_*.xctestrun" >/dev/null; then
+  products="$saved_products"
+  echo "Reusing build products: $products" | tee "$output/build.log"
+else
+  # This directory belongs to this benchmark scheme. Keep native build products for
+  # incremental local runs, but remove old test manifests before creating a new one.
+  mkdir -p "$products"
+  rm -f "$products"/ChoreographyPerformance_*.xctestrun
+  xcodebuild build-for-testing \
+    -showBuildTimingSummary \
+    -workspace examples/react-navigation/ios/ScreenChoreographyExample.xcworkspace \
+    -scheme ChoreographyPerformance -configuration Release \
+    -destination "platform=iOS Simulator,id=$udid" \
+    -derivedDataPath "$derived_data" CODE_SIGNING_ALLOWED=NO ONLY_ACTIVE_ARCH=YES \
+    SCREEN_CHOREOGRAPHY_TRACE_PRESENTATION=1 \
+    > >(tee "$output/build.log") 2>&1 || status=$?
+  if [[ "$status" -eq 0 && -n "$saved_products" ]]; then
+    # The test manifest refers to its products relative to its own directory.
+    rm -rf "$saved_products"
+    mkdir -p "$(dirname "$saved_products")"
+    cp -R "$products" "$saved_products"
+    products="$saved_products"
+  fi
+fi
 if [[ "$status" -eq 0 ]]; then
-  # Pass the cycle count explicitly to XCTest, rather than assuming shell env is forwarded.
-  test_run="$(python3 - "$derived_data/Build/Products" "$cycles" <<'PY'
+  # Pass both cycle counts explicitly to XCTest; shell env is not forwarded.
+  test_run="$(python3 - "$products" "$screen_cycles" "$tray_cycles" <<'PY'
 import pathlib, plistlib, sys
 files = list(pathlib.Path(sys.argv[1]).glob('ChoreographyPerformance_*.xctestrun'))
 if len(files) != 1: raise SystemExit('Expected exactly one xctestrun')
@@ -81,7 +103,10 @@ def visit(value):
     count = 0
     if isinstance(value, dict):
         if 'TestBundlePath' in value:
-            value.setdefault('EnvironmentVariables', {})['PERFORMANCE_TIMING_CYCLES'] = sys.argv[2]
+            value.setdefault('EnvironmentVariables', {}).update({
+                'PERFORMANCE_SCREEN_TIMING_CYCLES': sys.argv[2],
+                'PERFORMANCE_TRAY_TIMING_CYCLES': sys.argv[3],
+            })
             count += 1
         for child in value.values(): count += visit(child)
     elif isinstance(value, list):
@@ -98,10 +123,18 @@ PY
     -resultBundlePath "$output/tests.xcresult" \
     > >(tee "$output/tests.log") 2>&1 || status=$?
 fi
+node - "$output/metadata.json" "$status" <<'NODE'
+const fs = require('node:fs');
+const metadata = JSON.parse(fs.readFileSync(process.argv[2], 'utf8'));
+metadata.runnerExitCode = Number(process.argv[3]);
+fs.writeFileSync(process.argv[2], JSON.stringify(metadata, null, 2));
+NODE
 container="$(xcrun simctl get_app_container "$udid" screenchoreography.example data 2>/dev/null || true)"
 if [[ -n "$container" && -d "$container/Documents/performance" ]]; then
   cp -R "$container/Documents/performance/." "$output/raw/"
 fi
-node --experimental-transform-types scripts/performance/report.mts --platform=ios "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || status=1
+node --experimental-transform-types scripts/performance/report.mts --platform=ios "--mode=$mode" "--input=$output/raw" "--output=$output/report" "--metadata=$output/metadata.json" || {
+  if [[ "$status" -eq 0 ]]; then status=1; fi
+}
 printf 'Report: %s/report/summary.md\n' "$output"
 exit "$status"

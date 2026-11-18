@@ -2,7 +2,8 @@ import type { InputRecord } from './types.ts';
 import { sameDefinition } from './metric-definitions.mts';
 import {
   SCENARIOS,
-  SCENARIO_IDS,
+  PERFORMANCE_SCENARIO_IDS,
+  TRAY_SCENARIOS,
 } from '../../examples/react-navigation/src/performance/scenarios.ts';
 
 const comparableMetadata = [
@@ -11,7 +12,6 @@ const comparableMetadata = [
   'apiLevel',
   'emulator',
   'abi',
-  'timingCycles',
   'reactNativeVersion',
   'reanimatedVersion',
   'nodeVersion',
@@ -22,6 +22,14 @@ export function metricCompatible(
   base: InputRecord | undefined,
   key: string
 ): boolean {
+  const trayMetric = key.split('.')[0]! in TRAY_SCENARIOS;
+  const cycles = (report: InputRecord | undefined) => {
+    const metadata = report?.metadata;
+    const screenCycles = metadata?.screenTimingCycles ?? metadata?.timingCycles;
+    return trayMetric
+      ? (metadata?.trayTimingCycles ?? screenCycles)
+      : screenCycles;
+  };
   const definition = current.metricDefinitions?.[key];
   const previous = base?.metricDefinitions?.[key];
   const explicit = definition != null && previous != null;
@@ -43,6 +51,9 @@ export function metricCompatible(
     base.valid === true &&
     current.schemaVersion === 1 &&
     base.schemaVersion === 1 &&
+    cycles(current) != null &&
+    cycles(current) !== '' &&
+    cycles(current) === cycles(base) &&
     ['platform', 'mode'].every(
       (name) => current[name] != null && current[name] === base[name]
     ) &&
@@ -75,36 +86,90 @@ export function compatible(current: InputRecord, base?: InputRecord): boolean {
   );
 }
 
-export function environmentChanges(current: InputRecord, base?: InputRecord) {
-  if (!base) return '';
-  const changes = [
-    'reactNativeVersion',
-    'reanimatedVersion',
-    'nodeVersion',
-  ].filter((key) => current.metadata?.[key] !== base?.metadata?.[key]);
-  return changes.length
-    ? `Environment versions differ (${changes.join(', ')}); deltas include those environment changes.`
-    : '';
+/**
+ * The base sources measured in the same session as `report`, when usable.
+ * Report fields are untrusted in the comment workflow; the note is built only
+ * from validated values.
+ */
+export function sameRunnerBase(report: InputRecord | undefined) {
+  const info = report?.sameRunner;
+  const base = info?.base;
+  if (!base || typeof base !== 'object' || !compatible(report!, base))
+    return undefined;
+  const revision = /^[0-9a-f]{7,40}$/.test(info.baseRevision)
+    ? info.baseRevision.slice(0, 7)
+    : 'unknown revision';
+  const count = (field: unknown) =>
+    Number.isInteger(field) && (field as number) > 0 ? (field as number) : null;
+  const rounds = count(info.rounds);
+  const compared = count(info.comparedRounds);
+  const measured =
+    rounds === null
+      ? 'alternating rounds; samples are pooled per side'
+      : compared !== null && compared < rounds
+        ? `${compared} of ${rounds} alternating rounds, the only ones the base passed; both sides pool those rounds' samples`
+        : `${rounds} alternating rounds; samples are pooled per side`;
+  const retried = (Array.isArray(info.retried) ? info.retried : []).flatMap(
+    (run: unknown) => {
+      const match = /^(head|base)-([1-9])$/.exec(String(run));
+      return match
+        ? [`${match[1] === 'head' ? 'current' : 'base'} round ${match[2]}`]
+        : [];
+    }
+  );
+  return {
+    base: base as InputRecord,
+    note: `Base library sources (${revision}) measured on this runner in ${measured}.${retried.length ? ` Repeated after a failed run: ${retried.join(', ')}.` : ''} "99% range" is where the change in medians falls when both sides are resampled; a range that includes zero is within run-to-run noise.`,
+  };
+}
+
+/** Why a valid report has no same-job base, from validated fields only. */
+export function missingBaseNote(report: InputRecord | undefined) {
+  return `No same-runner comparison: ${
+    report?.sameRunner
+      ? 'the base sources did not pass collection with the current fixture'
+      : 'the library sources match the base, so they were measured once'
+  }. Current readings remain available.`;
+}
+
+/** The resampled range of a change, when the report carries a valid one. */
+function changeRange(intervals: unknown, key: string, scale: number) {
+  const range = (intervals as InputRecord | undefined)?.[key];
+  return Array.isArray(range) &&
+    range.length === 2 &&
+    range.every((bound) => typeof bound === 'number' && Number.isFinite(bound))
+    ? ([range[0] * scale, range[1] * scale] as [number, number])
+    : null;
 }
 
 export function headlineMetrics() {
-  return SCENARIO_IDS.flatMap((scenario) =>
-    [
-      ['forward.requestToSessionActiveMs', 'open preparation'],
-      ['forward.tapToMotion', 'tap to motion'],
-      ['forward.transitionDuration', 'open transition duration'],
-      ['forward.handoffDuration', 'open handoff duration'],
-      ['backward.requestToSessionActiveMs', 'return preparation'],
-      ['backward.tapToMotion', 'back tap to motion'],
-      ['backward.transitionDuration', 'return transition duration'],
-      ['backward.handoffDuration', 'return handoff duration'],
-    ].map(([key, label]) => ({
-      key: `${scenario}.${key}`,
-      label: `${SCENARIOS[scenario].label} · ${label} (ms)`,
-      scale: 1,
-      unit: 'ms',
-    }))
-  );
+  return [
+    ...PERFORMANCE_SCENARIO_IDS.flatMap((scenario) =>
+      [
+        ['forward.requestToSessionActiveMs', 'open preparation'],
+        ['forward.tapToMotion', 'tap to motion'],
+        ['forward.transitionDuration', 'open transition duration'],
+        ['forward.handoffDuration', 'open handoff duration'],
+        ['backward.requestToSessionActiveMs', 'return preparation'],
+        ['backward.tapToMotion', 'back tap to motion'],
+        ['backward.transitionDuration', 'return transition duration'],
+        ['backward.handoffDuration', 'return handoff duration'],
+      ].map(([key, label]) => ({
+        key: `${scenario}.${key}`,
+        label: `${SCENARIOS[scenario].label} · ${label} (ms)`,
+        scale: 1,
+        unit: 'ms',
+      }))
+    ),
+    ...Object.entries(TRAY_SCENARIOS).flatMap(([scenario, config]) =>
+      config.routes.map((route, index) => ({
+        key: `${scenario}.step-${index + 1}.requestToSettledMs`,
+        label: `${config.label} · ${index + 1}. ${route} settlement (ms)`,
+        scale: 1,
+        unit: 'ms',
+      }))
+    ),
+  ];
 }
 
 function value(report: InputRecord | undefined, key: string, scale: number) {
@@ -144,6 +209,12 @@ export function summaryTable(
   base?: InputRecord,
   minChangePercent = 0
 ) {
+  // Resampled ranges describe only the base they were measured against.
+  const intervals =
+    base && base === report.sameRunner?.base
+      ? report.sameRunner.changeIntervals
+      : undefined;
+  let withinNoise = 0;
   const rows = headlineMetrics().flatMap(({ key, label, scale, unit }) => {
     const current = value(report, key, scale);
     const previous =
@@ -152,22 +223,37 @@ export function summaryTable(
         ? value(base, key, scale)
         : null;
     if (
+      (key.startsWith('tray-') && current === null && previous === null) ||
       (minChangePercent > 0 && current === null) ||
       belowChangeThreshold(current, previous, minChangePercent)
     )
       return [];
     const delta =
       current !== null && previous !== null ? current - previous : null;
+    const signed = (n: number) => `${n > 0 ? '+' : ''}${format(n)}`;
+    const range = delta === null ? null : changeRange(intervals, key, scale);
+    // A filtered table lists only changes that stand out from the noise.
+    if (minChangePercent > 0 && range && range[0] <= 0 && range[1] >= 0) {
+      withinNoise++;
+      return [];
+    }
     return [
-      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${delta > 0 ? '+' : ''}${format(delta)} ${unit}`} |`,
+      `| ${label} | ${format(previous)} | ${format(current)} | ${delta === null ? '—' : `${signed(delta)} ${unit}`} |${intervals ? ` ${range ? `${signed(range[0])} to ${signed(range[1])} ${unit}` : '—'} |` : ''}`,
     ];
   });
+  const hidden = withinNoise
+    ? `Within run-to-run noise and not listed: ${withinNoise}.`
+    : '';
   if (!rows.length)
-    return `No measurements to show at the ${minChangePercent}% change threshold.`;
+    return (
+      hidden ||
+      `No measurements to show at the ${minChangePercent}% change threshold.`
+    );
   return [
-    '| Metric | Base | PR / current | Change |',
-    '| --- | ---: | ---: | ---: |',
+    `| Metric | Base | PR / current | Change |${intervals ? ' 99% range |' : ''}`,
+    `| --- | ---: | ---: | ---: |${intervals ? ' ---: |' : ''}`,
     ...rows,
+    ...(hidden ? ['', hidden] : []),
   ].join('\n');
 }
 
@@ -177,7 +263,7 @@ export function renderCountsTable(
   minChangePercent = 0
 ) {
   const rows: string[] = [];
-  for (const scenario of SCENARIO_IDS) {
+  for (const scenario of PERFORMANCE_SCENARIO_IDS) {
     for (const direction of ['forward', 'backward']) {
       for (const component of ['list', 'detail', 'hero']) {
         for (const phase of ['mount', 'update']) {
