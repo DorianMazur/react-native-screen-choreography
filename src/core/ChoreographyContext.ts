@@ -1,4 +1,5 @@
 import type { PreparationTrace } from './preparationTrace';
+import type { TransitionCoordinator } from './TransitionCoordinator';
 import type { PresentationFailureDetails } from './nativePresentation';
 import { createContext } from 'react';
 import type { ProgressOwnership } from './ProgressOwnership';
@@ -106,7 +107,7 @@ export interface ChoreographyContextType {
   interactionOwner: SharedValue<string | null>;
   interactiveScreenId: string | null;
   setInteractiveScreen: (screenId: string, active: boolean) => void;
-  captureSourceGroup: (groupId: string, screenId: string) => Promise<void>;
+  captureSourceGroup: TransitionCoordinator['captureSourceGroup'];
   refreshActiveSessionMetrics: (side: 'source' | 'target') => Promise<void>;
   waitForOverlayReady: (
     sessionId: string,

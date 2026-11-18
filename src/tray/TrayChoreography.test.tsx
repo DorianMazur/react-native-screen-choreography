@@ -198,6 +198,17 @@ test('traces source capture through confirmed presentation across the destinatio
   jest.useFakeTimers();
   const onTrace = jest.fn();
   context = { ...context, onPreparationTrace: onTrace };
+  const capture = {
+    ready: true,
+    readAt: 'mount',
+    capturedRevision: 16,
+    notifications: 1,
+  };
+  jest
+    .mocked(context.captureSourceGroup)
+    .mockImplementation(async (_group, _screen, options) => {
+      options?.onResult?.(capture);
+    });
   let present!: (ready: boolean) => void;
   jest.mocked(context.waitForOverlayReady).mockReturnValue(
     new Promise<boolean>((resolve) => {
@@ -225,7 +236,11 @@ test('traces source capture through confirmed presentation across the destinatio
         targetScreenId: config.targetScreenId,
         outcome: 'overlay-ready',
         stages: expect.arrayContaining([
-          expect.objectContaining({ name: 'source-capture', completed: true }),
+          expect.objectContaining({
+            name: 'source-capture',
+            completed: true,
+            details: capture,
+          }),
           expect.objectContaining({
             name: 'overlay-ready',
             details: { ready: true, acknowledged: true },

@@ -3,6 +3,17 @@ import { test } from 'node:test';
 import { markdown } from './report.mts';
 import type { InputRecord } from './types.ts';
 
+test('shows one-second tray capture stalls even when the median stays low', () => {
+  const key = 'tray-gallery.forward.preparation.source-captureMs';
+  const body = markdown({
+    platform: 'android',
+    valid: true,
+    metrics: { [key]: { median: 15 } },
+    samples: { [key]: [8, 15, 1000] },
+  });
+  assert.match(body, /Gallery tray · forward \| 3 \| 15\.0 \| 1 \|/);
+});
+
 test('standalone markdown renders compatible baseline and deltas alongside diagnostics', () => {
   const base: InputRecord = {
     schemaVersion: 1,

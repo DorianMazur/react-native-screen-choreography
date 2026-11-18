@@ -628,6 +628,18 @@ export function markdown(
   baselineNote = 'No base comparison. `yarn perf:ab` measures a base commit in the same session.'
 ) {
   const renders = renderCountsTable(summary, base);
+  const sourceCaptureRows = Object.entries(TRAY_SCENARIOS).flatMap(
+    ([scenario, { label }]) =>
+      ['forward', 'backward'].flatMap((direction) => {
+        const key = `${scenario}.${direction}.preparation.source-captureMs`;
+        const samples: number[] | undefined = summary.samples?.[key];
+        if (!samples?.length) return [];
+        const slow = samples.filter((ms) => ms >= 1000).length;
+        return [
+          `| ${label} · ${direction} | ${samples.length} | ${summary.metrics[key].median.toFixed(1)} | ${slow} |`,
+        ];
+      })
+  );
   const presentationRows = Object.entries(summary.metrics ?? {}).flatMap(
     ([key, value]) => {
       const match = key.match(
@@ -660,6 +672,16 @@ export function markdown(
     summaryTable(summary, base),
     '',
     'Preparation runs from the navigation request to session activation. Tap timing starts at the JS tap handler and ends at the first UI progress change. Transition duration runs from first progress change to the endpoint; handoff runs from that endpoint to UI visibility/input release. These are runtime observations, not display presentation timestamps. Detailed preparation stages remain in summary.json.',
+    ...(sourceCaptureRows.length
+      ? [
+          '',
+          '### Tray source capture',
+          '',
+          '| Journey | Captures | Median (ms) | Captures ≥ 1,000 ms |',
+          '| --- | ---: | ---: | ---: |',
+          ...sourceCaptureRows,
+        ]
+      : []),
     ...(renders ? ['', '### Committed React renders', '', renders] : []),
     ...(presentationRows.length
       ? [
