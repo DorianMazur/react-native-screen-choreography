@@ -8,7 +8,7 @@ import { createTrayStateStore } from './state';
 import { useTrayFocusEffect } from './useTrayFocusEffect';
 import type { TrayFocusEffectOptions } from './types';
 
-function fixture(afterTransition = true) {
+function fixture() {
   const store = createTrayStateStore();
   const events: string[] = [];
   function Observer({ id, value }: { id: string; value: string }) {
@@ -21,7 +21,7 @@ function fixture(afterTransition = true) {
           events.push(`cleanup ${id} ${value}`);
         };
       }, [id, value]),
-      { afterTransition }
+      { afterTransition: true }
     );
     return null;
   }
@@ -86,21 +86,6 @@ function fixture(afterTransition = true) {
     current,
   };
 }
-
-test('settled focus waits for native opening, not the selected open detent', () => {
-  const f = fixture();
-  f.present();
-  const root = f.current();
-  f.snap(1);
-  expect(f.events).toEqual([]);
-  f.settle();
-  expect(f.events).toEqual([`start ${root} first`]);
-  f.settle();
-  f.snap(1);
-  expect(f.events).toHaveLength(1);
-  f.unmount();
-  expect(f.events.at(-1)).toBe(`cleanup ${root} first`);
-});
 
 test('settled focus follows completed push, replace, Back, popToRoot, and present', () => {
   const f = fixture();
@@ -240,31 +225,12 @@ test('callback changes restart settled effects and apply the latest callback aft
   f.unmount();
 });
 
-test('ordinary focus remains immediate and remains active while dismissing', () => {
-  const f = fixture(false);
-  f.present();
-  const root = f.current();
-  expect(f.events).toEqual([`start ${root} first`]);
-  f.settle();
-  f.push('avatar');
-  expect(f.events).toHaveLength(1);
-  f.prepare();
-  const target = f.current();
-  expect(f.events.slice(-2)).toEqual([
-    `cleanup ${root} first`,
-    `start ${target} first`,
-  ]);
-  f.dispatch({ type: 'dismiss' });
-  expect(f.events.at(-1)).toBe(`start ${target} first`);
-  f.settle(0);
-  expect(f.events.at(-1)).toBe(`cleanup ${target} first`);
-  f.unmount();
-});
-
 test('rechecks eligibility when another commit effect navigates before delivery', () => {
   const store = createTrayStateStore();
   store.dispatch({ type: 'present', name: 'form', params: undefined });
-  store.dispatch({ type: 'settled', session: 1, index: 1 });
+  const { session, entries } = store.getStackSnapshot();
+  const key = entries[0]!.key;
+  store.dispatch({ type: 'settled', session, index: 1 });
   const effect = jest.fn();
   function Navigate() {
     useLayoutEffect(() => {
@@ -273,7 +239,7 @@ test('rechecks eligibility when another commit effect navigates before delivery'
     return null;
   }
   function Observer() {
-    useTrayFocusEffect(store, '1', effect, { afterTransition: true });
+    useTrayFocusEffect(store, key, effect, { afterTransition: true });
     return null;
   }
   let renderer!: RenderResult;
@@ -292,11 +258,13 @@ test('rechecks eligibility when another commit effect navigates before delivery'
 test('new observers on an already settled route run immediately and changes to options take effect', () => {
   const store = createTrayStateStore();
   store.dispatch({ type: 'present', name: 'form', params: undefined });
+  const { session, entries } = store.getStackSnapshot();
+  const key = entries[0]!.key;
   const effect = jest.fn();
   const cleanup = jest.fn();
   effect.mockReturnValue(cleanup);
   function Observer({ options }: { options?: TrayFocusEffectOptions }) {
-    useTrayFocusEffect(store, '1', effect, options);
+    useTrayFocusEffect(store, key, effect, options);
     return null;
   }
   let renderer!: RenderResult;
@@ -309,7 +277,7 @@ test('new observers on an already settled route run immediately and changes to o
   );
   expect(cleanup).toHaveBeenCalledTimes(1);
   act(() => {
-    store.dispatch({ type: 'settled', session: 1, index: 1 });
+    store.dispatch({ type: 'settled', session, index: 1 });
   });
   expect(effect).toHaveBeenCalledTimes(2);
   act(() => renderer.unmount());

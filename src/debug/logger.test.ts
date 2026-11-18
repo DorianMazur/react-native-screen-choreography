@@ -1,63 +1,64 @@
 import {
-  setDebugEnabled,
-  isDebugEnabled,
   debugLog,
-  getDebugLogs,
-  clearDebugLogs,
+  debugTrace,
+  debugWarn,
+  isDebugEnabled,
+  setDebugCoalesce,
+  setDebugEnabled,
+  setDebugLevel,
 } from './logger';
 
-describe('Debug Logger', () => {
-  afterEach(() => {
-    setDebugEnabled(false);
-    clearDebugLogs();
-  });
+beforeEach(() => {
+  jest.spyOn(console, 'log').mockImplementation(() => {});
+  setDebugEnabled(true);
+});
+afterEach(() => {
+  setDebugEnabled(false);
+  setDebugCoalesce(true);
+  jest.restoreAllMocks();
+});
 
-  test('logs are not recorded when debug is disabled', () => {
-    setDebugEnabled(false);
-    debugLog('test message');
-    expect(getDebugLogs()).toHaveLength(0);
-  });
+test('filters messages at the configured level before formatting them', () => {
+  const format = jest.fn(() => 'frame measurement');
+  expect(isDebugEnabled()).toBe(true);
+  debugTrace(format);
+  expect(format).not.toHaveBeenCalled();
+  debugWarn('missing element');
+  expect(console.log).toHaveBeenCalledTimes(1);
+  expect(console.log).toHaveBeenCalledWith(
+    expect.stringContaining('[Choreography] missing element')
+  );
 
-  test('logs are recorded when debug is enabled', () => {
-    setDebugEnabled(true);
-    debugLog('test message');
-    const logs = getDebugLogs();
-    expect(logs).toHaveLength(1);
-    expect(logs[0]).toContain('test message');
-    expect(logs[0]).toContain('[Choreography]');
-  });
+  setDebugLevel('trace');
+  debugTrace(format);
+  expect(console.log).toHaveBeenCalledWith(
+    expect.stringContaining('frame measurement')
+  );
+  setDebugEnabled(false);
+  expect(isDebugEnabled()).toBe(false);
+  debugLog(format);
+  debugTrace(format);
+  debugWarn(format);
+  expect(format).toHaveBeenCalledTimes(1);
+  expect(console.log).toHaveBeenCalledTimes(2);
+});
 
-  test('isDebugEnabled returns correct state', () => {
-    expect(isDebugEnabled()).toBe(false);
-    setDebugEnabled(true);
-    expect(isDebugEnabled()).toBe(true);
-  });
+test('prints the first of each run of identical messages', () => {
+  for (const message of ['begin', 'begin', 'end', 'begin']) debugLog(message);
+  expect(jest.mocked(console.log).mock.calls).toEqual([
+    [expect.stringContaining('[Choreography] begin')],
+    [expect.stringContaining('[Choreography] end')],
+    [expect.stringContaining('[Choreography] begin')],
+  ]);
+});
 
-  test('clearDebugLogs empties the log buffer', () => {
-    setDebugEnabled(true);
-    debugLog('message 1');
-    debugLog('message 2');
-    expect(getDebugLogs()).toHaveLength(2);
-
-    clearDebugLogs();
-    expect(getDebugLogs()).toHaveLength(0);
-  });
-
-  test('getDebugLogs returns a copy', () => {
-    setDebugEnabled(true);
-    debugLog('message');
-    const logs1 = getDebugLogs();
-    const logs2 = getDebugLogs();
-    expect(logs1).not.toBe(logs2);
-    expect(logs1).toEqual(logs2);
-  });
-
-  test('log buffer is capped at max size', () => {
-    setDebugEnabled(true);
-    for (let i = 0; i < 250; i++) {
-      debugLog(`message ${i}`);
-    }
-    const logs = getDebugLogs();
-    expect(logs.length).toBeLessThanOrEqual(200);
-  });
+test('prints each repeated message when coalescing is disabled', () => {
+  setDebugCoalesce(false);
+  debugLog('frame');
+  debugLog('frame');
+  expect(console.log).toHaveBeenCalledTimes(2);
+  expect(console.log).toHaveBeenNthCalledWith(
+    2,
+    expect.stringContaining('frame')
+  );
 });

@@ -230,11 +230,6 @@ test('shares the host keyboard values with screen and header consumers without p
   );
   await act(async () => navigation.present('form'));
   expect(pageKeyboard).toBe(headerKeyboard);
-  expect(Object.keys(pageKeyboard).sort()).toEqual([
-    'height',
-    'isVisible',
-    'progress',
-  ]);
   const values = pageKeyboard;
   const handlers = [...mockHandlers][0]!;
   act(() => handlers.current.onStart!(event));

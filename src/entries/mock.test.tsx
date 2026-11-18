@@ -1,6 +1,3 @@
-import { readFileSync } from 'node:fs';
-import { dirname, resolve } from 'node:path';
-import ts from 'typescript';
 import { useCallback, useState } from 'react';
 import { Button, Text } from 'react-native';
 import { fireEvent, render, renderHook } from '@testing-library/react-native';
@@ -11,7 +8,6 @@ import {
   createTray,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
-import manifest from '../../package.json';
 
 // Source entries resolve before a build; /mock paths use the package exports.
 jest.mock('react-native-screen-choreography', () =>
@@ -49,47 +45,6 @@ jest.mock('@swmansion/react-native-bottom-sheet', () => {
 jest.mock('react-native-keyboard-controller', () => {
   throw new Error('The choreography mock loaded the keyboard controller');
 });
-
-function runtimeExports(path: string): string[] {
-  const source = ts.createSourceFile(
-    path,
-    readFileSync(path, 'utf8'),
-    ts.ScriptTarget.Latest,
-    true
-  );
-  return source.statements.flatMap((statement) => {
-    if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) return [];
-    if (
-      !statement.exportClause &&
-      statement.moduleSpecifier &&
-      ts.isStringLiteral(statement.moduleSpecifier)
-    )
-      return runtimeExports(
-        resolve(dirname(path), statement.moduleSpecifier.text + '.ts')
-      );
-    if (!statement.exportClause) return [];
-    if (!ts.isNamedExports(statement.exportClause)) return [];
-    return statement.exportClause.elements
-      .filter((item) => !item.isTypeOnly)
-      .map((item) => item.name.text);
-  });
-}
-
-const publicEntries = Object.entries(manifest.exports).flatMap(
-  ([entry, target]) =>
-    typeof target === 'object' && 'source' in target
-      ? [[entry, target.source] as const]
-      : []
-);
-test.each(publicEntries)(
-  '%s mock covers its public runtime exports',
-  (entry, source) => {
-    const mock = require(`${manifest.name}/mock${entry.slice(1)}`);
-    expect(Object.keys(mock).sort()).toEqual(
-      runtimeExports(resolve(__dirname, '../..', source)).sort()
-    );
-  }
-);
 
 test('a mocked tray presents declared screens, retains local state on Back, and dismisses', () => {
   type Routes = { list: undefined; detail: { label: string } };

@@ -12,8 +12,6 @@ import type {
 } from '../types';
 import { defineTransition } from './defineTransition';
 import { makeTransition } from './makeTransition';
-import { TransitionFrame } from '../standin/TransitionFrame';
-import { TransitionSurface } from '../standin/TransitionSurface';
 import { ChoreographyControlsContext } from '../core/ChoreographyContext';
 import { ChoreographyProgressContext } from '../core/ChoreographyProgressContext';
 import type {
@@ -126,11 +124,11 @@ test('owner and empty target bind the same named transition', async () => {
 });
 
 test.each(['bounds', 'surface'] as const)(
-  '%s maps endpoints to its primitive without remounting the receiving host',
+  '%s interpolates the receiving host frame and radius in both directions',
   async (kind) => {
-    const definition = defineTransition({
-      shared: { hero: { kind, radius: [8, 0] } },
-    });
+    const radius: [number, number] = [8, 0];
+    const definition = defineTransition({ shared: { hero: { kind, radius } } });
+    radius[0] = 40;
     const owner = await mount(
       <definition.Element name="hero" groupId="photo">
         Content
@@ -141,10 +139,12 @@ test.each(['bounds', 'surface'] as const)(
     ).props.transition;
     const small = {
       screenId: 'list',
+      style: { backgroundColor: '#336699' },
       metrics: { pageX: 10, pageY: 100, width: 80, height: 100 },
     };
     const big = {
       screenId: 'detail',
+      style: { backgroundColor: '#336699' },
       metrics: { pageX: 0, pageY: 0, width: 300, height: 400 },
     };
     const Renderer = transition.renderer;
@@ -160,51 +160,40 @@ test.each(['bounds', 'surface'] as const)(
       };
       return <Renderer {...props} />;
     };
+    mockProgress.value = 0.25;
     const tree = await mount(render('forward'));
     const host = tree.UNSAFE_root.findByType(PortalHost);
     for (const direction of ['forward', 'backward'] as const) {
       await act(async () => tree.rerender(withProviders(render(direction))));
-      expect(tree.UNSAFE_root.findAllByType(PortalHost)).toHaveLength(1);
       expect(tree.UNSAFE_root.findByType(PortalHost)).toBe(host);
-      const primitive = tree.UNSAFE_root.findByType(
-        kind === 'bounds' ? TransitionFrame : TransitionSurface
+      const styles = tree.UNSAFE_root.findAllByType(
+        'Animated.View' as React.ElementType
+      ).map((node) => StyleSheet.flatten(node.props.style));
+      expect(styles.some((style) => style.backgroundColor === '#336699')).toBe(
+        kind === 'surface'
       );
-      expect(primitive.props.progress).toBe(mockProgress);
-      expect(primitive.props.direction).toBe(direction);
-      expect(primitive.props.sourceMetrics).toBe(
-        direction === 'forward' ? small.metrics : big.metrics
+      expect(styles).toEqual(
+        expect.arrayContaining([
+          expect.objectContaining({
+            width: 135,
+            height: 175,
+            transform: [{ translateX: 7.5 }, { translateY: 75 }],
+          }),
+          expect.objectContaining({ borderRadius: 6 }),
+        ])
       );
-      expect(primitive.props.targetMetrics).toBe(
-        direction === 'forward' ? big.metrics : small.metrics
-      );
-      const radii =
-        kind === 'bounds'
-          ? [
-              primitive.props.sourceBorderRadius,
-              primitive.props.targetBorderRadius,
-            ]
-          : [
-              primitive.props.sourceStyle.borderRadius,
-              primitive.props.targetStyle.borderRadius,
-            ];
-      expect(radii).toEqual(direction === 'forward' ? [8, 0] : [0, 8]);
     }
   }
 );
 
 test('configuration is captured and custom live renderers remain usable', async () => {
-  const recipe = {
-    kind: 'bounds' as const,
-    radius: [8, 0] as [number, number],
-  };
   const spring = { stiffness: 240 };
   const custom = makeTransition({ renderer: () => null });
   const definition = defineTransition({
     motion: { spring },
-    shared: { hero: recipe, custom },
+    shared: { custom },
   });
   spring.stiffness = 999;
-  recipe.radius[0] = 40;
   expect(definition.navigationOptions.spring?.stiffness).toBe(240);
   const tree = await mount(
     <definition.Element name="custom">Content</definition.Element>
@@ -236,29 +225,18 @@ test('rejects invalid definitions early', () => {
   ).toThrow('duration');
 });
 
-test('role names and empty targets are checked by TypeScript', () => {
+export function checkTransitionRoleTypes() {
   const definition = defineTransition({
     shared: { hero: { kind: 'bounds' } },
     enter: { notes: {} },
   });
-  const invalidSharedName = () => (
-    // @ts-expect-error enter roles are not shared roles
-    <definition.Element name="notes">Content</definition.Element>
-  );
-  const invalidTargetName = () => (
-    // @ts-expect-error targets use the same shared role names as owners
-    <definition.Element.Target name="unknown" />
-  );
-  const invalidTargetChildren = () => (
-    // @ts-expect-error live targets cannot own duplicate content
-    <definition.Element.Target name="hero">Duplicate</definition.Element.Target>
-  );
-  expect([
-    invalidSharedName,
-    invalidTargetName,
-    invalidTargetChildren,
-  ]).toHaveLength(3);
-});
+  // @ts-expect-error enter roles are not shared roles
+  <definition.Element name="notes">Content</definition.Element>;
+  // @ts-expect-error targets use the same shared role names as owners
+  <definition.Element.Target name="unknown" />;
+  // @ts-expect-error live targets cannot own duplicate content
+  <definition.Element.Target name="hero">Duplicate</definition.Element.Target>;
+}
 
 test.each(['forward', 'backward'] as const)(
   'preparing %s ignores progress left by an earlier session',

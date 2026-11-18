@@ -1,28 +1,11 @@
-const path = require('path');
-const vm = require('vm');
-const { transformFileSync } = require('@babel/core');
+const { loadWorkletModule, onUI } = require('../../__fixtures__/worklets');
 
 test('screen opacity runs in an isolated UI runtime with omitted and explicit fade settings', () => {
-  const { code } = transformFileSync(
-    path.resolve(__dirname, 'screenVisibility.ts'),
-    {
-      configFile: false,
-      babelrc: false,
-      plugins: [
-        '@babel/plugin-transform-typescript',
-        'react-native-worklets/plugin',
-        '@babel/plugin-transform-modules-commonjs',
-      ],
-    }
+  const { deriveScreenOpacity } = loadWorkletModule(
+    require.resolve('./screenVisibility'),
+    require
   );
-  const exports = {};
-  vm.runInNewContext(code, { exports, global: { Error } });
-  const worklet = exports.deriveScreenOpacity;
-  // Execute serialized UI code without the original module's lexical scope.
-  // Calling the JS function directly would mask missing worklet captures.
-  const opacity = vm
-    .runInNewContext(`(${worklet.__initData.code})`)
-    .bind({ __closure: worklet.__closure });
+  const opacity = onUI(deriveScreenOpacity);
 
   expect(opacity('forward', 'target', 'active', 0.2)).toBeCloseTo(0.5);
   expect(opacity('backward', 'target', 'active', 0.2, undefined)).toBeCloseTo(
