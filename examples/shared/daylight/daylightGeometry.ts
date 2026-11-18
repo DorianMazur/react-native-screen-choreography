@@ -1,6 +1,12 @@
 import type { ElementMetrics } from 'react-native-screen-choreography/core';
 
-export const journalGroup = (collectionId: string) => `journal.${collectionId}`;
+export const daylightGroup = (collectionId: string) =>
+  `daylight.${collectionId}`;
+
+export function photoCorner(width: number) {
+  'worklet';
+  return Math.min(20, width * 0.2);
+}
 
 const ICON_FADE_START = 0.24;
 const ICON_FADE_END = 0.6;
@@ -11,7 +17,7 @@ function smoothstep(value: number) {
   return t * t * (3 - 2 * t);
 }
 
-export function journalFrame(
+export function daylightFrame(
   collapsed: ElementMetrics,
   expanded: ElementMetrics,
   progress: number
@@ -19,14 +25,15 @@ export function journalFrame(
   'worklet';
   const t = Math.max(0, Math.min(1, progress));
   const width = collapsed.width + (expanded.width - collapsed.width) * t;
+  const photoHeight = collapsed.height * (width / collapsed.width);
   const flightHeight = Math.max(
-    Math.min(width, expanded.height),
+    Math.min(photoHeight, expanded.height),
     collapsed.height + (expanded.height - collapsed.height) * t ** 1.6
   );
   // The live card's overflow mask must match the scaled icon while they
   // crossfade. Only unfold to the screen's aspect ratio once the icon is gone.
   const unfold = smoothstep((t - ICON_FADE_END) / (1 - ICON_FADE_END));
-  const height = width + (flightHeight - width) * unfold;
+  const height = photoHeight + (flightHeight - photoHeight) * unfold;
   return {
     x: collapsed.pageX + (expanded.pageX - collapsed.pageX) * t,
     y:
@@ -35,11 +42,12 @@ export function journalFrame(
       (flightHeight - height) / 2,
     width,
     height,
-    radius: width * 0.25 * (1 - unfold),
+    radius:
+      photoCorner(collapsed.width) * (width / collapsed.width) * (1 - unfold),
   };
 }
 
-export function journalOpacities(progress: number) {
+export function daylightOpacities(progress: number) {
   'worklet';
   const t = Math.max(0, Math.min(1, progress));
   // Keep the card opaque underneath the fading icon. Complementary opacity

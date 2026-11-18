@@ -42,11 +42,9 @@ Expo Go is not supported because the library includes a custom native overlay ho
 
 Keep `animation: 'none'` and transparent stack content so the choreography overlay owns the visible motion.
 
-## Field journal demo
+## Daylight demo
 
-Open **Field journal** on the landing screen. Collection stamps in the grid open their observation pages. Log an observation, cancel a short pull from the top handle, then close with a longer pull or the close button.
-
-This uses the same [journal implementation and behavior](../react-navigation/README.md#field-journal-demo) as the React Navigation app. The routes are `/journal` and `/journal/[collectionId]`. The observation page lives in `Element.Target` and reads the library-owned presentation. Both route wrappers set `keepVisible` so the transparent page can reveal the collection grid beneath it.
+Open **Daylight** after Wallet. Tap a saved place, select a time in the sun schedule, and try cancelling and completing a pull to close. The routes are `/journal` and `/journal/[collectionId]`. Both apps use the same [Daylight screens and transition](../react-navigation/README.md#daylight-demo).
 
 ## Transition definitions
 

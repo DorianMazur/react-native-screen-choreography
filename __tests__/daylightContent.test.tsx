@@ -1,11 +1,12 @@
-import { StyleSheet, Text } from 'react-native';
+import { StyleSheet } from 'react-native';
 import Animated from 'react-native-reanimated';
 import {
   act,
+  fireEvent,
   render as renderComponent,
   type RenderResult,
 } from '@testing-library/react-native/pure';
-import { JournalDetailScreen } from '../examples/shared/journal/JournalScreens';
+import { DaylightDetailScreen } from '../examples/shared/daylight/DaylightScreens';
 
 const mockPresentation = {
   presentationProgress: { value: 0 },
@@ -30,8 +31,8 @@ jest.mock('../examples/shared/usePullToDismiss', () => ({
   usePullToDismiss: () => ({}),
 }));
 
-jest.mock('../examples/shared/journal/journalTransition', () => ({
-  journalTransition: {
+jest.mock('../examples/shared/daylight/daylightTransition', () => ({
+  daylightTransition: {
     Element: {
       Target: ({ children }: { children: React.ReactNode }) => children,
     },
@@ -41,7 +42,7 @@ jest.mock('../examples/shared/journal/journalTransition', () => ({
 let tree: RenderResult;
 
 async function render() {
-  const screen = <JournalDetailScreen collectionId="trails" />;
+  const screen = <DaylightDetailScreen collectionId="monument-valley" />;
   if (tree) tree.rerender(screen);
   else tree = renderComponent(screen);
 }
@@ -53,24 +54,22 @@ function cardStyle() {
   return StyleSheet.flatten(card!.props.style);
 }
 
-function count() {
-  return tree.UNSAFE_root.findAllByType(Text).find(
-    (node) => node.props.accessibilityLiveRegion === 'polite'
-  )?.props.children;
-}
-
 afterEach(async () => {
   await act(async () => tree?.unmount());
 });
 
 test('live content exists before opening, uses the same mask in both directions, and survives cancellation', async () => {
   await render();
-  expect(count()).toBe(0);
+  expect(
+    tree.getByLabelText('Monument Valley, Golden hour at 8:07 PM MDT')
+  ).toBeTruthy();
   expect(cardStyle().opacity).toBe(0);
 
   mockPresentation.presentationProgress.value = 0.42;
   await render();
-  expect(count()).toBe(0);
+  expect(
+    tree.getByLabelText('Monument Valley, Golden hour at 8:07 PM MDT')
+  ).toBeTruthy();
   const openingStyle = cardStyle();
   expect(openingStyle.opacity).toBe(1);
 
@@ -79,25 +78,28 @@ test('live content exists before opening, uses the same mask in both directions,
   mockPresentation.frame.value = null;
   await render();
   expect(cardStyle().opacity).toBe(1);
-  expect(count()).toBe(0);
+  expect(
+    tree.getByLabelText('Monument Valley, Golden hour at 8:07 PM MDT')
+  ).toBeTruthy();
 
-  const add = tree.UNSAFE_root.find(
-    (node) =>
-      node.props.accessibilityLabel === 'Log an observation' &&
-      typeof node.props.onPress === 'function'
-  );
-  await act(async () => add.props.onPress());
-  expect(count()).toBe(1);
+  fireEvent.press(tree.getByRole('radio', { name: 'Solar noon, 1:22 PM' }));
+  expect(
+    tree.getByLabelText('Monument Valley, Solar noon at 1:22 PM MDT')
+  ).toBeTruthy();
 
   mockPresentation.frame.value = { width: 210, height: 210 };
   mockPresentation.presentationProgress.value = 0.42;
   await render();
   expect(cardStyle()).toEqual(openingStyle);
-  expect(count()).toBe(1);
+  expect(
+    tree.getByLabelText('Monument Valley, Solar noon at 1:22 PM MDT')
+  ).toBeTruthy();
 
   mockPresentation.frame.value = null;
   mockPresentation.presentationProgress.value = 1;
   await render();
   expect(cardStyle().opacity).toBe(1);
-  expect(count()).toBe(1);
+  expect(
+    tree.getByLabelText('Monument Valley, Solar noon at 1:22 PM MDT')
+  ).toBeTruthy();
 });

@@ -1,5 +1,5 @@
-import { JournalScreen } from '@screen-choreography/example-shared/journal';
+import { DaylightScreen } from '@screen-choreography/example-shared/daylight';
 import { withExampleScreen } from '../../ExampleScreen';
-export default withExampleScreen('JournalList', JournalScreen, {
+export default withExampleScreen('JournalList', DaylightScreen, {
   keepVisible: true,
 });

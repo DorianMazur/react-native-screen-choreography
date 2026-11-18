@@ -5,9 +5,9 @@ import {
   makeTransition,
   type TransitionRendererProps,
 } from 'react-native-screen-choreography/core';
-import { journalFrame, journalOpacities } from './journalGeometry';
+import { daylightFrame, daylightOpacities } from './daylightGeometry';
 
-function JournalRenderer({
+function DaylightRenderer({
   source,
   target,
   progress,
@@ -19,9 +19,9 @@ function JournalRenderer({
   const collapsed = (backward ? target : source).metrics;
   const expanded = (backward ? source : target).metrics;
   const animatedStyle = useAnimatedStyle(() => {
-    const frame = journalFrame(collapsed, expanded, progress.value);
+    const frame = daylightFrame(collapsed, expanded, progress.value);
     return {
-      opacity: journalOpacities(progress.value).icon,
+      opacity: daylightOpacities(progress.value).icon,
       transform: [
         { translateX: frame.x + frame.width / 2 - collapsed.width / 2 },
         { translateY: frame.y + frame.height / 2 - collapsed.height / 2 },
@@ -43,11 +43,11 @@ function JournalRenderer({
   );
 }
 
-export const journalTransition = defineTransition({
+export const daylightTransition = defineTransition({
   motion: {
     spring: { damping: 36, stiffness: 380, mass: 1, overshootClamping: true },
   },
-  shared: { collection: makeTransition({ renderer: JournalRenderer }) },
+  shared: { photo: makeTransition({ renderer: DaylightRenderer }) },
 });
 
 const styles = StyleSheet.create({

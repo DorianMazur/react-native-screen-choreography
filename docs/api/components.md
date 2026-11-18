@@ -188,16 +188,12 @@ A target can become the source of another shared transition. For an A → B → 
 To animate destination content alongside a shared element, put it inside the target:
 
 ```tsx
-<SharedElement.Target
-  id="collection"
-  groupId="journal.trails"
-  style={{ flex: 1 }}
->
-  <ObservationPage />
+<SharedElement.Target id="photo" groupId="daylight.monument-valley" style={{ flex: 1 }}>
+  <SunGuide />
 </SharedElement.Target>
 ```
 
-Inside `ObservationPage`, use [`useSharedElementPresentation`](./hooks.md#usesharedelementpresentation) for the pair's frozen endpoints and expansion progress. These children keep the destination's React context and local state. They remain in the route, including during the transition; they do not become another overlay subtree or replace the retained owner. Keep the measured target wrapper stable and animate a child frame when changing its crop or scale.
+Inside `SunGuide`, use [`useSharedElementPresentation`](./hooks.md#usesharedelementpresentation) for the pair's frozen endpoints and expansion progress. These children keep the destination's React context and local state. They remain in the route, including during the transition; they do not become another overlay subtree or replace the retained owner. Keep the measured target wrapper stable and animate a child frame when changing its crop or scale.
 
 For a matched target with children, a shared Back waits for animation completion before removing the outgoing route. Cancelling keeps the children mounted. Targets without children retain the usual early-removal behavior. External resets can still remove a route immediately. With no matched source or reduced motion, render the normal destination layout; `frame.value` is `null` when no animated pair is available.
 

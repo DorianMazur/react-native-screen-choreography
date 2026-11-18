@@ -27,11 +27,11 @@ import {
 } from '@screen-choreography/example-shared/trips';
 
 import {
-  JournalScreen,
-  JournalDetailScreen,
-} from '@screen-choreography/example-shared/journal';
+  DaylightScreen,
+  DaylightDetailScreen,
+} from '@screen-choreography/example-shared/daylight';
 
-const JournalListRoute = withExampleScreen('JournalList', JournalScreen, {
+const JournalListRoute = withExampleScreen('JournalList', DaylightScreen, {
   keepVisible: true,
 });
 const JournalDetailRoute = withExampleScreen(
@@ -39,7 +39,7 @@ const JournalDetailRoute = withExampleScreen(
   function JournalDetailRoute({
     route,
   }: NativeStackScreenProps<ExampleStackParams, 'JournalDetail'>) {
-    return <JournalDetailScreen {...route.params} />;
+    return <DaylightDetailScreen {...route.params} />;
   },
   { keepVisible: true }
 );

@@ -16,12 +16,6 @@ import { GalleryPlusTrayLauncher } from './tray/GalleryPlusTray';
 
 const demos = [
   {
-    route: 'JournalList',
-    title: 'Field journal',
-    subtitle: 'From collection stamp to field notes',
-    image: require('./assets/photos/forest.jpg'),
-  },
-  {
     route: 'GalleryList',
     title: 'Gallery',
     subtitle: 'A photo collection',
@@ -38,6 +32,12 @@ const demos = [
     title: 'Wallet',
     subtitle: 'Demo portfolio',
     image: null,
+  },
+  {
+    route: 'JournalList',
+    title: 'Daylight',
+    subtitle: 'Sunrise and sunset',
+    image: require('./assets/photos/dunes.jpg'),
   },
 ] as const;
 
