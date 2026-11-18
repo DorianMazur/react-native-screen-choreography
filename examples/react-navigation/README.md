@@ -85,3 +85,9 @@ ordinary screen content, not to content hosted on another route.
 Open **Wallet dynamic tray** on the landing screen to try a wallet flow with retained forms and a full-screen recipient list. See the [dynamic tray guide](../../docs/guide/dynamic-trays.md) for setup and usage.
 
 Open **Gallery dynamic tray** for an upgrade flow that grows from a compact introduction into benefits and plan selection. The photo composition moves between the two screens as one live shared element. Choose a plan, open **Good to know**, and go Back to see the selection preserved; **Preview Plus** shows the chosen plan without making a purchase. Back reverses the shared transition, and closing the tray resets the flow.
+
+## Daylight demo
+
+Open **Daylight** after Wallet and tap a saved place. Select a time in the sun schedule, then pull the top handle a short distance and release. The chart keeps the selected time. A longer pull or the Back button returns to the same photo. The locations use sample times for June 21.
+
+The [shared implementation](../shared/daylight/DaylightScreens.tsx) uses a custom `makeTransition` renderer for the retained photo. The sun guide mounts inside `Element.Target` and uses `useSharedElementPresentation` to match the photo’s bounds and corner radius during the crossfade. Both screens use `keepVisible` so the list stays visible behind the guide. The expansion takes inspiration from [Enzo Manuel Mangano’s launcher transition](https://github.com/enzomanuelmangano/demos/blob/54b9041a52323d2aa7dcd000e14439608eeb0bb0/src/navigation/home/launch-transition.tsx).

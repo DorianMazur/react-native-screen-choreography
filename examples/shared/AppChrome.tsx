@@ -12,6 +12,10 @@ const icons = {
   expand: require('./assets/icons/maximize-2.png'),
   share: require('./assets/icons/share-2.png'),
   camera: require('./assets/icons/camera.png'),
+  sun: require('./assets/icons/sun.png'),
+  sunrise: require('./assets/icons/sunrise.png'),
+  sunset: require('./assets/icons/sunset.png'),
+  sunLow: require('./assets/icons/haze.png'),
   wallet: require('./assets/icons/wallet.png'),
   plus: require('./assets/icons/plus.png'),
   restore: require('./assets/icons/rotate-ccw.png'),
@@ -78,13 +82,19 @@ export function ScreenHeader({
   right,
 }: {
   title: string;
-  onBack: () => void;
+  onBack?: () => void;
   backLabel?: string;
   right?: ReactNode;
 }) {
   return (
     <View style={styles.header}>
-      <IconButton icon="back" label={backLabel} onPress={onBack} />
+      {onBack ? (
+        <IconButton icon="back" label={backLabel} onPress={onBack} />
+      ) : (
+        <View style={styles.button}>
+          <AppIcon name="back" />
+        </View>
+      )}
       <Text accessibilityRole="header" style={styles.title}>
         {title}
       </Text>

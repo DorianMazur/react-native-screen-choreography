@@ -8,6 +8,7 @@
   "exports": {
     ".": "./index.ts",
     "./landing": "./LandingScreen.tsx",
+    "./daylight": "./daylight/DaylightScreens.tsx",
     "./gallery": "./gallery/index.ts",
     "./trips": "./trips/TripsScreens.tsx",
     "./wallet": "./wallet/index.ts",

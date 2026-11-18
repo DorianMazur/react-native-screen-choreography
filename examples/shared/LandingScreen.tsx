@@ -18,7 +18,7 @@ const demos = [
   {
     route: 'GalleryList',
     title: 'Gallery',
-    subtitle: 'A field journal',
+    subtitle: 'A photo collection',
     image: require('./assets/photos/aurora.jpg'),
   },
   {
@@ -32,6 +32,12 @@ const demos = [
     title: 'Wallet',
     subtitle: 'Demo portfolio',
     image: null,
+  },
+  {
+    route: 'JournalList',
+    title: 'Daylight',
+    subtitle: 'Sunrise and sunset',
+    image: require('./assets/photos/dunes.jpg'),
   },
 ] as const;
 

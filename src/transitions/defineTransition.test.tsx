@@ -234,8 +234,7 @@ export function checkTransitionRoleTypes() {
   <definition.Element name="notes">Content</definition.Element>;
   // @ts-expect-error targets use the same shared role names as owners
   <definition.Element.Target name="unknown" />;
-  // @ts-expect-error live targets cannot own duplicate content
-  <definition.Element.Target name="hero">Duplicate</definition.Element.Target>;
+  <definition.Element.Target name="hero">Details</definition.Element.Target>;
 }
 
 test.each(['forward', 'backward'] as const)(

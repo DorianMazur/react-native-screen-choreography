@@ -11,7 +11,7 @@ These hooks are available from `/core` and both integration entries, and require
 | ------------------------------------------------------------ | ------------------------------ | ------------------------------------------------------------------------ |
 | Animate a screen's backdrop or supporting content            | `useChoreographyProgress`      | Beneath `ChoreographyScreen`                                             |
 | Finish motion when the user starts scrolling or interacting  | `useChoreographyControls`      | Beneath `ChoreographyScreen`                                             |
-| Adapt a shared component to its source and destination sizes | `useSharedElementPresentation` | Inside the `SharedElement` owner                                         |
+| Adapt a shared component to its source and destination sizes | `useSharedElementPresentation` | Inside the owner or target children                                      |
 | Wait for a child to finish loading or layout                 | `useChoreographyBlocker`       | Beneath `ChoreographyScreen`                                             |
 | Delay rendering an expensive supporting section              | `useLatchedReveal`             | Beneath `ChoreographyScreen`                                             |
 | Fade or move content that is already mounted                 | `useRevealStyle`               | Beneath `ChoreographyScreen`, or inside an owner with presentation scope |
@@ -67,7 +67,7 @@ Use `settleTransition()` when ordinary interaction should finish the active chor
 
 ## `useSharedElementPresentation`
 
-Reads retained endpoint information from inside a `SharedElement` owner.
+Reads matched endpoint information inside a `SharedElement` owner or the children of `SharedElement.Target`.
 
 ```ts
 useSharedElementPresentation(): SharedElementPresentation;
@@ -94,15 +94,17 @@ Use `presentationProgress` for animations inside shared content. It follows this
 
 | Value                   | Meaning                                                                                                                              |
 | ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------ |
-| `presentationProgress`  | Read-only progress for this owner: `0` at the source, `1` at the destination; back moves from `1` to `0`                             |
+| `presentationProgress`  | Read-only progress for this element: `0` at the source, `1` at the destination; back moves from `1` to `0`                           |
 | `frame`                 | UI-thread width and height matching `TransitionFrame`, from preparation through motion; `null` when unpaired or using reduced motion |
-| `progress`              | Provider-wide expansion clock, which can also be driven by other elements or groups                                                  |
+| `progress`              | Expansion clock (screen-protected for target children), which can also be driven by other elements or groups                         |
 | `collapsed`, `expanded` | Collapsed and expanded geometry, styles, and metadata for the latest participating pair, regardless of navigation direction          |
-| `transitioning`         | `true` while this owner's content is in the transition overlay; `false` during preparation and at rest                               |
-| `direction`             | This owner's participating navigation direction; `null` during preparation or when it does not participate                           |
+| `transitioning`         | `true` during this element's paired motion; `false` during preparation and at rest                                                   |
+| `direction`             | This element's participating navigation direction; `null` during preparation or when it does not participate                         |
 | `settled`               | The endpoint where the content rests after motion                                                                                    |
 
-Before the first transition, endpoint metrics are `null` and presentation data comes from the owner. Guard against null metrics before calculating layout. Narrow `metadata` before reading it and keep metadata objects immutable during a session.
+Before the first transition, endpoint metrics are `null` and presentation data comes from the enclosing owner or target. Guard against null metrics before calculating layout. Narrow `metadata` before reading it and keep metadata objects immutable during a session.
+
+Target children start at the expanded presentation when unpaired. During preparation they receive the captured pair and its progress before the screen's visibility gate opens. After settlement, endpoint data remains available while `frame.value` becomes `null`; use the destination's current layout at rest so resizing does not reuse an old capture. A later transition captures fresh geometry. Target children use their screen's protected progress, retain destination context, and remain mounted through a shared return. `transitioning` describes the paired transition; it does not mean these children moved into the overlay.
 
 Read `frame.value` in an animated style or derived value when hosted content needs explicit dimensions. It uses clamped, linear endpoint interpolation; a custom renderer's geometry may differ.
 

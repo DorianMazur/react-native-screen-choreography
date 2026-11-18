@@ -47,6 +47,11 @@ import {
 } from '../core/liveHostNames';
 import { defaultTransition } from '../transitions/makeTransition';
 import { transitionFrameSize } from '../standin/TransitionSurface';
+import {
+  pairEndpoints,
+  selectPresentationPair,
+} from '../core/sharedElementPresentationData';
+import { SharedElementTargetContent } from './SharedElementTargetContent';
 
 export interface SharedElementProps {
   id: string;
@@ -76,6 +81,8 @@ export interface SharedElementTargetProps {
   fromSource?: boolean;
   id: string;
   groupId?: string;
+  /** Route-owned companion content. Keeps the route mounted through return motion. */
+  children?: ReactNode;
   /** Reuse the owner's factory result for consistent forward and back motion. */
   transition?: Transition;
   style?: StyleProp<ViewStyle>;
@@ -196,17 +203,13 @@ function LiveSharedElement(props: SharedElementProps) {
   const session =
     useContext(PreparingSessionContext) ?? choreography.activeSession;
   const preparing = session?.state === 'preparing';
-  const pair =
-    (session?.state === 'active' || preparing) &&
-    session.groupId === props.groupId
-      ? (session.pairs.find(
-          (candidate) =>
-            candidate.id === props.id &&
-            (participatingSessionIdRef.current === session.id ||
-              candidate.source.screenId === participatingScreenId ||
-              candidate.target.screenId === participatingScreenId)
-        ) ?? null)
-      : null;
+  const pair = selectPresentationPair(
+    session,
+    participatingScreenId,
+    props.groupId,
+    props.id,
+    participatingSessionIdRef.current
+  );
 
   participatingSessionIdRef.current = pair ? session!.id : null;
 
@@ -311,29 +314,7 @@ const LiveSharedElementContent = memo(function LiveSharedElementContent({
   const participates = pair !== null;
   const activeEndpoints = useMemo(() => {
     if (!pair) return null;
-    const source = {
-      metrics: pair.sourceMetrics,
-      metadata: pair.sourcePresentation.metadata,
-      style: pair.sourcePresentation.style,
-    };
-    const target = {
-      metrics: pair.targetMetrics,
-      metadata: pair.targetPresentation.metadata,
-      style: pair.targetPresentation.style,
-    };
-    return direction === 'forward'
-      ? {
-          collapsed: source,
-          expanded: target,
-          collapsedScreenId: pair.source.screenId,
-          expandedScreenId: pair.target.screenId,
-        }
-      : {
-          collapsed: target,
-          expanded: source,
-          collapsedScreenId: pair.target.screenId,
-          expandedScreenId: pair.source.screenId,
-        };
+    return pairEndpoints(pair, direction!);
   }, [pair, direction]);
 
   // Retarget in the session-settlement render so content and presentation
@@ -558,6 +539,7 @@ function LiveSharedElementTarget({
   transition = defaultTransition,
   hostStyle,
   metadata,
+  children,
 }: SharedElementTargetProps) {
   const screenId = useScreenId();
   const incomingGroups = useContext(IncomingGroupsContext);
@@ -571,8 +553,20 @@ function LiveSharedElementTarget({
   );
   if (inferGroup && !incomingGroups)
     throw new Error('fromSource requires a ChoreographyProvider.');
-  // Reserve the layout on direct entry and before the router resolves the key.
-  if (inferGroup && groupId === undefined) return <View style={style} />;
+  const unbound = inferGroup && groupId === undefined;
+  const content = children != null && children !== false && (
+    <SharedElementTargetContent
+      id={id}
+      groupId={groupId}
+      unbound={unbound}
+      style={style}
+      metadata={metadata}
+    >
+      {children}
+    </SharedElementTargetContent>
+  );
+  // Direct entry has route content but no receiving host or registration.
+  if (unbound) return <View style={style}>{content}</View>;
   return (
     <SharedElementRegistration
       id={id}
@@ -585,6 +579,7 @@ function LiveSharedElementTarget({
         name={getLiveDestinationHostName(screenId, id, groupId)}
         style={[styles.liveHost, hostStyle]}
       />
+      {content}
     </SharedElementRegistration>
   );
 }

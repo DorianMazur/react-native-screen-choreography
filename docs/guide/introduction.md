@@ -9,7 +9,7 @@ Screen Choreography coordinates shared elements and companion content across Rea
 
 ## One element, three places
 
-The source screen owns the content. The destination declares an empty target. During a transition, the library moves the owner's native subtree through an overlay and into that target using `react-native-teleport`.
+The source screen owns the content. The destination declares a target that receives it. Optional target children provide separate, destination-owned companion content. During a transition, the library moves the owner's native subtree through an overlay and into that target using `react-native-teleport`.
 
 ```text
 Source owner  →  Native overlay  →  Destination target

@@ -24,9 +24,17 @@ export {
   useSafeAreaInsets,
 } from 'react-native-safe-area-context';
 
-export type DemoListScreenId = 'GalleryList' | 'TripsList' | 'TokenList';
+export type DemoListScreenId =
+  | 'GalleryList'
+  | 'TripsList'
+  | 'TokenList'
+  | 'JournalList';
 
 export type DemoDetailDestination =
+  | {
+      screen: 'JournalDetail';
+      params: { collectionId: string };
+    }
   | { screen: 'GalleryDetail'; params: { photoId: string } }
   | { screen: 'TripsDetail'; params: { tripId: string } }
   | { screen: 'TokenDetail'; params: { tokenId: string } };

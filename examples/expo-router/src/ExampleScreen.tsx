@@ -14,12 +14,18 @@ import {
 
 const listRoutes = {
   GalleryList: '/gallery',
+  JournalList: '/journal',
   TripsList: '/trips',
   TokenList: '/wallet',
 } satisfies Record<DemoListScreenId, Href>;
 
 function detailRoute(destination: DemoDetailDestination): Href {
   switch (destination.screen) {
+    case 'JournalDetail':
+      return {
+        pathname: '/journal/[collectionId]',
+        params: destination.params,
+      };
     case 'GalleryDetail':
       return { pathname: '/gallery/[photoId]', params: destination.params };
     case 'TripsDetail':
@@ -60,11 +66,12 @@ function Bindings({
 
 export function withExampleScreen<Props extends object>(
   screenId: DemoScreenId,
-  Screen: React.ComponentType<Props>
+  Screen: React.ComponentType<Props>,
+  options: { keepVisible?: boolean } = {}
 ) {
   return function ExampleScreen(props: Props) {
     return (
-      <ChoreographyScreen screenId={screenId}>
+      <ChoreographyScreen screenId={screenId} {...options}>
         <Bindings screenId={screenId}>
           <Screen {...props} />
         </Bindings>

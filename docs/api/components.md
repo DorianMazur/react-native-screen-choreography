@@ -171,7 +171,7 @@ Accepts owner props with a required `groupId`. Its `onPress(options, event)` rec
 
 ### `SharedElement.Target`
 
-An empty receiving host with measurable bounds. It does **not** accept children.
+A receiving host with measurable bounds. Optional children are companion content owned by the destination route; the retained owner still arrives in its separate host.
 
 ```tsx
 <SharedElement.Target id="hero" groupId="artwork.42" style={{ height: 380 }} />
@@ -179,11 +179,25 @@ An empty receiving host with measurable bounds. It does **not** accept children.
 
 `SharedElementTargetProps` is exported. It shares `id`, `groupId`, `transition`, `style`, and `metadata` with the owner. Its additional `hostStyle?: StyleProp<ViewStyle>` adjusts the receiving host independently of the measured wrapper. The host defaults to absolute fill.
 
-Set `fromSource` to receive the group from the navigation that opened this route. The binding belongs to that route instance for its lifetime, including Back. An explicit `groupId` takes precedence. On direct entry a `fromSource` target reserves its layout and has no owner to display.
+Set `fromSource` to receive the group from the navigation that opened this route. The binding belongs to that route instance for its lifetime, including Back. An explicit `groupId` takes precedence. On direct entry a `fromSource` target reserves its layout and displays its own children at the expanded endpoint.
 
 Give an empty target explicit dimensions or another nonzero layout constraint. Keep one owner mounted and use empty targets on later screens; do not duplicate the content on the destination.
 
 A target can become the source of another shared transition. For an A → B → C flow, mount the owner on A and matching targets on B and C, using the same `id` and `groupId`. The same live subtree moves between all three screens, including Back. Each transition captures the two participating screens' metadata and bounds.
+
+To animate destination content alongside a shared element, put it inside the target:
+
+```tsx
+<SharedElement.Target id="photo" groupId="daylight.monument-valley" style={{ flex: 1 }}>
+  <SunGuide />
+</SharedElement.Target>
+```
+
+Inside `SunGuide`, use [`useSharedElementPresentation`](./hooks.md#usesharedelementpresentation) for the pair's frozen endpoints and expansion progress. These children keep the destination's React context and local state. They remain in the route, including during the transition; they do not become another overlay subtree or replace the retained owner. Keep the measured target wrapper stable and animate a child frame when changing its crop or scale.
+
+For a matched target with children, a shared Back waits for animation completion before removing the outgoing route. Cancelling keeps the children mounted. Targets without children retain the usual early-removal behavior. External resets can still remove a route immediately. With no matched source or reduced motion, render the normal destination layout; `frame.value` is `null` when no animated pair is available.
+
+Children receive presentation data, not automatic clipping or styling. Use a rounded view with `overflow: 'hidden'` for a mask, and `keepVisible` on the screen when your own styles control its reveal. `hostStyle` applies only to the receiving host, not to these children. Do not use children to render a second copy of the retained content.
 
 ::: warning Keep presentation data immutable
 Endpoint metrics and presentation inputs are captured for a session. `metadata` is retained by reference, not deeply cloned. Avoid mutating a metadata object during an active transition.

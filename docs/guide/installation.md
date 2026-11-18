@@ -144,7 +144,7 @@ module.exports = {
 };
 ```
 
-The mocks render shared owners in place, leave targets empty, and show companion content immediately. Progress reports an idle session; `useSharedElementPresentation` reports a collapsed owner with null metrics. Navigation commands forward to the navigator or router you pass in, without transition options. Interactive `beginBack()` resolves to `null`, and gesture lifecycle callbacks are inactive.
+The mocks render shared owners in place and show companion content immediately. Progress reports an idle session. `useSharedElementPresentation` reports null metrics and a collapsed owner or expanded target. Navigation commands forward to the navigator or router you pass in, without transition options. Interactive `beginBack()` resolves to `null`, and gesture lifecycle callbacks are inactive.
 
 The tray mock renders declared screens in place. You can present a tray, navigate its stack, and assert on screen content and `useTrayState` in the same test. Transitions settle immediately and `useKeyboard()` reports a hidden keyboard.
 

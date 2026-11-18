@@ -26,6 +26,24 @@ import {
   TripsDetailScreen,
 } from '@screen-choreography/example-shared/trips';
 
+import {
+  DaylightScreen,
+  DaylightDetailScreen,
+} from '@screen-choreography/example-shared/daylight';
+
+const JournalListRoute = withExampleScreen('JournalList', DaylightScreen, {
+  keepVisible: true,
+});
+const JournalDetailRoute = withExampleScreen(
+  'JournalDetail',
+  function JournalDetailRoute({
+    route,
+  }: NativeStackScreenProps<ExampleStackParams, 'JournalDetail'>) {
+    return <DaylightDetailScreen {...route.params} />;
+  },
+  { keepVisible: true }
+);
+
 const Stack = createNativeStackNavigator<ExampleStackParams>();
 const LandingRoute = withExampleScreen('Landing', LandingScreen);
 const GalleryListRoute = withExampleScreen('GalleryList', GalleryListScreen);
@@ -92,6 +110,12 @@ export default function App() {
                 }}
               >
                 <Stack.Screen name="Landing" component={LandingRoute} />
+                <Stack.Screen name="JournalList" component={JournalListRoute} />
+                <Stack.Screen
+                  name="JournalDetail"
+                  component={JournalDetailRoute}
+                  options={detailOptions}
+                />
 
                 <Stack.Screen name="GalleryList" component={GalleryListRoute} />
                 <Stack.Screen

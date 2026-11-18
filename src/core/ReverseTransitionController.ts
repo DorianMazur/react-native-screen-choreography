@@ -6,6 +6,8 @@ export interface ReverseNavigationResult {
 }
 
 export interface ReverseTransitionConfig {
+  /** Route-owned content must finish before navigation can remove its screen. */
+  removeAfterAnimation?: boolean;
   sessionId: string;
   sourceScreenId: string;
   targetScreenId: string;
@@ -40,7 +42,11 @@ export class ReverseTransitionController {
   /** Remove the faded outgoing route while retained content finishes settling. */
   commitNearEndpoint(sessionId: string): void {
     const operation = this.operation;
-    if (operation?.config.sessionId === sessionId) this.commit(operation);
+    if (
+      operation?.config.sessionId === sessionId &&
+      !operation.config.removeAfterAnimation
+    )
+      this.commit(operation);
   }
 
   canInterrupt(sessionId: string): boolean {

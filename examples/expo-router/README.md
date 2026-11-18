@@ -42,6 +42,10 @@ Expo Go is not supported because the library includes a custom native overlay ho
 
 Keep `animation: 'none'` and transparent stack content so the choreography overlay owns the visible motion.
 
+## Daylight demo
+
+Open **Daylight** after Wallet. Tap a saved place, select a time in the sun schedule, and try cancelling and completing a pull to close. The routes are `/journal` and `/journal/[collectionId]`. Both apps use the same [Daylight screens and transition](../react-navigation/README.md#daylight-demo).
+
 ## Transition definitions
 
 Transition recipes live alongside their screens in [the shared source](../shared) and use `defineTransition` from the shared core API.

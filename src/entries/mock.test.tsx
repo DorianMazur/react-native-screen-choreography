@@ -114,7 +114,7 @@ test('a mocked tray presents declared screens, retains local state on Back, and 
   expect(onDismiss).toHaveBeenCalledTimes(1);
 });
 
-test('renders one stateful owner, empty targets, and visible companion content', () => {
+test('renders one stateful owner and destination content with its own presentation', () => {
   const card = core.defineTransition({
     shared: { card: { kind: 'surface' } },
     enter: { body: {} },
@@ -127,6 +127,13 @@ test('renders one stateful owner, empty targets, and visible companion content',
     presentation = core.useSharedElementPresentation();
     return (
       <Button title={`Count ${count}`} onPress={() => setCount(count + 1)} />
+    );
+  }
+  function TargetContent() {
+    const { presentationProgress, expanded } =
+      core.useSharedElementPresentation();
+    return (
+      <Text>{`${expanded.metadata} at ${presentationProgress.value}`}</Text>
     );
   }
   function Companion() {
@@ -157,7 +164,9 @@ test('renders one stateful owner, empty targets, and visible companion content',
         </card.Exit>
       </choreography.ChoreographyScreen>
       <choreography.ChoreographyScreen screenId="detail">
-        <card.Element.Target name="card" groupId="one" />
+        <card.Element.Target name="card" groupId="one" metadata={label}>
+          <TargetContent />
+        </card.Element.Target>
       </choreography.ChoreographyScreen>
     </core.ChoreographyProvider>
   );
@@ -166,6 +175,7 @@ test('renders one stateful owner, empty targets, and visible companion content',
   result.rerender(tree('second'));
   expect(result.getAllByText('Count 1')).toHaveLength(1);
   expect(result.getByText('Companion')).toBeTruthy();
+  expect(result.getByText('second at 1')).toBeTruthy();
   expect(result.getByText('Summary')).toBeTruthy();
   expect(presentation).toMatchObject({
     transitioning: false,

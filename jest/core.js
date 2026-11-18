@@ -24,11 +24,11 @@ function ChoreographyOverlay({ children }) {
   return children;
 }
 
-function SharedElement({ children, style, portalStyle, metadata }) {
+function useRestingPresentation(style, metadata, settled) {
   const progress = React.useContext(ProgressContext);
-  const presentationProgress = useMutable(0);
+  const presentationProgress = useMutable(settled === 'expanded' ? 1 : 0);
   const frame = useMutable(null);
-  const value = React.useMemo(
+  return React.useMemo(
     () => ({
       progress: progress ?? presentationProgress,
       presentationProgress,
@@ -36,11 +36,18 @@ function SharedElement({ children, style, portalStyle, metadata }) {
       transitioning: false,
       direction: null,
       collapsed: { metrics: null, metadata, style: StyleSheet.flatten(style) },
-      expanded: { metrics: null },
-      settled: 'collapsed',
+      expanded:
+        settled === 'expanded'
+          ? { metrics: null, metadata, style: StyleSheet.flatten(style) }
+          : { metrics: null },
+      settled,
     }),
-    [progress, presentationProgress, frame, metadata, style]
+    [progress, presentationProgress, frame, metadata, style, settled]
   );
+}
+
+function SharedElement({ children, style, portalStyle, metadata }) {
+  const value = useRestingPresentation(style, metadata, 'collapsed');
   return React.createElement(
     PresentationContext.Provider,
     { value },
@@ -80,11 +87,18 @@ SharedElement.Pressable = function PressableOwner({
   );
 };
 
-SharedElement.Target = function Target({ style, hostStyle }) {
+SharedElement.Target = function Target({
+  style,
+  hostStyle,
+  metadata,
+  children,
+}) {
+  const value = useRestingPresentation(style, metadata, 'expanded');
   return React.createElement(
     View,
     { style },
-    React.createElement(View, { style: hostStyle })
+    React.createElement(View, { style: hostStyle }),
+    React.createElement(PresentationContext.Provider, { value }, children)
   );
 };
 
@@ -113,7 +127,7 @@ function useSharedElementPresentation() {
   const presentation = React.useContext(PresentationContext);
   if (!presentation) {
     throw new Error(
-      'useSharedElementPresentation requires a SharedElement owner.'
+      'useSharedElementPresentation requires a SharedElement owner or Target content.'
     );
   }
   return presentation;
