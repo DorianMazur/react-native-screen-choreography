@@ -37,6 +37,10 @@
     "./mock/expo-router": {
       "types": "./jest/expo-router.d.ts",
       "default": "./jest/expo-router.js"
+    },
+    "./mock/tray": {
+      "types": "./jest/tray.d.ts",
+      "default": "./jest/tray.js"
     }
   },
   "files": [

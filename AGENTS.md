@@ -43,7 +43,9 @@ Use these files as the source of truth:
 
 ## Public API Surface
 
-Check `src/entries/index.ts`, `src/entries/core.ts`, and `src/entries/expo-router.ts` before documenting or changing exports. Keep both integration entries re-exporting the shared API from `core.ts`; keep navigation dependencies confined to their adapters.
+Check the public source entries listed in `package.json` before documenting or changing exports. Keep both navigation integrations re-exporting the shared API from `core.ts` and keep navigation dependencies confined to their adapters.
+
+Every public runtime entry needs a packaged Jest mock (`/mock` or `/mock/<subpath>`), matching types, and a Jest setup example. When changing exports or factory members, update the mock and its consumer tests in the same change. Mocks should load only React, React Native, and local mock helpers.
 
 Current important exports include:
 
@@ -91,7 +93,7 @@ Current important exports include:
 
 - Name branches `feat/<short-kebab-case-description>`, `fix/<short-kebab-case-description>`, or `chore/<short-kebab-case-description>` according to the purpose of the work.
 - Use Conventional Commits for commit messages and merge request titles. Choose the type for each commit based on its change and the MR type based on the overall change. Use a lowercase imperative description, an optional scope, and `!` for breaking changes. Follow the [Conventional Commits Cheatsheet](https://gist.github.com/qoomon/5dfcdf8eec66a051ecd85625518cfd13).
-- keep docs aligned with the actual exported API in `src/entries/index.ts`, `src/entries/core.ts`, and `src/entries/expo-router.ts`
+- keep docs aligned with the public entries in `src/entries/`
 - prefer library-level abstractions for transition lifecycle behavior instead of example-only screen code
 - when moving behavior out of the example app, expose a focused reusable API rather than copying helper logic into another file
 - document current behavior, not abandoned plans or speculative architecture

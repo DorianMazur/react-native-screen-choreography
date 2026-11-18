@@ -1,12 +1,17 @@
 import { readFileSync } from 'node:fs';
-import { resolve } from 'node:path';
+import { dirname, resolve } from 'node:path';
 import ts from 'typescript';
-import { useState } from 'react';
+import { useCallback, useState } from 'react';
 import { Button, Text } from 'react-native';
 import { fireEvent, render, renderHook } from '@testing-library/react-native';
 import * as choreography from 'react-native-screen-choreography';
 import * as core from 'react-native-screen-choreography/core';
 import * as expo from 'react-native-screen-choreography/expo-router';
+import {
+  createTray,
+  type TrayScreenProps,
+} from 'react-native-screen-choreography/tray';
+import manifest from '../../package.json';
 
 // Source entries resolve before a build; /mock paths use the package exports.
 jest.mock('react-native-screen-choreography', () =>
@@ -18,8 +23,11 @@ jest.mock('react-native-screen-choreography/core', () =>
 jest.mock('react-native-screen-choreography/expo-router', () =>
   require('react-native-screen-choreography/mock/expo-router')
 );
+jest.mock('react-native-screen-choreography/tray', () =>
+  require('react-native-screen-choreography/mock/tray')
+);
 
-// None of these runtimes or optional navigators may initialize through a mock.
+// Packaged mocks must work without the native runtimes or optional peers.
 jest.mock('react-native-reanimated', () => {
   throw new Error('The choreography mock loaded Reanimated');
 });
@@ -35,9 +43,14 @@ jest.mock('@react-navigation/native', () => {
 jest.mock('expo-router', () => {
   throw new Error('The choreography mock loaded Expo Router');
 });
+jest.mock('@swmansion/react-native-bottom-sheet', () => {
+  throw new Error('The choreography mock loaded the native sheet');
+});
+jest.mock('react-native-keyboard-controller', () => {
+  throw new Error('The choreography mock loaded the keyboard controller');
+});
 
-function runtimeExports(entry: string): string[] {
-  const path = resolve(__dirname, `${entry}.ts`);
+function runtimeExports(path: string): string[] {
   const source = ts.createSourceFile(
     path,
     readFileSync(path, 'utf8'),
@@ -46,7 +59,15 @@ function runtimeExports(entry: string): string[] {
   );
   return source.statements.flatMap((statement) => {
     if (!ts.isExportDeclaration(statement) || statement.isTypeOnly) return [];
-    if (!statement.exportClause) return runtimeExports('core');
+    if (
+      !statement.exportClause &&
+      statement.moduleSpecifier &&
+      ts.isStringLiteral(statement.moduleSpecifier)
+    )
+      return runtimeExports(
+        resolve(dirname(path), statement.moduleSpecifier.text + '.ts')
+      );
+    if (!statement.exportClause) return [];
     if (!ts.isNamedExports(statement.exportClause)) return [];
     return statement.exportClause.elements
       .filter((item) => !item.isTypeOnly)
@@ -54,12 +75,88 @@ function runtimeExports(entry: string): string[] {
   });
 }
 
-test.each([
-  ['index', choreography],
-  ['core', core],
-  ['expo-router', expo],
-] as const)('%s mock covers its public runtime exports', (entry, mock) => {
-  expect(Object.keys(mock).sort()).toEqual(runtimeExports(entry).sort());
+const publicEntries = Object.entries(manifest.exports).flatMap(
+  ([entry, target]) =>
+    typeof target === 'object' && 'source' in target
+      ? [[entry, target.source] as const]
+      : []
+);
+test.each(publicEntries)(
+  '%s mock covers its public runtime exports',
+  (entry, source) => {
+    const mock = require(`${manifest.name}/mock${entry.slice(1)}`);
+    expect(Object.keys(mock).sort()).toEqual(
+      runtimeExports(resolve(__dirname, '../..', source)).sort()
+    );
+  }
+);
+
+test('a mocked tray presents declared screens, retains local state on Back, and dismisses', () => {
+  type Routes = { list: undefined; detail: { label: string } };
+  const Tray = createTray<Routes>();
+  const onFocus = jest.fn();
+  const onBlur = jest.fn();
+  const onDismiss = jest.fn();
+  function Launcher() {
+    const tray = Tray.useTray();
+    const depth = Tray.useTrayState((state) => state.depth);
+    return (
+      <Button title={`Open (${depth})`} onPress={() => tray.present('list')} />
+    );
+  }
+  function List() {
+    const tray = Tray.useTray();
+    const [count, setCount] = useState(0);
+    Tray.useFocusEffect(
+      useCallback(() => {
+        onFocus();
+        return onBlur;
+      }, []),
+      { afterTransition: true }
+    );
+    return (
+      <>
+        <Button title={`Count ${count}`} onPress={() => setCount(count + 1)} />
+        <Button
+          title="Show detail"
+          onPress={() =>
+            tray.push('detail', { label: 'Hello' }, { groupId: 'card' })
+          }
+        />
+      </>
+    );
+  }
+  function Detail({ route }: TrayScreenProps<Routes, 'detail'>) {
+    const depth = Tray.useTrayState((state) => state.depth);
+    const { isVisible, height, progress } = Tray.useKeyboard();
+    expect([isVisible, height.get(), progress.value]).toEqual([false, 0, 0]);
+    return <Text>{`${route.params.label} (${depth})`}</Text>;
+  }
+  const result = render(
+    <Tray.Provider>
+      <Launcher />
+      <Tray.Stack onDismiss={onDismiss}>
+        <>
+          <Tray.Screen name="list" component={List} />
+          <Tray.Screen name="detail" component={Detail} />
+        </>
+      </Tray.Stack>
+    </Tray.Provider>
+  );
+  expect(result.queryByText('Count 0')).toBeNull();
+  fireEvent.press(result.getByText('Open (0)'));
+  fireEvent.press(result.getByText('Count 0'));
+  fireEvent.press(result.getByText('Show detail'));
+  expect(result.getByText('Hello (2)')).toBeTruthy();
+  expect(result.queryByText('Count 1')).toBeNull();
+  expect(onBlur).toHaveBeenCalledTimes(1);
+  fireEvent.press(result.getByLabelText('Back in tray'));
+  expect(result.getByText('Count 1')).toBeTruthy();
+  expect(onFocus).toHaveBeenCalledTimes(2);
+  fireEvent.press(result.getByLabelText('Close tray'));
+  expect(result.getByText('Open (0)')).toBeTruthy();
+  expect(result.queryByText('Count 1')).toBeNull();
+  expect(onDismiss).toHaveBeenCalledTimes(1);
 });
 
 test('renders one stateful owner, empty targets, and visible companion content', () => {
