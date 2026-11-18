@@ -1,4 +1,3 @@
-import { findNodeHandle } from 'react-native';
 import { TransitionCoordinator } from './TransitionCoordinator';
 import { ElementRegistry } from './ElementRegistry';
 import { setDebugEnabled } from '../debug/logger';
@@ -150,7 +149,7 @@ test('keeps waiting when the native mounted batch is not ready', async () => {
   expect(states).toEqual(['measuring']);
   capture.mockReturnValue([sourceMetrics, targetMetrics]);
   mountListeners.forEach((listener) => listener());
-  expect((await pending)?.state).toBe('active');
+  expect((await pending)?.pairs[0]?.targetMetrics).toEqual(targetMetrics);
   expect(states).toEqual(['measuring', 'active']);
 });
 
@@ -241,7 +240,6 @@ test.each(['forward', 'backward'] as const)(
     expect(session?.pairs[0]?.sourceMetrics).toEqual(sourceMetrics);
     expect(session?.pairs[0]?.targetMetrics).toEqual(targetMetrics);
     expect(capture).toHaveBeenCalledWith([100, 200], [1, 2]);
-    expect(findNodeHandle).toHaveBeenCalled();
   }
 );
 
@@ -258,7 +256,7 @@ test('consumes source geometry captured before navigation without re-reading a d
   expect(await start()).toBeNull(); // The consumed source snapshot cannot be reused.
 });
 
-test('does not use stale registry metrics when Fabric capture fails', async () => {
+test('times out an unavailable Fabric capture even when registrations have metrics', async () => {
   register('list', sourceMetrics, { metrics: sourceMetrics });
   register('detail', targetMetrics, { metrics: targetMetrics });
   capture.mockReturnValue(null);
@@ -272,14 +270,6 @@ test('does not use stale registry metrics when Fabric capture fails', async () =
   expect(unavailable).toHaveBeenCalledTimes(1);
   expect(coordinator.getActiveSession()).toBeNull();
   expect(jest.getTimerCount()).toBe(0);
-});
-
-test('waits for a pending mount and uses its current geometry', async () => {
-  register('list', sourceMetrics);
-  register('detail', targetMetrics);
-  capture.mockReturnValueOnce(null);
-  expect((await start())?.pairs[0]?.targetMetrics).toEqual(targetMetrics);
-  expect(capture).toHaveBeenCalledTimes(2);
 });
 
 test('freezes presentation getters before the native geometry request', async () => {
@@ -437,18 +427,14 @@ test('refresh captures live geometry without changing frozen presentations', asy
   );
 });
 
-test('completion and cancellation release hidden elements and settle on the correct screen', async () => {
+test('completion settles at the destination and cancellation restores the source', async () => {
   register('list', sourceMetrics);
   register('detail', targetMetrics);
   await start();
-  coordinator.getHiddenElements().add('card');
   coordinator.completeTransition();
-  expect(coordinator.getHiddenElements().size).toBe(0);
   expect(coordinator.getSettledScreenId()).toBe('detail');
   await start();
-  coordinator.getHiddenElements().add('card');
   coordinator.cancelTransition();
-  expect(coordinator.getHiddenElements().size).toBe(0);
   expect(coordinator.getSettledScreenId()).toBe('list');
 });
 

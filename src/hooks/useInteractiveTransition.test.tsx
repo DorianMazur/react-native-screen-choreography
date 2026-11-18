@@ -9,11 +9,16 @@ import { ChoreographyContextProvider } from '../core/ChoreographyNavigationConte
 import { ProgressOwnership } from '../core/ProgressOwnership';
 import { NavigationSessionController } from '../core/NavigationSessionController';
 import { ScreenIdContext } from '../core/screenIdContext';
-import { useInteractiveTransitionNavigator } from './useInteractiveTransition';
 import type {
   InteractiveTransitionHandle,
   TransitionSessionData,
 } from '../types';
+
+const { loadWorkletModule, onUI } = require('../../__fixtures__/worklets');
+const { useInteractiveTransitionNavigator } = loadWorkletModule(
+  require.resolve('./useInteractiveTransition'),
+  require
+) as typeof import('./useInteractiveTransition');
 
 jest.mock('react-native-reanimated', () => ({
   ...jest.requireActual('../../__mocks__/react-native-reanimated'),
@@ -209,7 +214,7 @@ describe('interactive ownership', () => {
     await act(async () => tree.rerender(render()));
     await act(async () => {
       const handle = await interactive.beginBack();
-      handle!.setProgress(0.6);
+      onUI(handle!.setProgress, ctx, ctx.progressOwnership)(0.6);
       handle!.finish({ duration: 100 });
       handle!.cancel();
       handle!.setProgress(0.9);
@@ -428,7 +433,7 @@ describe('interactive ownership', () => {
     await act(async () => {
       const handle = await interactive.beginBack();
       expect(handle).not.toBeNull();
-      previousSetProgress(0.6);
+      onUI(previousSetProgress, ctx, ctx.progressOwnership)(0.6);
       expect(ctx.progress.value).toBe(1);
       handle!.setProgress(0.6);
       expect(ctx.progress.value).toBeCloseTo(0.4);

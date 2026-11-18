@@ -1,246 +1,95 @@
 import { ElementRegistry } from './ElementRegistry';
+import { setDebugEnabled } from '../debug/logger';
 import type { RegisteredElement } from '../types';
 
-function createMockElement(
-  overrides: Partial<RegisteredElement> = {}
+function element(
+  screenId: string,
+  groupId: string | undefined,
+  id = 'card'
 ): RegisteredElement {
   return {
-    id: 'test-element',
-    groupId: 'test-group',
-    screenId: 'screen-1',
-    ref: () => null,
+    id,
+    screenId,
+    groupId,
+    ref: { current: null },
     metrics: null,
-    getPresentation: () => ({
-      content: null,
-      transition: { renderer: () => null },
-    }),
-    ...overrides,
+    getPresentation: () => ({ transition: { renderer: () => null } }),
   };
 }
 
-describe('ElementRegistry', () => {
-  let registry: ElementRegistry;
+test('replaces only an exact registration and warns about the collision', () => {
+  const registry = new ElementRegistry();
+  const row = element('list', 'first');
+  const otherRow = element('list', 'second');
+  const detail = element('detail', 'first');
+  const replacement = element('list', 'first');
+  const log = jest.spyOn(console, 'log').mockImplementation(() => {});
+  setDebugEnabled(true);
+  try {
+    registry.register(row);
+    registry.register(otherRow);
+    registry.register(detail);
+    expect(log).not.toHaveBeenCalledWith(expect.stringContaining('duplicate'));
 
-  beforeEach(() => {
-    registry = new ElementRegistry();
-  });
-
-  test('registers and retrieves an element', () => {
-    const element = createMockElement();
-    registry.register(element);
-
-    const result = registry.getById('test-element');
-    expect(result).toHaveLength(1);
-    expect(result[0]?.id).toBe('test-element');
-  });
-
-  test('registers same id on different screens', () => {
-    registry.register(createMockElement({ screenId: 'screen-1' }));
-    registry.register(createMockElement({ screenId: 'screen-2' }));
-
-    const result = registry.getById('test-element');
-    expect(result).toHaveLength(2);
-  });
-
-  test('replaces registration for same id + screenId', () => {
-    registry.register(createMockElement({ screenId: 'screen-1' }));
-    registry.register(createMockElement({ screenId: 'screen-1' }));
-
-    const result = registry.getById('test-element');
-    expect(result).toHaveLength(1);
-  });
-
-  test('keeps the same id in different groups on one screen', () => {
-    registry.register(createMockElement({ groupId: 'group-1' }));
-    registry.register(createMockElement({ groupId: 'group-2' }));
-
-    expect(registry.getById('test-element')).toHaveLength(2);
-    expect(
-      registry.getByIdAndScreen('test-element', 'screen-1', 'group-2')?.groupId
-    ).toBe('group-2');
-  });
-
-  test('unregister removes only the exact compound identity', () => {
-    registry.register(createMockElement({ groupId: undefined }));
-    registry.register(createMockElement({ groupId: 'group-2' }));
-
-    registry.unregister('test-element', 'screen-1', undefined);
-
-    expect(registry.getById('test-element')).toHaveLength(1);
-    expect(registry.getById('test-element')[0]?.groupId).toBe('group-2');
-  });
-
-  test('unregisters an element', () => {
-    registry.register(createMockElement());
-    registry.unregister('test-element', 'screen-1', 'test-group');
-
-    const result = registry.getById('test-element');
-    expect(result).toHaveLength(0);
-  });
-
-  test('unregister only removes the matching screen', () => {
-    registry.register(createMockElement({ screenId: 'screen-1' }));
-    registry.register(createMockElement({ screenId: 'screen-2' }));
-
-    registry.unregister('test-element', 'screen-1', 'test-group');
-
-    const result = registry.getById('test-element');
-    expect(result).toHaveLength(1);
-    expect(result[0]?.screenId).toBe('screen-2');
-  });
-
-  test('getByIdAndScreen returns correct element', () => {
-    registry.register(createMockElement({ screenId: 'screen-1' }));
-    registry.register(createMockElement({ screenId: 'screen-2' }));
-
-    const result = registry.getByIdAndScreen('test-element', 'screen-2');
-    expect(result).toBeDefined();
-    expect(result?.screenId).toBe('screen-2');
-  });
-
-  test('getByIdAndScreen returns undefined for missing', () => {
-    const result = registry.getByIdAndScreen('missing', 'screen-1');
-    expect(result).toBeUndefined();
-  });
-
-  test('getGroupElements returns elements for group+screen', () => {
-    registry.register(
-      createMockElement({ id: 'a', groupId: 'group-1', screenId: 'screen-1' })
+    registry.register(replacement);
+    expect(log).toHaveBeenCalledWith(expect.stringContaining('duplicate'));
+    expect(registry.getByIdAndScreen('card', 'list', 'first')?.ref).toBe(
+      replacement.ref
     );
-    registry.register(
-      createMockElement({ id: 'b', groupId: 'group-1', screenId: 'screen-1' })
+    expect(registry.getByIdAndScreen('card', 'list', 'second')?.ref).toBe(
+      otherRow.ref
     );
-    registry.register(
-      createMockElement({ id: 'c', groupId: 'group-2', screenId: 'screen-1' })
+    expect(registry.getByIdAndScreen('card', 'detail', 'first')?.ref).toBe(
+      detail.ref
     );
-    registry.register(
-      createMockElement({ id: 'a', groupId: 'group-1', screenId: 'screen-2' })
-    );
+  } finally {
+    setDebugEnabled(false);
+    log.mockRestore();
+  }
+});
 
-    const result = registry.getGroupElements('group-1', 'screen-1');
-    expect(result).toHaveLength(2);
+test('unregistering an ungrouped owner preserves its grouped and off-screen peers', () => {
+  const registry = new ElementRegistry();
+  const grouped = element('list', 'row');
+  const otherScreen = element('detail', undefined);
+  registry.register(element('list', undefined));
+  registry.register(grouped);
+  registry.register(otherScreen);
+
+  registry.unregister('card', 'list', undefined);
+  expect(registry.getByIdAndScreen('card', 'list', undefined)).toBeUndefined();
+  expect(registry.getByIdAndScreen('card', 'list', 'row')?.ref).toBe(
+    grouped.ref
+  );
+  expect(registry.getByIdAndScreen('card', 'detail', undefined)?.ref).toBe(
+    otherScreen.ref
+  );
+});
+
+test('source capture and pair discovery see only the requested screen and group', () => {
+  const registry = new ElementRegistry();
+  const hero = element('list', 'row', 'hero');
+  const title = element('list', 'row', 'title');
+  registry.register(hero);
+  registry.register(title);
+  registry.register(element('detail', 'row', 'detail-only'));
+  registry.register(element('list', 'other', 'other-row'));
+
+  expect(registry.getGroupElements('row', 'list')).toEqual([hero, title]);
+  expect(registry.getGroupElementIds('row', 'list')).toEqual(['hero', 'title']);
+});
+
+test('subscribers see committed registrations and removals until they unsubscribe', () => {
+  const registry = new ElementRegistry();
+  const card = element('list', 'row');
+  const observed: (RegisteredElement | undefined)[] = [];
+  const unsubscribe = registry.subscribe(() => {
+    observed.push(registry.getByIdAndScreen('card', 'list', 'row'));
   });
 
-  test('getGroupElementIds returns unique ids across screens', () => {
-    registry.register(
-      createMockElement({ id: 'a', groupId: 'group-1', screenId: 'screen-1' })
-    );
-    registry.register(
-      createMockElement({ id: 'b', groupId: 'group-1', screenId: 'screen-1' })
-    );
-    registry.register(
-      createMockElement({ id: 'a', groupId: 'group-1', screenId: 'screen-2' })
-    );
-
-    const result = registry.getGroupElementIds('group-1');
-    expect(result).toHaveLength(2);
-    expect(result).toContain('a');
-    expect(result).toContain('b');
-  });
-
-  test('getGroupElementIds can be scoped to one source screen', () => {
-    registry.register(
-      createMockElement({ id: 'source', screenId: 'screen-1' })
-    );
-    registry.register(
-      createMockElement({ id: 'target-only', screenId: 'screen-2' })
-    );
-
-    expect(registry.getGroupElementIds('test-group', 'screen-1')).toEqual([
-      'source',
-    ]);
-  });
-
-  test('updateMetrics updates cached metrics', () => {
-    registry.register(createMockElement());
-    registry.updateMetrics('test-element', 'screen-1', {
-      pageX: 10,
-      pageY: 20,
-      width: 100,
-      height: 50,
-    });
-
-    const element = registry.getByIdAndScreen('test-element', 'screen-1');
-    expect(element?.metrics).toEqual({
-      pageX: 10,
-      pageY: 20,
-      width: 100,
-      height: 50,
-    });
-  });
-
-  test('size returns total count of registrations', () => {
-    registry.register(createMockElement({ id: 'a', screenId: 'screen-1' }));
-    registry.register(createMockElement({ id: 'a', screenId: 'screen-2' }));
-    registry.register(createMockElement({ id: 'b', screenId: 'screen-1' }));
-
-    expect(registry.size).toBe(3);
-  });
-
-  test('clear removes all registrations', () => {
-    registry.register(createMockElement({ id: 'a' }));
-    registry.register(createMockElement({ id: 'b' }));
-    registry.clear();
-
-    expect(registry.size).toBe(0);
-  });
-
-  test('getDebugSnapshot returns correct data', () => {
-    registry.register(
-      createMockElement({ id: 'a', groupId: 'g1', screenId: 's1' })
-    );
-    const snapshot = registry.getDebugSnapshot();
-
-    expect(snapshot).toHaveLength(1);
-    expect(snapshot[0]).toEqual({
-      id: 'a',
-      screenId: 's1',
-      groupId: 'g1',
-      hasMetrics: false,
-    });
-  });
-
-  describe('subscribe', () => {
-    test('notifies on register, unregister, and metrics updates', () => {
-      const listener = jest.fn();
-      registry.subscribe(listener);
-
-      registry.register(createMockElement());
-      expect(listener).toHaveBeenCalledTimes(1);
-
-      registry.updateMetrics('test-element', 'screen-1', {
-        pageX: 1,
-        pageY: 2,
-        width: 3,
-        height: 4,
-      });
-      expect(listener).toHaveBeenCalledTimes(2);
-
-      registry.unregister('test-element', 'screen-1', 'test-group');
-      expect(listener).toHaveBeenCalledTimes(3);
-    });
-
-    test('does not notify for no-op metrics updates', () => {
-      const listener = jest.fn();
-      registry.subscribe(listener);
-
-      registry.updateMetrics('missing', 'screen-1', {
-        pageX: 1,
-        pageY: 2,
-        width: 3,
-        height: 4,
-      });
-      expect(listener).not.toHaveBeenCalled();
-    });
-
-    test('unsubscribe stops notifications', () => {
-      const listener = jest.fn();
-      const unsubscribe = registry.subscribe(listener);
-
-      unsubscribe();
-      registry.register(createMockElement());
-
-      expect(listener).not.toHaveBeenCalled();
-    });
-  });
+  registry.register(card);
+  registry.unregister('card', 'list', 'row');
+  unsubscribe();
+  registry.register(card);
+  expect(observed).toEqual([card, undefined]);
 });

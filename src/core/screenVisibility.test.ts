@@ -151,85 +151,29 @@ describe('deriveScreenOpacity', () => {
     expect(deriveScreenOpacity('backward', 'source', 'preparing', 1)).toBe(1);
   });
 
-  describe('forward direction, active phase', () => {
-    it('reveals the expanded target over progress [0, 0.4]', () => {
-      expect(deriveScreenOpacity('forward', 'target', 'active', 0)).toBe(0);
+  it('retraces the default fade over the first 40% of expansion in either direction', () => {
+    for (const [progress, expanded, collapsed] of [
+      [-0.1, 0, 1],
+      [0, 0, 1],
+      [0.1, 0.25, 0.75],
+      [0.2, 0.5, 0.5],
+      [0.4, 1, 0],
+      [0.8, 1, 0],
+      [1.1, 1, 0],
+    ] as const) {
       expect(
-        deriveScreenOpacity('forward', 'target', 'active', 0.2)
-      ).toBeCloseTo(0.5);
-      expect(deriveScreenOpacity('forward', 'target', 'active', 0.4)).toBe(1);
-      expect(deriveScreenOpacity('forward', 'target', 'active', 1)).toBe(1);
-    });
-
-    it('fades the source out over progress [0, 0.4]', () => {
-      expect(deriveScreenOpacity('forward', 'source', 'active', 0)).toBe(1);
-      expect(
-        deriveScreenOpacity('forward', 'source', 'active', 0.2)
-      ).toBeCloseTo(0.5);
-      expect(deriveScreenOpacity('forward', 'source', 'active', 0.4)).toBe(0);
-      expect(deriveScreenOpacity('forward', 'source', 'active', 1)).toBe(0);
-    });
-  });
-
-  describe('backward direction, active phase', () => {
-    it('reveals the collapsed target as expansion returns from 0.4 to 0', () => {
-      expect(deriveScreenOpacity('backward', 'target', 'active', 1)).toBe(0);
-      expect(deriveScreenOpacity('backward', 'target', 'active', 0.4)).toBe(0);
-      expect(
-        deriveScreenOpacity('backward', 'target', 'active', 0.2)
-      ).toBeCloseTo(0.5);
-      expect(deriveScreenOpacity('backward', 'target', 'active', 0)).toBe(1);
-    });
-
-    it('keeps the expanded source opaque until companion content has faded', () => {
-      expect(deriveScreenOpacity('backward', 'source', 'active', 1)).toBe(1);
-      expect(deriveScreenOpacity('backward', 'source', 'active', 0.8)).toBe(1);
-      expect(deriveScreenOpacity('backward', 'source', 'active', 0.7)).toBe(1);
-      expect(deriveScreenOpacity('backward', 'source', 'active', 0.4)).toBe(1);
-      expect(
-        deriveScreenOpacity('backward', 'source', 'active', 0.2)
-      ).toBeCloseTo(0.5);
-      expect(deriveScreenOpacity('backward', 'source', 'active', 0)).toBe(0);
-    });
-  });
-
-  it('uses identical opacity for each physical screen in either direction', () => {
-    for (const progress of [-0.1, 0, 0.001, 0.1, 0.2, 0.4, 0.7, 0.9, 1, 1.1]) {
-      const collapsed = deriveScreenOpacity(
-        'forward',
-        'source',
-        'active',
-        progress
-      );
-      const expanded = deriveScreenOpacity(
-        'forward',
-        'target',
-        'active',
-        progress
-      );
-      expect(
-        deriveScreenOpacity('backward', 'target', 'active', progress)
-      ).toBe(collapsed);
+        deriveScreenOpacity('forward', 'target', 'active', progress)
+      ).toBeCloseTo(expanded);
       expect(
         deriveScreenOpacity('backward', 'source', 'active', progress)
-      ).toBe(expanded);
-      expect(collapsed + expanded).toBeCloseTo(1);
-      expect(expanded).toBeGreaterThanOrEqual(0);
-      expect(expanded).toBeLessThanOrEqual(1);
+      ).toBeCloseTo(expanded);
+      expect(
+        deriveScreenOpacity('forward', 'source', 'active', progress)
+      ).toBeCloseTo(collapsed);
+      expect(
+        deriveScreenOpacity('backward', 'target', 'active', progress)
+      ).toBeCloseTo(collapsed);
     }
-  });
-
-  it('reversing an in-flight gesture retraces the same screen opacity', () => {
-    const values = [1, 0.85, 0.7, 0.4, 0.2, 0.1];
-    const closing = values.map((value) =>
-      deriveScreenOpacity('backward', 'source', 'active', value)
-    );
-    const reopening = [...values]
-      .reverse()
-      .map((value) =>
-        deriveScreenOpacity('forward', 'target', 'active', value)
-      );
-    expect(reopening).toEqual(closing.reverse());
   });
 });
 

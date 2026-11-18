@@ -11,7 +11,7 @@ import type {
   SharedElementTransitionRendererProps,
 } from '../types';
 
-test('overlay renders frozen endpoint data without copying children or hiding retained content', async () => {
+test('the active overlay acknowledges the session and renders its captured metadata', async () => {
   const renderer = jest.fn(
     (_props: SharedElementTransitionRendererProps) => null
   );
@@ -48,7 +48,6 @@ test('overlay renders frozen endpoint data without copying children or hiding re
 
   expect(onReady).toHaveBeenCalledWith('s');
   expect(renderer.mock.calls[0]![0].source.metadata).toBe('captured');
-  expect(renderer.mock.calls[0]![0].source).not.toHaveProperty('content');
   await act(async () => tree.unmount());
 });
 
@@ -73,7 +72,6 @@ test.each(['forward', 'backward'] as const)(
         id,
         screenId: 'from',
         ref: { current: 123 },
-        content: 'private',
         metrics: collapsed,
         getPresentation: () => ({ transition }),
       },

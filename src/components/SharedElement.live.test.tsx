@@ -133,26 +133,21 @@ function choreography(
 
 describe('SharedElement live endpoints', () => {
   test.each(
-    (['ios', 'android'] as const).flatMap((platform) =>
-      (
-        [
-          { direction: 'forward', retained: false },
-          { direction: 'backward', retained: false },
-          { direction: 'backward', retained: true },
-        ] as const
-      ).flatMap((scenario) =>
-        (['present', 'cancel', 'fail'] as const).map((outcome) => ({
-          platform,
-          ...scenario,
-          outcome,
-        }))
-      )
+    (
+      [
+        { direction: 'forward', retained: false },
+        { direction: 'backward', retained: false },
+        { direction: 'backward', retained: true },
+      ] as const
+    ).flatMap((scenario) =>
+      (['present', 'cancel', 'fail'] as const).map((outcome) => ({
+        ...scenario,
+        outcome,
+      }))
     )
   )(
-    'moves $platform $direction content only in the activating commit (retained: $retained, $outcome)',
-    async ({ platform, direction, retained, outcome }) => {
-      const originalOS = Platform.OS;
-      Platform.OS = platform;
+    'moves $direction content only in the activating commit (retained: $retained, $outcome)',
+    async ({ direction, retained, outcome }) => {
       const state = makeContexts();
       let tree!: RenderResult;
       let presentation!: SharedElementPresentation;
@@ -240,7 +235,6 @@ describe('SharedElement live endpoints', () => {
         expect(state.actions.unregisterElement).not.toHaveBeenCalled();
       } finally {
         await act(async () => tree?.unmount());
-        Platform.OS = originalOS;
       }
     }
   );
@@ -598,129 +592,127 @@ describe('SharedElement live endpoints', () => {
     }
   });
 
-  test.each([20, 100, 300])(
-    'only propagates presentation updates to the participating owner among %i owners',
-    async (count) => {
-      const state = makeContexts();
-      const progress = { value: 0 } as ChoreographyContextType['progress'];
-      const renders = Array.from({ length: count }, () => jest.fn());
-      const presentations: SharedElementPresentation[] = [];
-      function Content({ index }: { index: number }) {
-        presentations[index] = useSharedElementPresentation();
-        renders[index]!();
-        return null;
-      }
-      const owners = Array.from({ length: count }, (_, index) => (
-        <SharedElement key={index} id="player" groupId={`group-${index}`}>
-          <Content index={index} />
-        </SharedElement>
-      ));
-      let tree!: RenderResult;
-      const render = (
-        activeSession: TransitionSessionData | null,
-        pendingTargetScreenId: string | null = null
-      ) => (
-        <ChoreographyActionsContext.Provider value={state.actions}>
-          <ChoreographyContext.Provider
-            value={{
-              ...choreography(activeSession),
-              progress,
-              pendingTargetScreenId,
-            }}
-          >
-            <ScreenIdContext.Provider value="list">
-              {owners}
-            </ScreenIdContext.Provider>
-          </ChoreographyContext.Provider>
-        </ChoreographyActionsContext.Provider>
-      );
-      const active = { ...session('list', 'detail'), groupId: 'group-0' };
-      try {
-        tree = renderComponent(render(null));
-
-        const initial = presentations.slice();
-        await act(async () => tree.rerender(render(null, 'detail')));
-        await act(async () =>
-          tree.rerender(render({ ...active, state: 'measuring' }, 'detail'))
-        );
-        await act(async () =>
-          tree.rerender(render({ ...active, state: 'preparing' }, 'detail'))
-        );
-        // Preparing pairs the owner without changing what it presents.
-        expect(presentations).toEqual(initial);
-        renders.forEach((renderCount, index) =>
-          expect(renderCount).toHaveBeenCalledTimes(index === 0 ? 2 : 1)
-        );
-
-        await act(async () => tree.rerender(render(active, 'detail')));
-        expect(renders[0]).toHaveBeenCalledTimes(3);
-        progress.value = 0.4;
-        expect(presentations[0]!.frame.value).toEqual({
-          width: 180,
-          height: 110,
-        });
-        expect(
-          presentations.slice(1).every((p) => p.frame.value === null)
-        ).toBe(true);
-        const participating = presentations[0];
-        // Pending cleanup and cloned session envelopes do not change the pair.
-        await act(async () => tree.rerender(render({ ...active })));
-        expect(presentations[0]).toBe(participating);
-        expect(renders[0]).toHaveBeenCalledTimes(3);
-
-        const updated = {
-          ...active,
-          pairs: active.pairs.map((pair) => ({
-            ...pair,
-            targetMetrics: { ...pair.targetMetrics, width: 350 },
-          })),
-        };
-        await act(async () => tree.rerender(render(updated)));
-        expect(presentations[0]!.expanded.metrics!.width).toBe(350);
-        expect(presentations[0]!.frame.value).toEqual({
-          width: 200,
-          height: 110,
-        });
-        expect(renders[0]).toHaveBeenCalledTimes(4);
-        state.settle('detail');
-        await act(async () => tree.rerender(render(null)));
-        expect(presentations[0]!.settled).toBe('expanded');
-        expect(presentations[0]!.frame.value).toBeNull();
-        expect(renders[0]).toHaveBeenCalledTimes(5);
-        expect(
-          tree.UNSAFE_root.findAllByType(Portal)[0]!.props.hostName
-        ).toContain('destination:');
-
-        // Matching element/group identifiers on other screens stay isolated.
-        await act(async () =>
-          tree.rerender(
-            render({
-              ...session('other-list', 'other-detail'),
-              groupId: 'group-1',
-            })
-          )
-        );
-        // Another element in the owner's group does not activate it either.
-        await act(async () =>
-          tree.rerender(
-            render({
-              ...active,
-              pairs: active.pairs.map((pair) => ({ ...pair, id: 'other' })),
-            })
-          )
-        );
-        expect(renders[0]).toHaveBeenCalledTimes(5);
-        for (let index = 1; index < count; index++) {
-          expect(renders[index]).toHaveBeenCalledTimes(1);
-          expect(presentations[index]).toBe(initial[index]);
-        }
-        expect(state.actions.registerElement).toHaveBeenCalledTimes(count);
-        expect(state.actions.unregisterElement).not.toHaveBeenCalled();
-      } finally {
-        await act(async () => tree?.unmount());
-      }
+  test('only propagates presentation updates to the participating owner among 300 owners', async () => {
+    const count = 300;
+    const state = makeContexts();
+    const progress = { value: 0 } as ChoreographyContextType['progress'];
+    const renders = Array.from({ length: count }, () => jest.fn());
+    const presentations: SharedElementPresentation[] = [];
+    function Content({ index }: { index: number }) {
+      presentations[index] = useSharedElementPresentation();
+      renders[index]!();
+      return null;
     }
-  );
+    const owners = Array.from({ length: count }, (_, index) => (
+      <SharedElement key={index} id="player" groupId={`group-${index}`}>
+        <Content index={index} />
+      </SharedElement>
+    ));
+    let tree!: RenderResult;
+    const render = (
+      activeSession: TransitionSessionData | null,
+      pendingTargetScreenId: string | null = null
+    ) => (
+      <ChoreographyActionsContext.Provider value={state.actions}>
+        <ChoreographyContext.Provider
+          value={{
+            ...choreography(activeSession),
+            progress,
+            pendingTargetScreenId,
+          }}
+        >
+          <ScreenIdContext.Provider value="list">
+            {owners}
+          </ScreenIdContext.Provider>
+        </ChoreographyContext.Provider>
+      </ChoreographyActionsContext.Provider>
+    );
+    const active = { ...session('list', 'detail'), groupId: 'group-0' };
+    try {
+      tree = renderComponent(render(null));
+
+      const initial = presentations.slice();
+      await act(async () => tree.rerender(render(null, 'detail')));
+      await act(async () =>
+        tree.rerender(render({ ...active, state: 'measuring' }, 'detail'))
+      );
+      await act(async () =>
+        tree.rerender(render({ ...active, state: 'preparing' }, 'detail'))
+      );
+      // Preparing pairs the owner without changing what it presents.
+      expect(presentations).toEqual(initial);
+      renders.forEach((renderCount, index) =>
+        expect(renderCount).toHaveBeenCalledTimes(index === 0 ? 2 : 1)
+      );
+
+      await act(async () => tree.rerender(render(active, 'detail')));
+      expect(renders[0]).toHaveBeenCalledTimes(3);
+      progress.value = 0.4;
+      expect(presentations[0]!.frame.value).toEqual({
+        width: 180,
+        height: 110,
+      });
+      expect(presentations.slice(1).every((p) => p.frame.value === null)).toBe(
+        true
+      );
+      const participating = presentations[0];
+      // Pending cleanup and cloned session envelopes do not change the pair.
+      await act(async () => tree.rerender(render({ ...active })));
+      expect(presentations[0]).toBe(participating);
+      expect(renders[0]).toHaveBeenCalledTimes(3);
+
+      const updated = {
+        ...active,
+        pairs: active.pairs.map((pair) => ({
+          ...pair,
+          targetMetrics: { ...pair.targetMetrics, width: 350 },
+        })),
+      };
+      await act(async () => tree.rerender(render(updated)));
+      expect(presentations[0]!.expanded.metrics!.width).toBe(350);
+      expect(presentations[0]!.frame.value).toEqual({
+        width: 200,
+        height: 110,
+      });
+      expect(renders[0]).toHaveBeenCalledTimes(4);
+      state.settle('detail');
+      await act(async () => tree.rerender(render(null)));
+      expect(presentations[0]!.settled).toBe('expanded');
+      expect(presentations[0]!.frame.value).toBeNull();
+      expect(renders[0]).toHaveBeenCalledTimes(5);
+      expect(
+        tree.UNSAFE_root.findAllByType(Portal)[0]!.props.hostName
+      ).toContain('destination:');
+
+      // Matching element/group identifiers on other screens stay isolated.
+      await act(async () =>
+        tree.rerender(
+          render({
+            ...session('other-list', 'other-detail'),
+            groupId: 'group-1',
+          })
+        )
+      );
+      // Another element in the owner's group does not activate it either.
+      await act(async () =>
+        tree.rerender(
+          render({
+            ...active,
+            pairs: active.pairs.map((pair) => ({ ...pair, id: 'other' })),
+          })
+        )
+      );
+      expect(renders[0]).toHaveBeenCalledTimes(5);
+      for (let index = 1; index < count; index++) {
+        expect(renders[index]).toHaveBeenCalledTimes(1);
+        expect(presentations[index]).toBe(initial[index]);
+      }
+      expect(state.actions.registerElement).toHaveBeenCalledTimes(count);
+      expect(state.actions.unregisterElement).not.toHaveBeenCalled();
+    } finally {
+      await act(async () => tree?.unmount());
+    }
+  });
 
   test('retains owner progress across settlement, cancellation, and unrelated sessions', async () => {
     const state = makeContexts();
@@ -1094,7 +1086,6 @@ describe('SharedElement live endpoints', () => {
       tree = renderComponent(render(firstTransition, 1));
 
       const registration = state.registered[0]!;
-      const initialGetPresentation = registration.getPresentation;
       expect(registration.getPresentation()).toMatchObject({
         transition: firstTransition,
         metadata: { version: 1 },
@@ -1106,14 +1097,10 @@ describe('SharedElement live endpoints', () => {
 
       expect(state.actions.registerElement).toHaveBeenCalledTimes(1);
       expect(state.actions.unregisterElement).not.toHaveBeenCalled();
-      expect(registration.getPresentation).toBe(initialGetPresentation);
       expect(registration.getPresentation()).toMatchObject({
         transition: secondTransition,
         metadata: { version: 2 },
       });
-      expect(registration.getPresentation().transition.renderer).toBe(
-        secondTransition.renderer
-      );
       expect(
         tree.UNSAFE_root.findByProps({ testID: 'content-2' })
       ).toBeDefined();

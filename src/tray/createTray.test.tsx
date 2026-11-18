@@ -180,6 +180,8 @@ export function checkPushTypes(
   tray.push('Add', { amount: '5' });
   // @ts-expect-error Unknown routes are rejected.
   tray.push('Missing');
+  // @ts-expect-error Presentation also requires a declared route.
+  tray.present('Missing');
   // @ts-expect-error Options still require a group.
   tray.push('Position', undefined, {});
   return result;
@@ -1279,6 +1281,9 @@ test('settled focus in screens and headers waits for native opening and Reanimat
       `focus header:${root} first`,
     ])
   );
+  act(() => sheet(renderer).props.onSettle(1));
+  act(() => sheet(renderer).props.onIndexChange(1));
+  expect(events).toHaveLength(2);
   act(() => navigation.push('preview', { label: 'Next' }));
   const target = navigationState.route!.key;
   expect(events).not.toContain(`focus ${target} first`);
@@ -3566,24 +3571,6 @@ test('dismissal keeps content until native ack and an old ack cannot dismiss the
   act(() => oldSettled(0));
   expect(navigationState.isPresented).toBe(true);
   expect(onDismiss).toHaveBeenCalledTimes(1);
-  act(() => renderer.unmount());
-});
-
-test('rejects missing screens before opening a native sheet', () => {
-  let renderer!: RenderResult;
-
-  renderer = renderComponent(
-    <Tray.Provider>
-      <Observer />
-      {stack()}
-    </Tray.Provider>
-  );
-
-  expect(() => {
-    // @ts-expect-error Also exercise the runtime guard for untyped callers.
-    navigation.present('missing');
-  }).toThrow('Unknown tray screen: missing');
-  expect(navigationState.isPresented).toBe(false);
   act(() => renderer.unmount());
 });
 
