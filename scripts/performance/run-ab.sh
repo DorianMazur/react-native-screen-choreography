@@ -39,8 +39,16 @@ rm -rf "$side_products"
 use() { git restore --source="$1" --staged --worktree -- "${library[@]}"; }
 trap 'use HEAD' EXIT
 
+# A fixture run can fail for reasons unrelated to the sources, so each side may
+# repeat one failed run. The failed attempt is kept beside the repeated one.
+measure() {
+  PERFORMANCE_OUTPUT="$output/$side-$round" PERFORMANCE_IOS_PRODUCTS="$side_products/$side" \
+    bash "scripts/performance/run-$platform.sh" "$mode"
+}
+
 head_status=0
 base_failed=0
+retried=''
 for ((round = 1; round <= rounds; round++)); do
   # Alternate which side runs first so warm-up and drift do not favor one.
   if ((round % 2)); then sides=(base head); else sides=(head base); fi
@@ -53,8 +61,14 @@ for ((round = 1; round <= rounds; round++)); do
     fi
     printf '\nA/B round %s of %s: %s sources\n' "$round" "$rounds" "$side"
     status=0
-    PERFORMANCE_OUTPUT="$output/$side-$round" PERFORMANCE_IOS_PRODUCTS="$side_products/$side" \
-      bash "scripts/performance/run-$platform.sh" "$mode" || status=$?
+    measure || status=$?
+    if [[ "$status" -ne 0 && ",$retried" != *",$side-"* ]]; then
+      printf '\nA/B round %s of %s: repeating the failed %s run\n' "$round" "$rounds" "$side"
+      retried="${retried:+$retried,}$side-$round"
+      if [[ -e "$output/$side-$round" ]]; then mv "$output/$side-$round" "$output/$side-$round-failed"; fi
+      status=0
+      measure || status=$?
+    fi
     if [[ "$status" -ne 0 ]]; then
       # The current fixture may not build or validate against older sources.
       # That removes the comparison; it is not a failure of this change.
@@ -64,7 +78,7 @@ for ((round = 1; round <= rounds; round++)); do
 done
 use HEAD
 
-node --experimental-transform-types scripts/performance/ab.mts "--platform=$platform" "--mode=$mode" "--input=$output" "--output=$output/report" "--rounds=$rounds" "--base=$base" || {
+node --experimental-transform-types scripts/performance/ab.mts "--platform=$platform" "--mode=$mode" "--input=$output" "--output=$output/report" "--rounds=$rounds" "--base=$base" "--retried=$retried" || {
   if [[ "$head_status" -eq 0 ]]; then head_status=1; fi
 }
 printf 'Report: %s/report/summary.md\n' "$output"

@@ -117,7 +117,7 @@ jobs:
     needs: collectors
     runs-on: macos-15
     # Base and current library sources are measured in alternating rounds.
-    timeout-minutes: 90
+    timeout-minutes: 105
     env:
       PERFORMANCE_OUTPUT: ${{ github.workspace }}/artifacts/performance/ios-native-release
       # Cycles for a single run, used when library sources match the base.
