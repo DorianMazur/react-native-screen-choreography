@@ -38,6 +38,10 @@ function elapsedMs(startedAt: number | undefined): string {
     : 'unmeasured';
 }
 
+function layoutKey(element: RegisteredElement) {
+  return JSON.stringify([element.screenId, element.groupId, element.id]);
+}
+
 type SourceCapture = {
   elements: RegisteredElement[];
   snapshot: FabricLayoutSnapshot;
@@ -85,7 +89,7 @@ export class TransitionCoordinator {
       const screenRef = this.nativeReadiness?.getScreenRef(element.screenId);
       if (!screenRef) return null;
       result.push({
-        id: JSON.stringify([element.screenId, element.groupId, element.id]),
+        id: layoutKey(element),
         ref: element.ref,
         screenRef,
       });
@@ -109,11 +113,7 @@ export class TransitionCoordinator {
     if (!snapshot || !geometry) return snapshot;
     const metrics = new Map<string, ElementMetrics>();
     for (const element of elements) {
-      const key = JSON.stringify([
-        element.screenId,
-        element.groupId,
-        element.id,
-      ]);
+      const key = layoutKey(element);
       const frame = snapshot.metrics.get(key);
       const screen = snapshot.metrics.get(JSON.stringify([element.screenId]));
       const origin = geometry(element.screenId);
@@ -148,9 +148,7 @@ export class TransitionCoordinator {
     snapshot: FabricLayoutSnapshot,
     element: RegisteredElement
   ): ElementMetrics {
-    return snapshot.metrics.get(
-      JSON.stringify([element.screenId, element.groupId, element.id])
-    )!;
+    return snapshot.metrics.get(layoutKey(element))!;
   }
 
   private ownsOperation(generation: number, sessionId: string): boolean {
@@ -314,17 +312,72 @@ export class TransitionCoordinator {
     const currentSession = this.activeSession;
     let changed = false;
     const pairs = currentSession.pairs.map((pair) => {
-      const element = side === 'source' ? pair.source : pair.target;
-      const metrics = this.metricsFor(snapshot, element);
-      const previous =
-        side === 'source' ? pair.sourceMetrics : pair.targetMetrics;
-      if (this.metricsAreClose(previous, metrics)) return pair;
-      changed = true;
-      return side === 'source'
-        ? { ...pair, sourceMetrics: metrics }
-        : { ...pair, targetMetrics: metrics };
+      const updated = this.refreshPair(
+        pair,
+        snapshot,
+        side,
+        currentSession.direction,
+        true
+      );
+      if (updated !== pair) changed = true;
+      return updated;
     });
     if (changed) this.updateSession({ ...currentSession, pairs });
+  }
+
+  private refreshPair(
+    pair: ElementTransitionPair,
+    snapshot: FabricLayoutSnapshot,
+    side: 'source' | 'target',
+    direction: TransitionSessionData['direction'],
+    resetBaseline = false
+  ): ElementTransitionPair {
+    const element = pair[side];
+    const key = side === 'source' ? 'sourceMetrics' : 'targetMetrics';
+    let metrics = this.metricsFor(snapshot, element);
+    const baseline = pair.collapsedScrollAnchors;
+    let anchors = baseline;
+    if (side === (direction === 'forward' ? 'source' : 'target')) {
+      const current = snapshot.scrollAnchors?.get(layoutKey(element));
+      // A different scroll ancestry belongs to a remounted endpoint. A later
+      // session can pair it; this renderer still owns the original live host.
+      if (
+        (current?.length ?? 0) !== (baseline?.length ?? 0) ||
+        current?.some((anchor, i) => anchor.tag !== baseline?.[i]?.tag)
+      ) {
+        return pair;
+      }
+      if (
+        !resetBaseline &&
+        baseline &&
+        current &&
+        current.every((a, i) => {
+          const b = baseline[i]!;
+          return (
+            a.xx === b.xx && a.xy === b.xy && a.yx === b.yx && a.yy === b.yy
+          );
+        })
+      ) {
+        // Native applies the entire scroll delta to the renderer. Keep layout
+        // refreshes in the original scroll coordinates to avoid applying it twice.
+        let { pageX, pageY } = metrics;
+        for (const [i, anchor] of current.entries()) {
+          const x = anchor.x - baseline[i]!.x;
+          const y = anchor.y - baseline[i]!.y;
+          pageX += x * anchor.xx + y * anchor.yx;
+          pageY += x * anchor.xy + y * anchor.yy;
+        }
+        metrics = { ...metrics, pageX, pageY };
+      } else {
+        anchors = current;
+      }
+    }
+    if (
+      anchors === pair.collapsedScrollAnchors &&
+      this.metricsAreClose(metrics, pair[key])
+    )
+      return pair;
+    return { ...pair, [key]: metrics, collapsedScrollAnchors: anchors };
   }
 
   private waitForTargets(
@@ -566,19 +619,24 @@ export class TransitionCoordinator {
         const transition =
           pair.sourcePresentation.transition ??
           pair.targetPresentation.transition;
-        return transition
-          ? [
-              {
-                ...pair,
-                transition,
-                sourceMetrics: this.metricsFor(
-                  canUseSourceCapture ? sourceCapture!.snapshot : snapshot,
-                  pair.source
-                ),
-                targetMetrics: this.metricsFor(snapshot, pair.target),
-              },
-            ]
-          : [];
+        if (!transition) return [];
+        const sourceLayout = canUseSourceCapture
+          ? sourceCapture!.snapshot
+          : snapshot;
+        const collapsedLayout =
+          direction === 'forward' ? sourceLayout : snapshot;
+        const collapsed = direction === 'forward' ? pair.source : pair.target;
+        return [
+          {
+            ...pair,
+            transition,
+            sourceMetrics: this.metricsFor(sourceLayout, pair.source),
+            targetMetrics: this.metricsFor(snapshot, pair.target),
+            collapsedScrollAnchors: collapsedLayout.scrollAnchors?.get(
+              layoutKey(collapsed)
+            ),
+          },
+        ];
       });
       if (!pairs.length) {
         endCapture({ ready: false });
@@ -632,10 +690,9 @@ export class TransitionCoordinator {
         if (!updated) return;
         let changed = false;
         const nextPairs = current.pairs.map((pair) => {
-          const metrics = this.metricsFor(updated, pair.target);
-          if (this.metricsAreClose(metrics, pair.targetMetrics)) return pair;
-          changed = true;
-          return { ...pair, targetMetrics: metrics };
+          const next = this.refreshPair(pair, updated, 'target', direction);
+          if (next !== pair) changed = true;
+          return next;
         });
         if (changed && this.activeSession?.id === sessionId)
           this.updateSession({ ...current, pairs: nextPairs });

@@ -102,7 +102,6 @@ export function NativeTransitionHost({
       dispatchCommand(hostRef, 'prepare', [sessionId]);
     }
   }, false);
-  const isIOS = Platform.OS === 'ios';
   const animatedProps = useAnimatedProps(() => {
     const returning = reverseHandoff?.value;
     // A previous session's handoff can outlive its React cleanup. While a new
@@ -115,11 +114,7 @@ export function NativeTransitionHost({
         : returnTargetScreenId;
     return {
       inputTarget:
-        isIOS &&
-        active &&
-        presentation?.valid.value &&
-        !gestureEngaged &&
-        target
+        active && presentation?.valid.value && !gestureEngaged && target
           ? `choreography-input:${target}`
           : '',
       presentationRequested: Boolean(

@@ -55,9 +55,10 @@ class ScreenChoreographyViewManager : ViewGroupManager<ScreenChoreographyView>()
   @ReactProp(name = "modal", defaultBoolean = false)
   override fun setModal(view: ScreenChoreographyView?, modal: Boolean) = Unit
 
-  // iOS routes hits around native-stack wrappers. Android uses its normal dispatch.
   @ReactProp(name = "inputTarget")
-  override fun setInputTarget(view: ScreenChoreographyView?, inputTarget: String?) = Unit
+  override fun setInputTarget(view: ScreenChoreographyView?, inputTarget: String?) {
+    view?.inputTarget = inputTarget
+  }
 
   @ReactProp(name = "sessionId")
   override fun setSessionId(view: ScreenChoreographyView?, sessionId: String?) {
