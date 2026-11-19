@@ -6,6 +6,7 @@ import android.os.Handler
 import android.os.Looper
 import android.os.Message
 import android.os.SystemClock
+import android.view.MotionEvent
 import android.view.View
 import android.view.ViewGroup
 import android.view.ViewTreeObserver
@@ -76,6 +77,16 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     setWillNotDraw(false)
   }
 
+  var inputTarget: String? = null
+  private val scrollInput = ReturnScrollInput(this)
+
+  override fun dispatchTouchEvent(event: MotionEvent): Boolean {
+    if (foregroundLayer) return super.dispatchTouchEvent(event)
+    val handled = scrollInput.dispatch(event, if (active) inputTarget else null)
+    if (!active && !dismissing && !scrollInput.hasGesture) visibility = View.INVISIBLE
+    return handled
+  }
+
   fun setActive(value: Boolean) {
     reactActive = value
     updateActive(value || prepared)
@@ -133,6 +144,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
     }
 
     cancelPresentationReady()
+    if (value.isNotEmpty()) scrollInput.cancel()
     sessionId = value
     // Props can arrive in either order when React batches activation and
     // settlement. Keep the requested ID; the pre-draw check matches both IDs.
@@ -303,7 +315,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   private fun finishDismissal() {
     dismissing = false
     alpha = 0f
-    visibility = View.INVISIBLE
+    if (!scrollInput.hasGesture) visibility = View.INVISIBLE
     invalidate()
   }
 
@@ -330,6 +342,7 @@ class ScreenChoreographyView(context: Context) : ReactViewGroup(context) {
   }
 
   override fun onDetachedFromWindow() {
+    scrollInput.cancel()
     if (viewTreeObserver.isAlive) viewTreeObserver.removeOnPreDrawListener(contentReadiness)
     super.onDetachedFromWindow()
     cancelPresentationReady()

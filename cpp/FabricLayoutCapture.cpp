@@ -8,10 +8,12 @@
 #include <react/renderer/uimanager/UIManagerBinding.h>
 #include <react/renderer/uimanager/UIManagerMountHook.h>
 
+#include <algorithm>
 #include <atomic>
 #include <cmath>
 #include <limits>
 #include <mutex>
+#include <string_view>
 #include <unordered_map>
 #include <unordered_set>
 #include <vector>
@@ -23,12 +25,85 @@ using namespace facebook::react;
 namespace {
 constexpr int kCommitRaceAttempts = 3;
 
+struct ScrollAnchor {
+  Tag tag;
+  facebook::react::Point offset;
+  // Scroll axes expressed in the same coordinate space as the captured frame.
+  Vector xAxis;
+  Vector yAxis;
+};
+
 struct CapturedFrame {
   double pageX;
   double pageY;
   double width;
   double height;
+  std::vector<ScrollAnchor> scrollAnchors;
+
+  jsi::Object toJS(jsi::Runtime &runtime) const {
+    jsi::Object item(runtime);
+    item.setProperty(runtime, "pageX", pageX);
+    item.setProperty(runtime, "pageY", pageY);
+    item.setProperty(runtime, "width", width);
+    item.setProperty(runtime, "height", height);
+    if (!scrollAnchors.empty()) {
+      jsi::Array anchors(runtime, scrollAnchors.size());
+      for (size_t i = 0; i < scrollAnchors.size(); ++i) {
+        const auto &anchor = scrollAnchors[i];
+        jsi::Object entry(runtime);
+        entry.setProperty(runtime, "tag", anchor.tag);
+        entry.setProperty(runtime, "x", static_cast<double>(anchor.offset.x));
+        entry.setProperty(runtime, "y", static_cast<double>(anchor.offset.y));
+        entry.setProperty(runtime, "xx", static_cast<double>(anchor.xAxis.x));
+        entry.setProperty(runtime, "xy", static_cast<double>(anchor.xAxis.y));
+        entry.setProperty(runtime, "yx", static_cast<double>(anchor.yAxis.x));
+        entry.setProperty(runtime, "yy", static_cast<double>(anchor.yAxis.y));
+        anchors.setValueAtIndex(runtime, i, std::move(entry));
+      }
+      item.setProperty(runtime, "scrollAnchors", std::move(anchors));
+    }
+    return item;
+  }
 };
+
+static bool isScrollView(const ShadowNode &node) {
+  return std::string_view(node.getComponentName()) == "ScrollView";
+}
+
+static CapturedFrame captureFrame(const facebook::react::Rect &frame,
+    const ShadowNodeFamily::AncestorList &ancestors, Tag screen) {
+  CapturedFrame captured{frame.origin.x, frame.origin.y, frame.size.width, frame.size.height, {}};
+  // Most endpoints have no scroll ancestor. Only resolve transforms down to
+  // the deepest scroll view and only bind scroll views inside this screen.
+  const auto deepest = std::find_if(ancestors.rbegin(), ancestors.rend(),
+      [](const auto &entry) {
+        const auto &node = entry.first.get();
+        return isScrollView(node) || node.getTraits().check(ShadowNodeTraits::Trait::RootNodeKind);
+      });
+  if (deepest == ancestors.rend() || !isScrollView(deepest->first.get())) return captured;
+
+  bool insideScreen = false;
+  Transform transform = Transform::Identity();
+  for (auto it = ancestors.begin(); it != deepest.base(); ++it) {
+    const auto &node = it->first.get();
+    const auto *layout = dynamic_cast<const LayoutableShadowNode *>(&node);
+    if (!layout) continue;
+    if (node.getTraits().check(ShadowNodeTraits::Trait::RootNodeKind)) {
+      transform = Transform::Identity();
+      captured.scrollAnchors.clear();
+    } else {
+      const auto local = layout->getTransform();
+      if (local != Transform::Identity()) transform = transform * local;
+    }
+    if (node.getTag() == screen) insideScreen = true;
+    if (insideScreen && isScrollView(node)) {
+      const auto origin = layout->getContentOriginOffset(false);
+      captured.scrollAnchors.push_back({node.getTag(), {-origin.x, -origin.y},
+          transform * Vector{1, 0, 0, 0}, transform * Vector{0, 1, 0, 0}});
+    }
+  }
+  return captured;
+}
 
 // Shared across RN/UI runtimes; never retain JSI values or Fabric nodes.
 struct NativeCaptureRequest {
@@ -216,15 +291,12 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
         if (!node) return jsi::Value::null();
         // Same layout policy / coordinate space as Reanimated measure(), but
         // every element comes from ONE completed mounted revision.
-        const auto metrics = LayoutableShadowNode::computeRelativeLayoutMetrics(node->getFamily(), *root, {});
+        const auto ancestors = node->getFamily().getAncestors(*root);
+        const auto metrics = node == root.get()
+            ? LayoutableShadowNode::computeRelativeLayoutMetrics(node->getFamily(), *root, {})
+            : LayoutableShadowNode::computeRelativeLayoutMetrics(ancestors, {});
         if (!valid(metrics)) return jsi::Value::null();
-        const auto &frame = metrics.frame;
-        jsi::Object item(runtime);
-        item.setProperty(runtime, "pageX", static_cast<double>(frame.origin.x));
-        item.setProperty(runtime, "pageY", static_cast<double>(frame.origin.y));
-        item.setProperty(runtime, "width", static_cast<double>(frame.size.width));
-        item.setProperty(runtime, "height", static_cast<double>(frame.size.height));
-        result.setValueAtIndex(runtime, i, std::move(item));
+        result.setValueAtIndex(runtime, i, captureFrame(metrics.frame, ancestors, screens[i]).toJS(runtime));
       }
       // A new commit can arrive while we compute the batch. Never mix it in.
       if (!isCurrent(root)) return jsi::Value::null();
@@ -283,16 +355,17 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
         return;
       }
       const auto screenMetrics = LayoutableShadowNode::computeRelativeLayoutMetrics(screen->getFamily(), *root, {});
-      const auto metrics = LayoutableShadowNode::computeRelativeLayoutMetrics(node->getFamily(), *root, {});
+      const auto ancestors = node->getFamily().getAncestors(*root);
+      const auto metrics = node == root.get()
+            ? LayoutableShadowNode::computeRelativeLayoutMetrics(node->getFamily(), *root, {})
+            : LayoutableShadowNode::computeRelativeLayoutMetrics(ancestors, {});
       if (!valid(screenMetrics) || !valid(metrics)) {
         request->mountedRoot.reset();
         request->frames.clear();
         request->captureStatus = !valid(screenMetrics) ? "invalid-screen-metrics" : "invalid-element-metrics";
         return;
       }
-      const auto &frame = metrics.frame;
-      frames.push_back({static_cast<double>(frame.origin.x), static_cast<double>(frame.origin.y),
-          static_cast<double>(frame.size.width), static_cast<double>(frame.size.height)});
+      frames.push_back(captureFrame(metrics.frame, ancestors, request->screens[i]));
     }
     if (!isCurrent(root)) {
       request->captureStatus = "commit-during-capture";
@@ -350,13 +423,7 @@ class MountedLayouts final : public UIManagerMountHook, public std::enable_share
     if (!root || frames.size() != request->tags.size() || !isCurrent(root)) return jsi::Value::null();
     jsi::Array result(runtime, frames.size());
     for (size_t i = 0; i < frames.size(); ++i) {
-      const auto &frame = frames[i];
-      jsi::Object item(runtime);
-      item.setProperty(runtime, "pageX", frame.pageX);
-      item.setProperty(runtime, "pageY", frame.pageY);
-      item.setProperty(runtime, "width", frame.width);
-      item.setProperty(runtime, "height", frame.height);
-      result.setValueAtIndex(runtime, i, std::move(item));
+      result.setValueAtIndex(runtime, i, frames[i].toJS(runtime));
     }
     if (invalidated_.load() || !isCurrent(root)) return jsi::Value::null();
     {

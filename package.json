@@ -215,6 +215,9 @@
         "ScreenChoreographyPreparation": "ScreenChoreographyPreparation"
       },
       "components": {
+        "ScreenChoreographyScrollTrack": {
+          "className": "ScreenChoreographyScrollTrack"
+        },
         "ScreenChoreographyView": {
           "className": "ScreenChoreographyView"
         }

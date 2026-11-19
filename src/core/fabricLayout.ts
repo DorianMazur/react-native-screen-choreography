@@ -1,4 +1,5 @@
 import { findNodeHandle } from 'react-native';
+import type { ScrollAnchor } from '../native/ScreenChoreographyScrollTrackNativeComponent';
 import NativePreparation from '../native/NativeChoreographyPreparation';
 import type { ElementMetrics, NodeHandleRef } from '../types';
 
@@ -28,6 +29,7 @@ export interface FabricLayoutEntry {
 
 export interface FabricLayoutSnapshot {
   metrics: Map<string, ElementMetrics>;
+  scrollAnchors?: Map<string, readonly ScrollAnchor[]>;
   /** Numeric tags can be recycled; retain native node identity too. */
   isCurrent: () => boolean;
 }
@@ -50,6 +52,42 @@ export function hasFabricLayoutCapture(): boolean {
 
 function nodeFor(ref: NodeHandleRef): any {
   return typeof ref === 'function' ? ref() : ref.current;
+}
+
+function readLayoutBatch(entries: FabricLayoutEntry[], result: unknown) {
+  if (!Array.isArray(result) || result.length !== entries.length) return null;
+  const metrics = new Map<string, ElementMetrics>();
+  let scrollAnchors: Map<string, readonly ScrollAnchor[]> | undefined;
+  for (const [index, item] of result.entries()) {
+    if (!item) return null;
+    const { pageX, pageY, width, height } = item;
+    if (
+      ![pageX, pageY, width, height].every(Number.isFinite) ||
+      width <= 0 ||
+      height <= 0
+    )
+      return null;
+    const key = entries[index]!.id;
+    metrics.set(key, { pageX, pageY, width, height });
+    if (item.scrollAnchors !== undefined) {
+      if (
+        !Array.isArray(item.scrollAnchors) ||
+        !item.scrollAnchors.every(
+          (a: ScrollAnchor) =>
+            a &&
+            Number.isInteger(a.tag) &&
+            a.tag > 0 &&
+            [a.x, a.y, a.xx, a.xy, a.yx, a.yy].every(Number.isFinite)
+        )
+      )
+        return null;
+      if (item.scrollAnchors.length) {
+        scrollAnchors ??= new Map();
+        scrollAnchors.set(key, item.scrollAnchors);
+      }
+    }
+  }
+  return { metrics, scrollAnchors };
 }
 
 /** All endpoints are read synchronously from a single completed mounted root. */
@@ -89,32 +127,8 @@ export function captureFabricLayout(
       screenTags as number[],
       tags as number[]
     );
-    if (
-      !Array.isArray(result) ||
-      result.length !== entries.length ||
-      !isCurrent()
-    )
-      return null;
-    const metrics = new Map<string, ElementMetrics>();
-    for (let i = 0; i < entries.length; i++) {
-      const item = result[i];
-      if (
-        !item ||
-        ![item.pageX, item.pageY, item.width, item.height].every(
-          (value) => typeof value === 'number' && Number.isFinite(value)
-        ) ||
-        item.width <= 0 ||
-        item.height <= 0
-      )
-        return null;
-      metrics.set(entries[i]!.id, {
-        pageX: item.pageX,
-        pageY: item.pageY,
-        width: item.width,
-        height: item.height,
-      });
-    }
-    return { metrics, isCurrent };
+    const batch = readLayoutBatch(entries, result);
+    return batch && isCurrent() ? { ...batch, isCurrent } : null;
   } catch {
     return null;
   }
@@ -229,19 +243,8 @@ export function prepareFabricLayout({
           }
           const batch = reader();
           if (batch === null) return;
-          if (
-            !Array.isArray(batch) ||
-            batch.length !== entries.length ||
-            batch.some(
-              (m) =>
-                !m ||
-                ![m.pageX, m.pageY, m.width, m.height].every(Number.isFinite) ||
-                m.width <= 0 ||
-                m.height <= 0
-            ) ||
-            !isCurrent() ||
-            !currentRefs()
-          ) {
+          const layout = readLayoutBatch(entries, batch);
+          if (!layout || !isCurrent() || !currentRefs()) {
             finish(null, 'invalid-or-stale-native-batch');
             return;
           }
@@ -252,7 +255,7 @@ export function prepareFabricLayout({
           };
           finish({
             validateNative,
-            metrics: new Map(entries.map((entry, i) => [entry.id, batch[i]!])),
+            ...layout,
             isCurrent: currentRefs,
           });
         } catch {

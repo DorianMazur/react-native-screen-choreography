@@ -66,13 +66,7 @@ import {
   type PresentationFailureReason,
 } from '../core/nativePresentation';
 
-function TransitionHostPortal({
-  active,
-  children,
-}: {
-  active: boolean;
-  children: React.ReactNode;
-}) {
+function TransitionHostPortal({ children }: { children: React.ReactNode }) {
   if (Platform.OS === 'ios') {
     return <>{children}</>;
   }
@@ -80,7 +74,7 @@ function TransitionHostPortal({
   return (
     <View
       collapsable={false}
-      pointerEvents={active ? 'box-none' : 'none'}
+      pointerEvents="box-none"
       style={styles.androidPortal}
     >
       {children}
@@ -998,9 +992,7 @@ export function ChoreographyProvider({
                 <IncomingGroupsContext.Provider value={incomingGroups}>
                   {children}
                 </IncomingGroupsContext.Provider>
-                <TransitionHostPortal
-                  active={Boolean(isOverlayActive && overlaySession)}
-                >
+                <TransitionHostPortal>
                   <NativeTransitionHost
                     returnTargetScreenId={
                       overlaySession?.direction === 'backward'
@@ -1021,6 +1013,7 @@ export function ChoreographyProvider({
                     onSettled={handleHostSettled}
                   >
                     <TransitionOverlay
+                      reverseHandoff={reverseHandoff}
                       session={overlaySession}
                       progress={progress}
                       onReady={handleOverlayReady}

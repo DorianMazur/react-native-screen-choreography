@@ -99,7 +99,7 @@ Wraps each route participating in shared transitions. It waits for layout, manag
 
 Both adapters use the route name by default. When supplying an explicit `screenId`, match the route name for React Navigation or the request’s `targetScreenId` for Expo Router. Multiple instances of the same route can use the same label.
 
-`allowInteractionDuringTransition` defaults to `true` on both platforms. The arriving screen can receive touches during motion, so a Back button can interrupt an opening transition. Set it to `false` to block those touches until motion completes. Disable individual controls while transitioning if using them would conflict with your screen's state.
+`allowInteractionDuringTransition` defaults to `true` on both platforms. The arriving screen can receive touches during motion, so a Back button can interrupt an opening transition. When you scroll a `ScrollView` or `FlatList` during Back, the returning shared element moves with its row while the animation finishes. Set it to `false` to block those touches until motion completes. Disable individual controls while transitioning if using them would conflict with your screen's state.
 
 Forward destinations remain blocked during preparation; returning screens can accept queued taps when interaction during transitions is enabled. The outgoing screen is blocked during motion. A screen driving a custom gesture with `useInteractiveTransition` keeps its visibility and input until finish or cancel, so the gesture can continue. Shared content in the overlay cannot receive touches; place a Back button or gesture responder in ordinary destination content.
 

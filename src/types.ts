@@ -1,3 +1,4 @@
+import type { ScrollAnchor } from './native/ScreenChoreographyScrollTrackNativeComponent';
 import type {
   NativePresentation,
   PresentationJSTiming,
@@ -121,6 +122,8 @@ export type TransitionState =
   | 'cancelling';
 
 export interface ElementTransitionPair {
+  /** Session-scoped scroll baselines from the collapsed endpoint's Fabric mount. */
+  collapsedScrollAnchors?: readonly ScrollAnchor[];
   id: string;
   source: RegisteredElement;
   target: RegisteredElement;

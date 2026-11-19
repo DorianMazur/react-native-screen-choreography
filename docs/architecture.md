@@ -146,9 +146,10 @@ Interrupted returns refresh their original source separately. The numeric
 geometry feeds renderers and `useSharedElementPresentation`. Subscriptions end
 on completion, cancellation, or disposal.
 
-Fabric geometry describes the shadow tree. Native-only transforms outside that
-tree are not reflected in captured bounds, so applications must keep endpoint
-layout and scroll state stable during the overlay handoff.
+Fabric captures each collapsed endpoint's scroll ancestors and their offsets with
+its bounds. During Back, native scroll offsets move the live renderer with the row,
+including during momentum. Layout refreshes account for that movement once.
+Transforms outside the Fabric tree are absent from the captured bounds.
 
 ## React rendering and native presentation
 
@@ -244,9 +245,9 @@ from touch hit testing. On iOS,
 the window container resolves the returning screen's live input view within the
 same Fabric root and window, bypassing decorative opacity while preserving its
 input gate. Empty shared-element owners use `box-only` to prevent Teleport from
-forwarding hits to remote content. Android excludes overlay content in
-`ScreenChoreographyView` because its custom `ViewGroupManager` does not apply
-the JSX `pointerEvents` prop.
+forwarding hits to remote content. On Android, when the outgoing route covers a
+scroll view, the host routes the original touch sequence to the returning screen
+and keeps it there through release or cancellation.
 
 Screen opacity and input gating come from `screenVisibility.ts`, using
 `(direction, role, phase, progress)`. Expansion progress remains 0 at the list

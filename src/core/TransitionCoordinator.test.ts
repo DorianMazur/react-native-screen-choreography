@@ -456,6 +456,60 @@ test('mount notifications update active target layout and retain frozen presenta
   expect(mountListeners.size).toBe(0);
 });
 
+test('return tracking applies nested scroll once and keeps independent row layout changes', async () => {
+  const parent = { tag: 50, x: 0, y: 10, xx: 1, xy: 0, yx: 0, yy: 1 };
+  const nested = {
+    ...parent,
+    tag: 51,
+    x: 20,
+    y: 0,
+    xx: 0,
+    xy: -1,
+    yx: 1,
+    yy: 0,
+  };
+  const initial = {
+    ...targetMetrics,
+    pageY: 180,
+    scrollAnchors: [parent, nested],
+  };
+  register('list', sourceMetrics);
+  const row = register('detail', initial);
+  const session = await start('backward');
+
+  const scrolled = {
+    ...initial,
+    pageY: 154,
+    scrollAnchors: [
+      { ...parent, y: 40 },
+      { ...nested, x: 24 },
+    ],
+  };
+  layouts.set(row.node.tag, scrolled);
+  mountListeners.forEach((notify) => notify());
+  expect(coordinator.getActiveSession()).toBe(session);
+
+  layouts.set(row.node.tag, { ...scrolled, pageY: 162 });
+  mountListeners.forEach((notify) => notify());
+  const pair = coordinator.getActiveSession()!.pairs[0]!;
+  expect(pair.targetMetrics).toEqual({ ...targetMetrics, pageY: 188 });
+  expect(pair.collapsedScrollAnchors).toEqual(initial.scrollAnchors);
+
+  const replacement = {
+    ...scrolled,
+    pageY: 0,
+    scrollAnchors: [{ ...parent, tag: 99 }],
+  };
+  layouts.set(row.node.tag, replacement);
+  mountListeners.forEach((notify) => notify());
+  expect(coordinator.getActiveSession()!.pairs[0]).toBe(pair);
+  coordinator.completeTransition();
+  const next = await start('backward');
+  expect(next!.pairs[0]!.collapsedScrollAnchors).toEqual(
+    replacement.scrollAnchors
+  );
+});
+
 test('late mount notifications cannot update a cancelled session', async () => {
   register('list', sourceMetrics);
   register('detail', targetMetrics);

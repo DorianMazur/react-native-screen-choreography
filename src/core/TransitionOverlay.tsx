@@ -1,12 +1,52 @@
-import { useLayoutEffect, useMemo } from 'react';
+import { useLayoutEffect, useMemo, type ReactNode } from 'react';
 import { StyleSheet, View } from 'react-native';
-import type { SharedValue } from 'react-native-reanimated';
+import Animated, {
+  useAnimatedProps,
+  type SharedValue,
+} from 'react-native-reanimated';
+import NativeScrollTrack, {
+  type ScrollAnchor,
+} from '../native/ScreenChoreographyScrollTrackNativeComponent';
+import type { ReverseHandoffState } from './ReverseTransitionHandoff';
 import type {
   ElementMetrics,
   ElementTransitionPair,
   TransitionAnchor,
   TransitionSessionData,
 } from '../types';
+
+const AnimatedScrollTrack = Animated.createAnimatedComponent(NativeScrollTrack);
+
+function ScrollTrack({
+  anchors,
+  sessionId,
+  backward,
+  reverseHandoff,
+  zIndex,
+  children,
+}: {
+  anchors: readonly ScrollAnchor[];
+  sessionId: string;
+  backward: boolean;
+  reverseHandoff?: SharedValue<ReverseHandoffState | null>;
+  zIndex: number;
+  children: ReactNode;
+}) {
+  const animatedProps = useAnimatedProps(() => ({
+    following: backward || reverseHandoff?.value?.sessionId === sessionId,
+  }));
+  return (
+    <AnimatedScrollTrack
+      anchors={anchors}
+      animatedProps={animatedProps}
+      following={backward}
+      pointerEvents="none"
+      style={[StyleSheet.absoluteFill, { zIndex }]}
+    >
+      {children}
+    </AnimatedScrollTrack>
+  );
+}
 
 // Settlement keeps renderer inputs and host identity, never endpoint refs.
 export type OverlayPresentation = Omit<TransitionSessionData, 'pairs'> & {
@@ -39,6 +79,7 @@ export function retainOverlayPresentation(
       sourcePresentation: pair.sourcePresentation,
       targetPresentation: pair.targetPresentation,
       transition: pair.transition,
+      collapsedScrollAnchors: pair.collapsedScrollAnchors,
     })),
   };
 }
@@ -46,6 +87,7 @@ export function retainOverlayPresentation(
 interface TransitionOverlayProps {
   session: OverlayPresentation | null;
   progress: SharedValue<number>;
+  reverseHandoff?: SharedValue<ReverseHandoffState | null>;
   onReady?: (sessionId: string) => void;
 }
 
@@ -53,6 +95,7 @@ export function TransitionOverlay({
   session,
   progress,
   onReady,
+  reverseHandoff,
 }: TransitionOverlayProps) {
   const pairs = session?.pairs;
   const direction = session?.direction;
@@ -91,9 +134,10 @@ export function TransitionOverlay({
         .sort((a, b) => (a.transition.zIndex ?? 0) - (b.transition.zIndex ?? 0))
         .map((pair) => {
           const Renderer = pair.transition.renderer;
-          return (
+          const trackKey = `${session.id}:${pair.id}`;
+          const renderer = (
             <Renderer
-              key={`${session.id}:${pair.id}`}
+              key={trackKey}
               id={pair.id}
               groupId={session.groupId}
               progress={progress}
@@ -113,6 +157,19 @@ export function TransitionOverlay({
                 metadata: pair.targetPresentation.metadata,
               }}
             />
+          );
+          if (!pair.collapsedScrollAnchors?.length) return renderer;
+          return (
+            <ScrollTrack
+              key={trackKey}
+              anchors={pair.collapsedScrollAnchors}
+              sessionId={session.id}
+              backward={direction === 'backward'}
+              reverseHandoff={reverseHandoff}
+              zIndex={pair.transition.zIndex ?? 0}
+            >
+              {renderer}
+            </ScrollTrack>
           );
         })}
     </View>

@@ -314,7 +314,8 @@ test.each([
   ['ios', true, false, 'choreography-input:list-instance'],
   ['ios', true, true, ''],
   ['ios', false, false, ''],
-  ['android', true, false, ''],
+  ['android', true, false, 'choreography-input:list-instance'],
+  ['android', true, true, ''],
 ] as const)(
   '%s return input respects active=%s gesture=%s',
   async (os, active, gestureEngaged, expected) => {
