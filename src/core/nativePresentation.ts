@@ -17,6 +17,10 @@ export interface PresentationAnimation {
   target: number;
   spring: SpringConfig;
   duration?: number;
+  reducedMotion: boolean;
+  handoffOnComplete: boolean;
+  /** UI worklet retained with the queued animation, including reverse handoff. */
+  onCompleteUI?: () => void;
 }
 
 export interface NativePresentation {

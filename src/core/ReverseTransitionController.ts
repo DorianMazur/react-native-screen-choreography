@@ -127,6 +127,17 @@ export class ReverseTransitionController {
     return true;
   }
 
+  /** Release one delegated operation without settling its caller-owned fallback. */
+  abandon(sessionId: string, completion: Promise<void>): void {
+    const operation = this.operation;
+    if (
+      operation?.config.sessionId === sessionId &&
+      operation.promise === completion
+    ) {
+      this.finish(operation, 'abandon');
+    }
+  }
+
   dispose(): void {
     if (this.operation) this.finish(this.operation, 'abandon');
   }

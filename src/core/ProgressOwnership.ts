@@ -158,7 +158,7 @@ export function animateOwnedProgress({
   onCompleteUI?: () => void;
   onComplete: (token: number, sessionId: string) => void;
   presentation?: NativePresentation;
-  /** Trace direct reverse animations without queuing them for presentation. */
+  /** Trace animations that do not need to wait for presentation. */
   timing?: SharedValue<PresentationUITiming>;
 }): void {
   if (!ownership.isCurrent(token, sessionId)) return;
@@ -182,6 +182,9 @@ export function animateOwnedProgress({
         target,
         spring,
         duration,
+        reducedMotion,
+        handoffOnComplete,
+        onCompleteUI,
       };
     } else {
       if (timing && timing.value.animationStartedAtMs === null) {
