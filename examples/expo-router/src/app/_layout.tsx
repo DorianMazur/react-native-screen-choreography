@@ -1,10 +1,11 @@
 import { KeyboardProvider } from 'react-native-keyboard-controller';
 import { ThemeProvider, Stack } from 'expo-router';
+import { trayStackLayout } from 'react-native-screen-choreography/expo-router/tray';
 import { StatusBar } from 'expo-status-bar';
-import { ChoreographyProvider } from 'react-native-screen-choreography/expo-router';
 import { theme as palette } from '@screen-choreography/example-shared';
-import { JSStressMenu } from '@screen-choreography/example-shared/performance';
-import { DemoTraysProvider } from '@screen-choreography/example-shared/tray';
+
+// Supply the screen underneath a tray when its URL opens a fresh app.
+export const unstable_settings = { anchor: '(app)' };
 
 const theme = {
   dark: true,
@@ -27,47 +28,14 @@ const theme = {
 export default function RootLayout() {
   return (
     <KeyboardProvider>
-      <ChoreographyProvider>
-        <DemoTraysProvider>
-          <ThemeProvider value={theme}>
-            <StatusBar style="light" />
-            <Stack
-              screenOptions={{
-                headerShown: false,
-                animation: 'none',
-                contentStyle: { backgroundColor: palette.bg },
-              }}
-            >
-              <Stack.Screen name="index" />
-              <Stack.Screen
-                name="gallery/[photoId]"
-                options={{
-                  presentation: 'containedTransparentModal',
-                  contentStyle: { backgroundColor: 'transparent' },
-                  gestureEnabled: false,
-                }}
-              />
-              <Stack.Screen
-                name="trips/[tripId]"
-                options={{
-                  presentation: 'containedTransparentModal',
-                  contentStyle: { backgroundColor: 'transparent' },
-                  gestureEnabled: false,
-                }}
-              />
-              <Stack.Screen
-                name="wallet/[tokenId]"
-                options={{
-                  presentation: 'containedTransparentModal',
-                  contentStyle: { backgroundColor: 'transparent' },
-                  gestureEnabled: false,
-                }}
-              />
-            </Stack>
-          </ThemeProvider>
-        </DemoTraysProvider>
-        {__DEV__ && false && <JSStressMenu />}
-      </ChoreographyProvider>
+      <ThemeProvider value={theme}>
+        <StatusBar style="light" />
+        <Stack layout={trayStackLayout}>
+          <Stack.Screen name="(app)" />
+          <Stack.Screen name="wallet-tray" />
+          <Stack.Screen name="gallery-tray" />
+        </Stack>
+      </ThemeProvider>
     </KeyboardProvider>
   );
 }

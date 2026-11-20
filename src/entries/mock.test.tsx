@@ -1,20 +1,19 @@
-import { useCallback, useState } from 'react';
+import { useState } from 'react';
 import { Button, Text } from 'react-native';
-import { fireEvent, render, renderHook } from '@testing-library/react-native';
-import * as choreography from 'react-native-screen-choreography';
-import * as core from 'react-native-screen-choreography/core';
-import * as expo from 'react-native-screen-choreography/expo-router';
+import { fireEvent, render } from '@testing-library/react-native';
+import * as expoTray from 'react-native-screen-choreography/expo-router/tray';
 import {
-  createTray,
+  createTrayNavigator,
+  trayStackLayout,
+  useTrayDismiss,
+  useTrayKeyboard,
+  useTraySettled,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
 
 // Source entries resolve before a build; /mock paths use the package exports.
 jest.mock('react-native-screen-choreography', () =>
   require('react-native-screen-choreography/mock')
-);
-jest.mock('react-native-screen-choreography/core', () =>
-  require('react-native-screen-choreography/mock/core')
 );
 jest.mock('react-native-screen-choreography/expo-router', () =>
   require('react-native-screen-choreography/mock/expo-router')
@@ -23,15 +22,19 @@ jest.mock('react-native-screen-choreography/tray', () =>
   require('react-native-screen-choreography/mock/tray')
 );
 
+jest.mock('react-native-screen-choreography/expo-router/tray', () =>
+  require('react-native-screen-choreography/mock/expo-router/tray')
+);
+jest.mock('expo-router/react-navigation', () => {
+  throw new Error('The tray mock loaded Expo Router navigation');
+});
+
 // Packaged mocks must work without the native runtimes or optional peers.
 jest.mock('react-native-reanimated', () => {
   throw new Error('The choreography mock loaded Reanimated');
 });
 jest.mock('react-native-worklets', () => {
   throw new Error('The choreography mock loaded Worklets');
-});
-jest.mock('react-native-teleport', () => {
-  throw new Error('The choreography mock loaded Teleport');
 });
 jest.mock('@react-navigation/native', () => {
   throw new Error('The choreography mock loaded React Navigation');
@@ -46,237 +49,86 @@ jest.mock('react-native-keyboard-controller', () => {
   throw new Error('The choreography mock loaded the keyboard controller');
 });
 
-test('a mocked tray presents declared screens, retains local state on Back, and dismisses', () => {
-  type Routes = { list: undefined; detail: { label: string } };
-  const Tray = createTray<Routes>();
-  const onFocus = jest.fn();
-  const onBlur = jest.fn();
-  const onDismiss = jest.fn();
-  function Launcher() {
-    const tray = Tray.useTray();
-    const depth = Tray.useTrayState((state) => state.depth);
-    return (
-      <Button title={`Open (${depth})`} onPress={() => tray.present('list')} />
-    );
-  }
-  function List() {
-    const tray = Tray.useTray();
-    const [count, setCount] = useState(0);
-    Tray.useFocusEffect(
-      useCallback(() => {
-        onFocus();
-        return onBlur;
-      }, []),
-      { afterTransition: true }
-    );
-    return (
-      <>
+test.each([trayStackLayout, expoTray.trayStackLayout])(
+  'the tray stack mock retains the underlying screen across dismissal',
+  (layout) => {
+    function Counter() {
+      const [count, setCount] = useState(0);
+      return (
         <Button title={`Count ${count}`} onPress={() => setCount(count + 1)} />
-        <Button
-          title="Show detail"
-          onPress={() =>
-            tray.push('detail', { label: 'Hello' }, { groupId: 'card' })
-          }
-        />
+      );
+    }
+    const descriptors = {
+      app: { render: () => <Counter /> },
+      tray: { render: () => <Text>Sheet</Text> },
+    };
+    const routes = [{ key: 'app' }, { key: 'tray' }];
+    const tree = (index: number) => (
+      <>
+        {layout({
+          state: { routes: routes.slice(0, index + 1), index },
+          descriptors,
+        })}
       </>
     );
+    const view = render(tree(0));
+    fireEvent.press(view.getByText('Count 0'));
+    view.rerender(tree(1));
+    expect(view.getByText('Sheet')).toBeTruthy();
+    view.rerender(tree(0));
+    expect(view.getByText('Count 1')).toBeTruthy();
   }
-  function Detail({ route }: TrayScreenProps<Routes, 'detail'>) {
-    const depth = Tray.useTrayState((state) => state.depth);
-    const { isVisible, height, progress } = Tray.useKeyboard();
-    expect([isVisible, height.get(), progress.value]).toEqual([false, 0, 0]);
-    return <Text>{`${route.params.label} (${depth})`}</Text>;
-  }
-  const result = render(
-    <Tray.Provider>
-      <Launcher />
-      <Tray.Stack onDismiss={onDismiss}>
+);
+
+test.each([createTrayNavigator, expoTray.createTrayNavigator])(
+  'a mocked tray presents declared screens, retains local state on Back, and dismisses',
+  (createNavigator) => {
+    type Routes = { list: undefined; detail: { label: string } };
+    const Tray = createNavigator<Routes>();
+    const onDismiss = jest.fn();
+    function List({ navigation }: TrayScreenProps<Routes, 'list'>) {
+      const [count, setCount] = useState(0);
+      return (
         <>
-          <Tray.Screen name="list" component={List} />
-          <Tray.Screen name="detail" component={Detail} />
+          <Button
+            title={`Count ${count}`}
+            onPress={() => setCount(count + 1)}
+          />
+          <Button
+            title="Show detail"
+            onPress={() => navigation.push('detail', { label: 'Hello' })}
+          />
         </>
-      </Tray.Stack>
-    </Tray.Provider>
-  );
-  expect(result.queryByText('Count 0')).toBeNull();
-  fireEvent.press(result.getByText('Open (0)'));
-  fireEvent.press(result.getByText('Count 0'));
-  fireEvent.press(result.getByText('Show detail'));
-  expect(result.getByText('Hello (2)')).toBeTruthy();
-  expect(result.queryByText('Count 1')).toBeNull();
-  expect(onBlur).toHaveBeenCalledTimes(1);
-  fireEvent.press(result.getByLabelText('Back in tray'));
-  expect(result.getByText('Count 1')).toBeTruthy();
-  expect(onFocus).toHaveBeenCalledTimes(2);
-  fireEvent.press(result.getByLabelText('Close tray'));
-  expect(result.getByText('Open (0)')).toBeTruthy();
-  expect(result.queryByText('Count 1')).toBeNull();
-  expect(onDismiss).toHaveBeenCalledTimes(1);
-});
-
-test('renders one stateful owner, empty targets, and visible companion content', () => {
-  const card = core.defineTransition({
-    shared: { card: { kind: 'surface' } },
-    enter: { body: {} },
-    exit: { summary: {} },
-    motion: { duration: 250 },
-  });
-  let presentation!: ReturnType<typeof core.useSharedElementPresentation>;
-  function Counter() {
-    const [count, setCount] = useState(0);
-    presentation = core.useSharedElementPresentation();
-    return (
-      <Button title={`Count ${count}`} onPress={() => setCount(count + 1)} />
+      );
+    }
+    function Detail({ route }: TrayScreenProps<Routes, 'detail'>) {
+      const dismiss = useTrayDismiss();
+      const { isVisible, height, progress } = useTrayKeyboard();
+      expect([isVisible, height.get(), progress.value]).toEqual([false, 0, 0]);
+      return (
+        <Button
+          title={route.params.label}
+          disabled={!useTraySettled()}
+          onPress={dismiss}
+        />
+      );
+    }
+    const result = render(
+      <Tray.Navigator onDismiss={onDismiss}>
+        <Tray.Screen name="list" component={List} />
+        <Tray.Group>
+          <Tray.Screen name="detail" component={Detail} />
+        </Tray.Group>
+      </Tray.Navigator>
     );
+    fireEvent.press(result.getByText('Count 0'));
+    fireEvent.press(result.getByText('Show detail'));
+    expect(result.getByText('Hello')).toBeTruthy();
+    fireEvent.press(result.getByLabelText('Back in tray'));
+    expect(result.getByText('Count 1')).toBeTruthy();
+    fireEvent.press(result.getByText('Show detail'));
+    fireEvent.press(result.getByText('Hello'));
+    expect(result.queryByText('Count 1')).toBeNull();
+    expect(onDismiss).toHaveBeenCalledTimes(1);
   }
-  function Companion() {
-    const visible = core.useLatchedReveal();
-    const hidden = core.useLatchedReveal({ visibleWhenInactive: false });
-    const style = core.useRevealStyle();
-    const { acquire } = core.useChoreographyBlocker();
-    acquire()();
-    expect(style).toMatchObject({ opacity: 1 });
-    return visible && !hidden ? <Text>Companion</Text> : null;
-  }
-  const tree = (label: string) => (
-    <core.ChoreographyProvider>
-      <choreography.ChoreographyScreen screenId="list">
-        <card.Element
-          name="card"
-          groupId="one"
-          metadata={{ label }}
-          style={{ width: 80 }}
-        >
-          <Counter />
-        </card.Element>
-        <card.Enter name="body">
-          <Companion />
-        </card.Enter>
-        <card.Exit name="summary">
-          <Text>Summary</Text>
-        </card.Exit>
-      </choreography.ChoreographyScreen>
-      <choreography.ChoreographyScreen screenId="detail">
-        <card.Element.Target name="card" groupId="one" />
-      </choreography.ChoreographyScreen>
-    </core.ChoreographyProvider>
-  );
-  const result = render(tree('first'));
-  fireEvent.press(result.getByText('Count 0'));
-  result.rerender(tree('second'));
-  expect(result.getAllByText('Count 1')).toHaveLength(1);
-  expect(result.getByText('Companion')).toBeTruthy();
-  expect(result.getByText('Summary')).toBeTruthy();
-  expect(presentation).toMatchObject({
-    transitioning: false,
-    settled: 'collapsed',
-    direction: null,
-    collapsed: {
-      metrics: null,
-      metadata: { label: 'second' },
-      style: { width: 80 },
-    },
-    expanded: { metrics: null },
-  });
-  expect(card.navigationOptions).toEqual({ duration: 250 });
-});
-
-test('the recipe mock launches with the same group and motion as the live pressable', () => {
-  const { Element } = core.defineTransition({
-    shared: { hero: { kind: 'bounds' } },
-    motion: { duration: 300 },
-  });
-  const onPress = jest.fn();
-  const result = render(
-    expo.choreographyScreenLayout({
-      children: (
-        <Element.Pressable
-          name="hero"
-          groupId="one"
-          onPress={onPress}
-          accessibilityRole="button"
-        >
-          <Text>Open</Text>
-        </Element.Pressable>
-      ),
-    })
-  );
-  fireEvent.press(result.getByRole('button'));
-  expect(onPress.mock.calls[0]![0]).toEqual({
-    transitionConfig: { group: 'one' },
-    duration: 300,
-  });
-});
-
-test('idle progress is stable within a provider and isolated between providers', () => {
-  const first = renderHook(core.useChoreographyProgress, {
-    wrapper: core.ChoreographyProvider,
-  });
-  const second = renderHook(core.useChoreographyProgress, {
-    wrapper: core.ChoreographyProvider,
-  });
-  const progress = first.result.current.progress;
-  expect(first.result.current).toMatchObject({
-    isActive: false,
-    isPendingTarget: false,
-    role: 'inactive',
-    phase: 'idle',
-    direction: null,
-    sessionId: null,
-    groupId: null,
-    backdropStyle: { opacity: 0 },
-  });
-  progress.set(0.5);
-  first.rerender({});
-  expect(first.result.current.progress).toBe(progress);
-  expect(progress.get()).toBe(0.5);
-  expect(second.result.current.progress.value).toBe(0);
-  expect(first.result.current.settleTransition()).toBeUndefined();
-});
-
-test('navigation forwards arguments to the latest navigator without choreography options', async () => {
-  const first = { navigate: jest.fn(), goBack: jest.fn() };
-  const second = { navigate: jest.fn(), goBack: jest.fn() };
-  const { result, rerender } = renderHook(
-    (coreNavigation) => choreography.useChoreographyNavigation(coreNavigation),
-    { initialProps: first }
-  );
-  const commands = result.current;
-  const params = { id: 'item-1' };
-  await commands.navigate('Detail', params, {
-    transitionConfig: { group: 'item-1' },
-  });
-  expect(first.navigate).toHaveBeenCalledWith('Detail', params);
-  rerender(second);
-  expect(result.current).toBe(commands);
-  await commands.goBack();
-  expect(second.goBack).toHaveBeenCalledTimes(1);
-  expect(first.goBack).not.toHaveBeenCalled();
-});
-
-test('Expo commands forward only href and support Back', async () => {
-  const router = { push: jest.fn(), navigate: jest.fn(), back: jest.fn() };
-  const { result } = renderHook(() =>
-    expo.useChoreographyRouter(router, 'list')
-  );
-  const href = { pathname: '/detail', params: { id: '1' } };
-  const request = {
-    href,
-    targetScreenId: 'detail',
-    transitionConfig: { group: 'one' },
-  };
-  await result.current.push(request);
-  await result.current.navigate(request);
-  await result.current.back();
-  expect(router.push).toHaveBeenCalledWith(href);
-  expect(router.navigate).toHaveBeenCalledWith(href);
-  expect(router.back).toHaveBeenCalledTimes(1);
-});
-
-test('interactive preparation is unavailable without native transitions', async () => {
-  const { result } = renderHook(choreography.useInteractiveTransition);
-  expect(await result.current.beginBack()).toBeNull();
-  expect(result.current.isActive).toBe(false);
-  result.current.setProgress(0.3);
-  expect(result.current.progress.value).toBe(0.3);
-});
+);

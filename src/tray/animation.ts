@@ -18,16 +18,18 @@ export function resolveTrayAnimation(animation = DEFAULT_ANIMATION) {
       damping <= 0
     )
       throw new Error(
-        'Tray.Stack spring stiffness and damping must be finite numbers greater than zero.'
+        'Tray.Navigator spring stiffness and damping must be finite numbers greater than zero.'
       );
     return { type: 'spring', stiffness, damping } as const;
   }
   if (animation.type !== 'timing')
-    throw new Error('Tray.Stack animation type must be "timing" or "spring".');
+    throw new Error(
+      'Tray.Navigator animation type must be "timing" or "spring".'
+    );
   const { duration = 240 } = animation;
   if (!Number.isFinite(duration) || duration < 0)
     throw new Error(
-      'Tray.Stack animation duration must be a finite number greater than or equal to zero.'
+      'Tray.Navigator animation duration must be a finite number greater than or equal to zero.'
     );
   return { type: 'timing', duration } as const;
 }

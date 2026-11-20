@@ -7,7 +7,7 @@ description: Build a bottom sheet that resizes as you move between views.
 
 A tray holds several views inside one bottom sheet. Moving between them resizes the sheet and crossfades the content. Back restores the previous view, including form values and scroll position.
 
-The optional `/tray` entry uses Software Mansion's native bottom sheet. It works alongside your app's navigation without adding another navigation library.
+The navigator uses Software Mansion's native bottom sheet. Each tray is a nested navigator in your app’s navigation tree.
 
 ## Try the example flows
 
@@ -16,19 +16,11 @@ Both example apps include two trays under **Dynamic trays** on the home screen:
 - **Wallet dynamic tray:** enter a demo payment, choose a recipient in a full-screen view, then review it. Back restores the form so you can keep editing.
 - **Gallery dynamic tray:** open **Explore Plus** to move a shared photo composition into benefits and plan selection. Visit **Good to know** and return to keep your selected plan. **Preview Plus** shows that plan without making a purchase.
 
-These flows use the same dark surfaces, photo treatments, and typography as the screen demos. Closing a tray resets its local flow. See [example apps](../examples.md) for setup and source links.
+Closing a tray resets its local flow. See the [example apps](../examples.md) for setup.
 
 ## Install
 
-Follow the [tray installation](./installation.md#dynamic-trays-without-a-router), which includes these optional dependencies:
-
-```sh
-npm install @swmansion/react-native-bottom-sheet@0.16.2 react-native-keyboard-controller@^1.22.7
-```
-
-These packages are required only for trays. Apps using the main, `/core`, or `/expo-router` entry without trays don't need either one.
-
-Install iOS pods and rebuild the native app. Expo requires a development build.
+Follow the [installation guide](./installation.md) and rebuild the native app.
 
 ## Define your screens
 
@@ -38,7 +30,7 @@ Create the tray and screen components outside render. This example lets someone 
 import { useState } from 'react';
 import { Button, Text, TextInput, View } from 'react-native';
 import {
-  createTray,
+  createTrayNavigator,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
 
@@ -47,9 +39,9 @@ type Routes = {
   preview: { text: string };
 };
 
-export const Tray = createTray<Routes>();
+export const Tray = createTrayNavigator<Routes>();
 
-function Note({ tray }: TrayScreenProps<Routes, 'note'>) {
+function Note({ navigation }: TrayScreenProps<Routes, 'note'>) {
   const [text, setText] = useState('');
   return (
     <View style={{ padding: 24 }}>
@@ -58,7 +50,10 @@ function Note({ tray }: TrayScreenProps<Routes, 'note'>) {
         value={text}
         onChangeText={setText}
       />
-      <Button title="Preview" onPress={() => tray.push('preview', { text })} />
+      <Button
+        title="Preview"
+        onPress={() => navigation.push('preview', { text })}
+      />
     </View>
   );
 }
@@ -68,98 +63,66 @@ function Preview({ route }: TrayScreenProps<Routes, 'preview'>) {
 }
 ```
 
-## Add the provider
+## Register the tray as a route
 
-Place the provider in your root layout or around the feature that uses it, outside `ChoreographyScreen` wrappers. Declare the screens in `Tray.Stack`:
+Use `trayStackLayout` on a parent stack containing your app screen and its tray routes. The app screen can be your existing native navigator. The sheet stays mounted through its closing animation, and the underlying screen can receive the next tap or drag as soon as the overlay is removed. Wrap the app in `KeyboardProvider` from `react-native-keyboard-controller`.
 
 ```tsx
-import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import type { NavigatorScreenParams } from '@react-navigation/native';
+import { createNativeStackNavigator } from '@react-navigation/native-stack';
+import { trayStackLayout } from 'react-native-screen-choreography/tray';
 
-function NoteTrayProvider({ children }: { children: React.ReactNode }) {
-  const insets = useSafeAreaInsets();
+type AppRoutes = {
+  Home: undefined;
+  Notes: NavigatorScreenParams<Routes> | undefined;
+};
+const AppStack = createNativeStackNavigator<AppRoutes>();
+
+function Notes() {
   return (
-    <Tray.Provider>
-      {children}
-      <Tray.Stack topInset={insets.top + 12} bottomInset={insets.bottom}>
-        <Tray.Screen
-          name="note"
-          component={Note}
-          options={{ title: 'Write a note' }}
-        />
-        <Tray.Screen
-          name="preview"
-          component={Preview}
-          options={{ title: 'Preview' }}
-        />
-      </Tray.Stack>
-    </Tray.Provider>
+    <Tray.Navigator initialRouteName="note">
+      <Tray.Screen
+        name="note"
+        component={Note}
+        options={{ title: 'Write a note' }}
+      />
+      <Tray.Screen
+        name="preview"
+        component={Preview}
+        options={{ title: 'Preview' }}
+      />
+    </Tray.Navigator>
+  );
+}
+
+function AppNavigator() {
+  return (
+    <AppStack.Navigator layout={trayStackLayout}>
+      <AppStack.Screen name="Home" component={Home} />
+      <AppStack.Screen name="Notes" component={Notes} />
+    </AppStack.Navigator>
   );
 }
 ```
 
-Wrap the tray provider with `KeyboardProvider` so the sheet moves with the keyboard. This example also uses `SafeAreaProvider` for the screen insets. Reuse these providers if your app already has them; no `BottomSheetProvider` is needed.
-
-```tsx
-import { KeyboardProvider } from 'react-native-keyboard-controller';
-import { SafeAreaProvider } from 'react-native-safe-area-context';
-
-export default function App() {
-  return (
-    <SafeAreaProvider>
-      <KeyboardProvider>
-        <NoteTrayProvider>
-          <OpenNoteButton />
-        </NoteTrayProvider>
-      </KeyboardProvider>
-    </SafeAreaProvider>
-  );
-}
-```
-
-In an existing app, place your navigation or Expo Router layout where `OpenNoteButton` appears above.
+Render `AppNavigator` inside your app's `NavigationContainer`. In Expo Router, use `trayStackLayout` from `react-native-screen-choreography/expo-router/tray` on the root `<Stack layout={trayStackLayout}>`. Place your regular screens in an `(app)` route group with their own stack and give each tray a route directory alongside that group. In its `_layout.tsx`, wrap `createTrayNavigator().Navigator` with Expo Router’s `withLayoutContext` and declare a route file for each tray page. Set the root layout's `unstable_settings.anchor` to `'(app)'` so a tray opened by URL has a screen to return to.
 
 ## Open, navigate, and close
 
-Use `Tray.useTray()` anywhere inside the provider. Screens also receive the same API through their `tray` prop:
+Open the sheet with `navigation.navigate('Notes')` from Home. Inside the tray, use `navigation.push('preview', { text })`, `navigation.replace(...)`, `navigation.goBack()`, and `navigation.popToTop()`. Back at the first tray screen returns to the screen underneath. Use `useTrayDismiss()` inside any tray page to close the whole flow.
 
-```tsx
-function OpenNoteButton() {
-  const tray = Tray.useTray();
-  return <Button title="Write a note" onPress={() => tray.present('note')} />;
-}
-```
+The parent navigation state includes the focused tray route, so app navigation listeners and configured links can identify it. For example, link `Notes.preview` to `notes/preview/:text` in the parent's nested linking config. Configure `Home` as the parent linking config's `initialRouteName` to supply a return screen on cold launch.
 
-| Method                  | Behavior                                         |
-| ----------------------- | ------------------------------------------------ |
-| `present(name, params)` | Open a fresh stack at this screen.               |
-| `push(name, params)`    | Add a screen, keeping previous screens for Back. |
-| `replace(name, params)` | Replace the current screen.                      |
-| `back()`                | Go back one screen, or close at the root.        |
-| `popToRoot()`           | Return to the first screen.                      |
-| `dismiss()`             | Close the whole tray.                            |
+### Migrating from createTray
 
-Use `useTrayState` when your UI needs to react to tray state:
-
-```tsx
-const isPresented = Tray.useTrayState((state) => state.isPresented);
-```
-
-You can also select `state.route` or `state.depth`. Components update only when their selected value changes; `useTray()` alone doesn't subscribe to changes.
-
-Close, tapping the backdrop, and dragging down dismiss the whole tray. Android Back closes the keyboard first, then goes back through the stack. Use `onDismiss` on `Tray.Stack` to run work after the sheet has closed.
-
-Call `push` directly from the screen's `tray` prop or its own `useTray()` hook. The library ignores duplicate pushes while opening or navigating and allows retry after cancellation. If you tap a destination on the incoming screen while its transition is still animating, that first push runs automatically after the transition finishes. No second tap, persistent `pushing` ref, or focus-reset effect is needed; cancellation can leave the source focused throughout.
-
-::: warning Migration from 0.8.1
-Duplicate pushes made while busy are ignored. `push(A); push(B)` from the same screen accepts A and discards B, and `present(A); push(B)` does not queue B during opening. The incoming screen's first push can wait for its transition to finish. Remove application-owned duplicate-push guards and their reset effects.
-:::
+Replace `createTray()` and its app-level `Tray.Provider` with `createTrayNavigator()` mounted on a parent stack route. Move `Tray.Stack` props to `Tray.Navigator`. Replace `tray.present()` with navigation to the parent route, and read the usual screen `navigation` and `route` props. Use React Navigation's `useNavigationState` and `useFocusEffect` for route state and focus. For autofocus after motion finishes, use `useTraySettled()`.
 
 ## Respond to opening and closing
 
-Use lifecycle callbacks on `Tray.Stack` for work tied to the whole tray:
+Use lifecycle callbacks on `Tray.Navigator` for work tied to the whole tray:
 
 ```tsx
-<Tray.Stack
+<Tray.Navigator
   onWillPresent={() => analytics.track('tray_opening')}
   onPresent={() => analytics.track('tray_opened')}
   onWillDismiss={() => analytics.track('tray_closing')}
@@ -167,30 +130,31 @@ Use lifecycle callbacks on `Tray.Stack` for work tied to the whole tray:
 >
   <Tray.Screen name="note" component={Note} />
   <Tray.Screen name="preview" component={Preview} />
-</Tray.Stack>
+</Tray.Navigator>
 ```
 
 Here, `analytics` is your app's analytics client. `onPresent` waits for the native opening animation to settle; `onDismiss` waits for closing to settle and the tray content to unmount. The `onWill…` callbacks report accepted opening or closing on the JavaScript thread and cannot block the animation.
 
-These callbacks cover buttons, backdrop taps, and gestures. `onWillDismiss` fires when a drag commits to closing, not when the finger first moves. If closing is interrupted by dragging back open, `onDismiss` does not fire. Dismissing before opening settles skips `onPresent`. Unmounting the provider does not fire dismissal callbacks.
+These callbacks cover buttons, backdrop taps, and gestures. `onWillDismiss` fires when a drag commits to closing, not when the finger first moves. If closing is interrupted by dragging back open, `onDismiss` does not fire. Dismissing before opening settles skips `onPresent`. Unmounting the navigator does not fire dismissal callbacks.
 
-Navigating between tray screens does not start another presentation. Use `useFocusEffect` for individual screens. Use `useTrayState((state) => state.isPresented)` for UI that stays active throughout opening, open, and closing; it cannot distinguish those phases.
+Navigating between tray screens does not start another presentation. Use `useFocusEffect` for individual screens. Observe the parent route for whole-tray navigation state.
 
 ## Run work while a screen is focused
 
-Retained screens stay mounted when another tray screen covers them. Use `Tray.useFocusEffect` for subscriptions or refreshes that should run only while a screen is current. It also works in child components and custom header components, without passing a route key.
+Retained screens stay mounted when another tray screen covers them. Use React Navigation’s `useFocusEffect` for subscriptions or refreshes that should run only while a screen is current. It also works in child components and custom header components, without passing a route key.
 
 For a wallet screen, subscribe to balance updates on focus and unsubscribe on blur. In this example, `subscribeToBalance` is your app's data source and returns an unsubscribe function:
 
 ```tsx
 import { useCallback, useState } from 'react';
 import { Text } from 'react-native';
+import { useFocusEffect } from '@react-navigation/native';
 import { subscribeToBalance } from './wallet-store';
 
 function Balance({ accountId }: { accountId: string }) {
   const [balance, setBalance] = useState<string>();
 
-  Tray.useFocusEffect(
+  useFocusEffect(
     useCallback(() => {
       return subscribeToBalance(accountId, setBalance);
     }, [accountId])
@@ -202,7 +166,7 @@ function Balance({ accountId }: { accountId: string }) {
 
 Render `Balance` inside a tray screen. Back starts the subscription again without resetting the screen's state. Changing `accountId` while focused cleans up the old subscription and starts the new one. Keep the callback memoized with `useCallback` to avoid restarting it on unrelated renders.
 
-By default, focus changes with the active route, before its transition finishes. The current screen stays focused during dismissal until the sheet finishes closing; removing the provider cleans up immediately. Pass `{ afterTransition: true }` for work such as [focusing an input](#focus-an-input-after-the-transition) that should wait until navigation finishes. This hook follows the tray's stack, independently of React Navigation focus and app foreground state. For whole-tray visibility, continue using `Tray.useTrayState((state) => state.isPresented)`.
+Focus follows the navigation tree, including when a parent screen covers the tray. For work that also needs the sheet and page transition to settle, see [focus an input after the transition](#focus-an-input-after-the-transition).
 
 ## Expand to full screen
 
@@ -231,9 +195,10 @@ import type { TrayHeaderProps } from 'react-native-screen-choreography/tray';
 function NoteHeader({
   title,
   canGoBack,
-  tray,
+  navigation,
+  dismiss,
   color,
-}: TrayHeaderProps<Routes>) {
+}: TrayHeaderProps) {
   return (
     <View style={{ padding: 16, gap: 8 }}>
       <Text accessibilityRole="header" style={{ color, fontSize: 24 }}>
@@ -244,7 +209,7 @@ function NoteHeader({
           <Pressable
             accessibilityRole="button"
             accessibilityLabel="Back in tray"
-            onPress={tray.back}
+            onPress={navigation.goBack}
             style={{ minHeight: 44, justifyContent: 'center' }}
           >
             <Text style={{ color }}>Back</Text>
@@ -253,7 +218,7 @@ function NoteHeader({
         <Pressable
           accessibilityRole="button"
           accessibilityLabel="Close tray"
-          onPress={tray.dismiss}
+          onPress={dismiss}
           style={{ minHeight: 44, justifyContent: 'center' }}
         >
           <Text style={{ color }}>Close</Text>
@@ -263,7 +228,7 @@ function NoteHeader({
   );
 }
 
-<Tray.Stack
+<Tray.Navigator
   renderHeader={(props) => <NoteHeader {...props} />}
   handleVisible={false}
 >
@@ -277,7 +242,7 @@ function NoteHeader({
     component={Preview}
     options={{ renderHeader: () => null }}
   />
-</Tray.Stack>;
+</Tray.Navigator>;
 ```
 
 The tray measures your header automatically, including changes in its height, and crossfades headers with the screen transition. This also works for shared transitions, Back, and transitions to or from a hidden header. The outgoing header keeps its state until the transition settles, then unmounts; returning mounts it again. Only the current header accepts touches and is exposed to accessibility. Your header owns its buttons and accessibility labels.
@@ -286,17 +251,17 @@ Set `handleVisible={false}` on the stack to remove the drag indicator and its sp
 
 ## Change the appearance and motion
 
-Configure shared styling once on `Tray.Stack`. Use `appearance="floating"` (the default) for an inset card or `appearance="sheet"` for a sheet attached to the bottom edge.
+Configure shared styling once on `Tray.Navigator`. Use `appearance="floating"` (the default) for an inset card or `appearance="sheet"` for a sheet attached to the bottom edge.
 
 ```tsx
-<Tray.Stack
+<Tray.Navigator
   backgroundColor="#23252b"
   textColor="#f4f5f7"
   animation={{ type: 'spring', stiffness: 300, damping: 30 }}
 >
   <Tray.Screen name="note" component={Note} />
   <Tray.Screen name="preview" component={Preview} />
-</Tray.Stack>
+</Tray.Navigator>
 ```
 
 For a fixed duration:
@@ -325,7 +290,7 @@ For a form that fills the window, declare `presentation: 'fullScreen'`. Its cont
 import { useState } from 'react';
 import { Button, ScrollView, TextInput, View } from 'react-native';
 
-function FullScreenNote({ tray }: TrayScreenProps<Routes, 'note'>) {
+function FullScreenNote({ navigation }: TrayScreenProps<Routes, 'note'>) {
   const [text, setText] = useState('');
   return (
     <View style={{ flex: 1 }}>
@@ -347,7 +312,7 @@ function FullScreenNote({ tray }: TrayScreenProps<Routes, 'note'>) {
       <View style={{ padding: 24 }}>
         <Button
           title="Preview"
-          onPress={() => tray.push('preview', { text })}
+          onPress={() => navigation.push('preview', { text })}
         />
       </View>
     </View>
@@ -365,14 +330,16 @@ The footer follows the keyboard through the tray's own resizing. The stack also 
 
 ### Fade supporting content while typing
 
-Read `Tray.useKeyboard()` inside a tray screen or custom header to use the same keyboard signal that moves the tray. `progress` and `height` are Reanimated shared values; use them in worklets. `isVisible` is a React boolean for touches and accessibility:
+Read `useTrayKeyboard()` inside a tray screen or custom header to use the same keyboard signal that moves the tray. `progress` and `height` are Reanimated shared values; use them in worklets. `isVisible` is a React boolean for touches and accessibility:
 
 ```tsx
 import { Text } from 'react-native';
 import Animated, { useAnimatedStyle } from 'react-native-reanimated';
 
+import { useTrayKeyboard } from 'react-native-screen-choreography/tray';
+
 function NoteHelp() {
-  const { progress, isVisible } = Tray.useKeyboard();
+  const { progress, isVisible } = useTrayKeyboard();
   const fade = useAnimatedStyle(() => ({ opacity: 1 - progress.value }));
 
   return (
@@ -392,22 +359,21 @@ Place `NoteHelp` below the input. Changing opacity preserves its layout space. `
 
 ### Focus an input after the transition
 
-Use `Tray.useFocusEffect` with `{ afterTransition: true }` to focus after the screen has arrived. For example, replace `Note` with this component:
+Use `useTraySettled()` to focus after the screen has arrived. For example, replace `Note` with this component:
 
 ```tsx
-import { useCallback, useRef, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
+import { useTraySettled } from 'react-native-screen-choreography/tray';
 import { Button, TextInput, View } from 'react-native';
 
-function Note({ tray }: TrayScreenProps<Routes, 'note'>) {
+function Note({ navigation }: TrayScreenProps<Routes, 'note'>) {
   const input = useRef<TextInput>(null);
   const [text, setText] = useState('');
 
-  Tray.useFocusEffect(
-    useCallback(() => {
-      input.current?.focus();
-    }, []),
-    { afterTransition: true }
-  );
+  const settled = useTraySettled();
+  useEffect(() => {
+    if (settled) input.current?.focus();
+  }, [settled]);
 
   return (
     <View style={{ padding: 24 }}>
@@ -417,7 +383,10 @@ function Note({ tray }: TrayScreenProps<Routes, 'note'>) {
         value={text}
         onChangeText={setText}
       />
-      <Button title="Preview" onPress={() => tray.push('preview', { text })} />
+      <Button
+        title="Preview"
+        onPress={() => navigation.push('preview', { text })}
+      />
     </View>
   );
 }
@@ -430,10 +399,10 @@ This waits for the native sheet to settle open and for screen navigation to fini
 Content stays anchored to the bottom by default while the card grows or shrinks between screens. Set `anchor="top"` on the stack to keep content attached to the top instead:
 
 ```tsx
-<Tray.Stack anchor="top">
+<Tray.Navigator anchor="top">
   <Tray.Screen name="note" component={Note} />
   <Tray.Screen name="preview" component={Preview} />
-</Tray.Stack>
+</Tray.Navigator>
 ```
 
 With the default `"bottom"` anchor, both incoming and outgoing content follow the bottom edge, including on Back and shared transitions. The header stays at the top. Content keeps its natural height and scroll position; taller content is revealed as the card expands.
@@ -442,54 +411,12 @@ To override the stack for one screen, set `anchor` to `'top'` or `'bottom'` in i
 
 ## Multiple trays
 
-Call `createTray` for each flow, such as a wallet or search filters. Each provider has its own stack and hook scope. You can keep several providers in the root layout or place them around individual features.
+Register each flow as its own parent stack route. Each mounted tray navigator has its own history, options and sheet lifecycle.
 
-Present one tray at a time. To open another after closing, use the first tray's `onDismiss` callback.
+## Keep artwork attached to a resizing tray
 
-## Share an element between tray screens
+Provide `renderContentHeader` on the navigator and set `contentHeaderHeight` on the pages that show the artwork. The navigator keeps the header mounted across those pages, clips it to the interpolated height, and gives each page the remaining space to scroll. The Gallery Plus example uses the supplied Reanimated progress to fold the postcards as the tray opens. The buttons belong to their respective routes.
 
-For a flow such as choosing a recipient and reviewing a payment, an avatar can move between screens. Define a [transition recipe](./transitions.md) outside render:
+## Match elements on separate pages
 
-```tsx
-import { defineTransition } from 'react-native-screen-choreography/core';
-
-const recipient = defineTransition({
-  shared: { avatar: { kind: 'bounds', radius: [21, 36] } },
-});
-```
-
-Wrap the avatar on the source screen:
-
-```tsx
-<recipient.Element
-  name="avatar"
-  groupId={`recipient:${person.id}`}
-  style={{ width: 42, height: 42 }}
->
-  <Avatar person={person} />
-</recipient.Element>
-```
-
-Place its destination on the review screen, using the same name and group:
-
-```tsx
-<recipient.Element.Target
-  name="avatar"
-  groupId={`recipient:${route.params.person.id}`}
-  style={{ width: 72, height: 72 }}
-/>
-```
-
-Pass the group when pushing your declared `review` screen:
-
-```tsx
-tray.push('review', { person }, { groupId: `recipient:${person.id}` });
-```
-
-Back reverses the transition automatically. The stack's `animation` controls its timing. Keep the source element mounted and use a distinct group for each item; the destination displays the same avatar, so it doesn't need another child.
-
-To continue to a third screen, add another matching `Element.Target` there and pass the same group to the next `tray.push`. The live content moves from its current target to the next one. For changing button labels, provide each target's label and action through `metadata` and crossfade the `collapsed` and `expanded` labels inside the single owner using `useSharedElementPresentation().presentationProgress`.
-
-Shared elements must belong to the same tray. A ready destination can share only part of a group: matching elements move together, while unmatched content follows the screen fade. If no matching element is available, the screens use the normal crossfade. No extra choreography provider is needed.
-
-See the [wallet tray demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/TrayDemo.tsx) for a full-screen recipient list and retained forms, or the [Gallery Plus demo](https://github.com/DorianMazur/react-native-screen-choreography/blob/main/examples/shared/tray/GalleryPlusTray.tsx) for a compact introduction that expands into plan selection with a shared photo composition. Both are available from the landing screen in either example app. The [API reference](../api/tray.md) covers all options.
+Each tray page supplies a Reanimated shared transition boundary. Give both endpoints the same Reanimated `sharedTransitionTag`, such as the Wallet recipient avatar. Each page owns its own component and state. In a moving native sheet, the shared element can briefly appear outside its expected position. For artwork that should move with the sheet throughout a resize, use the content header.

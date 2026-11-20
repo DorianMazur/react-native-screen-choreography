@@ -1,3 +1,7 @@
+import type {
+  createTrayNavigator as createExpoTrayNavigator,
+  TrayHeaderProps as ExpoTrayHeaderProps,
+} from 'react-native-screen-choreography/expo-router/tray';
 import React, { useState } from 'react';
 import {
   Pressable,
@@ -9,24 +13,17 @@ import {
   View,
 } from 'react-native';
 import {
-  createTray,
+  type createTrayNavigator,
   type TrayHeaderProps,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import {
-  SharedElement,
-  makeTransition,
-  TransitionFrame,
-  useSharedElementPresentation,
-  type TransitionRendererProps,
-} from 'react-native-screen-choreography/core';
-import { useSafeAreaInsets } from '../runtime';
+import Animated, { SharedTransition } from 'react-native-reanimated';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { TrayLauncher } from './TrayLauncher';
 import { DemoTrayButton, DemoTrayHeader, trayTheme } from './TrayChrome';
 import { useTrayExampleObservation } from './observation';
 
-type Routes = {
+export type WalletTrayRoutes = {
   actions: undefined;
   send: undefined;
   recipient: { amount: string; note: string };
@@ -34,22 +31,23 @@ type Routes = {
   success: { person: string };
   settings: undefined;
 };
-const Tray = createTray<Routes>();
+
 const { text: ink, muted, accent } = trayTheme;
 
 function WalletHeader({
   title,
   canGoBack,
-  tray,
+  navigation,
+  dismiss,
   color,
-}: TrayHeaderProps<Routes>) {
+}: TrayHeaderProps | ExpoTrayHeaderProps) {
   return (
     <DemoTrayHeader
       eyebrow="WALLET"
       title={title}
       color={color}
-      onBack={canGoBack ? tray.back : undefined}
-      onClose={tray.dismiss}
+      onBack={canGoBack ? navigation.goBack : undefined}
+      onClose={dismiss}
     />
   );
 }
@@ -106,7 +104,9 @@ function Button({
   );
 }
 
-function Actions({ tray }: TrayScreenProps<Routes, 'actions'>) {
+export function Actions({
+  navigation,
+}: TrayScreenProps<WalletTrayRoutes, 'actions'>) {
   useTrayExampleObservation('actions');
   return (
     <View style={styles.body}>
@@ -121,18 +121,20 @@ function Actions({ tray }: TrayScreenProps<Routes, 'actions'>) {
         symbol="↗"
         title="Send money"
         subtitle="Make someone's day"
-        onPress={() => tray.push('send')}
+        onPress={() => navigation.push('send')}
       />
       <Action
         symbol="☷"
         title="Preferences"
         subtitle="Make this space yours"
-        onPress={() => tray.push('settings')}
+        onPress={() => navigation.push('settings')}
       />
     </View>
   );
 }
-function Send({ tray }: TrayScreenProps<Routes, 'send'>) {
+export function Send({
+  navigation,
+}: TrayScreenProps<WalletTrayRoutes, 'send'>) {
   useTrayExampleObservation('send');
   const [amount, setAmount] = useState('25');
   const [note, setNote] = useState('Coffee on me');
@@ -167,7 +169,7 @@ function Send({ tray }: TrayScreenProps<Routes, 'send'>) {
       <Button
         title="Choose recipient"
         disabled={!Number(amount) || Number(amount) < 0}
-        onPress={() => tray.push('recipient', { amount, note })}
+        onPress={() => navigation.push('recipient', { amount, note })}
       />
     </ScrollView>
   );
@@ -187,61 +189,39 @@ const people = [
   'Drew Carter',
 ];
 
-function AvatarTransition({
-  source,
-  target,
-  progress,
-  direction,
-  children,
-  zIndex,
-}: TransitionRendererProps) {
-  const arc = useAnimatedStyle(() => ({
-    transform: [
-      {
-        translateY:
-          -24 * Math.sin(Math.PI * Math.max(0, Math.min(1, progress.value))),
-      },
-    ],
-  }));
+const avatarTransition = SharedTransition.duration(240);
+function RecipientAvatar({
+  person,
+  large = false,
+}: {
+  person: string;
+  large?: boolean;
+}) {
   return (
-    <Animated.View style={[StyleSheet.absoluteFill, arc]} pointerEvents="none">
-      <TransitionFrame
-        sourceMetrics={source.metrics}
-        targetMetrics={target.metrics}
-        progress={progress}
-        direction={direction}
-        zIndex={zIndex}
+    <Animated.View
+      sharedTransitionTag={`wallet/recipient/${person}`}
+      sharedTransitionStyle={avatarTransition}
+      style={[styles.avatar, large ? styles.avatarTarget : styles.avatarSource]}
+    >
+      <Text
+        style={[
+          styles.symbolText,
+          large ? styles.largeInitials : styles.initials,
+        ]}
       >
-        {children}
-      </TransitionFrame>
-    </Animated.View>
-  );
-}
-const avatarTransition = makeTransition({ renderer: AvatarTransition });
-const recipientGroup = (person: string) => `recipient:${person}`;
-
-function RecipientAvatar({ person }: { person: string }) {
-  useTrayExampleObservation(`avatar:${person}`);
-  const { presentationProgress } = useSharedElementPresentation();
-  const frame = useAnimatedStyle(() => ({
-    borderRadius: 15 + 13 * presentationProgress.value,
-  }));
-  const letters = useAnimatedStyle(() => ({
-    fontSize: 19 + 13 * presentationProgress.value,
-  }));
-  return (
-    <Animated.View style={[styles.avatar, frame]}>
-      <Animated.Text style={[styles.symbolText, letters]}>
         {person
           .split(' ')
           .map((part) => part[0])
           .join('')}
-      </Animated.Text>
+      </Text>
     </Animated.View>
   );
 }
 
-function Recipient({ tray, route }: TrayScreenProps<Routes, 'recipient'>) {
+export function Recipient({
+  navigation,
+  route,
+}: TrayScreenProps<WalletTrayRoutes, 'recipient'>) {
   useTrayExampleObservation('recipient');
   return (
     <ScrollView
@@ -252,45 +232,28 @@ function Recipient({ tray, route }: TrayScreenProps<Routes, 'recipient'>) {
       {people.map((person, i) => (
         <Action
           key={person}
-          avatar={
-            <SharedElement
-              id="avatar"
-              groupId={recipientGroup(person)}
-              transition={avatarTransition}
-              style={styles.avatarSource}
-            >
-              <RecipientAvatar person={person} />
-            </SharedElement>
-          }
+          avatar={<RecipientAvatar person={person} />}
           symbol={person
             .split(' ')
             .map((p) => p[0])
             .join('')}
           title={person}
           subtitle={i < 3 ? 'Recent recipient' : 'In your contacts'}
-          onPress={() =>
-            tray.push(
-              'review',
-              { ...route.params, person },
-              { groupId: recipientGroup(person) }
-            )
-          }
+          onPress={() => navigation.push('review', { ...route.params, person })}
         />
       ))}
     </ScrollView>
   );
 }
-function Review({ tray, route }: TrayScreenProps<Routes, 'review'>) {
+export function Review({
+  navigation,
+  route,
+}: TrayScreenProps<WalletTrayRoutes, 'review'>) {
   useTrayExampleObservation('review');
   return (
     <View style={styles.body}>
       <View style={styles.balance}>
-        <SharedElement.Target
-          id="avatar"
-          groupId={recipientGroup(route.params.person)}
-          transition={avatarTransition}
-          style={styles.avatarTarget}
-        />
+        <RecipientAvatar person={route.params.person} large />
         <Text style={styles.amount}>${route.params.amount}</Text>
         <Text style={styles.actionTitle}>To {route.params.person}</Text>
         <Text style={styles.balanceHint}>
@@ -303,12 +266,17 @@ function Review({ tray, route }: TrayScreenProps<Routes, 'review'>) {
       </View>
       <Button
         title="Send demo payment"
-        onPress={() => tray.replace('success', { person: route.params.person })}
+        onPress={() =>
+          navigation.replace('success', { person: route.params.person })
+        }
       />
     </View>
   );
 }
-function Success({ tray, route }: TrayScreenProps<Routes, 'success'>) {
+export function Success({
+  navigation,
+  route,
+}: TrayScreenProps<WalletTrayRoutes, 'success'>) {
   return (
     <View style={styles.body}>
       <View style={styles.balance}>
@@ -320,11 +288,11 @@ function Success({ tray, route }: TrayScreenProps<Routes, 'success'>) {
           Your demo payment to {route.params.person} is complete.
         </Text>
       </View>
-      <Button title="Back to wallet" onPress={tray.popToRoot} />
+      <Button title="Back to wallet" onPress={navigation.popToTop} />
     </View>
   );
 }
-function Settings() {
+export function Settings() {
   const [notifications, setNotifications] = useState(true);
   const [roundUp, setRoundUp] = useState(false);
   return (
@@ -359,69 +327,82 @@ function Settings() {
     </View>
   );
 }
-export function TrayDemoProvider({ children }: { children: React.ReactNode }) {
+export function useWalletTrayOptions() {
   const insets = useSafeAreaInsets();
-  return (
-    <Tray.Provider>
-      {children}
-      <Tray.Stack
-        anchor="bottom"
-        topInset={insets.top + 12}
-        bottomInset={insets.bottom}
-        backgroundColor={trayTheme.background}
-        textColor={ink}
-        renderHeader={(props) => <WalletHeader {...props} />}
-        handleVisible={false}
-        fullScreenTransition="slide"
-        animation={{ type: 'spring', stiffness: 300, damping: 30 }}
-      >
+  return {
+    topInset: insets.top + 12,
+    bottomInset: insets.bottom,
+    backgroundColor: trayTheme.background,
+    textColor: ink,
+    renderHeader: (props: TrayHeaderProps | ExpoTrayHeaderProps) => (
+      <WalletHeader {...props} />
+    ),
+    handleVisible: false,
+    animation: { type: 'spring', stiffness: 300, damping: 30 },
+    anchor: 'bottom',
+    fullScreenTransition: 'slide',
+  } as const;
+}
+
+export const walletPages = {
+  actions: { title: 'Your wallet' },
+  send: { title: 'Send money', presentation: 'fullScreen' },
+  recipient: { title: 'Choose recipient', presentation: 'fullScreen' },
+  review: { title: 'Review payment' },
+  success: {
+    title: 'Payment sent',
+    renderHeader: () => null,
+    headerHeight: 0,
+  },
+  settings: { title: 'Preferences' },
+} as const;
+
+export function makeWalletTray(
+  createNavigator: typeof createTrayNavigator | typeof createExpoTrayNavigator
+) {
+  const Tray = createNavigator<WalletTrayRoutes>();
+  return function WalletTray() {
+    const options = useWalletTrayOptions();
+    return (
+      <Tray.Navigator {...options}>
         <Tray.Screen
           name="actions"
           component={Actions}
-          options={{ title: 'Your wallet' }}
+          options={walletPages.actions}
         />
-        <Tray.Screen
-          name="send"
-          component={Send}
-          options={{ title: 'Send money', presentation: 'fullScreen' }}
-        />
+        <Tray.Screen name="send" component={Send} options={walletPages.send} />
         <Tray.Screen
           name="recipient"
           component={Recipient}
-          options={{ title: 'Choose recipient', presentation: 'fullScreen' }}
+          options={walletPages.recipient}
         />
         <Tray.Screen
           name="review"
           component={Review}
-          options={{ title: 'Review payment' }}
+          options={walletPages.review}
         />
         <Tray.Screen
           name="success"
           component={Success}
-          options={{
-            title: 'Payment sent',
-            renderHeader: () => null,
-            headerHeight: 0,
-          }}
+          options={walletPages.success}
         />
         <Tray.Screen
           name="settings"
           component={Settings}
-          options={{ title: 'Preferences' }}
+          options={walletPages.settings}
         />
-      </Tray.Stack>
-    </Tray.Provider>
-  );
+      </Tray.Navigator>
+    );
+  };
 }
 
-export function TrayDemoLauncher() {
-  const tray = Tray.useTray();
+export function TrayDemoLauncher({ onPress }: { onPress: () => void }) {
   return (
     <TrayLauncher
       title="Wallet dynamic tray"
       subtitle="A wallet that moves with you"
       icon="wallet"
-      onPress={() => tray.present('actions')}
+      onPress={onPress}
     />
   );
 }
@@ -454,8 +435,10 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'center',
   },
-  avatarSource: { width: 42, height: 42 },
-  avatarTarget: { width: 72, height: 72 },
+  avatarSource: { width: 42, height: 42, borderRadius: 15 },
+  initials: { fontSize: 19 },
+  largeInitials: { fontSize: 32 },
+  avatarTarget: { borderRadius: 28, width: 72, height: 72 },
   symbolText: { color: accent, fontSize: 19, fontWeight: '600' },
   chevron: { fontSize: 26, color: muted },
   balance: { alignItems: 'center', paddingTop: 18, paddingBottom: 28, gap: 10 },

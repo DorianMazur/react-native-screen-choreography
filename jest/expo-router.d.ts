@@ -1,1 +1,1 @@
-export * from '../lib/typescript/src/entries/expo-router';
+export * from './expo-router-tray';

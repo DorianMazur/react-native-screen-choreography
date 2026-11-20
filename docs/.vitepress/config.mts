@@ -11,8 +11,7 @@ const origin = process.env.DOCS_ORIGIN || 'https://screen-choreography.dev';
 
 export default defineConfig({
   title: 'Screen Choreography',
-  description:
-    'Shared elements. Connected screens. Choreographed transitions for React Native.',
+  description: 'Multi-step native tray navigation for React Native.',
   lang: 'en-US',
   base,
   cleanUrls: false,
@@ -32,8 +31,7 @@ export default defineConfig({
       'meta',
       {
         property: 'og:description',
-        content:
-          'Give every screen a sense of connection. Shared element transitions for React Native.',
+        content: 'Build multi-step flows in a resizing native bottom sheet.',
       },
     ],
   ],
@@ -62,68 +60,18 @@ export default defineConfig({
     logo: { src: '/favicon.svg', alt: '' },
     siteTitle: 'screen choreography',
     nav: [
-      {
-        text: 'Documentation',
-        link: '/guide/introduction',
-        activeMatch: '/(guide|api)/',
-      },
+      { text: 'Guide', link: '/guide/dynamic-trays' },
       { text: 'Examples', link: '/examples' },
-      {
-        text: `v${version}`,
-        items: [
-          {
-            text: `Current API · v${version} (pre-1.0)`,
-            link: '/guide/introduction#where-it-fits',
-          },
-          { text: 'Release notes ↗', link: `${repository}/releases` },
-        ],
-      },
+      { text: `v${version}`, link: `${repository}/releases` },
     ],
-    socialLinks: [
-      { icon: 'github', link: repository, ariaLabel: 'View source on GitHub' },
-    ],
+    socialLinks: [{ icon: 'github', link: repository }],
     search: { provider: 'local' },
     sidebar: [
-      {
-        text: 'START HERE',
-        items: [
-          { text: 'Introduction', link: '/guide/introduction' },
-          { text: 'Installation', link: '/guide/installation' },
-          { text: 'Your first transition', link: '/guide/quick-start' },
-          { text: 'Expo Router', link: '/guide/expo-router' },
-        ],
-      },
-      {
-        text: 'BUILD WITH MOTION',
-        items: [
-          { text: 'Transition recipes', link: '/guide/transitions' },
-          { text: 'Interactive Back', link: '/guide/interactive-back' },
-          { text: 'Dynamic trays', link: '/guide/dynamic-trays' },
-          { text: 'Readiness & loading', link: '/guide/readiness' },
-          { text: 'Troubleshooting', link: '/guide/troubleshooting' },
-          { text: 'Example apps', link: '/examples' },
-        ],
-      },
-      {
-        text: 'API REFERENCE',
-        items: [
-          { text: 'Components', link: '/api/components' },
-          { text: 'Navigation', link: '/api/navigation' },
-          { text: 'Trays', link: '/api/tray' },
-          { text: 'Transitions', link: '/api/transitions' },
-          { text: 'Hooks & utilities', link: '/api/hooks' },
-        ],
-      },
-      {
-        text: 'FOR CONTRIBUTORS',
-        items: [
-          { text: 'Runtime architecture', link: '/architecture' },
-          {
-            text: 'Contributing',
-            link: `${repository}/blob/main/CONTRIBUTING.md`,
-          },
-        ],
-      },
+      { text: 'Installation', link: '/guide/installation' },
+      { text: 'Build a tray', link: '/guide/dynamic-trays' },
+      { text: 'API reference', link: '/api/tray' },
+      { text: 'Examples', link: '/examples' },
+      { text: 'Architecture', link: '/architecture' },
     ],
     outline: { level: [2, 3], label: 'On this page' },
     editLink: {

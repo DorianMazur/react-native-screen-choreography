@@ -1,99 +1,54 @@
-import { initialTrayState, trayReducer } from './stack';
-import type { TrayAction, TrayStackState } from './stack';
-import type { TrayParamList, TrayRoute, TrayState } from './types';
+import { initialTrayState, trayReducer, type TrayAction } from './stack';
+import type { TrayDiagnostics } from './diagnostics';
 
-type TrayLifecycleEvent<P extends TrayParamList> =
+export type TrayEvent =
   | {
       type: 'onWillPresent' | 'onPresent' | 'onNavigate' | 'onWillDismiss';
-      route: TrayRoute<P, keyof P & string>;
+      key: string;
     }
   | { type: 'onDismiss' };
 
-const topRoute = <P extends TrayParamList>(state: TrayStackState) =>
-  state.entries[state.entries.length - 1] as TrayRoute<P, keyof P & string>;
-
-type TrayDispatchObserver = (
-  action: TrayAction,
-  previous: TrayStackState,
-  next: TrayStackState
-) => void;
-
-export function createTrayStateStore<P extends TrayParamList>(
-  observe?: TrayDispatchObserver
-) {
-  let stack = initialTrayState;
-  let lifecycleEvents: TrayLifecycleEvent<P>[] = [];
-  let snapshot: TrayState<P> = {
-    route: undefined,
-    depth: 0,
-    isPresented: false,
-  };
+let nextSession = 0;
+export function createTrayStateStore() {
+  let state = { ...initialTrayState, session: nextSession };
+  let events: TrayEvent[] = [];
   const listeners = new Set<() => void>();
-  function notifyObserver(action: TrayAction, previous: TrayStackState) {
-    try {
-      observe?.(action, previous, stack);
-    } catch {
-      // Diagnostic failures must not interrupt navigation or its subscribers.
-    }
-  }
   return {
-    getSnapshot: () => snapshot,
-    getStackSnapshot: () => stack,
-    setObserver(observer?: TrayDispatchObserver) {
-      observe = observer;
-    },
-    takeLifecycleEvents() {
-      const events = lifecycleEvents;
-      lifecycleEvents = [];
-      return events;
-    },
+    getSnapshot: () => state,
     subscribe(listener: () => void) {
       listeners.add(listener);
       return () => {
         listeners.delete(listener);
       };
     },
-    dispatch(action: TrayAction) {
-      const previous = stack;
-      const next = trayReducer(stack, action);
-      if (next === stack) {
-        if (observe) notifyObserver(action, previous);
-        return false;
+    takeEvents() {
+      const pending = events;
+      events = [];
+      return pending;
+    },
+    dispatch(action: TrayAction, observe?: TrayDiagnostics['dispatch']) {
+      const old = state;
+      state = trayReducer(old, action);
+      if (old.phase === 'closed' && state.phase === 'opening')
+        state = { ...state, session: ++nextSession };
+      try {
+        observe?.(action, old, state);
+      } catch {
+        /* Diagnostics are optional. */
       }
-      // Preserve every accepted event across React batching. A native close
-      // can also start a queued presentation in this same state update.
-      if (next.dismissals !== stack.dismissals)
-        lifecycleEvents.push({ type: 'onDismiss' });
-      if (next.session !== stack.session)
-        lifecycleEvents.push({ type: 'onWillPresent', route: topRoute(next) });
-      // Report the screen the sheet settled on, before a queued command drains.
-      if (next.presented && !stack.presented)
-        lifecycleEvents.push({ type: 'onPresent', route: topRoute(stack) });
-      if (
-        next.session === stack.session &&
-        next.phase !== 'closed' &&
-        topRoute(next) !== topRoute(stack)
-      )
-        lifecycleEvents.push({ type: 'onNavigate', route: topRoute(next) });
-      if (next.phase === 'closing' && stack.phase !== 'closing')
-        lifecycleEvents.push({ type: 'onWillDismiss', route: topRoute(next) });
-      // Commit before notifying subscribers so reentrant commands see the
-      // accepted operation, even when the public route snapshot is unchanged.
-      stack = next;
-      const route = stack.entries[stack.entries.length - 1] as
-        | TrayRoute<P>
-        | undefined;
-      const depth = stack.entries.length;
-      const isPresented = stack.phase !== 'closed';
-      if (
-        route !== snapshot.route ||
-        depth !== snapshot.depth ||
-        isPresented !== snapshot.isPresented
-      )
-        snapshot = { route, depth, isPresented };
-      if (observe) notifyObserver(action, previous);
+      if (state === old) return;
+      const key = state.entries.at(-1)?.key;
+      if (state.phase === 'closed') events.push({ type: 'onDismiss' });
+      else if (key) {
+        if (old.phase === 'closed') events.push({ type: 'onWillPresent', key });
+        if (!old.presented && state.presented)
+          events.push({ type: 'onPresent', key: old.entries.at(-1)!.key });
+        if (old.phase !== 'closed' && key !== old.entries.at(-1)?.key)
+          events.push({ type: 'onNavigate', key });
+        if (state.phase === 'closing' && old.phase !== 'closing')
+          events.push({ type: 'onWillDismiss', key });
+      }
       listeners.forEach((listener) => listener());
-      return true;
     },
   };
 }

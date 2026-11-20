@@ -1,1 +1,1 @@
-export * from '../lib/typescript/src/entries/index';
+export * from './tray';
