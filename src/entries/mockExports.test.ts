@@ -1,6 +1,5 @@
 import manifest from '../../package.json';
 
-jest.mock('react-native-teleport', () => ({}));
 jest.mock('@react-navigation/native', () => ({}));
 jest.mock('expo-router', () => ({}));
 jest.mock('expo-router/react-navigation', () => ({}));

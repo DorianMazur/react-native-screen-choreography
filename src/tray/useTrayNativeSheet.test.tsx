@@ -1,3 +1,4 @@
+import type { NativeSyntheticEvent } from 'react-native';
 import { useState } from 'react';
 import type { ComponentProps } from 'react';
 import { View } from 'react-native';
@@ -17,7 +18,9 @@ function fixture() {
   function Fixture() {
     const sheet = useTrayNativeSheet();
     const [Wrapped] = useState(() => sheet.wrapNativeView(NativeSheet));
-    const rejectClose: NativeProps['onIndexChange'] = (event) => {
+    const rejectClose: NativeProps['onIndexChange'] = (
+      event: NativeSyntheticEvent<{ index: number }>
+    ) => {
       if (event.nativeEvent.index === 0) sheet.reopen();
     };
     return (

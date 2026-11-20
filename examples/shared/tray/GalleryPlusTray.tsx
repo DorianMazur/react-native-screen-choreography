@@ -1,25 +1,21 @@
-import { useCallback, useRef, useState, type ReactNode } from 'react';
+import type {
+  createTrayNavigator as createExpoTrayNavigator,
+  TrayHeaderProps as ExpoTrayHeaderProps,
+} from 'react-native-screen-choreography/expo-router/tray';
+import { useState } from 'react';
 import { Pressable, ScrollView, StyleSheet, Text, View } from 'react-native';
 import {
-  createTray,
+  type createTrayNavigator,
   type TrayHeaderProps,
   type TrayScreenProps,
 } from 'react-native-screen-choreography/tray';
 import { AppIcon } from '../AppChrome';
-import { useSafeAreaInsets } from '../runtime';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { DemoTrayHeader, trayTheme } from './TrayChrome';
 import { TrayLauncher } from './TrayLauncher';
 import { useTrayExampleObservation } from './observation';
-import {
-  GalleryPlusButton,
-  galleryPlusButtonStyle,
-  type GalleryPlusButtonAction,
-} from './GalleryPlusButton';
-import {
-  GalleryPlusHero,
-  galleryPlusGroup,
-  galleryPlusTransition,
-} from './GalleryPlusHero';
+import { GalleryPlusButton } from './GalleryPlusButton';
+import { GalleryPlusHero } from './GalleryPlusHero';
 
 const plans = {
   annual: {
@@ -36,13 +32,12 @@ const plans = {
   },
 } as const;
 type Plan = keyof typeof plans;
-type Routes = {
+export type GalleryTrayRoutes = {
   intro: undefined;
   plans: undefined;
   details: undefined;
   preview: { plan: Plan };
 };
-const Tray = createTray<Routes>();
 
 const benefits = [
   {
@@ -68,67 +63,50 @@ const benefits = [
   },
 ] as const;
 
-function Header({ title, canGoBack, tray, color }: TrayHeaderProps<Routes>) {
+function Header({
+  title,
+  canGoBack,
+  navigation,
+  dismiss,
+  color,
+}: TrayHeaderProps | ExpoTrayHeaderProps) {
   return (
     <DemoTrayHeader
       eyebrow="GALLERY"
       title={title}
       color={color}
-      onBack={canGoBack ? tray.back : undefined}
-      onClose={tray.dismiss}
+      onBack={canGoBack ? navigation.goBack : undefined}
+      onClose={dismiss}
     />
   );
 }
 
-function Intro({ tray }: TrayScreenProps<Routes, 'intro'>) {
+export function Intro({
+  navigation,
+}: TrayScreenProps<GalleryTrayRoutes, 'intro'>) {
   useTrayExampleObservation('intro');
   return (
     <ScrollView
       contentContainerStyle={styles.body}
       showsVerticalScrollIndicator={false}
     >
-      <galleryPlusTransition.Element
-        name="hero"
-        groupId={galleryPlusGroup}
-        style={styles.introHero}
-      >
-        <GalleryPlusHero />
-      </galleryPlusTransition.Element>
       <View style={styles.introCaption}>
         <View style={styles.dot} />
         <Text style={styles.secondary}>More space. More possibilities.</Text>
       </View>
-      <galleryPlusTransition.Element
-        name="button"
-        groupId={galleryPlusGroup}
-        style={galleryPlusButtonStyle}
-      >
-        <GalleryPlusButton
-          title="Explore Plus"
-          onPress={() =>
-            tray.push('plans', undefined, { groupId: galleryPlusGroup })
-          }
-        />
-      </galleryPlusTransition.Element>
+      <GalleryPlusButton
+        title="Explore Plus"
+        onPress={() => navigation.push('plans')}
+      />
     </ScrollView>
   );
 }
 
-function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
+export function Plans({
+  navigation,
+}: TrayScreenProps<GalleryTrayRoutes, 'plans'>) {
   const observation = useTrayExampleObservation('plans');
   const [selected, setSelected] = useState<Plan>('annual');
-  // Endpoint metadata is frozen at capture; the action must read the live choice.
-  const selectedRef = useRef(selected);
-  selectedRef.current = selected;
-  const preview = useCallback(
-    () =>
-      tray.push(
-        'preview',
-        { plan: selectedRef.current },
-        { groupId: galleryPlusGroup }
-      ),
-    [tray]
-  );
   return (
     <ScrollView
       contentContainerStyle={styles.body}
@@ -139,11 +117,6 @@ function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
           : undefined
       }
     >
-      <galleryPlusTransition.Element.Target
-        name="hero"
-        groupId={galleryPlusGroup}
-        style={styles.plansHero}
-      />
       <View style={styles.benefits}>
         {benefits.map((benefit) => (
           <View key={benefit.title} style={styles.benefit}>
@@ -195,31 +168,24 @@ function Plans({ tray }: TrayScreenProps<Routes, 'plans'>) {
           );
         })}
       </View>
-      <galleryPlusTransition.Element.Target
-        name="button"
-        groupId={galleryPlusGroup}
-        style={galleryPlusButtonStyle}
-        metadata={
-          {
-            title: 'Preview Plus',
-            onPress: preview,
-          } satisfies GalleryPlusButtonAction
-        }
-      />
       <Pressable
         accessibilityRole="button"
         accessibilityLabel="Good to know"
-        onPress={() => tray.push('details')}
+        onPress={() => navigation.push('details')}
         style={({ pressed }) => [styles.textButton, pressed && styles.pressed]}
       >
         <Text style={styles.secondary}>Good to know</Text>
         <AppIcon name="help" size={15} color={trayTheme.muted} />
       </Pressable>
+      <GalleryPlusButton
+        title="Preview Plus"
+        onPress={() => navigation.push('preview', { plan: selected })}
+      />
     </ScrollView>
   );
 }
 
-function Details() {
+export function Details() {
   useTrayExampleObservation('details');
   return (
     <ScrollView
@@ -246,7 +212,10 @@ function Details() {
   );
 }
 
-function Preview({ tray, route }: TrayScreenProps<Routes, 'preview'>) {
+export function Preview({
+  navigation,
+  route,
+}: TrayScreenProps<GalleryTrayRoutes, 'preview'>) {
   const plan = plans[route.params.plan];
   return (
     <ScrollView
@@ -270,76 +239,85 @@ function Preview({ tray, route }: TrayScreenProps<Routes, 'preview'>) {
         </View>
         <Text style={styles.summaryPrice}>{plan.price}</Text>
       </View>
-      <galleryPlusTransition.Element.Target
-        name="button"
-        groupId={galleryPlusGroup}
-        style={galleryPlusButtonStyle}
-        metadata={
-          {
-            title: 'Done exploring',
-            onPress: tray.dismiss,
-          } satisfies GalleryPlusButtonAction
-        }
+      <GalleryPlusButton
+        title="Done exploring"
+        onPress={() => navigation.getParent()?.goBack()}
       />
     </ScrollView>
   );
 }
 
-export function GalleryPlusTrayProvider({ children }: { children: ReactNode }) {
+export function useGalleryTrayOptions() {
   const insets = useSafeAreaInsets();
-  return (
-    <Tray.Provider>
-      {children}
-      <Tray.Stack
-        topInset={insets.top + 12}
-        bottomInset={insets.bottom}
-        backgroundColor={trayTheme.background}
-        textColor={trayTheme.text}
-        handleVisible={false}
-        renderHeader={(props) => <Header {...props} />}
-        animation={{ type: 'spring', stiffness: 300, damping: 30 }}
-      >
+  return {
+    topInset: insets.top + 12,
+    bottomInset: insets.bottom,
+    backgroundColor: trayTheme.background,
+    textColor: trayTheme.text,
+    handleVisible: false,
+    renderContentHeader: (
+      props: React.ComponentProps<typeof GalleryPlusHero>
+    ) => <GalleryPlusHero {...props} />,
+    renderHeader: (props: TrayHeaderProps | ExpoTrayHeaderProps) => (
+      <Header {...props} />
+    ),
+    animation: { type: 'spring', stiffness: 300, damping: 30 },
+  } as const;
+}
+
+export const galleryPages = {
+  intro: { title: 'Your gallery', contentHeaderHeight: 260 },
+  plans: { title: 'Choose your plan', contentHeaderHeight: 188 },
+  details: { title: 'Good to know' },
+  preview: { title: 'Your preview' },
+} as const;
+
+export function makeGalleryTray(
+  createNavigator: typeof createTrayNavigator | typeof createExpoTrayNavigator
+) {
+  const Tray = createNavigator<GalleryTrayRoutes>();
+  return function GalleryTray() {
+    const options = useGalleryTrayOptions();
+    return (
+      <Tray.Navigator {...options}>
         <Tray.Screen
           name="intro"
           component={Intro}
-          options={{ title: 'Your gallery' }}
+          options={galleryPages.intro}
         />
         <Tray.Screen
           name="plans"
           component={Plans}
-          options={{ title: 'Choose your plan' }}
+          options={galleryPages.plans}
         />
         <Tray.Screen
           name="details"
           component={Details}
-          options={{ title: 'Good to know' }}
+          options={galleryPages.details}
         />
         <Tray.Screen
           name="preview"
           component={Preview}
-          options={{ title: 'Your preview' }}
+          options={galleryPages.preview}
         />
-      </Tray.Stack>
-    </Tray.Provider>
-  );
+      </Tray.Navigator>
+    );
+  };
 }
 
-export function GalleryPlusTrayLauncher() {
-  const tray = Tray.useTray();
+export function GalleryPlusTrayLauncher({ onPress }: { onPress: () => void }) {
   return (
     <TrayLauncher
       title="Gallery dynamic tray"
       subtitle="A little tray. More possibilities."
       icon="camera"
-      onPress={() => tray.present('intro')}
+      onPress={onPress}
     />
   );
 }
 
 const styles = StyleSheet.create({
   body: { paddingHorizontal: 22, paddingBottom: 24 },
-  introHero: { width: '100%', height: 260 },
-  plansHero: { width: '100%', height: 188 },
   introCaption: {
     flexDirection: 'row',
     gap: 8,

@@ -6,10 +6,12 @@
       "react-native-safe-area-context": [
         "./node_modules/react-native-safe-area-context"
       ],
-      "react-native-screen-choreography/core": ["../../src/entries/core.ts"],
       "@/*": ["./src/*"],
       "react-native-screen-choreography/expo-router": [
         "../../src/entries/expo-router.ts"
+      ],
+      "react-native-screen-choreography/expo-router/tray": [
+        "../../src/entries/expo-router-tray.ts"
       ],
       "react-native-screen-choreography/tray": ["../../src/entries/tray.ts"]
     }

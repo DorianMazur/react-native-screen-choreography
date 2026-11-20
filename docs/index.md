@@ -1,9 +1,5 @@
----
-layout: home
-markdownStyles: false
-title: Connected by motion
-titleTemplate: false
-description: Choreographed shared element transitions for React Native. Keep real content alive as it moves between screens.
----
+# React Native tray navigation
 
-<ChoreographyHome />
+Build multi-step flows in a native bottom sheet. Each route can resize the sheet, expand to full screen, or return to a previous form with its draft intact.
+
+[Install the navigator](./guide/installation.md) · [Build a tray](./guide/dynamic-trays.md) · [API reference](./api/tray.md)

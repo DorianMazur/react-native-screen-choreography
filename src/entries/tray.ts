@@ -1,18 +1,14 @@
-export { createTray } from '../tray/createTray';
+export { createTrayNavigator, useTraySettled } from '../adapters/tray';
+export { useTrayDismiss, useTrayKeyboard } from '../tray/trayContexts';
 export type {
   TrayAnimationConfig,
-  TrayFocusEffectOptions,
   TrayHeaderProps,
   TrayKeyboardState,
   TrayLifecycleDetails,
-  TrayNavigation,
-  TrayNavigationOptions,
-  TrayParamList,
-  TrayProviderProps,
-  TrayRoute,
-  TrayScreenDeclarationProps,
+  TrayNavigationProp,
+  TrayNavigatorProps,
   TrayScreenOptions,
   TrayScreenProps,
-  TrayStackProps,
-  TrayState,
 } from '../tray/types';
+export { trayStackLayout } from '../tray/trayStackLayout';
+export type { TrayContentHeaderProps } from '../tray/presentationTypes';

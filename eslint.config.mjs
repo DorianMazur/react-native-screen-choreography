@@ -4,7 +4,6 @@ import js from '@eslint/js';
 import prettier from 'eslint-plugin-prettier';
 import { defineConfig } from 'eslint/config';
 import path from 'node:path';
-import tsParser from '@typescript-eslint/parser';
 import { fileURLToPath } from 'node:url';
 
 const __filename = fileURLToPath(import.meta.url);
@@ -23,10 +22,6 @@ export default defineConfig([
       'react/react-in-jsx-scope': 'off',
       'prettier/prettier': 'error',
     },
-  },
-  {
-    files: ['scripts/performance/**/*.mts'],
-    languageOptions: { parser: tsParser },
   },
   {
     ignores: [

@@ -5,15 +5,6 @@ import ReactAppDependencyProvider
 
 @main
 class AppDelegate: UIResponder, UIApplicationDelegate {
-  private static let scenario = ProcessInfo.processInfo.environment["PERFORMANCE_SCENARIO"]
-  private static let benchmarking = ["gallery", "trips", "wallet", "tray-wallet", "tray-gallery"].contains(scenario ?? "")
-
-  static func main() {
-    UIApplicationMain(CommandLine.argc, CommandLine.unsafeArgv,
-                      benchmarking ? NSStringFromClass(BenchmarkApplication.self) : nil,
-                      NSStringFromClass(AppDelegate.self))
-  }
-
   var window: UIWindow?
 
   var reactNativeDelegate: ReactNativeDelegate?
@@ -23,6 +14,10 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     _ application: UIApplication,
     didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
   ) -> Bool {
+    return true
+  }
+
+  func start(in scene: UIWindowScene) {
     let delegate = ReactNativeDelegate()
     let factory = RCTReactNativeFactory(delegate: delegate)
     delegate.dependencyProvider = RCTAppDependencyProvider()
@@ -30,16 +25,13 @@ class AppDelegate: UIResponder, UIApplicationDelegate {
     reactNativeDelegate = delegate
     reactNativeFactory = factory
 
-    window = UIWindow(frame: UIScreen.main.bounds)
+    window = UIWindow(windowScene: scene)
 
     factory.startReactNative(
       withModuleName: "ScreenChoreographyExample",
       in: window,
-      initialProperties: Self.benchmarking ? ["performanceScenario": Self.scenario!] : nil,
-      launchOptions: launchOptions
+      launchOptions: nil
     )
-
-    return true
   }
 }
 
@@ -54,5 +46,15 @@ class ReactNativeDelegate: RCTDefaultReactNativeFactoryDelegate {
 #else
     Bundle.main.url(forResource: "main", withExtension: "jsbundle")
 #endif
+  }
+}
+
+@objc(TrayExampleScene)
+final class TrayExampleScene: UIResponder, UIWindowSceneDelegate {
+  var window: UIWindow?
+  func scene(_ scene: UIScene, willConnectTo session: UISceneSession, options: UIScene.ConnectionOptions) {
+    guard let scene = scene as? UIWindowScene, let app = UIApplication.shared.delegate as? AppDelegate else { return }
+    app.start(in: scene)
+    window = app.window
   }
 }

@@ -15,6 +15,7 @@ module.exports = {
       },
     }).current;
   },
+  SharedTransitionBoundary: ({ children }) => children,
   useAnimatedStyle: (fn) => fn(),
   useAnimatedProps: (fn) => fn(),
   useAnimatedRef: () => {

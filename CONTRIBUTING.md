@@ -25,9 +25,7 @@ The [example apps](/examples/) demonstrate bare React Navigation and Expo Router
 
 It is configured to use the local version of the library, so any changes you make to the library's source code will be reflected in the example app. Changes to the library's JavaScript code will be reflected in the example app without a rebuild, but native code changes will require a rebuild of the example app.
 
-If you want to use Android Studio or Xcode to edit the native code, you can open the `examples/react-navigation/android` or `examples/react-navigation/ios` directories respectively in those editors. To edit the Objective-C or Swift files, open `examples/react-navigation/ios/ScreenChoreographyExample.xcworkspace` in Xcode and find the source files at `Pods > Development Pods > react-native-screen-choreography`.
-
-To edit the Java or Kotlin files, open `examples/react-navigation/android` in Android Studio and find the source files at `react-native-screen-choreography` under `Android`.
+The navigator is implemented in TypeScript. Open the bare example’s Android project or iOS workspace to debug the native sheet, keyboard or Reanimated integration.
 
 You can use various commands from the root directory to work with the project.
 

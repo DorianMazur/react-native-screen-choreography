@@ -1,20 +1,12 @@
 import { Image, StyleSheet, Text, View } from 'react-native';
-import Animated, { useAnimatedStyle } from 'react-native-reanimated';
-import {
-  defineTransition,
-  useSharedElementPresentation,
-} from 'react-native-screen-choreography/core';
+import Animated, {
+  useAnimatedStyle,
+  type SharedValue,
+  useDerivedValue,
+} from 'react-native-reanimated';
+import type { TrayContentHeaderProps } from 'react-native-screen-choreography/tray';
 import { AppIcon } from '../AppChrome';
 import { trayTheme } from './TrayChrome';
-import { useTrayExampleObservation } from './observation';
-
-export const galleryPlusGroup = 'gallery-plus';
-export const galleryPlusTransition = defineTransition({
-  shared: {
-    hero: { kind: 'bounds' },
-    button: { kind: 'bounds', radius: [18, 18] },
-  },
-});
 
 const postcards = [
   { image: require('../assets/photos/forest.jpg'), x: -110, y: 36, angle: -17 },
@@ -23,50 +15,45 @@ const postcards = [
   { image: require('../assets/photos/coast.jpg'), x: 58, y: -6, angle: 12 },
 ] as const;
 
-function Postcard({ card }: { card: (typeof postcards)[number] }) {
-  const { presentationProgress } = useSharedElementPresentation();
-  const motion = useAnimatedStyle(() => {
-    const progress = Math.max(0, Math.min(1, presentationProgress.value));
-    return {
-      transform: [
-        { translateX: card.x * (1 - 0.32 * progress) },
-        { translateY: card.y * (1 - 0.5 * progress) },
-        { rotate: `${card.angle * (1 - 0.35 * progress)}deg` },
-        { scale: 1 - 0.35 * progress },
-      ],
-    };
-  });
+function Postcard({
+  card,
+  amount,
+}: {
+  card: (typeof postcards)[number];
+  amount: SharedValue<number>;
+}) {
+  const { x, y, angle } = card;
+  const position = useAnimatedStyle(() => ({
+    transform: [
+      { translateX: x * (1 - 0.32 * amount.value) },
+      { translateY: y * (1 - 0.5 * amount.value) },
+      { rotate: `${angle * (1 - 0.35 * amount.value)}deg` },
+      { scale: 1 - 0.35 * amount.value },
+    ],
+  }));
   return (
-    <Animated.View style={[styles.postcard, motion]}>
+    <Animated.View style={[styles.postcard, position]}>
       <Image source={card.image} style={styles.photo} resizeMode="cover" />
       <View style={styles.captionLine} />
     </Animated.View>
   );
 }
 
-/** One live composition travels into the plans screen and back. */
-export function GalleryPlusHero() {
-  useTrayExampleObservation('gallery-hero');
-  const { presentationProgress } = useSharedElementPresentation();
-  const artwork = useAnimatedStyle(() => ({
-    height: 184 - 72 * Math.max(0, Math.min(1, presentationProgress.value)),
+export function GalleryPlusHero({
+  from,
+  to,
+  progress,
+}: TrayContentHeaderProps) {
+  const start = from === 'intro' ? 0 : 1;
+  const end = to === 'intro' ? 0 : 1;
+  const amount = useDerivedValue(() => start + (end - start) * progress.value);
+  const artwork = useAnimatedStyle(() => ({ height: 184 - 72 * amount.value }));
+  const halo = useAnimatedStyle(() => ({
+    transform: [{ rotate: '-12deg' }, { scale: 1 - 0.35 * amount.value }],
   }));
   const badge = useAnimatedStyle(() => ({
-    transform: [
-      {
-        scale: 1 - 0.16 * Math.max(0, Math.min(1, presentationProgress.value)),
-      },
-    ],
+    transform: [{ scale: 1 - 0.16 * amount.value }],
   }));
-  const halo = useAnimatedStyle(() => ({
-    transform: [
-      { rotate: '-12deg' },
-      {
-        scale: 1 - 0.35 * Math.max(0, Math.min(1, presentationProgress.value)),
-      },
-    ],
-  }));
-
   return (
     <View style={styles.hero}>
       <Animated.View
@@ -76,7 +63,7 @@ export function GalleryPlusHero() {
       >
         <Animated.View style={[styles.halo, halo]} />
         {postcards.map((card, index) => (
-          <Postcard key={index} card={card} />
+          <Postcard key={index} card={card} amount={amount} />
         ))}
         <Animated.View style={[styles.badge, badge]}>
           <AppIcon name="camera" color={trayTheme.onAccent} size={30} />

@@ -1,3 +1,4 @@
+import type { NativeSyntheticEvent } from 'react-native';
 import { useLayoutEffect, useMemo, useState } from 'react';
 import type { ComponentProps } from 'react';
 import type { ModalBottomSheetProps } from '@swmansion/react-native-bottom-sheet';
@@ -36,7 +37,7 @@ export function useTrayNativeSheet(): {
               { ...props.detents[1]!, programmatic: true },
             ]}
             index={props.index === 0 ? 0 : openIndex}
-            onIndexChange={(event) =>
+            onIndexChange={(event: NativeSyntheticEvent<{ index: number }>) =>
               props.onIndexChange?.({
                 ...event,
                 nativeEvent: {
@@ -45,7 +46,7 @@ export function useTrayNativeSheet(): {
                 },
               })
             }
-            onSettle={(event) => {
+            onSettle={(event: NativeSyntheticEvent<{ index: number }>) => {
               const index = event.nativeEvent.index;
               props.onSettle?.({
                 ...event,

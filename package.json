@@ -1,7 +1,7 @@
 {
   "name": "react-native-screen-choreography",
-  "version": "0.9.0",
-  "description": "Choreographed shared element transitions for React Native — fluid, multi-element, native-feeling screen transitions",
+  "version": "1.0.0",
+  "description": "Multi-step native tray navigation for React Navigation and Expo Router",
   "main": "./lib/module/entries/index.js",
   "types": "./lib/typescript/src/entries/index.d.ts",
   "exports": {
@@ -15,11 +15,6 @@
       "types": "./lib/typescript/src/entries/expo-router.d.ts",
       "default": "./lib/module/entries/expo-router.js"
     },
-    "./core": {
-      "source": "./src/entries/core.ts",
-      "types": "./lib/typescript/src/entries/core.d.ts",
-      "default": "./lib/module/entries/core.js"
-    },
     "./package.json": "./package.json",
     "./tray": {
       "source": "./src/entries/tray.ts",
@@ -30,10 +25,6 @@
       "types": "./jest/index.d.ts",
       "default": "./jest/index.js"
     },
-    "./mock/core": {
-      "types": "./jest/core.d.ts",
-      "default": "./jest/core.js"
-    },
     "./mock/expo-router": {
       "types": "./jest/expo-router.d.ts",
       "default": "./jest/expo-router.js"
@@ -41,42 +32,32 @@
     "./mock/tray": {
       "types": "./jest/tray.d.ts",
       "default": "./jest/tray.js"
+    },
+    "./expo-router/tray": {
+      "source": "./src/entries/expo-router-tray.ts",
+      "types": "./lib/typescript/src/entries/expo-router-tray.d.ts",
+      "default": "./lib/module/entries/expo-router-tray.js"
+    },
+    "./mock/expo-router/tray": {
+      "types": "./jest/expo-router-tray.d.ts",
+      "default": "./jest/tray.js"
     }
   },
   "files": [
     "src",
     "lib",
     "jest",
-    "android",
-    "ios",
-    "cpp",
-    "*.podspec",
-    "!ios/build",
-    "!android/build",
-    "!android/gradle",
-    "!android/gradlew",
-    "!android/gradlew.bat",
-    "!android/local.properties",
-    "!src/**/*.test.*",
-    "!**/__tests__",
-    "!**/__fixtures__",
-    "!**/__mocks__",
-    "!**/.*"
+    "!src/**/*.test.*"
   ],
   "scripts": {
     "example": "yarn workspace react-native-screen-choreography-example",
     "example:react-native": "yarn workspace react-native-screen-choreography-example",
     "example:expo-router": "yarn workspace screen-choreography-expo-router-example",
     "test": "jest",
-    "test:performance": "node --experimental-transform-types --test scripts/performance/*.test.ts",
-    "perf:fantom": "node scripts/performance/fantom/run.js",
-    "perf:ios": "bash scripts/performance/run-ios.sh",
-    "perf:android": "bash scripts/performance/run-android.sh",
-    "perf:ab": "bash scripts/performance/run-ab.sh",
     "clean": "del-cli android/build examples/react-navigation/android/build examples/react-navigation/android/app/build examples/react-navigation/ios/build examples/expo-router/android/build examples/expo-router/ios/build lib",
     "prepare": "bob build",
     "prepublishOnly": "yarn clean && yarn lint && yarn typecheck && yarn test --runInBand && yarn prepare",
-    "typecheck": "tsc && tsc -p scripts/performance/tsconfig.json",
+    "typecheck": "tsc && yarn workspace react-native-screen-choreography-example typecheck && yarn workspace screen-choreography-expo-router-example typecheck",
     "lint": "eslint \"**/*.{js,ts,tsx,mts}\"",
     "lint:fix": "eslint \"**/*.{js,ts,tsx,mts}\" --fix",
     "docs:dev": "yarn workspace screen-choreography-docs dev",
@@ -85,20 +66,11 @@
   },
   "keywords": [
     "react-native",
-    "ios",
-    "android",
-    "shared-element",
-    "shared-transition",
-    "screen-transition",
-    "transition",
-    "animation",
-    "reanimated",
-    "react-navigation",
+    "bottom-sheet",
+    "navigation",
+    "tray",
     "expo-router",
-    "native-stack",
-    "choreography",
-    "fabric",
-    "new-architecture"
+    "reanimated"
   ],
   "repository": {
     "type": "git",
@@ -118,11 +90,12 @@
     "@eslint/compat": "^2.0.3",
     "@eslint/eslintrc": "^3.3.5",
     "@eslint/js": "^10.0.1",
-    "@react-native/babel-preset": "0.83.0",
-    "@react-native/eslint-config": "0.83.0",
+    "@react-native/babel-preset": "0.87.1",
+    "@react-native/eslint-config": "0.87.1",
+    "@react-native/jest-preset": "0.87.1",
     "@react-navigation/native": "^7.1.0",
     "@react-navigation/native-stack": "^7.3.0",
-    "@swmansion/react-native-bottom-sheet": "0.16.2",
+    "@swmansion/react-native-bottom-sheet": "1.1.0",
     "@testing-library/react-native": "^13.3.3",
     "@types/jest": "^29.5.0",
     "@types/react": "^19.2.0",
@@ -133,30 +106,28 @@
     "eslint-config-prettier": "^10.1.8",
     "eslint-plugin-ft-flow": "^3.0.11",
     "eslint-plugin-prettier": "^5.5.5",
-    "expo-router": "^57.0.18",
+    "expo-router": "~58.0.32",
     "jest": "^29.7.0",
     "prettier": "^3.8.1",
-    "react": "19.2.0",
-    "react-native": "0.83.0",
+    "react": "19.2.3",
+    "react-native": "0.87.1",
     "react-native-builder-bob": "^0.41.0",
-    "react-native-keyboard-controller": "1.22.7",
-    "react-native-reanimated": "4.3.4",
-    "react-native-teleport": "1.2.2",
-    "react-native-worklets": "0.8.3",
-    "react-test-renderer": "19.2.0",
+    "react-native-keyboard-controller": "1.23.1",
+    "react-native-reanimated": "4.8.0",
+    "react-native-worklets": "~0.14.0",
+    "react-test-renderer": "19.2.3",
     "typescript": "^6.0.2"
   },
   "peerDependencies": {
     "@react-navigation/native": ">=7.0.0",
     "@react-navigation/native-stack": ">=7.0.0",
-    "@swmansion/react-native-bottom-sheet": "^0.16.2",
-    "expo-router": ">=56.1.1",
-    "react": ">=18.0.0",
-    "react-native": ">=0.81.0",
-    "react-native-keyboard-controller": "^1.22.7",
-    "react-native-reanimated": ">=4.0.0",
-    "react-native-teleport": ">=1.2.2",
-    "react-native-worklets": ">=0.8.3"
+    "@swmansion/react-native-bottom-sheet": "^1.1.0",
+    "expo-router": ">=58.0.0",
+    "react": ">=19.2.0",
+    "react-native": ">=0.87.0",
+    "react-native-keyboard-controller": "^1.23.1",
+    "react-native-reanimated": "^4.8.0",
+    "react-native-worklets": ">=0.14.0"
   },
   "peerDependenciesMeta": {
     "@react-navigation/native": {
@@ -165,13 +136,7 @@
     "@react-navigation/native-stack": {
       "optional": true
     },
-    "@swmansion/react-native-bottom-sheet": {
-      "optional": true
-    },
     "expo-router": {
-      "optional": true
-    },
-    "react-native-keyboard-controller": {
       "optional": true
     }
   },
@@ -180,7 +145,7 @@
     "examples/*"
   ],
   "engines": {
-    "node": ">=18"
+    "node": "^22.13.0 || ^24.3.0 || >=26.0.0"
   },
   "sideEffects": false,
   "packageManager": "yarn@4.11.0",
@@ -203,24 +168,6 @@
       ]
     ]
   },
-  "codegenConfig": {
-    "name": "ScreenChoreographyViewSpec",
-    "type": "all",
-    "jsSrcsDir": "src",
-    "android": {
-      "javaPackageName": "com.screenchoreography"
-    },
-    "ios": {
-      "modulesProvider": {
-        "ScreenChoreographyPreparation": "ScreenChoreographyPreparation"
-      },
-      "components": {
-        "ScreenChoreographyView": {
-          "className": "ScreenChoreographyView"
-        }
-      }
-    }
-  },
   "prettier": {
     "quoteProps": "consistent",
     "singleQuote": true,
@@ -235,8 +182,5 @@
       "eslint"
     ],
     "version": "0.60.0"
-  },
-  "resolutions": {
-    "react-native@npm:0.83.0": "patch:react-native@npm%3A0.83.0#~/.yarn/patches/react-native-npm-0.83.0-577d0f2d83.patch"
   }
 }

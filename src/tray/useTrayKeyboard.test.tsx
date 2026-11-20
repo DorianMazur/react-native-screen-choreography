@@ -1,14 +1,11 @@
 import React from 'react';
-import { StyleSheet, View } from 'react-native';
 import {
   act,
   render as renderComponent,
   type RenderResult,
 } from '@testing-library/react-native/pure';
 import type { KeyboardHandler } from 'react-native-keyboard-controller';
-import { createTray } from './createTray';
 import { useTrayKeyboard } from './useTrayKeyboard';
-import type { TrayKeyboardState, TrayNavigation } from './types';
 
 let mockInitialHeight = 0;
 let mockDeferCallbacks = false;
@@ -39,23 +36,10 @@ jest.mock('react-native-worklets', () => ({
     else fn(...args);
   },
 }));
-jest.mock('react-native-teleport', () => ({
-  PortalProvider: ({ children }: { children: React.ReactNode }) => children,
-}));
-jest.mock('../native/NativeTransitionHost', () => ({
-  NativeTransitionHost: 'TransitionHost',
-}));
-jest.mock('../native/NativeChoreographyPreparation', () => ({
-  __esModule: true,
-  default: { install: jest.fn() },
-}));
 jest.mock('@swmansion/react-native-bottom-sheet', () => ({
   BottomSheetProvider: ({ children }: { children: React.ReactNode }) =>
     children,
   ModalBottomSheet: 'BottomSheet',
-}));
-jest.mock('../native/NativeOverlay', () => ({
-  NativeOverlay: 'Overlay',
 }));
 
 const renderers: RenderResult[] = [];
@@ -199,105 +183,4 @@ test('ignores deferred callbacks after the owning presentation unmounts', () => 
     progress: { value: 0 },
   });
   expect(current.renders).toHaveBeenCalledTimes(currentRenders);
-});
-
-test('shares the host keyboard values with screen and header consumers without per-frame React updates', async () => {
-  const Tray = createTray<{ form: undefined }>();
-  let navigation!: TrayNavigation<{ form: undefined }>;
-  let pageKeyboard!: TrayKeyboardState;
-  let headerKeyboard!: TrayKeyboardState;
-  const pageRenders = jest.fn();
-  function Actions() {
-    navigation = Tray.useTray();
-    return null;
-  }
-  function Form() {
-    pageKeyboard = Tray.useKeyboard();
-    pageRenders();
-    return <View />;
-  }
-  function Header() {
-    headerKeyboard = Tray.useKeyboard();
-    return <View />;
-  }
-  const renderer = render(
-    <Tray.Provider>
-      <Actions />
-      <Tray.Stack renderHeader={() => <Header />}>
-        <Tray.Screen name="form" component={Form} />
-      </Tray.Stack>
-    </Tray.Provider>
-  );
-  await act(async () => navigation.present('form'));
-  expect(pageKeyboard).toBe(headerKeyboard);
-  const values = pageKeyboard;
-  const handlers = [...mockHandlers][0]!;
-  act(() => handlers.current.onStart!(event));
-  expect(pageKeyboard.isVisible).toBe(true);
-  const renders = pageRenders.mock.calls.length;
-  act(() => handlers.current.onMove!({ ...event, height: 150, progress: 0.5 }));
-  expect(pageKeyboard.height).toBe(values.height);
-  expect(pageKeyboard.progress).toBe(values.progress);
-  expect(pageKeyboard.height.value).toBe(150);
-  expect(pageKeyboard.progress.value).toBe(0.5);
-  expect(pageRenders).toHaveBeenCalledTimes(renders);
-  act(() => handlers.current.onEnd!(event));
-  const sheet = renderer.UNSAFE_root.findByType(
-    'BottomSheet' as React.ElementType
-  );
-  expect(StyleSheet.flatten(sheet.props.style).bottom).toBe(
-    pageKeyboard.height.value
-  );
-});
-
-test('rejects keyboard access outside its own screen, including nested provider app content', () => {
-  const Tray = createTray<{ form: undefined }>();
-  const Other = createTray<{ form: undefined }>();
-  const error = jest.spyOn(console, 'error').mockImplementation(() => {});
-  let navigation!: TrayNavigation<{ form: undefined }>;
-  function Actions() {
-    navigation = Tray.useTray();
-    return null;
-  }
-  function ReadKeyboard() {
-    Tray.useKeyboard();
-    return null;
-  }
-  function ReadOtherKeyboard() {
-    Other.useKeyboard();
-    return null;
-  }
-  function Empty() {
-    return null;
-  }
-  function Nested() {
-    return (
-      <Tray.Provider>
-        <ReadKeyboard />
-        <Tray.Stack>
-          <Tray.Screen name="form" component={Empty} />
-        </Tray.Stack>
-      </Tray.Provider>
-    );
-  }
-  try {
-    expect(() => render(<ReadKeyboard />)).toThrow(
-      'useKeyboard must be used inside a screen or custom header of its Tray.Provider.'
-    );
-    for (const component of [ReadOtherKeyboard, Nested]) {
-      render(
-        <Tray.Provider>
-          <Actions />
-          <Tray.Stack>
-            <Tray.Screen name="form" component={component} />
-          </Tray.Stack>
-        </Tray.Provider>
-      );
-      expect(() => act(() => navigation.present('form'))).toThrow(
-        'useKeyboard must be used inside a screen or custom header of its Tray.Provider.'
-      );
-    }
-  } finally {
-    error.mockRestore();
-  }
 });

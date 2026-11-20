@@ -3,12 +3,14 @@
     "rootDir": ".",
     "paths": {
       "react-native-screen-choreography": ["./src/entries/index"],
-      "react-native-screen-choreography/core": ["./src/entries/core"],
       "react-native-screen-choreography/expo-router": [
         "./src/entries/expo-router"
       ],
       "react-native-safe-area-context": [
         "./examples/react-navigation/node_modules/react-native-safe-area-context"
+      ],
+      "react-native-screen-choreography/expo-router/tray": [
+        "./src/entries/expo-router-tray.ts"
       ],
       "react-native-screen-choreography/tray": ["./src/entries/tray.ts"]
     },
@@ -41,7 +43,6 @@
     "node_modules",
     "lib",
     "examples",
-    "scripts/performance",
     "artifacts/performance",
     "docs"
   ]
