@@ -143,8 +143,10 @@ test('accepts ordered acknowledgments and starts the prepared animation once', a
   expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
   await r.ack('A', 'attached');
   expect(r.presentation.phase.value).toBe(1);
+  expect(r.frame.isActive).toBe(true);
   expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
   await r.ack();
+  expect(r.frame.isActive).toBe(false);
   await r.ack();
   await r.tick(2001);
   expect(r.presentation.phase.value).toBe(2);
@@ -410,6 +412,7 @@ test('keeps a settling native host active without retaining its presentation val
   ).toBe(true);
   await r.tick(1);
   await r.ack('old', 'settled');
+  expect(r.frame.isActive).toBe(true);
   await r.tick(18);
   expect(dispatchCommand).toHaveBeenCalledTimes(2);
   expect(dispatchCommand).toHaveBeenLastCalledWith(
@@ -418,8 +421,41 @@ test('keeps a settling native host active without retaining its presentation val
     ['A']
   );
   await r.ack('A', 'settled');
+  expect(r.frame.isActive).toBe(false);
   await r.tick(35);
   expect(settled).toHaveBeenCalledWith('A');
   expect(dispatchCommand).toHaveBeenCalledTimes(2);
   expect(startOwnedProgressOnUI).not.toHaveBeenCalled();
+});
+
+test('stops the frame watchdog after presentation and re-enables it for settlement of the same session', async () => {
+  const settled = jest.fn();
+  const r = await setup(true, { onSettled: settled });
+  expect(r.frame.isActive).toBe(true);
+  await r.ack('A', 'presented');
+  expect(r.frame.isActive).toBe(false);
+
+  await act(async () =>
+    tree.rerender(
+      <NativeTransitionHost
+        active
+        ownership={ownership}
+        progress={r.progress}
+        sessionId="A"
+        settlementSessionId="A"
+        onSettled={settled}
+        onPresentationFailed={r.failed}
+      />
+    )
+  );
+  expect(r.frame.isActive).toBe(true);
+  await r.tick(1);
+  expect(dispatchCommand).toHaveBeenLastCalledWith(
+    expect.any(Function),
+    'prepare',
+    ['A']
+  );
+  await r.ack('A', 'settled');
+  expect(r.frame.isActive).toBe(false);
+  expect(settled).toHaveBeenCalledWith('A');
 });

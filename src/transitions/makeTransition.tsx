@@ -3,7 +3,6 @@ import { StyleSheet, View } from 'react-native';
 import Animated, {
   interpolate,
   useAnimatedStyle,
-  useDerivedValue,
 } from 'react-native-reanimated';
 import { PortalHost } from 'react-native-teleport';
 import { getExpansionProgress } from '../core/expansionProgress';
@@ -116,41 +115,21 @@ function BoundsTransition({
   const targetY = target.metrics.pageY;
   const targetWidth = target.metrics.width;
   const targetHeight = target.metrics.height;
-  const timeline = useDerivedValue(() =>
-    direction === 'backward' ? 1 - progress.value : progress.value
-  );
+  const backward = direction === 'backward';
   const animatedStyle = useAnimatedStyle(() => {
-    const heightProgress = getExpansionProgress(
-      timeline.value,
-      sourceHeight,
-      targetHeight
-    );
+    const t = backward ? 1 - progress.value : progress.value;
+    const heightProgress = getExpansionProgress(t, sourceHeight, targetHeight);
 
     return {
       transform: [
         {
-          translateX: interpolate(
-            timeline.value,
-            [0, 1],
-            [sourceX, targetX],
-            'clamp'
-          ),
+          translateX: interpolate(t, [0, 1], [sourceX, targetX], 'clamp'),
         },
         {
-          translateY: interpolate(
-            timeline.value,
-            [0, 1],
-            [sourceY, targetY],
-            'clamp'
-          ),
+          translateY: interpolate(t, [0, 1], [sourceY, targetY], 'clamp'),
         },
       ],
-      width: interpolate(
-        timeline.value,
-        [0, 1],
-        [sourceWidth, targetWidth],
-        'clamp'
-      ),
+      width: interpolate(t, [0, 1], [sourceWidth, targetWidth], 'clamp'),
       height: interpolate(
         heightProgress,
         [0, 1],
