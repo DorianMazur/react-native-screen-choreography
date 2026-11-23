@@ -1,7 +1,6 @@
 import React from 'react';
 import Animated, {
   useAnimatedStyle,
-  useDerivedValue,
   interpolate,
   type SharedValue,
 } from 'react-native-reanimated';
@@ -34,34 +33,33 @@ export function TransitionFrame({
   sourceBorderRadius,
   targetBorderRadius,
 }: TransitionFrameProps) {
+  const backward = direction === 'backward';
   const hasRadius =
     sourceBorderRadius !== undefined || targetBorderRadius !== undefined;
   const sRadius = sourceBorderRadius ?? 0;
   const tRadius = targetBorderRadius ?? 0;
+  const animateRadius = hasRadius && sRadius !== tRadius;
 
   const baseStyle = {
     ...transitionLayoutStyle(),
     zIndex,
-    ...(hasRadius ? { overflow: 'hidden' as const } : {}),
-  };
-
-  const t = useDerivedValue(() =>
-    direction === 'backward' ? 1 - progress.value : progress.value
-  );
-
-  const animatedStyle = useAnimatedStyle(() => ({
-    ...transitionGeometryStyle(sourceMetrics, targetMetrics, t.value),
     ...(hasRadius
       ? {
-          borderRadius: interpolate(
-            t.value,
-            [0, 1],
-            [sRadius, tRadius],
-            'clamp'
-          ),
+          overflow: 'hidden' as const,
+          ...(animateRadius ? {} : { borderRadius: sRadius }),
         }
       : {}),
-  }));
+  };
+
+  const animatedStyle = useAnimatedStyle(() => {
+    const t = backward ? 1 - progress.value : progress.value;
+    const geometry = transitionGeometryStyle(sourceMetrics, targetMetrics, t);
+    if (!animateRadius) return geometry;
+    return {
+      ...geometry,
+      borderRadius: interpolate(t, [0, 1], [sRadius, tRadius], 'clamp'),
+    };
+  });
 
   return (
     <Animated.View style={[baseStyle, animatedStyle]} pointerEvents="none">

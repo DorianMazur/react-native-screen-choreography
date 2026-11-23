@@ -291,3 +291,79 @@ test('separate groups reuse role motion without losing endpoint metadata', async
   expect(target.props.transition).toBe(two!.props.transition);
   expect(target.props.metadata).toEqual({ scale: 2 });
 });
+
+test('surface keeps static shape properties and omits shadow mappers when unused', async () => {
+  const definition = defineTransition({
+    shared: { card: { kind: 'surface', radius: [12, 12] } },
+  });
+  const owner = await mount(
+    <definition.Element name="card" groupId="g">
+      Content
+    </definition.Element>
+  );
+  const Renderer = (
+    owner.UNSAFE_root.findByType('Owner' as React.ElementType).props
+      .transition as Transition
+  ).renderer;
+  const small = {
+    screenId: 'list',
+    style: { backgroundColor: '#ffffff' },
+    metrics: { pageX: 0, pageY: 0, width: 100, height: 100 },
+  };
+  const big = {
+    screenId: 'detail',
+    style: { backgroundColor: '#ffffff' },
+    metrics: { pageX: 0, pageY: 0, width: 200, height: 200 },
+  };
+  const noShadowTree = await mount(
+    <Renderer
+      id="card"
+      groupId="g"
+      progress={mockProgress}
+      direction="forward"
+      zIndex={0}
+      source={small}
+      target={big}
+    />
+  );
+  // Wrapper + content host only (no shadow Animated.View when boxShadow is absent).
+  const viewsWithoutShadow = noShadowTree.UNSAFE_root.findAllByType(
+    'Animated.View' as React.ElementType
+  );
+  expect(viewsWithoutShadow).toHaveLength(2);
+  expect(StyleSheet.flatten(viewsWithoutShadow[1]!.props.style)).toMatchObject({
+    backgroundColor: '#ffffff',
+    borderRadius: 12,
+  });
+
+  const withShadowTree = await mount(
+    <Renderer
+      id="card"
+      groupId="g"
+      progress={mockProgress}
+      direction="forward"
+      zIndex={0}
+      source={small}
+      target={{
+        ...big,
+        style: { ...big.style, boxShadow: '0 8 24 rgba(0,0,0,0.2)' },
+      }}
+    />
+  );
+  const viewsWithShadow = withShadowTree.UNSAFE_root.findAllByType(
+    'Animated.View' as React.ElementType
+  );
+  expect(viewsWithShadow).toHaveLength(3);
+  expect(StyleSheet.flatten(viewsWithShadow[1]!.props.style)).toMatchObject({
+    borderRadius: 12,
+    boxShadow: [
+      {
+        offsetX: 0,
+        offsetY: 8,
+        blurRadius: 24,
+        spreadDistance: 0,
+        color: 'rgba(0,0,0,0.2)',
+      },
+    ],
+  });
+});

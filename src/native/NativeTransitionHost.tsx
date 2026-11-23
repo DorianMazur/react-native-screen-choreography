@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useCallback, useEffect, useRef } from 'react';
 import { Platform, StyleSheet, useWindowDimensions } from 'react-native';
 import Animated, {
   useAnimatedProps,
@@ -72,12 +72,28 @@ export function NativeTransitionHost({
     useAnimatedRef<React.ComponentRef<typeof NativeScreenChoreographyView>>();
   const deadline = useSharedValue<{ id: string; at: number } | null>(null);
   const settledSession = useSharedValue('');
+  const activeFrameKey = active
+    ? settlementSessionId
+      ? `settlement:${settlementSessionId}`
+      : presentation
+        ? `presentation:${sessionId}`
+        : null
+    : null;
+  const activeFrameKeyRef = useRef<string | null>(null);
+  const stoppedFrameKeyRef = useRef<string | null>(null);
+  const stopFrameRef = useRef<(completedKey: string) => void>(() => {});
+  const stopFrame = useCallback((completedKey: string) => {
+    stopFrameRef.current(completedKey);
+  }, []);
   const frame = useFrameCallback(({ timestamp }) => {
     if (settlementSessionId) {
       // Replay an acknowledgment that preceded installation of the UI handler.
       // Native checks emptiness only at pre-draw, after the retargeting commit.
-      if (active && settledSession.value !== settlementSessionId)
+      if (active && settledSession.value !== settlementSessionId) {
         dispatchCommand(hostRef, 'prepare', [settlementSessionId]);
+      } else {
+        scheduleOnRN(stopFrame, `settlement:${settlementSessionId}`);
+      }
       return;
     }
     if (
@@ -85,8 +101,10 @@ export function NativeTransitionHost({
       !presentation ||
       !presentation.valid.value ||
       presentation.phase.value === 2
-    )
+    ) {
+      if (presentation) scheduleOnRN(stopFrame, `presentation:${sessionId}`);
       return;
+    }
     if (deadline.value?.id !== sessionId)
       deadline.value = {
         id: sessionId,
@@ -94,6 +112,7 @@ export function NativeTransitionHost({
       };
     if (timestamp >= deadline.value!.at) {
       presentation.valid.value = false;
+      scheduleOnRN(stopFrame, `presentation:${sessionId}`);
       scheduleOnRN(onPresentationFailed, sessionId, 'timeout');
       return;
     }
@@ -102,6 +121,12 @@ export function NativeTransitionHost({
       dispatchCommand(hostRef, 'prepare', [sessionId]);
     }
   }, false);
+  stopFrameRef.current = (completedKey: string) => {
+    stoppedFrameKeyRef.current = completedKey;
+    if (activeFrameKeyRef.current === completedKey) {
+      frame.setActive(false);
+    }
+  };
   const isIOS = Platform.OS === 'ios';
   const animatedProps = useAnimatedProps(() => {
     const returning = reverseHandoff?.value;
@@ -136,6 +161,9 @@ export function NativeTransitionHost({
       // worklet refreshes. The provider validates the pending handoff identity.
       if (event.stage === 'settled') {
         settledSession.value = event.sessionId;
+        if (settlementSessionId && event.sessionId === settlementSessionId) {
+          scheduleOnRN(stopFrame, `settlement:${settlementSessionId}`);
+        }
         if (onSettled) scheduleOnRN(onSettled, event.sessionId);
         return;
       }
@@ -159,6 +187,7 @@ export function NativeTransitionHost({
         : 0;
       if (!presentation.validate()) {
         presentation.valid.value = false;
+        scheduleOnRN(stopFrame, `presentation:${sessionId}`);
         scheduleOnRN(onPresentationFailed, sessionId, 'invalidated');
         return;
       }
@@ -175,6 +204,7 @@ export function NativeTransitionHost({
         };
       }
       presentation.phase.value = 2;
+      scheduleOnRN(stopFrame, `presentation:${sessionId}`);
       if (onPresentationReady) scheduleOnRN(onPresentationReady, sessionId);
     },
     ['onPresentationReady'],
@@ -208,9 +238,18 @@ export function NativeTransitionHost({
     }
   );
   useEffect(() => {
-    frame.setActive(Boolean(active && (presentation || settlementSessionId)));
-    return () => frame.setActive(false);
-  }, [frame, active, presentation, settlementSessionId]);
+    activeFrameKeyRef.current = activeFrameKey;
+    if (!activeFrameKey) {
+      stoppedFrameKeyRef.current = null;
+      frame.setActive(false);
+      return;
+    }
+    frame.setActive(stoppedFrameKeyRef.current !== activeFrameKey);
+    return () => {
+      activeFrameKeyRef.current = null;
+      frame.setActive(false);
+    };
+  }, [frame, activeFrameKey]);
   return (
     <AnimatedHost
       ref={hostRef}

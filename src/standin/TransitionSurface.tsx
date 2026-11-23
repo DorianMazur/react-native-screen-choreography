@@ -2,7 +2,6 @@ import React from 'react';
 import { StyleSheet, type ViewStyle } from 'react-native';
 import Animated, {
   useAnimatedStyle,
-  useDerivedValue,
   interpolate,
   interpolateColor,
   type SharedValue,
@@ -59,6 +58,59 @@ interface TransitionSurfaceProps {
   zIndex?: number;
 }
 
+interface TransitionSurfaceShadowProps {
+  progress: SharedValue<number>;
+  backward: boolean;
+  sourceRadius: number;
+  targetRadius: number;
+  shadowColor: string;
+  boxShadow: NonNullable<SurfaceTransitionStyle['boxShadow']>;
+}
+
+function TransitionSurfaceShadow({
+  progress,
+  backward,
+  sourceRadius,
+  targetRadius,
+  shadowColor,
+  boxShadow,
+}: TransitionSurfaceShadowProps) {
+  const animateRadius = sourceRadius !== targetRadius;
+  const shadowStyle = useAnimatedStyle(() => {
+    const opacity = interpolate(
+      progress.value,
+      [0, 0.08, 0.92, 1],
+      [0, 1, 1, 0],
+      'clamp'
+    );
+    if (!animateRadius) return { opacity };
+    const t = backward ? 1 - progress.value : progress.value;
+    return {
+      borderRadius: interpolate(
+        t,
+        [0, 1],
+        [sourceRadius, targetRadius],
+        'clamp'
+      ),
+      opacity,
+    };
+  });
+
+  return (
+    <Animated.View
+      style={[
+        styles.shadowLayer,
+        {
+          backgroundColor: shadowColor,
+          boxShadow,
+          ...(animateRadius ? {} : { borderRadius: sourceRadius }),
+        },
+        shadowStyle,
+      ]}
+    />
+  );
+}
+
 /**
  * Interpolates bounds, color, and radius around a live transition host.
  * Fades the expanded endpoint's shadow out at both handoffs to avoid doubling it.
@@ -73,55 +125,68 @@ export function TransitionSurface({
   children,
   zIndex = 0,
 }: TransitionSurfaceProps) {
+  const backward = direction === 'backward';
   const sourceRadius = sourceStyle.borderRadius ?? 0;
   const targetRadius = targetStyle.borderRadius ?? 0;
   const sourceColor = sourceStyle.backgroundColor ?? 'transparent';
   const targetColor = targetStyle.backgroundColor ?? 'transparent';
-  const expandedStyle = direction === 'backward' ? sourceStyle : targetStyle;
+  const animateColor = sourceColor !== targetColor;
+  const animateRadius = sourceRadius !== targetRadius;
+  const expandedStyle = backward ? sourceStyle : targetStyle;
   // Keep boxShadow static: Android recreates its drawable when parameters change.
   const expandedBoxShadow = expandedStyle.boxShadow;
   const shadowColor = expandedStyle.backgroundColor ?? 'transparent';
 
-  const t = useDerivedValue(() => {
-    return direction === 'backward' ? 1 - progress.value : progress.value;
+  const layoutStyle = transitionLayoutStyle();
+  const frameStyle = useAnimatedStyle(() => {
+    const t = backward ? 1 - progress.value : progress.value;
+    return transitionGeometryStyle(sourceMetrics, targetMetrics, t);
   });
 
-  const layoutStyle = transitionLayoutStyle();
-  const frameStyle = useAnimatedStyle(() =>
-    transitionGeometryStyle(sourceMetrics, targetMetrics, t.value)
-  );
+  // Omit progress from the closure when both shape properties are static so
+  // Reanimated does not subscribe this mapper to per-frame progress updates.
+  const shapeProgress = animateColor || animateRadius ? progress : null;
+  const contentShapeStyle = useAnimatedStyle(() => {
+    if (!shapeProgress) return {};
+    const t = backward ? 1 - shapeProgress.value : shapeProgress.value;
+    if (animateColor && animateRadius) {
+      return {
+        backgroundColor: interpolateColor(
+          Math.max(0, Math.min(1, t)),
+          [0, 1],
+          [sourceColor, targetColor]
+        ),
+        borderRadius: interpolate(
+          t,
+          [0, 1],
+          [sourceRadius, targetRadius],
+          'clamp'
+        ),
+      };
+    }
+    if (animateColor) {
+      return {
+        backgroundColor: interpolateColor(
+          Math.max(0, Math.min(1, t)),
+          [0, 1],
+          [sourceColor, targetColor]
+        ),
+      };
+    }
+    return {
+      borderRadius: interpolate(
+        t,
+        [0, 1],
+        [sourceRadius, targetRadius],
+        'clamp'
+      ),
+    };
+  });
 
-  const shadowStyle = useAnimatedStyle(() => ({
-    borderRadius: interpolate(
-      t.value,
-      [0, 1],
-      [sourceRadius, targetRadius],
-      'clamp'
-    ),
-    opacity: interpolate(
-      progress.value,
-      [0, 0.08, 0.92, 1],
-      [0, 1, 1, 0],
-      'clamp'
-    ),
-  }));
-
-  const contentShapeStyle = useAnimatedStyle(() => ({
-    backgroundColor:
-      sourceColor === targetColor
-        ? sourceColor
-        : interpolateColor(
-            Math.max(0, Math.min(1, t.value)),
-            [0, 1],
-            [sourceColor, targetColor]
-          ),
-    borderRadius: interpolate(
-      t.value,
-      [0, 1],
-      [sourceRadius, targetRadius],
-      'clamp'
-    ),
-  }));
+  const staticContentStyle: ViewStyle = {
+    ...(animateColor ? {} : { backgroundColor: sourceColor }),
+    ...(animateRadius ? {} : { borderRadius: sourceRadius }),
+  };
 
   return (
     <Animated.View
@@ -129,15 +194,18 @@ export function TransitionSurface({
       pointerEvents="none"
     >
       {expandedBoxShadow && (
-        <Animated.View
-          style={[
-            styles.shadowLayer,
-            shadowStyle,
-            { backgroundColor: shadowColor, boxShadow: expandedBoxShadow },
-          ]}
+        <TransitionSurfaceShadow
+          progress={progress}
+          backward={backward}
+          sourceRadius={sourceRadius}
+          targetRadius={targetRadius}
+          shadowColor={shadowColor}
+          boxShadow={expandedBoxShadow}
         />
       )}
-      <Animated.View style={[styles.contentHost, contentShapeStyle]}>
+      <Animated.View
+        style={[styles.contentHost, staticContentStyle, contentShapeStyle]}
+      >
         {children}
       </Animated.View>
     </Animated.View>
