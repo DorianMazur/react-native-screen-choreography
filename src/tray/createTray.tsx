@@ -406,13 +406,13 @@ function TrayHost<P extends TrayParamList>({
   // A returning header needs a fresh layout, including after a built-in header.
   if (headerLayout.key !== active.key || headerLayout.custom !== !!renderHeader)
     setHeaderLayout({ key: active.key, custom: !!renderHeader });
+  const handleReservedFor = (entry: TrayEntry) =>
+    screens[entry.name]?.handleVisible ?? stackHandleVisible;
   const headerHeightFor = (entry: TrayEntry) => {
     const options = screens[entry.name];
     const custom = options?.renderHeader ?? stackRenderHeader;
-    const handle =
-      !dismissDisabled && (options?.handleVisible ?? stackHandleVisible);
     return (
-      (handle ? HANDLE_HEIGHT : 0) +
+      (handleReservedFor(entry) ? HANDLE_HEIGHT : 0) +
       (custom
         ? (headerHeights.current.get(entry.key) ??
           options?.headerHeight ??
@@ -764,9 +764,7 @@ function TrayHost<P extends TrayParamList>({
                   const isActive = entry.key === active.key;
                   const entryRenderHeader =
                     screens[entry.name]?.renderHeader ?? stackRenderHeader;
-                  const handleVisible =
-                    !dismissDisabled &&
-                    (screens[entry.name]?.handleVisible ?? stackHandleVisible);
+                  const handleReserved = handleReservedFor(entry);
                   const entryTitle = screens[entry.name]?.title ?? entry.name;
                   const entryCanGoBack = isActive
                     ? state.entries.length > 1
@@ -784,7 +782,17 @@ function TrayHost<P extends TrayParamList>({
                       session={state.session}
                       transitionId={crossfadeHeaders ? transitionId : undefined}
                     >
-                      {handleVisible && <View style={styles.handle} />}
+                      {handleReserved && (
+                        <View
+                          pointerEvents="none"
+                          accessibilityElementsHidden
+                          importantForAccessibility="no-hide-descendants"
+                          style={[
+                            styles.handle,
+                            dismissDisabled && styles.hiddenHandle,
+                          ]}
+                        />
+                      )}
                       {entryRenderHeader ? (
                         <TrayCustomHeader
                           active={isActive}
@@ -1389,6 +1397,7 @@ const styles = StyleSheet.create({
     alignSelf: 'center',
     marginTop: 10,
   },
+  hiddenHandle: { opacity: 0 },
   header: {
     alignSelf: 'center',
     flexDirection: 'row',

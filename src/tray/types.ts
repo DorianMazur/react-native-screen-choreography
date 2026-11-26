@@ -154,7 +154,7 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   renderHeader?: (props: TrayHeaderProps<P>) => ReactNode;
   /** Show the drag indicator above the header. Defaults to true; dragging stays enabled. */
   handleVisible?: boolean;
-  /** Hide the handle and block user dismissal (drag, backdrop, Close, and Back at the root). Code can still call dismiss(). Defaults to false. */
+  /** Hide the handle while keeping its spacing and block user dismissal (drag, backdrop, Close, and Back at the root). Code can still call dismiss(). Defaults to false. */
   dismissDisabled?: boolean;
   /** Card resizing between screens, header transitions, and page crossfades. Native dragging/dismissal is separate. */
   animation?: TrayAnimationConfig;
