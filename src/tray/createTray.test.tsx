@@ -2415,7 +2415,8 @@ test('a null header and hidden handle leave no reserved header space', () => {
   const render = (
     handleVisible: boolean,
     custom = true,
-    dismissDisabled = false
+    dismissDisabled = false,
+    presentation: 'fullScreen' | 'tray' = 'fullScreen'
   ) => (
     <Tray.Provider>
       <Observer />
@@ -2424,14 +2425,20 @@ test('a null header and hidden handle leave no reserved header space', () => {
         dismissDisabled={dismissDisabled}
         renderHeader={custom ? () => null : undefined}
       >
-        <Tray.Screen
-          name="form"
-          component={Form}
-          options={{ presentation: 'fullScreen' }}
-        />
+        <Tray.Screen name="form" component={Form} options={{ presentation }} />
       </Tray.Stack>
     </Tray.Provider>
   );
+
+  const handleStyle = () => {
+    const view = renderer.UNSAFE_root.findByType(TrayHeaderLayer)
+      .findAllByType(View)
+      .find((node) => {
+        const style = StyleSheet.flatten(node.props.style);
+        return style?.width === 32 && style?.height === 4;
+      });
+    return view ? StyleSheet.flatten(view.props.style) : undefined;
+  };
 
   renderer = renderComponent(render(false));
 
@@ -2443,16 +2450,65 @@ test('a null header and hidden handle leave no reserved header space', () => {
   const pageHeight = () => viewportStyle(renderer, Form).height;
   const windowHeight = Dimensions.get('window').height;
   expect(pageHeight()).toBe(windowHeight);
+  expect(handleStyle()).toBeUndefined();
   act(() => renderer.rerender(render(true)));
   expect(pageHeight()).toBe(windowHeight - 14);
+  expect(handleStyle()).toMatchObject({
+    height: 4,
+    marginTop: 10,
+    opacity: 0.5,
+  });
   act(() => renderer.rerender(render(false, false)));
   expect(pageHeight()).toBe(windowHeight - 56);
+  expect(handleStyle()).toBeUndefined();
   act(() => renderer.rerender(render(true, false)));
   expect(pageHeight()).toBe(windowHeight - 70);
+  expect(handleStyle()).toMatchObject({
+    height: 4,
+    marginTop: 10,
+    opacity: 0.5,
+  });
+  // Disabling dismissal hides the handle visually while keeping its 14pt space.
   act(() => renderer.rerender(render(true, false, true)));
+  expect(pageHeight()).toBe(windowHeight - 70);
+  expect(handleStyle()).toMatchObject({
+    height: 4,
+    marginTop: 10,
+    opacity: 0,
+  });
+  act(() => renderer.rerender(render(false, false, true)));
   expect(pageHeight()).toBe(windowHeight - 56);
+  expect(handleStyle()).toBeUndefined();
+  act(() => renderer.rerender(render(false, true, true)));
+  expect(pageHeight()).toBe(windowHeight);
+  expect(handleStyle()).toBeUndefined();
   act(() => renderer.rerender(render(true, false)));
   expect(pageHeight()).toBe(windowHeight - 70);
+  expect(handleStyle()).toMatchObject({
+    height: 4,
+    marginTop: 10,
+    opacity: 0.5,
+  });
+
+  // Compact cards also keep the 14pt handle spacing reserved when dismissDisabled toggles.
+  act(() => renderer.rerender(render(true, false, false, 'tray')));
+  layoutPage(renderer, Form, 160);
+  expectIntrinsicLayout(renderer, Form, 70);
+  expect(handleStyle()).toMatchObject({
+    height: 4,
+    marginTop: 10,
+    opacity: 0.5,
+  });
+  act(() => renderer.rerender(render(true, false, true, 'tray')));
+  expectIntrinsicLayout(renderer, Form, 70);
+  expect(handleStyle()).toMatchObject({
+    height: 4,
+    marginTop: 10,
+    opacity: 0,
+  });
+  act(() => renderer.rerender(render(false, false, true, 'tray')));
+  expectIntrinsicLayout(renderer, Form, 56);
+  expect(handleStyle()).toBeUndefined();
   act(() => renderer.unmount());
 });
 
