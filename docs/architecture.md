@@ -126,6 +126,8 @@ finite, nonempty geometry.
 Before navigation, the coordinator captures source geometry for that navigation.
 This preserves the departing bounds if native-stack detaches the screen. The
 capture is tied to native node identity and consumed by the next preparation.
+On Android, a tray can receive its most recently mounted source batch after a
+new commit if the screen and endpoint identities and bounds still match.
 When no source capture is available, preparation reads source and target
 together from one mounted root.
 

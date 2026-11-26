@@ -9,6 +9,7 @@ import React, {
   useState,
 } from 'react';
 import { useSharedValue } from 'react-native-reanimated';
+import { Platform } from 'react-native';
 import { ChoreographyProvider } from '../components/ChoreographyProvider';
 import { ChoreographyContext } from '../core/ChoreographyContext';
 import {
@@ -17,6 +18,7 @@ import {
 } from '../core/ScreenGeometryContext';
 import { animateOwnedProgress } from '../core/ProgressOwnership';
 import { PreparationTrace } from '../core/preparationTrace';
+import type { ChoreographyPreparationStage } from '../types';
 import type { TrayAction, TrayStackState } from './stack';
 import type { ResolvedTrayAnimation } from './animation';
 import { TrayDiagnosticsContext } from './diagnostics';
@@ -123,16 +125,24 @@ export function useTraySharedTransition({
       : undefined;
     if (trace) pendingTrace.current = { session, id: preparation.id, trace };
     const endCapture = trace?.start('source-capture');
+    let captureDetails: ChoreographyPreparationStage['details'];
     let captured = false;
     const ready = () => {
-      endCapture?.();
+      endCapture?.(captureDetails);
       if (current) {
         captured = true;
         dispatch({ type: 'prepared', session, id: preparation.id });
       }
     };
     ctx
-      .captureSourceGroup(preparation.groupId, screenId(preparation.from))
+      .captureSourceGroup(preparation.groupId, screenId(preparation.from), {
+        acceptMatchingMountedSource: Platform.OS === 'android',
+        onResult: endCapture
+          ? (details) => {
+              captureDetails = details;
+            }
+          : undefined,
+      })
       .then(ready, ready);
     return () => {
       current = false;

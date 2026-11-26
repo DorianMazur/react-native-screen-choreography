@@ -611,10 +611,11 @@ export function ChoreographyProvider({
     [reducedMotion]
   );
 
-  const captureSourceGroup = useCallback(
-    async (groupId: string, screenId: string) => {
-      await coordinatorRef.current!.captureSourceGroup(groupId, screenId);
-    },
+  const captureSourceGroup = useCallback<
+    TransitionCoordinator['captureSourceGroup']
+  >(
+    (groupId, screenId, options) =>
+      coordinatorRef.current!.captureSourceGroup(groupId, screenId, options),
     []
   );
 
