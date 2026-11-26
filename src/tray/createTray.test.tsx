@@ -309,6 +309,34 @@ test('dismissDisabled updates user controls without resetting content or blockin
   f.renderer.unmount();
 });
 
+test('backdropColor defaults to a dimmed scrim and updates without resetting content', () => {
+  const f = lifecycleFixture();
+  act(() => navigation.present('form'));
+  act(() => sheet(f.renderer).props.onSettle(1));
+  fireEvent.changeText(f.renderer.getByTestId('draft'), 'keep my work');
+
+  expect(sheet(f.renderer).props.scrimColor).toBe('rgba(0, 0, 0, 0.35)');
+  expect(sheet(f.renderer).props.scrimOpacities).toEqual([0, 1]);
+
+  f.renderer.rerender(
+    f.render({ ...f.callbacks, backdropColor: 'rgba(15, 23, 42, 0.6)' })
+  );
+  expect(sheet(f.renderer).props.scrimColor).toBe('rgba(15, 23, 42, 0.6)');
+  expect(sheet(f.renderer).props.scrimOpacities).toEqual([0, 1]);
+  expect(f.renderer.getByTestId('draft').props.value).toBe('keep my work');
+
+  f.renderer.rerender(
+    f.render({ ...f.callbacks, backdropColor: 'transparent' })
+  );
+  expect(sheet(f.renderer).props.scrimColor).toBe('transparent');
+  expect(f.renderer.getByTestId('draft').props.value).toBe('keep my work');
+
+  f.renderer.rerender(f.render({ ...f.callbacks, backdropColor: undefined }));
+  expect(sheet(f.renderer).props.scrimColor).toBe('rgba(0, 0, 0, 0.35)');
+  expect(f.renderer.getByTestId('draft').props.value).toBe('keep my work');
+  f.renderer.unmount();
+});
+
 test('dismissDisabled ignores a native close that finishes after dismissal is disabled', () => {
   const f = lifecycleFixture();
   const dismissKeyboard = jest.spyOn(Keyboard, 'dismiss');

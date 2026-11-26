@@ -150,6 +150,8 @@ export interface TrayStackProps<P extends TrayParamList = TrayParamList> {
   keyboardInset?: number;
   backgroundColor?: ColorValue;
   textColor?: ColorValue;
+  /** Color and opacity of the dimmed backdrop behind the sheet (e.g. 'rgba(0, 0, 0, 0.5)' or 'transparent'). Defaults to 'rgba(0, 0, 0, 0.35)'. */
+  backdropColor?: string;
   /** Replace the entire header, including its buttons. Return null for no header. */
   renderHeader?: (props: TrayHeaderProps<P>) => ReactNode;
   /** Show the drag indicator above the header. Defaults to true; dragging stays enabled. */

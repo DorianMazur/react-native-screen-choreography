@@ -70,6 +70,7 @@ import type {
 } from './types';
 
 const DETENTS = [0, 'content'] as const;
+const DEFAULT_BACKDROP_COLOR = 'rgba(0, 0, 0, 0.35)';
 const DEFAULT_HEADER_HEIGHT = 56;
 const HANDLE_HEIGHT = 14;
 const CONTENT_FADE_END = 0.75;
@@ -339,6 +340,7 @@ function TrayHost<P extends TrayParamList>({
   keyboardInset = 12,
   backgroundColor = '#ffffff',
   textColor = '#18181b',
+  backdropColor = DEFAULT_BACKDROP_COLOR,
   renderHeader: stackRenderHeader,
   handleVisible: stackHandleVisible = true,
   dismissDisabled = false,
@@ -733,8 +735,8 @@ function TrayHost<P extends TrayParamList>({
             extendUnderStatusBar
             animateIn={!reducedMotion}
             animateContentHeight={false}
-            scrimColor="#000000"
-            scrimOpacities={[0, 0.35]}
+            scrimColor={backdropColor}
+            scrimOpacities={[0, 1]}
             onIndexChange={(index) => {
               if (isBlockedSnap(index)) {
                 nativeSheet.reopen();

@@ -19,27 +19,28 @@ Mount the provider in your root layout or around a feature, outside `Choreograph
 
 ## `TrayStackProps`
 
-| Prop                   | Default         | Purpose                                                                            |
-| ---------------------- | --------------- | ---------------------------------------------------------------------------------- |
-| `children`             | Required        | Direct `Tray.Screen` declarations; fragments are supported.                        |
-| `appearance`           | `'floating'`    | Inset `'floating'` card or bottom-attached `'sheet'`.                              |
-| `anchor`               | `'bottom'`      | Keep screen content aligned to the `'top'` or `'bottom'` while resizing.           |
-| `topInset`             | `0`             | Space above the tray; content inset for full-screen views.                         |
-| `bottomInset`          | `0`             | Space below floating cards or bottom padding inside sheets and full-screen views.  |
-| `horizontalInset`      | `16`            | Side spacing for floating cards.                                                   |
-| `keyboardInset`        | `12`            | Space between floating cards and the open keyboard.                                |
-| `backgroundColor`      | `'#ffffff'`     | Card background.                                                                   |
-| `textColor`            | `'#18181b'`     | Header title and icons.                                                            |
-| `renderHeader`         | Built-in header | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`.            |
-| `handleVisible`        | `true`          | Show the drag indicator above the header.                                          |
-| `dismissDisabled`      | `false`         | Block drag, backdrop, Close, and root Back dismissal.                              |
-| `animation`            | Timing, 240 ms  | Resize and crossfade settings.                                                     |
-| `fullScreenTransition` | `'fade'`        | `'fade'` or `'slide'` between full-screen screens.                                 |
-| `onWillPresent`        | —               | Called when a new tray presentation begins.                                        |
-| `onPresent`            | —               | Called once after the native sheet first settles open.                             |
-| `onNavigate`           | —               | Called with the destination when the current screen changes within a presentation. |
-| `onWillDismiss`        | —               | Called when closing begins, including a drag committed to dismissal.               |
-| `onDismiss`            | —               | Called after the sheet finishes closing.                                           |
+| Prop                   | Default                 | Purpose                                                                            |
+| ---------------------- | ----------------------- | ---------------------------------------------------------------------------------- |
+| `children`             | Required                | Direct `Tray.Screen` declarations; fragments are supported.                        |
+| `appearance`           | `'floating'`            | Inset `'floating'` card or bottom-attached `'sheet'`.                              |
+| `anchor`               | `'bottom'`              | Keep screen content aligned to the `'top'` or `'bottom'` while resizing.           |
+| `topInset`             | `0`                     | Space above the tray; content inset for full-screen views.                         |
+| `bottomInset`          | `0`                     | Space below floating cards or bottom padding inside sheets and full-screen views.  |
+| `horizontalInset`      | `16`                    | Side spacing for floating cards.                                                   |
+| `keyboardInset`        | `12`                    | Space between floating cards and the open keyboard.                                |
+| `backgroundColor`      | `'#ffffff'`             | Card background.                                                                   |
+| `textColor`            | `'#18181b'`             | Header title and icons.                                                            |
+| `backdropColor`        | `'rgba(0, 0, 0, 0.35)'` | Color and opacity of the dimmed backdrop behind the sheet.                         |
+| `renderHeader`         | Built-in header         | Replace the header and its buttons; receives `TrayHeaderProps<Routes>`.            |
+| `handleVisible`        | `true`                  | Show the drag indicator above the header.                                          |
+| `dismissDisabled`      | `false`                 | Block drag, backdrop, Close, and root Back dismissal.                              |
+| `animation`            | Timing, 240 ms          | Resize and crossfade settings.                                                     |
+| `fullScreenTransition` | `'fade'`                | `'fade'` or `'slide'` between full-screen screens.                                 |
+| `onWillPresent`        | —                       | Called when a new tray presentation begins.                                        |
+| `onPresent`            | —                       | Called once after the native sheet first settles open.                             |
+| `onNavigate`           | —                       | Called with the destination when the current screen changes within a presentation. |
+| `onWillDismiss`        | —                       | Called when closing begins, including a drag committed to dismissal.               |
+| `onDismiss`            | —                       | Called after the sheet finishes closing.                                           |
 
 Declare at least one screen, using `Stack` and `Screen` from the same factory. Unmounting the provider closes the tray directly without calling dismissal callbacks.
 
